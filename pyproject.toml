@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wrinklefe"
+version = "0.1.0"
+description = "Finite element analysis of wrinkled composite laminates with advanced failure theories"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Elhajjar Research Group"},
+]
+keywords = ["composites", "finite-element", "wrinkle", "failure", "laminate"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "pyvista>=0.42",
+    "pyvistaqt>=0.11",
+]
+
+[project.optional-dependencies]
+gui = ["PyQt6>=6.5"]
+export = ["meshio>=5.3"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+    "mypy>=1.5",
+]
+all = ["wrinklefe[gui,export,dev]"]
+
+[project.scripts]
+wrinklefe = "wrinklefe.cli:main"
+wrinklefe-gui = "wrinklefe.gui.main_window:launch"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

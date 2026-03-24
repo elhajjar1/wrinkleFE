@@ -1,0 +1,58 @@
+_parked/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Build artifacts
+*.so
+*.dylib
+
+# PyInstaller
+*.spec
+
+# Jupyter
+.ipynb_checkpoints/
+
+# LaTeX build files
+joss/*.aux
+joss/*.bbl
+joss/*.blg
+joss/*.log
+joss/*.out
+joss/*.synctex.gz
+joss/*.fdb_latexmk
+joss/*.fls
+.superpowers/
+docs/superpowers/
+joss/paper.pdf
+joss/fig_mukhopadhyay.png
+joss/fig_validation.png

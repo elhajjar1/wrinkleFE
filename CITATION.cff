@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "WrinkleFE"
+version: 1.0.0
+date-released: 2025-03-24
+license: MIT
+repository-code: "https://github.com/elhajjar/wrinklefe"
+url: "https://github.com/elhajjar/wrinklefe"
+abstract: >-
+  WrinkleFE is a Python finite element package for predicting strength
+  and stiffness knockdown in composite laminates containing fiber waviness
+  defects. It combines Budiansky-Fleck kink-band theory, LaRC04/05
+  failure criteria, and a three-mechanism tension knockdown model with
+  3D hexahedral finite element analysis.
+keywords:
+  - composites
+  - fiber waviness
+  - wrinkle
+  - finite element
+  - failure analysis
+  - kink-band
+  - LaRC05
+authors:
+  - family-names: "Elhajjar"
+    given-names: "Rani"
+    orcid: "https://orcid.org/0000-0003-4778-5186"
+    affiliation: "University of Wisconsin-Milwaukee"
+references:
+  - type: article
+    authors:
+      - family-names: "Elhajjar"
+        given-names: "R."
+    title: "Fat-tailed failure strength distributions and manufacturing defects in advanced composites"
+    journal: "Scientific Reports"
+    volume: 15
+    pages: "25977"
+    year: 2025
+    doi: "10.1038/s41598-025-25977-3"
