@@ -55,3 +55,4 @@ joss/*.fls
 docs/superpowers/
 joss/
 examples/
+validation/*.png
