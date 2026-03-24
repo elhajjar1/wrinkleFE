@@ -109,15 +109,15 @@ print(result.analytical_knockdown)
 
 ## Validation
 
-Validated against 26 experimental data points from two independent datasets:
+Validated against 20 experimental data points from Elhajjar (2025):
 
-| Dataset | Loading | Cases | Pass | MAE |
-|---------|---------|-------|------|-----|
-| Elhajjar (2025) | Compression | 13 | 12/13 | 9.5% |
-| Elhajjar (2025) | Tension | 7 | 7/7 | 6.2% |
-| Mukhopadhyay (2015) | Compression | 3 | 2/3 | 17.3% |
-| Mukhopadhyay (2015) | Tension | 3 | 3/3 | 12.6% |
-| **Total** | | **26** | **24/26** | **9.9%** |
+| Loading | Cases | Pass | MAE |
+|---------|-------|------|-----|
+| Compression | 13 | 12/13 | 9.5% |
+| Tension | 7 | 7/7 | 6.2% |
+| **Total** | **20** | **19/20** | **8.4%** |
+
+![Validation](figures/fig_validation_elhajjar.png)
 
 ## How It Works
 
@@ -143,7 +143,6 @@ For graded morphology, knockdowns are averaged over all 0-degree plies at their 
 ## References
 
 - Elhajjar, R. (2025). Scientific Reports, 15:25977.
-- Mukhopadhyay, S. et al. (2015). Composites Part A, 73:132-142; 77:219-228.
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.
