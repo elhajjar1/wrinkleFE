@@ -5,8 +5,8 @@ title: "WrinkleFE"
 version: 1.0.0
 date-released: 2025-03-24
 license: MIT
-repository-code: "https://github.com/elhajjar/wrinklefe"
-url: "https://github.com/elhajjar/wrinklefe"
+repository-code: "https://github.com/elhajjar1/WrinkleFE"
+url: "https://github.com/elhajjar1/WrinkleFE"
 abstract: >-
   WrinkleFE is a Python finite element package for predicting strength
   and stiffness knockdown in composite laminates containing fiber waviness
