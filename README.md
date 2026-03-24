@@ -149,6 +149,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 If you use WrinkleFE in your research, please cite:
 
+> Elhajjar, R. (2025). WrinkleFE: Finite Element Package for Wrinkled Composite Laminates [Software]. https://github.com/elhajjar1/WrinkleFE
+
 ```bibtex
 @software{elhajjar2025wrinklefe,
   author = {Elhajjar, Rani},
