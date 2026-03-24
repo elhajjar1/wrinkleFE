@@ -2,7 +2,19 @@
 
 An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fiber waviness defects.
 
-![Validation](figures/fig_validation_elhajjar.png)
+## Screenshots
+
+**Wrinkle Profile & Fiber Misalignment** — Convex dual-wrinkle morphology showing upper/lower ply profiles, interface gap, and through-thickness fiber angle distribution.
+
+![Profile Tab](figures/screenshot_profile.png)
+
+**3D Finite Element Mesh** — Graded morphology with 8,640 hexahedral elements, color-coded by ply ID. Wrinkle amplitude decays from midplane to surface.
+
+![Mesh Tab](figures/screenshot_mesh.png)
+
+**Stress Analysis & Retention** — Through-thickness interlaminar stress (sigma_33) contour with strength and modulus retention bar chart. 58.3% strength retention, 97.9% modulus retention.
+
+![Stress Tab](figures/screenshot_stress.png)
 
 ## Features
 
