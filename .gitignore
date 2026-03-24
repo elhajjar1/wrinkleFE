@@ -53,7 +53,5 @@ joss/*.fdb_latexmk
 joss/*.fls
 .superpowers/
 docs/superpowers/
-joss/paper.pdf
-joss/fig_mukhopadhyay.png
-joss/fig_validation.png
 joss/
+examples/
