@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wrinklefe"
-version = "0.1.0"
+version = "1.0.0"
 description = "Finite element analysis of wrinkled composite laminates with advanced failure theories"
 readme = "README.md"
 license = {text = "MIT"}
