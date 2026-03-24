@@ -161,13 +161,21 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 If you use WrinkleFE in your research, please cite:
 
-> Elhajjar, R. (2025). WrinkleFE: Finite Element Package for Wrinkled Composite Laminates [Software]. https://github.com/elhajjar1/WrinkleFE
+> Elhajjar, R. (2025). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.0.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/WrinkleFE
 
 ```bibtex
 @software{elhajjar2025wrinklefe,
   author = {Elhajjar, Rani},
-  title = {WrinkleFE: Finite Element Package for Wrinkled Composite Laminates},
+  title = {{WrinkleFE}: An Open-Source Finite Element Package for Strength
+           Prediction of Wrinkled Composite Laminates},
   year = {2025},
-  url = {https://github.com/elhajjar1/WrinkleFE}
+  version = {1.0.0},
+  publisher = {GitHub},
+  url = {https://github.com/elhajjar1/WrinkleFE},
+  note = {University of Wisconsin-Milwaukee}
 }
 ```
+
+Please also cite the underlying experimental validation data:
+
+> Elhajjar, R. (2025). Fat-tailed failure strength distributions and manufacturing defects in advanced composites. *Scientific Reports*, 15, 25977. https://doi.org/10.1038/s41598-025-25977-3
