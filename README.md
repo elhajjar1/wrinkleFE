@@ -120,7 +120,7 @@ Validated against 31 experimental data points from three independent datasets:
 | Li et al. (2026) | Compression | 5 | 4/5 | 8.6% |
 | **Total** | | **31** | **28/31** | **9.5%** |
 
-![Validation](figures/fig_validation_elhajjar.png)
+To regenerate validation figures: `python joss/generate_fig_elhajjar.py`
 
 ## How It Works
 
