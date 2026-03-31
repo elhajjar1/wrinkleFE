@@ -26,12 +26,15 @@ Elhajjar, R. (2025). Scientific Reports 15, 25977.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from wrinklefe.core.laminate import Laminate
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from wrinklefe.core.morphology import WrinkleConfiguration
@@ -277,6 +280,81 @@ class MeshData:
         shared = np.array(sorted(elems_above & elems_below), dtype=np.intp)
         return shared
 
+    # ---- quality checks ----------------------------------------------------
+
+    def validate(self) -> list[str]:
+        """Check mesh quality and return a list of warning messages.
+
+        An empty list means all checks passed.
+
+        Checks performed:
+
+        * No NaN or Inf values in node coordinates.
+        * Element connectivity indices are within ``[0, n_nodes)``.
+        * Element aspect ratios (bounding-box based) do not exceed 10:1.
+        * No degenerate elements (all 8 nodes collapsed to a single point).
+
+        Returns
+        -------
+        list[str]
+            Warning messages for any failed checks.
+        """
+        warnings: list[str] = []
+
+        # 1. Finite node coordinates
+        if not np.all(np.isfinite(self.nodes)):
+            warnings.append("Mesh contains NaN or Inf node coordinates")
+
+        # 2. Element connectivity bounds
+        connectivity_ok = True
+        if self.elements.size > 0:
+            if np.any(self.elements < 0) or np.any(self.elements >= self.n_nodes):
+                warnings.append(
+                    "Element connectivity contains out-of-bounds node indices"
+                )
+                connectivity_ok = False
+
+        # 3. Aspect ratio check (bounding-box based, sampled for large meshes)
+        if self.elements.size > 0 and connectivity_ok:
+            n_check = min(self.n_elements, 500)
+            rng = np.random.default_rng(42)
+            sample_ids = rng.choice(self.n_elements, size=n_check, replace=False)
+            bad_aspect = 0
+            for eid in sample_ids:
+                coords = self.nodes[self.elements[eid]]  # (8, 3)
+                extents = coords.max(axis=0) - coords.min(axis=0)
+                # Replace zeros to avoid division issues
+                nonzero = extents[extents > 0]
+                if nonzero.size >= 2:
+                    ratio = nonzero.max() / nonzero.min()
+                    if ratio > 10.0:
+                        bad_aspect += 1
+            if bad_aspect > 0:
+                pct = 100.0 * bad_aspect / n_check
+                warnings.append(
+                    f"{bad_aspect}/{n_check} sampled elements have aspect "
+                    f"ratio > 10:1 ({pct:.1f}%)"
+                )
+
+        # 4. Degenerate element check (all 8 nodes at same point)
+        if self.elements.size > 0 and connectivity_ok:
+            n_check = min(self.n_elements, 500)
+            rng = np.random.default_rng(43)
+            sample_ids = rng.choice(self.n_elements, size=n_check, replace=False)
+            n_degen = 0
+            for eid in sample_ids:
+                coords = self.nodes[self.elements[eid]]  # (8, 3)
+                span = coords.max(axis=0) - coords.min(axis=0)
+                if np.all(span < 1e-15):
+                    n_degen += 1
+            if n_degen > 0:
+                warnings.append(
+                    f"{n_degen}/{n_check} sampled elements are degenerate "
+                    f"(all nodes at same point)"
+                )
+
+        return warnings
+
 
 # ---------------------------------------------------------------------------
 # WrinkleMesh — mesh generator
@@ -367,7 +445,7 @@ class WrinkleMesh:
         ply_ids, ply_angles = self._assign_ply_ids()
         fiber_angles = self._compute_fiber_angles(nodes, node_ply_ids)
 
-        return MeshData(
+        mesh_data = MeshData(
             nodes=nodes,
             elements=elements,
             ply_ids=ply_ids,
@@ -377,6 +455,13 @@ class WrinkleMesh:
             ny=self.ny,
             nz=self.nz,
         )
+
+        # Run basic quality checks
+        mesh_warnings = mesh_data.validate()
+        for w in mesh_warnings:
+            logger.warning(w)
+
+        return mesh_data
 
     # =======================================================================
     # Grid and connectivity helpers

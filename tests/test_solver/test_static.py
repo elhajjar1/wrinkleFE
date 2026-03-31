@@ -386,9 +386,9 @@ class TestStaticSolverCreation:
         assert solver.laminate is single_ply_laminate
 
     def test_default_element_type(self, small_mesh, single_ply_laminate):
-        """Default element type is hex8i (mapped to hex8 internally)."""
+        """Default element type is hex8."""
         solver = StaticSolver(small_mesh, single_ply_laminate)
-        assert solver.element_type == "hex8i"
+        assert solver.element_type == "hex8"
 
     def test_explicit_hex8(self, small_mesh, single_ply_laminate):
         """Can create solver with explicit hex8 element type."""

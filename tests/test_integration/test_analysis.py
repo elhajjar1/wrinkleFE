@@ -138,7 +138,6 @@ class TestAnalyticalOnly:
         kd_bf = 1.0 / (1.0 + result.effective_angle_rad / gamma_Y_eff)
 
         # CLT weighting: KD_lam = f0 * KD_BF + (1 - f0)
-        from wrinklefe.analysis import _max_consecutive_zero_plies
         angles = small_config.angles if small_config.angles else [0, 45, -45, 90] * 6
         mat = small_config.material
         n_0 = sum(1 for a in angles if abs(a) < 5)

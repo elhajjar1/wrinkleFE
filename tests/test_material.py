@@ -136,9 +136,9 @@ class TestMaterialValidation:
 class TestMaterialLibrary:
     """Test MaterialLibrary functionality."""
 
-    def test_has_four_builtins(self):
+    def test_has_five_builtins(self):
         lib = MaterialLibrary()
-        assert len(lib) == 4
+        assert len(lib) == 5
 
     def test_list_names_sorted(self):
         lib = MaterialLibrary()
@@ -166,7 +166,7 @@ class TestMaterialLibrary:
         lib.add(custom)
         assert "custom_mat" in lib
         assert lib.get("custom_mat") is custom
-        assert len(lib) == 5
+        assert len(lib) == 6
 
     def test_contains(self):
         lib = MaterialLibrary()

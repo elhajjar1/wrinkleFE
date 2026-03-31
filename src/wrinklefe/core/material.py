@@ -462,7 +462,7 @@ class MaterialLibrary:
     # ------------------------------------------------------------------
 
     def _load_builtins(self) -> None:
-        """Register the four built-in carbon/epoxy material systems."""
+        """Register the built-in material systems (4 carbon/epoxy + 1 glass/epoxy)."""
 
         # 1. AS4 / 3501-6  (Soden et al. 1998; MIL-HDBK-17)
         self.add(OrthotropicMaterial(
@@ -516,6 +516,26 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.38, beta3=0.38,
             gamma_Y=0.02,
             GIc=0.23, GIIc=0.90, alpha_0=53.0,
+        ))
+
+        # 5. AC318 / S6C10-800  (S-glass fiber / epoxy, Li et al. 2026)
+        #    Constituent properties from Table 1 of Li et al. (2026),
+        #    Composites Part A 205:109719.  Composite-level properties
+        #    computed via micromechanics at Vf ≈ 0.60, validated against
+        #    E1 ≈ 58 GPa from Fig. 12b (pristine compression modulus).
+        self.add(OrthotropicMaterial(
+            name="AC318_S6C10",
+            E1=58_000.0, E2=12_000.0, E3=12_000.0,
+            G12=5_500.0, G13=5_500.0, G23=4_000.0,
+            nu12=0.28, nu13=0.28, nu23=0.40,
+            Xt=1_200.0, Xc=830.0,
+            Yt=40.0, Yc=150.0,
+            Zt=40.0, Zc=150.0,
+            S12=60.0, S13=60.0, S23=45.0,
+            alpha1=5.0e-6, alpha2=25.0e-6, alpha3=25.0e-6,
+            beta1=0.0, beta2=0.3, beta3=0.3,
+            gamma_Y=0.02,
+            GIc=0.25, GIIc=0.75, alpha_0=53.0,
         ))
 
 

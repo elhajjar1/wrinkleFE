@@ -63,9 +63,12 @@ _BETA_ANGLE = 3.0  # Angle sensitivity
 _THETA_CRIT = 0.1  # Critical angle (rad)
 _A_REF = 0.183    # Reference amplitude (1 ply thickness, mm)
 
+# Number of x-integration points for profile-proportional knockdown
+_N_PROFILE_PTS = 500
+
 # Confinement model constants
 # Calibrated with CLT-weighted BF against Elhajjar (2025), T700/2510.
-_GAMMA_Y_UD = 0.020   # UD matrix yield strain (no confinement)
+_GAMMA_Y_UD = 0.032   # UD matrix yield strain (no confinement)
 _ALPHA_CONF = 0.050   # confinement boost coefficient
 
 
@@ -123,6 +126,107 @@ def _effective_gamma_Y(angles: List[float]) -> float:
     """
     fc = _confined_fraction(angles)
     return _GAMMA_Y_UD + _ALPHA_CONF * fc
+
+
+def _profile_proportional_kd(
+    amplitude: float,
+    wavelength: float,
+    width: float,
+    domain_length: float,
+    ply_thickness: float,
+    n_plies: int,
+    gamma_Y: float,
+    theta_max: float,
+    *,
+    morphology_factor: float = 1.0,
+    through_thickness_decay: bool = True,
+) -> float:
+    """Budiansky-Fleck knockdown averaged over the wrinkle profile.
+
+    Instead of applying a single peak-angle knockdown to all plies,
+    this function computes the local fibre angle at every (x, z) point
+    in the laminate and averages the Budiansky-Fleck response:
+
+        KD_lam = (1/N) * sum_p [ (1/L_s) * int KD(x, z_p) dx ]
+
+    where the local angle at position (x, z_p) is:
+
+        theta(x, z_p) = |dz_w/dx| * M_f * Phi(z_p)
+
+    with:
+        |dz_w/dx|  = slope of the GaussianSinusoidal wrinkle profile
+        M_f        = morphology factor (accounts for dual-wrinkle interaction)
+        Phi(z_p)   = exp(-(z_p - T/2)^2 / A^2)   (through-thickness decay)
+
+    When *through_thickness_decay* is False, Phi(z_p) = 1 for all plies
+    (all plies see the same longitudinal profile).  This is appropriate
+    for dual-wrinkle morphologies (stack/convex/concave) where the wrinkle
+    extends through the full thickness.
+
+    Parameters
+    ----------
+    amplitude : float
+        Wrinkle amplitude A [mm].
+    wavelength : float
+        Full sinusoidal wavelength lambda [mm].
+    width : float
+        Gaussian envelope half-width w [mm].
+    domain_length : float
+        Specimen / domain length L_s [mm].
+    ply_thickness : float
+        Ply thickness [mm].
+    n_plies : int
+        Total number of plies.
+    gamma_Y : float
+        Effective matrix yield shear strain.
+    theta_max : float
+        Maximum unattenuated fibre angle [rad].
+    morphology_factor : float
+        Morphology factor M_f that scales the effective angle to account
+        for dual-wrinkle interaction (convex < 1.0, concave > 1.0,
+        stack = 1.0, graded = 1.0).  Default 1.0.
+    through_thickness_decay : bool
+        If True (default), apply Gaussian through-thickness decay centred
+        at the midplane with scale = amplitude.  If False, all plies see
+        the full wrinkle angle profile (Phi = 1).
+
+    Returns
+    -------
+    float
+        Profile-averaged BF knockdown factor (0, 1].
+    """
+    T = n_plies * ply_thickness
+    z_mid = T / 2.0
+    L_s = domain_length
+
+    # Longitudinal profile: compute |dz/dx| at each x-point
+    x = np.linspace(-L_s / 2.0, L_s / 2.0, _N_PROFILE_PTS)
+
+    # z(x) = A * exp(-x^2/w^2) * cos(2*pi*x/lambda)
+    gauss_env = np.exp(-(x ** 2) / (width ** 2))
+    cos_term = np.cos(2.0 * np.pi * x / wavelength)
+
+    # Slope via analytical derivative (more accurate than np.gradient)
+    sin_term = np.sin(2.0 * np.pi * x / wavelength)
+    dz_dx = amplitude * gauss_env * (
+        (-2.0 * x / (width ** 2)) * cos_term
+        - (2.0 * np.pi / wavelength) * sin_term
+    )
+    theta_x = np.abs(np.arctan(dz_dx)) * morphology_factor  # M_f-scaled angle
+
+    # Average over plies and x-positions
+    kd_sum = 0.0
+    for p in range(n_plies):
+        z_p = (p + 0.5) * ply_thickness
+        if through_thickness_decay:
+            phi_p = np.exp(-((z_p - z_mid) ** 2) / (amplitude ** 2))
+        else:
+            phi_p = 1.0
+        theta_xz = theta_x * phi_p  # local angle at (x, z_p)
+        kd_xz = 1.0 / (1.0 + theta_xz / gamma_Y)
+        kd_sum += np.mean(kd_xz)
+
+    return kd_sum / n_plies
 
 
 def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
@@ -668,36 +772,45 @@ class WrinkleAnalysis:
         total_stiffness = n_0 * Q11_0 + n_45 * Q11_45 + n_90 * Q11_90
         f_0 = n_0 * Q11_0 / total_stiffness if total_stiffness > 0 else 1.0
 
-        # For graded morphology, average knockdown over all 0-deg plies
-        # at their local angles (theta_p = theta_max * B_p) instead of
-        # using the peak angle for all plies.
+        # For graded morphology (embedded wrinkle), use profile-proportional
+        # knockdown: the BF knockdown is averaged over the wrinkle profile
+        # in both x (local angle varies with dz/dx) and z (Gaussian decay).
+        # For other morphologies (stack/convex/concave/uniform), the wrinkle
+        # extends through the full thickness and fills the coupon, so failure
+        # is governed by the peak-angle cross-section.
+        #
+        # KD_lam = (1/N) sum_p [ (1/L_s) int 1/(1 + theta(x)*Phi(z_p)/gY) dx ]
         is_graded = cfg.morphology.lower().strip() == "graded"
         n_plies = len(angles)
 
         if is_graded and n_0 > 0 and n_plies > 1:
-            # Compute grading factor B_p for each 0-deg ply
-            p_mid = (n_plies - 1) / 2.0
-            zero_positions = [i for i, a in enumerate(angles) if abs(a) < 5]
-            decay_floor = cfg.decay_floor
-
-            # Compression: average BF over 0-deg plies at local angles
-            kd_bf_sum = 0.0
-            for p in zero_positions:
-                raw = max(0.0, 1.0 - abs(p - p_mid) / p_mid)
-                B_p = decay_floor + (1.0 - decay_floor) * raw
-                theta_p = theta_eff * B_p
-                kd_bf_sum += 1.0 / (1.0 + theta_p / gamma_Y_eff)
-            kd_bf_avg = kd_bf_sum / len(zero_positions)
-            kd_compression = f_0 * kd_bf_avg + (1.0 - f_0)
+            # Profile-proportional compression knockdown (graded/embedded)
+            kd_profile = _profile_proportional_kd(
+                amplitude=cfg.amplitude,
+                wavelength=cfg.wavelength,
+                width=cfg.width,
+                domain_length=cfg.domain_length,
+                ply_thickness=cfg.ply_thickness,
+                n_plies=n_plies,
+                gamma_Y=gamma_Y_eff,
+                theta_max=theta_max,
+                morphology_factor=1.0,
+                through_thickness_decay=True,
+            )
+            kd_compression = f_0 * kd_profile + (1.0 - f_0)
 
             if cfg.loading == "tension":
                 # Average tension knockdown over 0-deg plies at local angles
+                # (profile-proportional, using linear grading as fallback
+                # for the three-mechanism model)
+                p_mid = (n_plies - 1) / 2.0
+                zero_positions = [i for i, a in enumerate(angles) if abs(a) < 5]
+                decay_floor = cfg.decay_floor
                 kd_0_sum = 0.0
                 for p in zero_positions:
                     raw = max(0.0, 1.0 - abs(p - p_mid) / p_mid)
                     B_p = decay_floor + (1.0 - decay_floor) * raw
                     theta_p = theta_max * B_p
-                    # Run 3-mechanism at this ply's local angle
                     kd_p, _ = self._tension_knockdown_analytical(
                         theta_p, cfg, _return_kd0_only=True,
                     )
@@ -717,7 +830,7 @@ class WrinkleAnalysis:
                 ref_strength = cfg.material.Xc
                 results.tension_mechanisms = None
         else:
-            # Uniform: use peak angle for all 0-deg plies
+            # Non-graded: peak-angle BF at the critical cross-section
             kd_bf = 1.0 / (1.0 + theta_eff / gamma_Y_eff)
             kd_compression = f_0 * kd_bf + (1.0 - f_0)
 
@@ -927,9 +1040,11 @@ class WrinkleAnalysis:
         try:
             report = evaluator.evaluate_laminate(laminate, load)
             results.failure_report = report
-        except Exception:
-            # CLT evaluation may fail for some configurations; skip
-            pass
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "CLT evaluation skipped: %s", exc
+            )
 
     def _compute_retention_factors(
         self,

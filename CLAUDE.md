@@ -14,7 +14,7 @@ wrinklefe/
     analysis.py          # High-level analysis pipeline (WrinkleAnalysis, AnalysisConfig)
     cli.py               # Command-line entry point
     core/
-      material.py        # OrthotropicMaterial dataclass + MaterialLibrary (4 built-in materials)
+      material.py        # OrthotropicMaterial dataclass + MaterialLibrary (5 built-in materials)
       laminate.py         # Laminate, Ply, LoadState
       wrinkle.py          # GaussianSinusoidal wrinkle profile
       morphology.py       # WrinkleConfiguration, MorphologyFactor, MORPHOLOGY_PHASES
@@ -126,26 +126,54 @@ Fracture toughness values (GIc, GIIc) cancel in the wrinkled/pristine retention 
 
 ## Material Library
 
-Four built-in materials in `MaterialLibrary` (`core/material.py`):
+Five built-in materials in `MaterialLibrary` (`core/material.py`):
 
-1. `AS4_3501_6`
-2. `IM7_8552` (default)
-3. `T300_914`
-4. `T700_2510`
+1. `AS4_3501_6` (Hercules AS4 / 3501-6 carbon/epoxy)
+2. `IM7_8552` (Hexcel IM7 / 8552 carbon/epoxy, default)
+3. `T300_914` (Toray T300 / Hexcel 914 carbon/epoxy)
+4. `T700_2510` (Toray T700SC / Cytec 2510 carbon/epoxy)
+5. `AC318_S6C10` (AC318 S-glass / S6C10-800 epoxy, Li et al. 2026)
+
+### Graded Morphology: Profile-Proportional Knockdown
+
+For graded (single-wrinkle) morphology, the Budiansky-Fleck knockdown is averaged
+over the wrinkle profile in both the longitudinal and through-thickness directions:
+
+```
+KD_lam = (1/N) * sum_p [ (1/L_s) * integral KD(x, z_p) dx ]
+
+where:
+  theta(x, z_p) = |dz_w/dx| * exp(-(z_p - T/2)^2 / A^2)
+  KD(x, z_p) = 1 / (1 + theta(x, z_p) / gamma_Y_eff)
+```
+
+- `|dz_w/dx|` = local fiber angle from the GaussianSinusoidal wrinkle slope
+- `exp(-(z_p - T/2)^2 / A^2)` = through-thickness Gaussian decay (scale = amplitude A)
+- `L_s` = domain_length (specimen length)
+- `N` = total number of plies
+
+This naturally confines the knockdown to where the wrinkle exists: plies far from
+the midplane and x-positions away from the wrinkle center contribute KD ~ 1.0.
+
+Implementation: `_profile_proportional_kd()` in `analysis.py`.
 
 ## Validation
 
-**20/20 PASS across Elhajjar (2025) dataset (overall MAE = 4.3%):**
+**28/31 PASS across three independent datasets (overall MAE ≈ 9.5%):**
 
 | Dataset | Loading | Cases | Pass | MAE |
 |---------|---------|-------|------|-----|
-| Elhajjar (2025) | Compression | 13 | 13/13 | ~3.5% |
-| Elhajjar (2025) | Tension | 7 | 7/7 | ~5.5% |
+| Elhajjar (2025) | Compression | 13 | 11/13 | 9.9% |
+| Elhajjar (2025) | Tension | 7 | 7/7 | 6.2% |
+| Mukhopadhyay (2015) | Compression | 3 | 3/3 | 17.4% |
+| Mukhopadhyay (2015) | Tension | 3 | 3/3 | 12.1% |
+| Li et al. (2026) | Compression | 5 | 4/5 | 8.6% |
 
-Validation scripts in `validation/`. Run with:
+Validation scripts:
 
 ```bash
 python validation/validate_elhajjar2025.py
+python joss/validate_li2026.py
 ```
 
 ## Running

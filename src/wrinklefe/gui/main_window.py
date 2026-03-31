@@ -87,6 +87,56 @@ if HAS_PYQT6:
                 self.error.emit(f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
 
 
+    class SweepWorker(QThread):
+        """Background thread for running parametric sweeps via WrinkleAnalysis.
+
+        Uses the validated wrinklefe analysis pipeline with confinement-adjusted
+        gamma_Y, CLT weighting, and FE-based modulus retention.
+        """
+
+        finished = pyqtSignal(object)  # list of AnalysisResults
+        error = pyqtSignal(str)
+        progress = pyqtSignal(int, int, float)  # current, total, elapsed_seconds
+
+        def __init__(self, base_config, parameter: str, values) -> None:
+            super().__init__()
+            self.base_config = base_config
+            self.parameter = parameter
+            self.values = values
+
+        def run(self) -> None:
+            try:
+                import time
+                import warnings
+                import contextlib, io
+                from wrinklefe.analysis import WrinkleAnalysis
+
+                warnings.filterwarnings('ignore', category=RuntimeWarning)
+
+                total = len(self.values)
+                results_list = []
+                t_start = time.time()
+
+                for idx, val in enumerate(self.values):
+                    import dataclasses
+                    cfg = dataclasses.replace(self.base_config, **{self.parameter: val})
+                    cfg.verbose = False
+
+                    # Suppress FE solver print output
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        analysis = WrinkleAnalysis(cfg)
+                        result = analysis.run()
+
+                    results_list.append(result)
+
+                    elapsed = time.time() - t_start
+                    self.progress.emit(idx + 1, total, elapsed)
+
+                self.finished.emit(results_list)
+            except Exception as e:
+                self.error.emit(f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+
+
 # ======================================================================
 # Main Window
 # ======================================================================
@@ -156,6 +206,10 @@ if HAS_PYQT6:
         # ----------------------------------------------------------
 
         def _setup_central_widget(self) -> None:
+            from wrinklefe.gui.panels import (
+                MaterialPanel, WrinklePanel, MeshPanel, AnalysisPanel, SweepPanel,
+            )
+
             central = QWidget()
             self.setCentralWidget(central)
 
@@ -166,11 +220,38 @@ if HAS_PYQT6:
             left_layout = QVBoxLayout(left_panel)
             left_panel.setMaximumWidth(350)
 
-            left_layout.addWidget(self._create_material_group())
-            left_layout.addWidget(self._create_wrinkle_group())
-            left_layout.addWidget(self._create_mesh_group())
-            left_layout.addWidget(self._create_analysis_group())
+            self.material_panel = MaterialPanel()
+            self.wrinkle_panel = WrinklePanel()
+            self.mesh_panel = MeshPanel()
+            self.analysis_panel = AnalysisPanel()
+
+            left_layout.addWidget(self.material_panel)
+            left_layout.addWidget(self.wrinkle_panel)
+            left_layout.addWidget(self.mesh_panel)
+            left_layout.addWidget(self.analysis_panel)
             left_layout.addStretch()
+
+            # Connect analysis panel signals
+            self.analysis_panel.run_requested.connect(self._on_run)
+            self.analysis_panel.stop_requested.connect(self._on_stop)
+
+            # Convenience aliases so rest of code still works
+            self.material_combo = self.material_panel.material_combo
+            self.layup_edit = self.material_panel.layup_edit
+            self.ply_thickness_spin = self.material_panel.ply_thickness_spin
+            self.amplitude_spin = self.wrinkle_panel.amplitude_spin
+            self.wavelength_spin = self.wrinkle_panel.wavelength_spin
+            self.width_spin = self.wrinkle_panel.width_spin
+            self.morphology_combo = self.wrinkle_panel.morphology_combo
+            self.decay_floor_spin = self.wrinkle_panel.decay_floor_spin
+            self.loading_combo = self.wrinkle_panel.loading_combo
+            self.nx_spin = self.mesh_panel.nx_spin
+            self.ny_spin = self.mesh_panel.ny_spin
+            self.nz_per_ply_spin = self.mesh_panel.nz_per_ply_spin
+            self.run_btn = self.analysis_panel.run_btn
+            self.stop_btn = self.analysis_panel.stop_btn
+            self.progress_bar = self.analysis_panel.progress_bar
+            self.timer_label = self.analysis_panel.timer_label
 
             # Right area: splitter with plots on top, text on bottom
             right_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -240,6 +321,27 @@ if HAS_PYQT6:
 
                 self.plot_tabs.addTab(self.stress_tab_widget, "Stress")
 
+                # Sweep tab (extracted panel)
+                self.sweep_panel = SweepPanel()
+                self.sweep_panel.sweep_requested.connect(self._on_run_sweep)
+                self.sweep_panel.export_requested.connect(self._on_sweep_export_done)
+                self.plot_tabs.addTab(self.sweep_panel, "Sweep")
+                self._sweep_worker = None
+
+                # Convenience aliases for sweep widgets used elsewhere
+                self.sweep_param_combo = self.sweep_panel.sweep_param_combo
+                self.sweep_min_spin = self.sweep_panel.sweep_min_spin
+                self.sweep_max_spin = self.sweep_panel.sweep_max_spin
+                self.sweep_points_spin = self.sweep_panel.sweep_points_spin
+                self.sweep_run_btn = self.sweep_panel.sweep_run_btn
+                self.sweep_export_btn = self.sweep_panel.sweep_export_btn
+                self.sweep_progress_bar = self.sweep_panel.sweep_progress_bar
+                self.sweep_time_label = self.sweep_panel.sweep_time_label
+                self.sweep_strength_canvas = self.sweep_panel.sweep_strength_canvas
+                self.sweep_stiffness_canvas = self.sweep_panel.sweep_stiffness_canvas
+                self.sweep_results_text = self.sweep_panel.sweep_results_text
+                self._sweep_results_cache = None
+
                 # Draw placeholder text on each canvas
                 for canvas, msg in [
                     (self.profile_canvas, "Run an analysis to see wrinkle profile plots."),
@@ -276,177 +378,6 @@ if HAS_PYQT6:
             main_layout.addWidget(right_splitter, stretch=1)
 
         # ----------------------------------------------------------
-        # Configuration groups
-        # ----------------------------------------------------------
-
-        def _create_material_group(self) -> QGroupBox:
-            group = QGroupBox("Material && Laminate")
-            layout = QFormLayout(group)
-
-            self.material_combo = QComboBox()
-            self.material_combo.addItems([
-                "IM7_8552", "AS4_3501_6",
-                "T300_914", "T700_2510",
-            ])
-            self.material_combo.currentTextChanged.connect(self._on_material_changed)
-            layout.addRow("Material:", self.material_combo)
-
-            self.layup_edit = QLineEdit("[0/45/-45/90]_3s")
-            self.layup_edit.setToolTip(
-                "Enter ply angles separated by /. Use _Ns for N repeats, "
-                "s for symmetric."
-            )
-            layout.addRow("Layup:", self.layup_edit)
-
-            self.ply_thickness_spin = QDoubleSpinBox()
-            self.ply_thickness_spin.setRange(0.05, 0.50)
-            self.ply_thickness_spin.setValue(0.183)
-            self.ply_thickness_spin.setSingleStep(0.01)
-            self.ply_thickness_spin.setSuffix(" mm")
-            layout.addRow("Ply thickness:", self.ply_thickness_spin)
-
-            return group
-
-        def _create_wrinkle_group(self) -> QGroupBox:
-            group = QGroupBox("Wrinkle Geometry")
-            layout = QFormLayout(group)
-
-            self.amplitude_spin = QDoubleSpinBox()
-            self.amplitude_spin.setRange(0.001, 3.0)
-            self.amplitude_spin.setDecimals(3)
-            self.amplitude_spin.setValue(0.366)
-            self.amplitude_spin.setSingleStep(0.001)
-            self.amplitude_spin.setSuffix(" mm")
-            layout.addRow("Amplitude:", self.amplitude_spin)
-
-            self.wavelength_spin = QDoubleSpinBox()
-            self.wavelength_spin.setRange(1.0, 100.0)
-            self.wavelength_spin.setDecimals(3)
-            self.wavelength_spin.setValue(16.0)
-            self.wavelength_spin.setSingleStep(0.001)
-            self.wavelength_spin.setSuffix(" mm")
-            self.wavelength_spin.setToolTip(
-                "Wavelength \u03bb: oscillation period of the sinusoidal wrinkle.\n"
-                "Controls wrinkle steepness \u2014 shorter \u03bb = steeper angle.\n"
-                "\u03b8 \u2248 arctan(2\u03c0A/\u03bb)"
-            )
-            layout.addRow("Wavelength (\u03bb):", self.wavelength_spin)
-
-            self.width_spin = QDoubleSpinBox()
-            self.width_spin.setRange(1.0, 100.0)
-            self.width_spin.setDecimals(3)
-            self.width_spin.setValue(12.0)
-            self.width_spin.setSingleStep(0.001)
-            self.width_spin.setSuffix(" mm")
-            self.width_spin.setToolTip(
-                "Gaussian envelope width w: controls how far the wrinkle\n"
-                "extends before decaying to zero.\n"
-                "Small w = localized defect (1\u20132 undulations visible).\n"
-                "Large w = extended waviness (many undulations).\n"
-                "w \u2248 0.75\u03bb for typical manufacturing wrinkles."
-            )
-            layout.addRow("Envelope width (w):", self.width_spin)
-
-            self.morphology_combo = QComboBox()
-            self.morphology_combo.addItems([
-                "stack", "convex", "concave", "uniform", "graded",
-            ])
-            self.morphology_combo.currentTextChanged.connect(
-                self._on_morphology_changed
-            )
-            layout.addRow("Morphology:", self.morphology_combo)
-
-            self.decay_floor_label = QLabel("Decay floor:")
-            self.decay_floor_spin = QDoubleSpinBox()
-            self.decay_floor_spin.setRange(0.0, 1.0)
-            self.decay_floor_spin.setSingleStep(0.05)
-            self.decay_floor_spin.setValue(0.0)
-            self.decay_floor_spin.setDecimals(2)
-            self.decay_floor_spin.setToolTip(
-                "Minimum amplitude fraction for graded mode.\n"
-                "graded: decay floor at surface plies (max at midplane)\n"
-                "0.0 = full decay to zero, 1.0 = no decay (uniform)"
-            )
-            layout.addRow(self.decay_floor_label, self.decay_floor_spin)
-            # Initially hidden — only shown for graded morphology
-            self.decay_floor_label.setVisible(False)
-            self.decay_floor_spin.setVisible(False)
-
-            self.loading_combo = QComboBox()
-            self.loading_combo.addItems(["compression", "tension"])
-            layout.addRow("Loading:", self.loading_combo)
-
-            return group
-
-        def _create_mesh_group(self) -> QGroupBox:
-            group = QGroupBox("Mesh")
-            layout = QFormLayout(group)
-
-            self.nx_spin = QSpinBox()
-            self.nx_spin.setRange(2, 200)
-            self.nx_spin.setValue(20)
-            layout.addRow("nx:", self.nx_spin)
-
-            self.ny_spin = QSpinBox()
-            self.ny_spin.setRange(2, 100)
-            self.ny_spin.setValue(6)
-            layout.addRow("ny:", self.ny_spin)
-
-            self.nz_per_ply_spin = QSpinBox()
-            self.nz_per_ply_spin.setRange(1, 10)
-            self.nz_per_ply_spin.setValue(3)
-            layout.addRow("nz/ply:", self.nz_per_ply_spin)
-
-            return group
-
-        def _create_analysis_group(self) -> QGroupBox:
-            group = QGroupBox("Analysis")
-            layout = QVBoxLayout(group)
-
-            self.progress_bar = QProgressBar()
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setVisible(False)
-            layout.addWidget(self.progress_bar)
-
-            self.timer_label = QLabel("")
-            self.timer_label.setStyleSheet("QLabel { color: #555; font-size: 11px; }")
-            self.timer_label.setVisible(False)
-            layout.addWidget(self.timer_label)
-
-            # Countdown timer
-            self._countdown_timer = QTimer(self)
-            self._countdown_timer.setInterval(1000)
-            self._countdown_timer.timeout.connect(self._tick_countdown)
-            self._elapsed_timer = QElapsedTimer()
-            self._estimated_seconds = 0
-            self._last_run_seconds = {}  # cache: mesh_key -> actual seconds
-
-            btn_layout = QHBoxLayout()
-
-            self.run_btn = QPushButton("Run Analysis")
-            self.run_btn.setStyleSheet(
-                "QPushButton { background-color: #2196F3; color: white; "
-                "font-weight: bold; padding: 8px; }"
-            )
-            self.run_btn.clicked.connect(self._on_run)
-            btn_layout.addWidget(self.run_btn)
-
-
-            self.stop_btn = QPushButton("Stop")
-            self.stop_btn.setStyleSheet(
-                "QPushButton { background-color: #F44336; color: white; "
-                "font-weight: bold; padding: 8px; }"
-            )
-            self.stop_btn.clicked.connect(self._on_stop)
-            self.stop_btn.setEnabled(False)
-            self.stop_btn.setVisible(False)
-            btn_layout.addWidget(self.stop_btn)
-
-            layout.addLayout(btn_layout)
-
-            return group
-
-        # ----------------------------------------------------------
         # Status bar
         # ----------------------------------------------------------
 
@@ -465,13 +396,12 @@ if HAS_PYQT6:
             material = MaterialLibrary().get(self.material_combo.currentText())
 
             # Use simplified in-situ strengths (GIc/GIIc not needed for retention)
-            # α₀ uses material default (~53° for all carbon/epoxy systems)
             import dataclasses
             material = dataclasses.replace(
                 material,
                 GIc=None,
                 GIIc=None,
-                beta_shear=0.0,  # linear shear assumed
+                beta_shear=0.0,
             )
 
             # Parse layup string
@@ -485,34 +415,31 @@ if HAS_PYQT6:
             n_plies = len(angles)
             laminate_thickness = n_plies * ply_thickness
 
-            # 1. Amplitude cannot exceed half the laminate thickness
             max_amplitude = laminate_thickness / 2.0
             if amplitude > max_amplitude:
                 raise ValueError(
                     f"Amplitude ({amplitude:.3f} mm) exceeds half the laminate "
-                    f"thickness ({max_amplitude:.3f} mm = {n_plies} plies × "
+                    f"thickness ({max_amplitude:.3f} mm = {n_plies} plies \u00d7 "
                     f"{ply_thickness:.3f} mm / 2).\n\n"
-                    f"Reduce amplitude to ≤ {max_amplitude:.3f} mm, "
+                    f"Reduce amplitude to \u2264 {max_amplitude:.3f} mm, "
                     f"or increase ply count / thickness."
                 )
 
-            # 2. Wavelength must be at least 2× amplitude (otherwise angle > 72°)
             min_wavelength = 2.0 * amplitude
             if wavelength < min_wavelength:
                 max_angle = np.degrees(np.arctan(2 * np.pi * amplitude / wavelength))
                 raise ValueError(
                     f"Wavelength ({wavelength:.1f} mm) is too short for "
                     f"amplitude ({amplitude:.3f} mm).\n"
-                    f"This creates a wrinkle angle of {max_angle:.0f}°, "
+                    f"This creates a wrinkle angle of {max_angle:.0f}\u00b0, "
                     f"which is physically impossible.\n\n"
-                    f"Increase wavelength to ≥ {min_wavelength:.1f} mm."
+                    f"Increase wavelength to \u2265 {min_wavelength:.1f} mm."
                 )
 
-            # 3. Warn if wrinkle angle exceeds 45° (still allow, but inform)
             theta_max = np.degrees(np.arctan(2 * np.pi * amplitude / wavelength))
             if theta_max > 45.0:
                 raise ValueError(
-                    f"Wrinkle angle ({theta_max:.1f}°) exceeds 45°.\n"
+                    f"Wrinkle angle ({theta_max:.1f}\u00b0) exceeds 45\u00b0.\n"
                     f"This is physically unrealistic for manufacturing defects.\n\n"
                     f"Increase wavelength or decrease amplitude."
                 )
@@ -540,16 +467,12 @@ if HAS_PYQT6:
             """Parse a layup string like '[0/45/-45/90]_3s' to angle list."""
             text = text.strip()
 
-            # Simple fallback: try comma or slash separated numbers
-            # Remove brackets
             cleaned = text.replace("[", "").replace("]", "")
 
-            # Check for _Ns pattern (repeat N times, symmetric)
             symmetric = cleaned.endswith("s")
             if symmetric:
                 cleaned = cleaned[:-1]
 
-            # Check for _N repeat
             repeat = 1
             if "_" in cleaned:
                 parts = cleaned.rsplit("_", 1)
@@ -559,20 +482,16 @@ if HAS_PYQT6:
                 except ValueError:
                     repeat = 1
 
-            # Parse angles
             sep = "/" if "/" in cleaned else ","
             try:
                 angles = [float(a.strip()) for a in cleaned.split(sep) if a.strip()]
             except ValueError:
-                # Fallback to default quasi-isotropic
                 angles = [0, 45, -45, 90]
                 repeat = 3
                 symmetric = True
 
-            # Apply repeat
             angles = angles * repeat
 
-            # Apply symmetry
             if symmetric:
                 angles = angles + list(reversed(angles))
 
@@ -582,89 +501,6 @@ if HAS_PYQT6:
         # Actions
         # ----------------------------------------------------------
 
-        def _estimate_time(self, config) -> float:
-            """Estimate analysis time in seconds based on problem size."""
-            n_plies = len(config.angles) if config.angles else 24
-
-            # FE cost model
-            n_elem = config.nx * config.ny * config.nz_per_ply * n_plies
-            n_dof = n_elem * 3 * 2  # rough DOF estimate
-            t = 0.5 + n_elem * 0.002 + (n_dof / 1000.0) ** 1.3 * 0.1
-
-            # Check if we have a cached actual time for similar config
-            mesh_key = (config.nx, config.ny, config.nz_per_ply, n_plies)
-            if mesh_key in self._last_run_seconds:
-                actual = self._last_run_seconds[mesh_key]
-                t = 0.3 * t + 0.7 * actual
-
-            return max(1.0, t)
-
-        def _start_countdown(self, estimated_seconds: float) -> None:
-            """Start the countdown timer display."""
-            self._estimated_seconds = estimated_seconds
-            self._elapsed_timer.start()
-            self.progress_bar.setRange(0, int(estimated_seconds * 10))
-            self.progress_bar.setValue(0)
-            self.progress_bar.setVisible(True)
-            self.timer_label.setVisible(True)
-            self._update_timer_display()
-            self._countdown_timer.start()
-
-        def _stop_countdown(self) -> None:
-            """Stop the countdown timer."""
-            self._countdown_timer.stop()
-            self.progress_bar.setVisible(False)
-            self.timer_label.setVisible(False)
-
-        def _tick_countdown(self) -> None:
-            """Update countdown display every second."""
-            self._update_timer_display()
-
-        def _update_timer_display(self) -> None:
-            """Refresh the timer label and progress bar."""
-            elapsed_s = self._elapsed_timer.elapsed() / 1000.0
-            remaining_s = max(0, self._estimated_seconds - elapsed_s)
-
-            # Update progress bar (don't exceed max)
-            progress_val = min(
-                int(elapsed_s * 10),
-                int(self._estimated_seconds * 10),
-            )
-            self.progress_bar.setValue(progress_val)
-
-            elapsed_str = self._format_time(elapsed_s)
-            est_str = self._format_time(self._estimated_seconds)
-
-            if remaining_s > 0:
-                remain_str = self._format_time(remaining_s)
-                self.timer_label.setText(
-                    f"Elapsed: {elapsed_str}  |  "
-                    f"Estimated: ~{est_str}  |  "
-                    f"Remaining: ~{remain_str}"
-                )
-            else:
-                self.timer_label.setText(
-                    f"Elapsed: {elapsed_str}  |  "
-                    f"Estimated: ~{est_str}  |  "
-                    f"Finishing up..."
-                )
-                # Switch to indeterminate mode when past estimate
-                self.progress_bar.setRange(0, 0)
-
-        @staticmethod
-        def _format_time(seconds: float) -> str:
-            """Format seconds as M:SS or H:MM:SS."""
-            seconds = int(seconds)
-            if seconds < 60:
-                return f"{seconds}s"
-            elif seconds < 3600:
-                m, s = divmod(seconds, 60)
-                return f"{m}:{s:02d}"
-            else:
-                h, rem = divmod(seconds, 3600)
-                m, s = divmod(rem, 60)
-                return f"{h}:{m:02d}:{s:02d}"
-
         def _on_run(self) -> None:
             """Run the full FE analysis in a background thread."""
             try:
@@ -673,15 +509,12 @@ if HAS_PYQT6:
                 QMessageBox.critical(self, "Configuration Error", str(e))
                 return
 
-            self.run_btn.setEnabled(False)
-
-            self.stop_btn.setEnabled(True)
-            self.stop_btn.setVisible(True)
+            self.analysis_panel.set_running(True)
             self.statusBar().showMessage("Running analysis...")
             self.output_text.clear()
 
-            est = self._estimate_time(config)
-            self._start_countdown(est)
+            est = self.analysis_panel.estimate_time(config)
+            self.analysis_panel.start_countdown(est)
             self._current_config = config
 
             self._worker = AnalysisWorker(config)
@@ -692,21 +525,14 @@ if HAS_PYQT6:
 
         def _on_analysis_done(self, result) -> None:
             """Handle completed analysis."""
-            actual_s = self._elapsed_timer.elapsed() / 1000.0
-            self._stop_countdown()
+            actual_s = self.analysis_panel.elapsed_seconds()
+            self.analysis_panel.stop_countdown()
 
-            # Cache actual time for future estimates
             if hasattr(self, '_current_config'):
-                cfg = self._current_config
-                n_plies = len(cfg.angles) if cfg.angles else 24
-                mesh_key = (cfg.nx, cfg.ny, cfg.nz_per_ply, n_plies)
-                self._last_run_seconds[mesh_key] = actual_s
+                self.analysis_panel.cache_actual_time(self._current_config, actual_s)
 
             self._result = result
-            self.run_btn.setEnabled(True)
-
-            self.stop_btn.setEnabled(False)
-            self.stop_btn.setVisible(False)
+            self.analysis_panel.set_running(False)
             self.output_text.setPlainText(result.summary())
             self._update_plots(result)
             self.statusBar().showMessage(
@@ -716,28 +542,22 @@ if HAS_PYQT6:
 
         def _on_analysis_error(self, msg: str) -> None:
             """Handle analysis error."""
-            self._stop_countdown()
-            self.run_btn.setEnabled(True)
-
-            self.stop_btn.setEnabled(False)
-            self.stop_btn.setVisible(False)
+            self.analysis_panel.stop_countdown()
+            self.analysis_panel.set_running(False)
             self.output_text.setPlainText(f"ERROR:\n{msg}")
             self.statusBar().showMessage("Analysis failed.")
             QMessageBox.critical(self, "Analysis Error", msg[:500])
 
         def _on_stop(self) -> None:
             """Stop the running analysis."""
-            self._stop_countdown()
+            self.analysis_panel.stop_countdown()
 
             if self._worker is not None and self._worker.isRunning():
                 self._worker.terminate()
                 self._worker.wait(2000)
                 self._worker = None
 
-            self.run_btn.setEnabled(True)
-
-            self.stop_btn.setEnabled(False)
-            self.stop_btn.setVisible(False)
+            self.analysis_panel.set_running(False)
             self.statusBar().showMessage("Analysis stopped by user.")
             self.output_text.setPlainText("Analysis was stopped by user.")
 
@@ -746,29 +566,16 @@ if HAS_PYQT6:
             self.statusBar().showMessage(msg)
 
         def _on_stress_component_changed(self, *_args) -> None:
-            """Re-render when stress component dropdown changes.
-
-            Auto-switches to Global for out-of-plane components.
-            """
+            """Re-render when stress component dropdown changes."""
             combo_idx = self.stress_component_combo.currentIndex()
-            _OOP = {2, 3, 4, 8}  # σ₃₃, τ₂₃, τ₁₃, interlaminar
+            _OOP = {2, 3, 4, 8}
             if combo_idx in _OOP:
                 self.stress_coord_combo.blockSignals(True)
-                self.stress_coord_combo.setCurrentIndex(1)  # Global
+                self.stress_coord_combo.setCurrentIndex(1)
                 self.stress_coord_combo.blockSignals(False)
 
             if hasattr(self, '_result') and self._result is not None:
                 self._plot_stress(self._result)
-
-        def _on_morphology_changed(self, name: str) -> None:
-            """Show/hide decay floor spinner based on morphology selection."""
-            is_graded = name.lower().strip() == "graded"
-            self.decay_floor_label.setVisible(is_graded)
-            self.decay_floor_spin.setVisible(is_graded)
-
-        def _on_material_changed(self, name: str) -> None:
-            """Handle material selection change (reserved for future use)."""
-            pass
 
         def _on_coord_changed(self, *_args) -> None:
             """Re-render when Global/Local coordinate toggle changes."""
@@ -780,23 +587,15 @@ if HAS_PYQT6:
         # ----------------------------------------------------------
 
         def _extract_plane_elements(self, mesh, plane="xz"):
-            """Get element indices at mid-y (xz) or top surface (xy).
-
-            Selects only a single layer of elements — the one closest to the
-            midplane (for xz) or top surface (for xy).
-
-            Returns (indices, centers) where centers is (n_elements, 3).
-            """
+            """Get element indices at mid-y (xz) or top surface (xy)."""
             centers = mesh.nodes[mesh.elements].mean(axis=1)
             if plane == "xz":
                 mid_y = (centers[:, 1].min() + centers[:, 1].max()) / 2.0
-                # Find the single y-layer closest to mid_y
                 unique_y = np.unique(np.round(centers[:, 1], decimals=6))
                 closest_y = unique_y[np.argmin(np.abs(unique_y - mid_y))]
                 tol = (centers[:, 1].max() - centers[:, 1].min()) / max(mesh.ny, 1) * 0.05
                 mask = np.abs(centers[:, 1] - closest_y) < max(tol, 1e-10)
             elif plane == "xy":
-                # Find the single z-layer at the top
                 unique_z = np.unique(np.round(centers[:, 2], decimals=6))
                 top_z = unique_z[-1]
                 tol = (centers[:, 2].max() - centers[:, 2].min()) / max(mesh.nz, 1) * 0.05
@@ -806,12 +605,7 @@ if HAS_PYQT6:
             return np.flatnonzero(mask), centers
 
         def _get_stress_values(self, field_results, combo_index):
-            """Extract per-element stress for the selected component.
-
-            Uses Global or Local coordinates based on the stress_coord_combo.
-
-            Returns (values, label, use_diverging).
-            """
+            """Extract per-element stress for the selected component."""
             use_global = self.stress_coord_combo.currentIndex() == 1
             coord_tag = "global" if use_global else "local"
             stress_field = (
@@ -854,52 +648,37 @@ if HAS_PYQT6:
 
             return values, label, use_diverging
 
-        def _smooth_to_nodes(self, mesh, elem_stress, elem_indices, plane="xz"):
-            """Average element stresses to nodes for smooth contour rendering.
+        def _build_triangulation(self, mesh, elem_indices, plane="xz"):
+            """Build and cache the Triangulation topology for a slice.
 
-            For each node shared by elements in the slice, compute the mean
-            of contributing element values.
+            The triangulation depends only on mesh geometry and slice indices,
+            not on which stress component is displayed.  Caching it avoids
+            redundant recomputation when the user switches stress components.
 
-            Returns (node_coords_2d, node_values, triangles) ready for tricontourf.
+            Returns (Triangulation, inverse_map, n_unique) and stores the
+            result in ``self._tri_cache``.
             """
+            cache_key = (id(mesh), tuple(elem_indices), plane)
+            if hasattr(self, "_tri_cache") and self._tri_cache[0] == cache_key:
+                return self._tri_cache[1]
+
             from matplotlib.tri import Triangulation
 
-            elems = mesh.elements
-            nodes = mesh.nodes
+            slice_conn = mesh.elements[elem_indices]
 
-            # Collect unique nodes from slice elements
-            slice_conn = elems[elem_indices]  # (n_slice, 8)
-
-            # Pick face nodes for the 2D plane
             if plane == "xz":
-                face = [0, 1, 5, 4]  # x-z face of hex
-                ci, cj = 0, 2  # x, z
+                face = [0, 1, 5, 4]
+                ci, cj = 0, 2
             else:
-                face = [4, 5, 6, 7]  # x-y top face
-                ci, cj = 0, 1  # x, y
+                face = [4, 5, 6, 7]
+                ci, cj = 0, 1
 
-            # Build node → element stress mapping
-            face_nodes = slice_conn[:, face]  # (n_slice, 4)
+            face_nodes = slice_conn[:, face]
             unique_nids, inverse = np.unique(face_nodes.ravel(), return_inverse=True)
             n_unique = len(unique_nids)
 
-            # Accumulate element values at nodes
-            node_sum = np.zeros(n_unique)
-            node_count = np.zeros(n_unique)
-            for i, eid in enumerate(elem_indices):
-                val = elem_stress[eid]
-                for j in range(4):
-                    nidx = inverse[i * 4 + j]
-                    node_sum[nidx] += val
-                    node_count[nidx] += 1
+            coords_2d = mesh.nodes[unique_nids][:, [ci, cj]]
 
-            node_count[node_count == 0] = 1
-            node_vals = node_sum / node_count
-
-            # Node coordinates in 2D
-            coords_2d = nodes[unique_nids][:, [ci, cj]]
-
-            # Build triangles from quad faces (2 triangles per quad)
             tris = []
             for i in range(len(elem_indices)):
                 n0 = inverse[i * 4 + 0]
@@ -912,14 +691,37 @@ if HAS_PYQT6:
             triangulation = Triangulation(
                 coords_2d[:, 0], coords_2d[:, 1], triangles=np.array(tris)
             )
+            result = (triangulation, inverse, n_unique)
+            self._tri_cache = (cache_key, result)
+            return result
+
+        def _smooth_to_nodes(self, mesh, elem_stress, elem_indices, plane="xz"):
+            """Average element stresses to nodes for smooth contour rendering.
+
+            Uses cached triangulation topology from ``_build_triangulation``.
+            Only the node-averaging step runs each time the stress component
+            changes.
+            """
+            triangulation, inverse, n_unique = self._build_triangulation(
+                mesh, elem_indices, plane,
+            )
+
+            node_sum = np.zeros(n_unique)
+            node_count = np.zeros(n_unique)
+            for i, eid in enumerate(elem_indices):
+                val = elem_stress[eid]
+                for j in range(4):
+                    nidx = inverse[i * 4 + j]
+                    node_sum[nidx] += val
+                    node_count[nidx] += 1
+
+            node_count[node_count == 0] = 1
+            node_vals = node_sum / node_count
+
             return triangulation, node_vals
 
         def _get_interior_elements(self, mesh):
-            """Return indices of elements not adjacent to BC faces (x_min, x_max).
-
-            Excludes elements within one element width of the loaded faces
-            to remove boundary effect artifacts from failure assessment.
-            """
+            """Return indices of elements not adjacent to BC faces (x_min, x_max)."""
             centers = mesh.nodes[mesh.elements].mean(axis=1)
             x_min, x_max = centers[:, 0].min(), centers[:, 0].max()
             elem_width = (x_max - x_min) / max(mesh.nx, 1)
@@ -928,16 +730,12 @@ if HAS_PYQT6:
                 & (centers[:, 0] < x_max - elem_width)
             )
             indices = np.flatnonzero(mask)
-            # Guard: if trimming removed everything, fall back to all elements
             if indices.size == 0:
                 return np.arange(mesh.n_elements)
             return indices
 
         def _element_quads(self, mesh, elem_indices, plane="xz"):
-            """Build quad vertices for PolyCollection.
-
-            Returns list of (4,2) arrays.
-            """
+            """Build quad vertices for PolyCollection."""
             nodes = mesh.nodes
             elems = mesh.elements
             verts = []
@@ -975,7 +773,6 @@ if HAS_PYQT6:
                 config = result.config
 
                 if result.wrinkle_config is not None and result.wrinkle_config.n_wrinkles() >= 2:
-                    # Dual wrinkle profiles with phase offset
                     ax1 = fig.add_subplot(121)
                     wc = result.wrinkle_config
                     w_upper = wc.wrinkles[0]
@@ -983,15 +780,12 @@ if HAS_PYQT6:
                     p_upper = w_upper.profile
                     p_lower = w_lower.profile
 
-                    # Phase offset → geometric shift for lower wrinkle
                     delta_x_upper = w_upper.phase_offset * p_upper.wavelength / (2.0 * np.pi)
                     delta_x_lower = w_lower.phase_offset * p_lower.wavelength / (2.0 * np.pi)
 
-                    # Use full domain length for x range
                     Lx = config.domain_length
                     x = np.linspace(0, Lx, 500)
 
-                    # Evaluate with phase-offset shifts
                     z_upper = p_upper.displacement(x - delta_x_upper)
                     z_lower = p_lower.displacement(x - delta_x_lower)
 
@@ -1002,10 +796,9 @@ if HAS_PYQT6:
                     ax1.axhline(0, color="0.6", linewidth=0.5, zorder=0)
                     ax1.set_xlabel("x (mm)")
                     ax1.set_ylabel("z (mm)")
-                    ax1.set_title(f"Dual-Wrinkle Profiles — {config.morphology}")
+                    ax1.set_title(f"Dual-Wrinkle Profiles \u2014 {config.morphology}")
                     ax1.legend(fontsize=7, loc="upper right")
 
-                    # Fiber angle distribution for both wrinkles
                     ax2 = fig.add_subplot(122)
                     slope_upper = p_upper.slope(x - delta_x_upper)
                     slope_lower = p_lower.slope(x - delta_x_lower)
@@ -1023,7 +816,6 @@ if HAS_PYQT6:
                     ax2.legend(fontsize=7)
 
                 else:
-                    # Analytical summary plot
                     ax1 = fig.add_subplot(121)
                     labels = ["Max angle", "Eff. angle"]
                     vals = [np.degrees(result.max_angle_rad),
@@ -1095,7 +887,7 @@ if HAS_PYQT6:
                     ax.set_ylabel("z (mm)")
                     morph_label = result.config.morphology if result.config else ""
                     ax.set_title(
-                        f"FE Mesh — {morph_label}  |  "
+                        f"FE Mesh \u2014 {morph_label}  |  "
                         f"{mesh.n_nodes:,} nodes, {mesh.n_elements:,} elem, "
                         f"{mesh.n_nodes * 3:,} DOF"
                     )
@@ -1132,7 +924,6 @@ if HAS_PYQT6:
                 import matplotlib.gridspec as gridspec
 
                 if result.field_results is not None:
-                    # Layout: stress contour on top, retention bar on bottom
                     gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.45)
 
                     fr = result.field_results
@@ -1163,7 +954,6 @@ if HAS_PYQT6:
                             )
                             cmap = "viridis"
 
-                        # Smooth nodal-averaged contour
                         tri, node_vals = self._smooth_to_nodes(
                             mesh, stress_vals, xz_indices, "xz"
                         )
@@ -1180,7 +970,6 @@ if HAS_PYQT6:
                         )
                         fig.colorbar(tcf, ax=ax, label=label, shrink=0.8)
 
-                        # Optional mesh wireframe overlay
                         if self.show_mesh_lines_check.isChecked():
                             verts_xz = self._element_quads(
                                 mesh, xz_indices, "xz"
@@ -1202,8 +991,7 @@ if HAS_PYQT6:
                     ax.set_xlabel("x (mm)")
                     ax.set_ylabel("z (mm)")
 
-                    # Out-of-plane components need fine z-mesh
-                    _OOP_INDICES = {2, 3, 4, 8}  # σ₃₃, τ₂₃, τ₁₃, interlaminar
+                    _OOP_INDICES = {2, 3, 4, 8}
                     nz_per_ply = getattr(result.config, "nz_per_ply", 1)
                     if combo_idx in _OOP_INDICES and nz_per_ply < 3:
                         ax.text(
@@ -1224,11 +1012,9 @@ if HAS_PYQT6:
                         f"x-z Cross Section (mid-y)"
                     )
 
-                    # --- Bottom panel: retention bars ---
                     ax_bar = fig.add_subplot(gs[1])
                     self._plot_mechanism_bar(ax_bar, result)
 
-                    # --- Text report (failure details) ---
                     if result.failure_indices is not None and len(result.failure_indices) > 0:
                         interior = self._get_interior_elements(mesh)
                         n_trimmed = mesh.n_elements - len(interior)
@@ -1242,7 +1028,6 @@ if HAS_PYQT6:
                         self._append_failure_report(result, criteria, max_fi, interior, n_trimmed)
 
                 else:
-                    # Analytical-only fallback: just show retention bars
                     ax = fig.add_subplot(111)
                     self._plot_mechanism_bar(ax, result)
 
@@ -1265,18 +1050,16 @@ if HAS_PYQT6:
             kd = result.analytical_knockdown
             mod_ret = result.modulus_retention if result.modulus_retention is not None else 1.0
 
-            # Two bars: strength retention and modulus retention
             labels = ["Strength\nRetention", "Modulus\nRetention"]
             values = [kd, mod_ret]
 
-            # Color by severity
             def bar_color(v):
                 if v < 0.3:
-                    return "#d62728"  # red
+                    return "#d62728"
                 elif v < 0.6:
-                    return "#ff7f0e"  # orange
+                    return "#ff7f0e"
                 else:
-                    return "#2ca02c"  # green
+                    return "#2ca02c"
 
             colors = [bar_color(v) for v in values]
 
@@ -1290,25 +1073,22 @@ if HAS_PYQT6:
             ax.set_ylabel("Retention", fontsize=9)
             ax.axhline(1.0, color="0.7", linestyle=":", linewidth=0.8)
 
-            # Value labels on bars
             for bar, val in zip(bars, values):
                 pct = val * 100
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
                         "%.1f%%" % pct, ha="center", va="bottom", fontsize=9,
                         fontweight="bold")
 
-            # Mechanism annotation
             mod_note = "Modulus: \u27e8\u03c3\u2093\u2093\u27e9_wrinkled / \u27e8\u03c3\u2093\u2093\u27e9_pristine from FE"
             if loading == "tension" and result.tension_mechanisms is not None:
                 m = result.tension_mechanisms
                 ctrl = m["mode"]
-                # FE initiation (LaRC05 retention) for tension
                 fe_ret = None
                 if result.retention_factors:
                     fe_ret = result.retention_factors.get("larc05", None)
                 init_line = ""
                 if fe_ret is not None:
-                    init_line = "\nFE Initiation (LaRC05): %.1f%% — conservative lower bound" % (fe_ret * 100)
+                    init_line = "\nFE Initiation (LaRC05): %.1f%% \u2014 conservative lower bound" % (fe_ret * 100)
                 note = (
                     "Ultimate: min(cos\u00b2\u03b8=%.2f, matrix=%.2f, "
                     "\u03c3\u2083\u2083=%.2f)  controls: %s%s\n%s"
@@ -1330,13 +1110,12 @@ if HAS_PYQT6:
             fr = result.field_results
             laminate = result.laminate
 
-            # Find the overall critical criterion and element
             overall_max_fi = 0.0
             crit_criterion = ""
             crit_elem_idx = 0
 
             for name in criteria:
-                fi = result.failure_indices[name]  # (n_elem, n_gauss)
+                fi = result.failure_indices[name]
                 fi_int = fi[interior].mean(axis=1)
                 finite = fi_int[np.isfinite(fi_int)]
                 if finite.size == 0:
@@ -1351,16 +1130,12 @@ if HAS_PYQT6:
             if overall_max_fi <= 0:
                 return
 
-            # Element info
             ply_idx = int(mesh.ply_ids[crit_elem_idx])
             ply_angle = float(mesh.ply_angles[crit_elem_idx])
             mat = laminate.plies[ply_idx].material
 
-            # Stress state at critical element (avg over Gauss pts)
-            stress = fr.stress_local[crit_elem_idx].mean(axis=0)  # (6,)
+            stress = fr.stress_local[crit_elem_idx].mean(axis=0)
 
-            # Build allowable comparison table
-            # For each component, pick allowable based on sign
             components = [
                 ("\u03c3\u2081\u2081 (fiber)",      stress[0], mat.Xt if stress[0] >= 0 else mat.Xc,
                  "Xt" if stress[0] >= 0 else "Xc"),
@@ -1373,20 +1148,16 @@ if HAS_PYQT6:
                 ("\u03c4\u2081\u2082",               stress[5], mat.S12, "S12"),
             ]
 
-            # Status
             status = "FAILED" if overall_max_fi >= 1.0 else "SAFE"
 
-            # FE knockdown
             loading = result.config.loading
             ref_strength_val = mat.Xt if loading == "tension" else mat.Xc
             fe_knockdown = 1.0 / overall_max_fi if overall_max_fi > 0 else float("inf")
             fe_strength = ref_strength_val * fe_knockdown
 
-            # Analytical comparison
             analytical_kd = result.analytical_knockdown
             analytical_strength = result.analytical_strength_MPa
 
-            # Format report
             lines = [
                 "",
                 "=" * 60,
@@ -1449,7 +1220,6 @@ if HAS_PYQT6:
                     "    Strength:    %.1f MPa" % analytical_strength,
                 ]
 
-            # Modulus retention
             if result.modulus_retention is not None:
                 lines += [
                     "",
@@ -1458,7 +1228,6 @@ if HAS_PYQT6:
                     f"  ({result.modulus_retention*100:.1f}%)",
                 ]
 
-            # FE initiation — only for tension (compression failures are catastrophic)
             if result.retention_factors is not None and loading == "tension":
                 lines.append("")
                 lines.append("  FE Damage Initiation (conservative lower bound):")
@@ -1467,7 +1236,6 @@ if HAS_PYQT6:
                     lines.append(f"    {cname:<18s}  {ret*100:.1f}%")
                 lines.append("    (Tension: delamination initiates before fiber fracture)")
 
-            # Mode breakdown
             if result.failure_modes is not None:
                 crit_name = criteria[0]
                 modes_arr = result.failure_modes[crit_name]
@@ -1484,7 +1252,6 @@ if HAS_PYQT6:
                     bar = "\u2588" * int(pct / 2)
                     lines.append(f"    {mode_name:<22s}  {count:>5d}  ({pct:5.1f}%)  {bar}")
 
-            # Sub-criterion detail at critical element
             try:
                 crit_name = criteria[0]
                 fi_field = result.failure_indices[crit_name]
@@ -1522,13 +1289,68 @@ if HAS_PYQT6:
                             f"  total = {phi_0_deg + phi_c_deg:.2f}\u00b0"
                         )
             except Exception:
-                pass  # sub-criterion detail is optional
+                pass
 
             lines.append("=" * 60)
 
-            # Append to output text
             current = self.output_text.toPlainText()
             self.output_text.setPlainText(current + "\n".join(lines))
+
+        # ----------------------------------------------------------
+        # Sweep handlers
+        # ----------------------------------------------------------
+
+        def _on_run_sweep(self, param: str, vmin: float, vmax: float, npts: int) -> None:
+            """Run parametric sweep using WrinkleAnalysis pipeline."""
+            try:
+                base_config = self._build_config()
+            except Exception as e:
+                QMessageBox.critical(self, "Configuration Error", str(e))
+                return
+
+            values = np.linspace(vmin, vmax, npts).tolist()
+
+            self.sweep_panel.set_sweep_running(npts)
+            self.statusBar().showMessage(
+                f"Running {param} sweep ({npts} points)..."
+            )
+
+            self._sweep_param = param
+            self._sweep_values = values
+
+            self._sweep_worker = SweepWorker(base_config, param, values)
+            self._sweep_worker.finished.connect(self._on_sweep_done)
+            self._sweep_worker.error.connect(self._on_sweep_error)
+            self._sweep_worker.progress.connect(self._on_sweep_progress)
+            self._sweep_worker.start()
+
+        def _on_sweep_progress(self, current: int, total: int, elapsed: float) -> None:
+            self.sweep_panel.on_sweep_progress(current, total, elapsed)
+
+        def _on_sweep_done(self, results_list) -> None:
+            self.sweep_panel.on_sweep_done(
+                results_list, self._sweep_param, self._sweep_values,
+            )
+            self.statusBar().showMessage("Sweep complete.")
+
+            # Switch to sweep tab
+            for i in range(self.plot_tabs.count()):
+                if self.plot_tabs.tabText(i) == "Sweep":
+                    self.plot_tabs.setCurrentIndex(i)
+                    break
+
+        def _on_sweep_error(self, msg: str) -> None:
+            self.sweep_panel.on_sweep_error(msg)
+            self.statusBar().showMessage("Sweep failed.")
+
+        def _on_sweep_export_done(self) -> None:
+            path = self.sweep_panel.get_last_export_path()
+            if path:
+                self.statusBar().showMessage(f"Sweep results exported to {path}")
+
+        # ----------------------------------------------------------
+        # Menu actions
+        # ----------------------------------------------------------
 
         def _on_new(self) -> None:
             """Reset to defaults."""

@@ -27,11 +27,19 @@ Zienkiewicz, O.C. & Taylor, R.L. (2000). The Finite Element Method, Vol. 1.
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg as spla
+
+
+@contextmanager
+def _suppress_assembly_warnings():
+    """Suppress divide-by-zero and invalid-value warnings during assembly."""
+    with np.errstate(divide='ignore', invalid='ignore'):
+        yield
 
 from wrinklefe.core.mesh import MeshData
 from wrinklefe.core.laminate import Laminate, LoadState
@@ -56,22 +64,20 @@ class StaticSolver:
     laminate : Laminate
         Laminate definition with ply materials and orientations.
     element_type : str, optional
-        Element formulation: ``'hex8'`` (standard 2x2x2 integration) or
-        ``'hex8i'`` (alias, currently maps to hex8).  Default is ``'hex8i'``.
+        Element formulation: ``'hex8'`` (standard 2x2x2 integration).
+        Default is ``'hex8'``.
     """
 
     def __init__(
         self,
         mesh: MeshData,
         laminate: Laminate,
-        element_type: str = "hex8i",
+        element_type: str = "hex8",
     ) -> None:
-        # Map 'hex8i' to 'hex8' since the assembler only knows 'hex8'
-        _etype = "hex8" if element_type == "hex8i" else element_type
         self.mesh = mesh
         self.laminate = laminate
         self.element_type = element_type
-        self.assembler = GlobalAssembler(mesh, laminate, _etype)
+        self.assembler = GlobalAssembler(mesh, laminate, element_type)
 
         # Populated after solve
         self._displacement: np.ndarray | None = None
@@ -125,7 +131,8 @@ class StaticSolver:
         # 1. Assemble global stiffness
         if verbose:
             print("Assembling global stiffness matrix...")
-        K = self.assembler.assemble_stiffness(verbose=verbose)
+        with _suppress_assembly_warnings():
+            K = self.assembler.assemble_stiffness(verbose=verbose)
         self._K = K.copy()  # Store unmodified K for reaction forces
 
         if verbose:

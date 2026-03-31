@@ -109,13 +109,16 @@ print(result.analytical_knockdown)
 
 ## Validation
 
-Validated against 20 experimental data points from Elhajjar (2025):
+Validated against 31 experimental data points from three independent datasets:
 
-| Loading | Cases | Pass | MAE |
-|---------|-------|------|-----|
-| Compression | 13 | 12/13 | 9.5% |
-| Tension | 7 | 7/7 | 6.2% |
-| **Total** | **20** | **19/20** | **8.4%** |
+| Dataset | Loading | Cases | Pass | MAE |
+|---------|---------|-------|------|-----|
+| Elhajjar (2025) | Compression | 13 | 11/13 | 9.9% |
+| Elhajjar (2025) | Tension | 7 | 7/7 | 6.2% |
+| Mukhopadhyay (2015) | Compression | 3 | 3/3 | 17.4% |
+| Mukhopadhyay (2015) | Tension | 3 | 3/3 | 12.1% |
+| Li et al. (2026) | Compression | 5 | 4/5 | 8.6% |
+| **Total** | | **31** | **28/31** | **9.5%** |
 
 ![Validation](figures/fig_validation_elhajjar.png)
 
@@ -127,7 +130,7 @@ CLT-weighted Budiansky-Fleck:
 
 ```
 KD_lam = f_0 / (1 + theta / gamma_Y_eff) + (1 - f_0)
-gamma_Y_eff = 0.020 + 0.050 * f_confined
+gamma_Y_eff = 0.032 + 0.050 * f_confined
 ```
 
 ### Tension
@@ -138,11 +141,12 @@ Three-mechanism minimum, CLT-weighted:
 KD_lam = f_0 * min(cos^2(theta), KD_matrix, KD_oop) + (1 - f_0)
 ```
 
-For graded morphology, knockdowns are averaged over all 0-degree plies at their local through-thickness angles.
+For graded morphology, the BF knockdown is averaged over the wrinkle profile in both the longitudinal (x) and through-thickness (z) directions, with Gaussian decay (scale = amplitude A) confining the effect to the wrinkle zone.
 
 ## References
 
 - Elhajjar, R. (2025). Scientific Reports, 15:25977.
+- Li, Y. et al. (2026). Composites Part A, 205:109719.
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

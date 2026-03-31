@@ -5,6 +5,19 @@ Provides rotation matrices and stress/strain transformations for:
 - Ply orientation: rotation about the z-axis (through-thickness direction)
 - Fiber waviness (wrinkle misalignment): rotation about the y-axis (in the x-z plane)
 
+Coordinate systems::
+
+    Material axes (1-2-3):       Global axes (x-y-z):
+        1 -> fiber direction         x -> loading direction
+        2 -> in-plane transverse     y -> width direction
+        3 -> through-thickness       z -> through-thickness
+
+    Rotation by ply angle theta about the z-axis:
+        [sigma_global] = [T(theta)]^{-1} [sigma_material]
+
+    Rotation by wrinkle angle phi about the y-axis:
+        [sigma_global] = [T(phi)]^{-1} [sigma_material]
+
 All angles are specified in radians. Stress and strain use Voigt notation:
     stress: [sigma_11, sigma_22, sigma_33, tau_23, tau_13, tau_12]
     strain: [eps_11, eps_22, eps_33, gamma_23, gamma_13, gamma_12]

@@ -92,15 +92,16 @@ def export_results_json(
             "max_displacement_node": int(max_disp_node),
         }
 
-    # Buckling summary
-    if results.buckling_result is not None:
+    # Buckling summary (optional attribute)
+    buckling = getattr(results, "buckling_result", None)
+    if buckling is not None:
         data["buckling"] = {
-            "critical_load_factor": float(results.buckling_result.critical_load_factor),
+            "critical_load_factor": float(buckling.critical_load_factor),
         }
 
-    # Monte Carlo summary
-    if results.mc_results is not None:
-        mc = results.mc_results
+    # Monte Carlo summary (optional attribute)
+    mc = getattr(results, "mc_results", None)
+    if mc is not None:
         data["monte_carlo"] = {
             "n_samples": mc.n_samples,
             "mean_strength_MPa": float(mc.mean_strength),
@@ -111,9 +112,9 @@ def export_results_json(
             "percentile_1_MPa": float(mc.percentile_1),
         }
 
-    # Jensen gap summary
-    if results.jensen_gap is not None:
-        jg = results.jensen_gap
+    # Jensen gap summary (optional attribute)
+    jg = getattr(results, "jensen_gap", None)
+    if jg is not None:
         data["jensen_gap"] = {
             "strength_at_mean_MPa": float(jg.strength_at_mean),
             "mean_of_strengths_MPa": float(jg.mean_of_strengths),
