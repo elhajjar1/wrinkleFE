@@ -46,6 +46,9 @@ htmlcov/
 # PyInstaller
 *.spec
 
+# Release zips
+WrinkleFE-*.zip
+
 # Jupyter
 .ipynb_checkpoints/
 
