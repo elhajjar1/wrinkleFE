@@ -4,7 +4,7 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 
 ## Reporting Issues
 
-- Use the [GitHub Issues](https://github.com/elhajjar/wrinklefe/issues) tracker
+- Use the [GitHub Issues](https://github.com/elhajjar1/wrinkleFE/issues) tracker
 - Include a minimal reproducible example when reporting bugs
 - Describe your environment (OS, Python version, package versions)
 - For feature requests, describe the use case and expected behavior
@@ -13,7 +13,7 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 
 ```bash
 # Clone the repository
-git clone https://github.com/elhajjar/wrinklefe.git
+git clone https://github.com/elhajjar1/wrinkleFE.git
 cd wrinklefe
 
 # Create a virtual environment
