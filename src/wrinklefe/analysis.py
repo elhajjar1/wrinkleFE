@@ -261,6 +261,28 @@ class AnalysisConfig:
     ----------
     amplitude : float
         Wrinkle amplitude A [mm].  Default 0.366 (2 ply thicknesses).
+
+        Physical meaning: A is the peak out-of-plane displacement of the
+        wrinkled mid-surface from the flat (unwrinkled) reference plane,
+        measured normal to the laminate.  The mid-surface profile is
+        ``z(x) = A * exp(-(x-x0)^2 / w^2) * cos(2*pi*(x-x0)/lambda)``,
+        so the crest sits at +A, the trough at -A, and the peak-to-peak
+        amplitude is 2A.  A is **not** half-amplitude and **not**
+        peak-to-peak.
+
+        Measuring A in practice (e.g. from a polished cross-section
+        micrograph or a CT slice taken normal to the wrinkle axis):
+
+            A = (z_max - z_min) / 2
+
+        where ``z_max`` and ``z_min`` are the crest and trough of the
+        wrinkled mid-surface measured normal to the unwrinkled laminate.
+
+        Effect on knockdown: A enters the maximum fibre misalignment
+        angle through the closed-form ``theta_max = arctan(2*pi*A /
+        lambda)`` used in ``_compute_analytical``, so for small A/lambda
+        the peak fibre angle scales nearly linearly with A and amplifies
+        the Budiansky-Fleck compressive knockdown.
     wavelength : float
         Wrinkle wavelength lambda [mm].  Default 16.0.
     width : float

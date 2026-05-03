@@ -82,6 +82,13 @@ result = WrinkleAnalysis(config).run()
 print(result.summary())
 ```
 
+`amplitude` (`A`) is the peak displacement of the wrinkled mid-surface
+from the flat reference (crest height, **not** peak-to-peak). For a
+measured wrinkle (e.g. from a cross-section micrograph or CT slice),
+`A = (z_max − z_min) / 2`. The peak fibre misalignment angle scales as
+`θ_max ≈ arctan(2πA/λ)`, which drives the Budiansky-Fleck compressive
+knockdown.
+
 ### Tension analysis
 
 ```python
