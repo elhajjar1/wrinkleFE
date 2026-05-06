@@ -475,6 +475,35 @@ class WrinkleConfiguration:
     # Mesh deformation
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _ply_decay(p: int, k: int, n_plies: int) -> float:
+        """Through-thickness linear decay factor for the default mode.
+
+        The decay is 1.0 at the wrinkle interface plies (``p == k`` and
+        ``p == k + 1``), 0.0 at the laminate outer surfaces (``p == 0``
+        and ``p == n_plies - 1``), and interpolates linearly in between.
+
+        Degenerate cases where the wrinkle interface coincides with an
+        outer surface (``k == 0`` or ``k + 1 == n_plies - 1``) collapse
+        to: 1.0 only on the interface ply, 0.0 elsewhere.
+        """
+        if n_plies <= 1:
+            return 1.0
+
+        if p <= k:
+            # Bottom side: p=0 -> 0, p=k -> 1
+            if k <= 0:
+                # Wrinkle is at the bottom outer surface
+                return 1.0 if p == k else 0.0
+            return p / k
+        else:
+            # Top side: p=k+1 -> 1, p=n_plies-1 -> 0
+            denom = (n_plies - 1) - (k + 1)
+            if denom <= 0:
+                # Wrinkle is at the top outer surface
+                return 1.0 if p == k + 1 else 0.0
+            return (n_plies - 1 - p) / denom
+
     def apply_to_nodes(
         self,
         nodes: np.ndarray,
@@ -509,11 +538,14 @@ class WrinkleConfiguration:
         thickness. For a wrinkle at interface *k* (between ply *k* and
         *k+1*), the decay factor at ply *p* is:
 
-        - For p <= k: decay = (p + 1) / (k + 1)
-        - For p > k: decay = (n_plies - p) / (n_plies - k - 1)
+        - For p <= k: decay = p / k
+        - For p > k:  decay = (n_plies - 1 - p) / (n_plies - 1 - (k + 1))
 
-        This produces unit displacement at the wrinkle interface and
-        zero at the laminate top and bottom surfaces.
+        This produces unit displacement at the two interface plies
+        (p = k and p = k + 1) and zero at the laminate outer surfaces
+        (p = 0 and p = n_plies - 1), with linear interpolation in
+        between. Degenerate cases (wrinkle interface coincident with an
+        outer surface) collapse to 1.0 on the interface ply only.
         """
         deformed = nodes.copy()
 
@@ -554,28 +586,11 @@ class WrinkleConfiguration:
                     else:
                         decay = 1.0
                     decay = max(0.0, decay)
-                elif k <= 0:
-                    # Default: wrinkle at bottom surface
-                    if p == 0:
-                        decay = 1.0
-                    else:
-                        decay = max(0.0, 1.0 - p / (n_plies - 1))
-                elif k >= n_plies - 1:
-                    # Default: wrinkle at top surface
-                    if p == n_plies - 1:
-                        decay = 1.0
-                    else:
-                        decay = max(0.0, p / (n_plies - 1))
                 else:
-                    # Default: interior interface
-                    if p <= k:
-                        decay = (p + 1) / (k + 1)
-                    else:
-                        remaining = n_plies - k - 1
-                        if remaining > 0:
-                            decay = (n_plies - p) / remaining
-                        else:
-                            decay = 0.0
+                    # Default: zero at outer surfaces, unit at the
+                    # interface plies (p = k and p = k + 1), linear in
+                    # between. Shared with fiber_angles_at_nodes.
+                    decay = self._ply_decay(p, k, n_plies)
 
                 deformed[node_idx, 2] += dz * decay
 
@@ -655,7 +670,9 @@ class WrinkleConfiguration:
                     else:
                         decay = 1.0
                 else:
-                    decay = 1.0  # default: full angle at all plies
+                    # Default: same through-thickness decay as the
+                    # displacement field (see apply_to_nodes).
+                    decay = self._ply_decay(p, k, n_plies)
 
                 # Angle from slope, scaled by decay
                 angle = np.arctan(np.abs(slope)) * decay

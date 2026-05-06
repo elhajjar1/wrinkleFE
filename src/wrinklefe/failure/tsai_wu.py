@@ -175,9 +175,13 @@ class TsaiWuCriterion(FailureCriterion):
 
         # --- Tsai-Wu polynomial ---
         # f = F_i * s_i + F_ij * s_i * s_j
-        linear = F1 * s[0] + F2 * s[1] + F3 * s[2]
+        # Track linear (L) and quadratic (Q) contributions separately so the
+        # reserve factor (strength ratio) can be computed from the proper
+        # quadratic root, not from 1/f (which is only correct for criteria
+        # linear in load scale).
+        L = F1 * s[0] + F2 * s[1] + F3 * s[2]
 
-        quadratic = (
+        Q = (
             F11 * s[0] ** 2
             + F22 * s[1] ** 2
             + F33 * s[2] ** 2
@@ -189,7 +193,42 @@ class TsaiWuCriterion(FailureCriterion):
             + F66 * s[5] ** 2
         )
 
-        fi = linear + quadratic
+        fi = L + Q
+
+        # --- Reserve factor (strength ratio R) ---
+        # The applied load is scaled by R; failure occurs when
+        #     R^2 * Q + R * L = 1.
+        # Solve for the positive root.  Sibling criteria (e.g. Hashin) return
+        # +inf when there is no load contribution; we follow the same
+        # convention for degenerate / unbounded cases.
+        if Q > 0.0:
+            disc = L * L + 4.0 * Q
+            if disc < 0.0:
+                # Cannot occur for Q > 0, but guard for floating-point safety.
+                reserve_factor = float("inf")
+            else:
+                reserve_factor = (-L + np.sqrt(disc)) / (2.0 * Q)
+                if reserve_factor <= 0.0:
+                    reserve_factor = float("inf")
+        elif Q == 0.0:
+            if L > 0.0:
+                reserve_factor = 1.0 / L
+            else:
+                # L <= 0 (including L == 0): no failure under increasing load.
+                reserve_factor = float("inf")
+        else:
+            # Q < 0: unusual (open failure surface in this direction).
+            disc = L * L + 4.0 * Q
+            if disc < 0.0:
+                # No real positive root reachable; treat as unbounded.
+                reserve_factor = float("inf")
+            else:
+                # Two real roots; take the smallest positive one.
+                sqrt_disc = np.sqrt(disc)
+                r1 = (-L + sqrt_disc) / (2.0 * Q)
+                r2 = (-L - sqrt_disc) / (2.0 * Q)
+                positive_roots = [r for r in (r1, r2) if r > 0.0]
+                reserve_factor = min(positive_roots) if positive_roots else float("inf")
 
         # --- Approximate mode identification ---
         # The Tsai-Wu polynomial does not decompose into distinct modes.
@@ -209,6 +248,6 @@ class TsaiWuCriterion(FailureCriterion):
         return FailureResult(
             index=fi,
             mode=mode,
-            reserve_factor=1.0 / fi if fi > 0 else float("inf"),
+            reserve_factor=reserve_factor,
             criterion_name=self.name,
         )

@@ -128,6 +128,10 @@ class BudianskyFleckKinkBand(FailureCriterion):
             if material is None:
                 raise ValueError("Provide gamma_Y or material")
             gamma_Y = material.gamma_Y
+        if gamma_Y <= 0.0:
+            raise ValueError(
+                f"gamma_Y must be strictly positive, got {gamma_Y}"
+            )
         return 1.0 / (1.0 + self.theta_eff / gamma_Y)
 
     def delamination_knockdown(self) -> float:
@@ -200,6 +204,17 @@ class BudianskyFleckKinkBand(FailureCriterion):
         """
         stress_local = np.asarray(stress_local, dtype=np.float64)
         s1 = stress_local[0]
+
+        # Kink-banding is a compression-only mechanism (Xc allowable).
+        # In tension, this criterion does not apply; tensile fibre failure
+        # is handled by a separate tension criterion.
+        if s1 >= 0.0:
+            return FailureResult(
+                index=0.0,
+                mode="kinkband (compression only — N/A in tension)",
+                reserve_factor=float("inf"),
+                criterion_name=self.name,
+            )
 
         kd = self.combined_knockdown(material=material)
         allowable = material.Xc * kd

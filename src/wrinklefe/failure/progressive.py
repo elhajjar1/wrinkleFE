@@ -176,6 +176,7 @@ class PlyDiscount(ProgressiveDamageModel):
 
         elif mode in ("matrix_tension", "matrix_compression"):
             props["E2"] = material.E2 * r
+            props["E3"] = material.E3 * r
             props["G12"] = material.G12 * r
             props["G23"] = material.G23 * r
             props["nu23"] = material.nu23 * r
