@@ -4,4 +4,9 @@ Combines 3D cross-laminated plate theory with advanced composite failure
 criteria for modeling fiber waviness defects in composite structures.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("wrinklefe")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"

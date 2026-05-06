@@ -29,6 +29,7 @@ from matplotlib.axes import Axes
 from wrinklefe.viz.style import (
     FIGSIZE_SINGLE_COLUMN,
     FIGSIZE_DOUBLE_COLUMN,
+    FIGSIZE_SINGLE_TALL,
     MORPHOLOGY_COLORS,
     MORPHOLOGY_LABELS,
     MORPHOLOGY_LINESTYLES,

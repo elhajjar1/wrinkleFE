@@ -100,7 +100,7 @@ Signals flow:  panel.configChanged → MainWindow.on_config_changed → validate
 - **Panels** expose input widgets and emit `configChanged` signals.
 - **MainWindow** collects panel state into an `AnalysisConfig` and dispatches to workers.
 - **AnalysisWorker / SweepWorker** (QThread subclasses) run the computation off the UI thread and emit result signals on completion.
-- **Dialogs** (`gui/dialogs/`) handle material editing and export options.
+- **Dialogs** (`gui/dialogs/`) is a placeholder package (TODO: planned for material library, parametric study, and export dialogs; not yet implemented).
 
 ## Confinement Model
 

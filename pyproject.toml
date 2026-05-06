@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Finite element analysis of wrinkled composite laminates with advanced failure theories"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Elhajjar Research Group"},
 ]
@@ -28,11 +28,10 @@ dependencies = [
     "scipy>=1.10",
     "matplotlib>=3.7",
     "pyvista>=0.42",
-    "pyvistaqt>=0.11",
 ]
 
 [project.optional-dependencies]
-gui = ["PyQt6>=6.5"]
+gui = ["PyQt6>=6.5", "pyvistaqt>=0.11"]
 export = ["meshio>=5.3"]
 dev = [
     "pytest>=7.0",

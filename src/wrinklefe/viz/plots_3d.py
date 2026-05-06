@@ -11,6 +11,17 @@ All plot functions follow the same interface as :mod:`wrinklefe.viz.plots_2d`:
 - Return the :class:`~matplotlib.axes.Axes` object.
 - Apply publication styling from :mod:`wrinklefe.viz.style`.
 
+Colormap convention
+-------------------
+Use perceptually uniform colormaps (``jet`` is deprecated for scientific viz):
+
+- Sequential / unsigned data (e.g. magnitudes): ``viridis``.
+- Diverging / signed data that crosses zero (e.g. signed stress, mode
+  shape displacements): ``RdBu_r``.
+
+Each public ``plot_*`` function accepts an optional ``cmap`` keyword for
+overrides; the defaults follow the convention above.
+
 References
 ----------
 Jin, L. et al. (2026). Thin-Walled Structures, 219, 114237.
@@ -195,6 +206,7 @@ def plot_displacement_3d(
     ax: Optional[Axes] = None,
     max_elements: int = 2000,
     scale: float = 1.0,
+    cmap: Optional[str] = None,
 ) -> Axes:
     """Plot the deformed mesh colored by a displacement component.
 
@@ -210,6 +222,9 @@ def plot_displacement_3d(
         Maximum elements to render. Default is 2000.
     scale : float, optional
         Displacement magnification factor. Default is 1.0.
+    cmap : str, optional
+        Matplotlib colormap name. Defaults to ``'RdBu_r'`` (diverging,
+        appropriate for signed displacement that crosses zero).
 
     Returns
     -------
@@ -252,10 +267,10 @@ def plot_displacement_3d(
     if abs(vmax - vmin) < 1e-15:
         vmax = vmin + 1e-10
 
-    # Normalize and map to colormap
+    # Normalize and map to colormap (diverging default for signed data)
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    cmap = plt.cm.coolwarm  # type: ignore[attr-defined]
-    face_colors = cmap(norm(face_values))
+    cmap_obj = plt.get_cmap(cmap if cmap is not None else "RdBu_r")
+    face_colors = cmap_obj(norm(face_values))
 
     poly = Poly3DCollection(
         face_verts,
@@ -281,7 +296,7 @@ def plot_displacement_3d(
     ax.set_title(f"Displacement {comp_label}{scale_str}")
 
     # Add colorbar via a ScalarMappable
-    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
     sm.set_array([])
     fig = ax.get_figure()
     cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
@@ -303,6 +318,7 @@ def plot_stress_contour_3d(
     ax: Optional[Axes] = None,
     max_elements: int = 2000,
     coord: str = "global",
+    cmap: Optional[str] = None,
 ) -> Axes:
     """Plot stress contour on the deformed mesh.
 
@@ -321,6 +337,10 @@ def plot_stress_contour_3d(
         Maximum elements to render. Default is 2000.
     coord : str, optional
         Coordinate system: ``'global'`` (default) or ``'local'``.
+    cmap : str, optional
+        Matplotlib colormap name. Defaults to ``'RdBu_r'`` (diverging,
+        appropriate for signed stress that crosses zero). Use
+        ``'viridis'`` for unsigned stress measures (e.g. von Mises).
 
     Returns
     -------
@@ -372,9 +392,12 @@ def plot_stress_contour_3d(
     if abs(vmax - vmin) < 1e-15:
         vmax = vmin + 1e-10
 
+    # Diverging colormap default: signed stress components typically
+    # cross zero. ``jet`` (previously used here) is perceptually
+    # non-uniform and deprecated for scientific visualization.
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    cmap = plt.cm.jet  # type: ignore[attr-defined]
-    face_colors = cmap(norm(face_values))
+    cmap_obj = plt.get_cmap(cmap if cmap is not None else "RdBu_r")
+    face_colors = cmap_obj(norm(face_values))
 
     poly = Poly3DCollection(
         face_verts,
@@ -396,7 +419,7 @@ def plot_stress_contour_3d(
     ax.set_zlabel("$z$ (mm)", labelpad=8)
     ax.set_title(f"Stress {comp_label} ({coord})")
 
-    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
     sm.set_array([])
     fig = ax.get_figure()
     cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
@@ -418,6 +441,7 @@ def plot_buckling_mode(
     scale: float = 1.0,
     ax: Optional[Axes] = None,
     max_elements: int = 2000,
+    cmap: Optional[str] = None,
 ) -> Axes:
     """Plot a buckling mode shape on the deformed mesh.
 
@@ -437,6 +461,9 @@ def plot_buckling_mode(
         A 3D matplotlib axes. A new figure is created if ``None``.
     max_elements : int, optional
         Maximum elements to render. Default is 2000.
+    cmap : str, optional
+        Matplotlib colormap name. Defaults to ``'RdBu_r'`` (diverging,
+        appropriate for signed mode-shape displacement that crosses zero).
 
     Returns
     -------
@@ -490,8 +517,8 @@ def plot_buckling_mode(
         vmax = vmin + 1e-10
 
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    cmap = plt.cm.coolwarm  # type: ignore[attr-defined]
-    face_colors = cmap(norm(face_values))
+    cmap_obj = plt.get_cmap(cmap if cmap is not None else "RdBu_r")
+    face_colors = cmap_obj(norm(face_values))
 
     poly = Poly3DCollection(
         face_verts,
@@ -517,7 +544,7 @@ def plot_buckling_mode(
         f"Buckling Mode {mode + 1} ($\\lambda$ = {eigenvalue:.4f}, scale = {scale:.1f})"
     )
 
-    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
     sm.set_array([])
     fig = ax.get_figure()
     cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
