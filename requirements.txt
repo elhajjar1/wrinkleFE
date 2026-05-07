@@ -1,14 +1,18 @@
-# wrinkleFE runtime dependencies.
-# Compatible-release ranges, not strict pins: pyproject declares
-# requires-python >= 3.10, but the absolute latest numpy / scipy lines
-# (2.4 / 1.17) require Python >= 3.11. The ranges below pick the most
-# recent series that still supports the full 3.10-3.12 matrix.
+# wrinkleFE runtime dependencies (Streamlit Cloud + local CLI/test).
+# Compatible-release ranges: pyproject declares requires-python >= 3.10, but
+# the absolute latest numpy / scipy lines (2.4 / 1.17) require Python >= 3.11.
+# The ranges below pick the most recent series that supports the full
+# 3.10-3.12 matrix.
+#
 # stdlib modules and dev tools (pytest, ruff, mypy) are excluded by design.
+# PyQt6 is intentionally NOT here — it cannot run on Streamlit Cloud and is
+# only needed for the local desktop GUI. It is declared in pyproject's
+# [project.optional-dependencies] gui extra.
 
-# --- Core (numerical + plotting; required for CLI and headless analysis) ---
+# --- Core (numerical + plotting) ---
 numpy>=2.1,<3
 scipy>=1.14,<2
 matplotlib>=3.9,<4
 
-# --- GUI (only imported by src/wrinklefe/gui/*; required for `wrinklefe-gui`) ---
-PyQt6>=6.5
+# --- Web app ---
+streamlit>=1.32
