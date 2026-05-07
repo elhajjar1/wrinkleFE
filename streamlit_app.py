@@ -30,8 +30,13 @@ st.caption(
     "predicted knockdown."
 )
 
-library = MaterialLibrary()
-material_names = library.names()
+@st.cache_resource
+def _material_library() -> MaterialLibrary:
+    return MaterialLibrary()
+
+
+library = _material_library()
+material_names = library.list_names()
 
 DEFAULT_LAYUPS: dict[str, list[float]] = {
     "Quasi-isotropic [0/45/-45/90]_3s": (
@@ -69,7 +74,7 @@ with st.sidebar:
             st.error("Layup must contain at least one ply.")
             st.stop()
     else:
-        angles = list(DEFAULT_LAYUPS[layup_name])
+        angles = [float(a) for a in DEFAULT_LAYUPS[layup_name]]
     st.caption(f"{len(angles)} plies")
 
     st.subheader("Wrinkle geometry")
@@ -97,6 +102,7 @@ with st.sidebar:
     run = st.button("Run analysis", type="primary", use_container_width=True)
 
 
+@st.cache_data
 def _plot_profile(amp: float, lam: float, w: float) -> plt.Figure:
     profile = GaussianSinusoidal(amplitude=amp, wavelength=lam, width=w, center=0.0)
     x = np.linspace(-1.5 * lam, 1.5 * lam, 400)
