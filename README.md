@@ -25,7 +25,7 @@ An open-source Python finite element package for predicting strength and stiffne
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **PyQt6 GUI:** Interactive analysis with real-time stress visualization
 - **4 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510
-- **414 tests** covering all modules
+- **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Installation
 
@@ -82,6 +82,13 @@ result = WrinkleAnalysis(config).run()
 print(result.summary())
 ```
 
+`amplitude` (`A`) is the peak displacement of the wrinkled mid-surface
+from the flat reference (crest height, **not** peak-to-peak). For a
+measured wrinkle (e.g. from a cross-section micrograph or CT slice),
+`A = (z_max − z_min) / 2`. The peak fibre misalignment angle scales as
+`θ_max ≈ arctan(2πA/λ)`, which drives the Budiansky-Fleck compressive
+knockdown.
+
 ### Tension analysis
 
 ```python
@@ -120,7 +127,7 @@ Validated against 31 experimental data points from three independent datasets:
 | Li et al. (2026) | Compression | 5 | 4/5 | 8.6% |
 | **Total** | | **31** | **28/31** | **9.5%** |
 
-To regenerate validation figures: `python joss/generate_fig_elhajjar.py`
+The validation cases are documented in `figures/` but the regeneration script is not yet committed. Tracking issue: #22.
 
 ## How It Works
 

@@ -14,7 +14,7 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 ```bash
 # Clone the repository
 git clone https://github.com/elhajjar1/wrinkleFE.git
-cd wrinklefe
+cd wrinkleFE
 
 # Create a virtual environment
 python -m venv venv

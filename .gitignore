@@ -43,8 +43,9 @@ htmlcov/
 *.so
 *.dylib
 
-# PyInstaller
+# PyInstaller (auto-generated specs only — keep our committed Windows spec)
 *.spec
+!wrinklefe_windows.spec
 
 # Release zips
 WrinkleFE-*.zip

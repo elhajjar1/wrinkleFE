@@ -239,7 +239,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     )
 
     analysis = WrinkleAnalysis(config)
-    result = analysis.run_analytical_only()
+    result = analysis.run(analytical_only=True)
 
     print(result.summary())
 

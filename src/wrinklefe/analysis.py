@@ -36,7 +36,7 @@ References
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -234,6 +234,11 @@ def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
 
     Used by the tension OOP model to determine the effective curved-beam
     thickness h_eff = n_adj × t_ply for interlaminar stress prediction.
+
+    Returns the true maximum consecutive count, which is ``0`` when the
+    layup contains no 0-degree plies.  Callers must guard against the
+    zero case (e.g. for the curved-beam OOP path, ``n_adj == 0`` means
+    there is no continuous 0-degree block to develop interlaminar stress).
     """
     max_count = 0
     count = 0
@@ -243,7 +248,7 @@ def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
             max_count = max(max_count, count)
         else:
             count = 0
-    return max(max_count, 1)
+    return max_count
 
 
 # ======================================================================
@@ -261,6 +266,28 @@ class AnalysisConfig:
     ----------
     amplitude : float
         Wrinkle amplitude A [mm].  Default 0.366 (2 ply thicknesses).
+
+        Physical meaning: A is the peak out-of-plane displacement of the
+        wrinkled mid-surface from the flat (unwrinkled) reference plane,
+        measured normal to the laminate.  The mid-surface profile is
+        ``z(x) = A * exp(-(x-x0)^2 / w^2) * cos(2*pi*(x-x0)/lambda)``,
+        so the crest sits at +A, the trough at -A, and the peak-to-peak
+        amplitude is 2A.  A is **not** half-amplitude and **not**
+        peak-to-peak.
+
+        Measuring A in practice (e.g. from a polished cross-section
+        micrograph or a CT slice taken normal to the wrinkle axis):
+
+            A = (z_max - z_min) / 2
+
+        where ``z_max`` and ``z_min`` are the crest and trough of the
+        wrinkled mid-surface measured normal to the unwrinkled laminate.
+
+        Effect on knockdown: A enters the maximum fibre misalignment
+        angle through the closed-form ``theta_max = arctan(2*pi*A /
+        lambda)`` used in ``_compute_analytical``, so for small A/lambda
+        the peak fibre angle scales nearly linearly with A and amplifies
+        the Budiansky-Fleck compressive knockdown.
     wavelength : float
         Wrinkle wavelength lambda [mm].  Default 16.0.
     width : float
@@ -344,6 +371,16 @@ class AnalysisConfig:
 
     # Solver
     solver: str = "direct"
+
+    # Optional analyses
+    run_buckling: bool = False
+    n_buckling_modes: int = 5
+    run_montecarlo: bool = False
+    mc_samples: int = 5000
+    mc_seed: Optional[int] = 42
+
+    # Analytical-only mode (skip FE assembly)
+    analytical_only: bool = False
 
     # Verbosity
     verbose: bool = False
@@ -514,8 +551,16 @@ class WrinkleAnalysis:
     # Main entry point
     # ------------------------------------------------------------------
 
-    def run(self) -> AnalysisResults:
+    def run(self, analytical_only: Optional[bool] = None) -> AnalysisResults:
         """Execute the complete analysis pipeline.
+
+        Parameters
+        ----------
+        analytical_only : bool, optional
+            If True, skip the FE assembly path (mesh generation, static
+            solve, failure evaluation, retention factors) and return only
+            the analytical predictions.  If None (default), the
+            ``AnalysisConfig.analytical_only`` field is used.
 
         Steps
         -----
@@ -534,6 +579,8 @@ class WrinkleAnalysis:
             Complete results from all analysis steps.
         """
         cfg = self.config
+        if analytical_only is None:
+            analytical_only = cfg.analytical_only
         results = AnalysisResults(config=cfg)
 
         # 1. Build laminate
@@ -558,6 +605,10 @@ class WrinkleAnalysis:
 
         # 3. Analytical predictions
         self._compute_analytical(results, wrinkle_config)
+
+        # In analytical-only mode, skip mesh, solve, failure, and retention.
+        if analytical_only:
+            return results
 
         # 4. Generate mesh
         mesh_gen = WrinkleMesh(
@@ -601,6 +652,7 @@ class WrinkleAnalysis:
     def compare_morphologies(
         base_config: AnalysisConfig,
         morphologies: Sequence[str] = ("stack", "convex", "concave"),
+        analytical_only: bool = False,
     ) -> Dict[str, AnalysisResults]:
         """Run the full FE analysis for multiple morphologies and compare.
 
@@ -611,6 +663,9 @@ class WrinkleAnalysis:
             for each entry in *morphologies*.
         morphologies : sequence of str
             Morphology names to compare.
+        analytical_only : bool, optional
+            If True, skip the FE assembly path for each morphology and
+            return only the analytical predictions.  Default ``False``.
 
         Returns
         -------
@@ -620,27 +675,10 @@ class WrinkleAnalysis:
         all_results: Dict[str, AnalysisResults] = {}
 
         for morph in morphologies:
-            cfg = AnalysisConfig(
-                amplitude=base_config.amplitude,
-                wavelength=base_config.wavelength,
-                width=base_config.width,
-                morphology=morph,
-                loading=base_config.loading,
-                material=base_config.material,
-                angles=base_config.angles,
-                ply_thickness=base_config.ply_thickness,
-                interface_1=base_config.interface_1,
-                interface_2=base_config.interface_2,
-                nx=base_config.nx,
-                ny=base_config.ny,
-                nz_per_ply=base_config.nz_per_ply,
-                domain_length=base_config.domain_length,
-                domain_width=base_config.domain_width,
-                applied_strain=base_config.applied_strain,
-                solver=base_config.solver,
-                verbose=base_config.verbose,
+            cfg = replace(base_config, morphology=morph)
+            all_results[morph] = WrinkleAnalysis(cfg).run(
+                analytical_only=analytical_only
             )
-            all_results[morph] = WrinkleAnalysis(cfg).run()
 
         return all_results
 
@@ -653,6 +691,7 @@ class WrinkleAnalysis:
         base_config: AnalysisConfig,
         parameter: str,
         values: Sequence[float],
+        analytical_only: bool = False,
     ) -> List[AnalysisResults]:
         """Sweep a single parameter over a range of values.
 
@@ -666,6 +705,9 @@ class WrinkleAnalysis:
             ``'width'``, ``'applied_strain'``).
         values : sequence of float
             Parameter values to evaluate.
+        analytical_only : bool, optional
+            If True, skip the FE assembly path for each sweep value and
+            return only the analytical predictions.  Default ``False``.
 
         Returns
         -------
@@ -677,39 +719,22 @@ class WrinkleAnalysis:
         AttributeError
             If *parameter* is not a valid :class:`AnalysisConfig` field.
         """
+        if not hasattr(base_config, parameter):
+            raise AttributeError(
+                f"AnalysisConfig has no field '{parameter}'"
+            )
+
         results_list: List[AnalysisResults] = []
 
         for val in values:
-            cfg = AnalysisConfig(
-                amplitude=base_config.amplitude,
-                wavelength=base_config.wavelength,
-                width=base_config.width,
-                morphology=base_config.morphology,
-                loading=base_config.loading,
-                material=base_config.material,
-                angles=base_config.angles,
-                ply_thickness=base_config.ply_thickness,
-                interface_1=base_config.interface_1,
-                interface_2=base_config.interface_2,
-                nx=base_config.nx,
-                ny=base_config.ny,
-                nz_per_ply=base_config.nz_per_ply,
-                domain_length=base_config.domain_length,
-                domain_width=base_config.domain_width,
-                applied_strain=base_config.applied_strain,
-                solver=base_config.solver,
-                verbose=base_config.verbose,
-            )
-            if not hasattr(cfg, parameter):
-                raise AttributeError(
-                    f"AnalysisConfig has no field '{parameter}'"
-                )
-            setattr(cfg, parameter, val)
+            cfg = replace(base_config, **{parameter: val})
             # Rerun __post_init__ if domain_length depends on wavelength
             if parameter == "wavelength" and base_config.domain_length <= 0:
                 cfg.domain_length = 3.0 * val
 
-            results_list.append(WrinkleAnalysis(cfg).run())
+            results_list.append(
+                WrinkleAnalysis(cfg).run(analytical_only=analytical_only)
+            )
 
         return results_list
 
@@ -942,15 +967,21 @@ class WrinkleAnalysis:
         amplitude = cfg.amplitude
         wavelength = cfg.wavelength
 
-        if amplitude > 1e-12 and wavelength > 1e-12:
+        # Effective thickness: max consecutive 0-degree plies. With no
+        # continuous 0-degree block (n_adj == 0) the curved-beam model
+        # has no fibrous load path to develop interlaminar σ₃₃ / τ₁₃,
+        # so the OOP mechanism is inactive (kd_oop = 1.0).
+        n_adj_oop = _max_consecutive_zero_plies(angles)
+
+        if n_adj_oop == 0 or amplitude <= 1e-12 or wavelength <= 1e-12:
+            kd_oop = 1.0
+        else:
             # Peak curvature at crest: κ = (2π/λ)² A
             kappa_max = (2.0 * np.pi / wavelength) ** 2 * amplitude
             # Max curvature gradient at inflection: |dκ/dx| = (2π/λ)³ A
             dkappa_dx_max = (2.0 * np.pi / wavelength) ** 3 * amplitude
 
-            # Effective thickness: max consecutive 0-degree plies
-            n_adj = _max_consecutive_zero_plies(angles)
-            h_eff = n_adj * cfg.ply_thickness
+            h_eff = n_adj_oop * cfg.ply_thickness
 
             # σ₃₃ at crest (mode I) and τ₁₃ at inflection (mode II)
             sigma33 = Xt * h_eff * kappa_max
@@ -962,8 +993,6 @@ class WrinkleAnalysis:
             FI_max = max(FI_s33, FI_t13)
 
             kd_oop = 1.0 / np.sqrt(1.0 + FI_max)
-        else:
-            kd_oop = 1.0
 
         # 0-degree ply knockdown: minimum of all three mechanisms
         kd_0 = min(kd_fiber, kd_matrix, kd_oop)

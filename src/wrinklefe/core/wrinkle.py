@@ -100,16 +100,46 @@ class WrinkleProfile(ABC):
     def max_angle(self) -> float:
         """Numerical maximum fiber misalignment angle (radians).
 
-        Uses :func:`scipy.optimize.minimize_scalar` to find max |dz/dx| over
-        the profile domain, then returns ``arctan(max|dz/dx|)``.
+        ``|dz/dx|`` is generally multimodal across the wrinkle domain (each
+        oscillation contributes a local extremum), so a single bounded
+        Brent search can latch onto a local-only peak.  Instead we scan a
+        dense uniform grid over the domain to identify the global argmax,
+        then refine locally with :func:`scipy.optimize.minimize_scalar`
+        bracketed to a single grid cell around that winner.
         """
         xlo, xhi = self.domain()
 
-        def neg_abs_slope(xv: float) -> float:
-            return -float(np.abs(self.slope(np.atleast_1d(xv))[0]))
+        def abs_slope_arr(xv: np.ndarray) -> np.ndarray:
+            return np.abs(self.slope(np.asarray(xv, dtype=float)))
 
-        result = minimize_scalar(neg_abs_slope, bounds=(xlo, xhi), method="bounded")
-        return float(np.arctan(np.abs(self.slope(np.atleast_1d(result.x))[0])))
+        # Dense grid sweep to locate the global argmax robustly.
+        n_grid = 4096
+        xs = np.linspace(xlo, xhi, n_grid)
+        vals = abs_slope_arr(xs)
+        idx = int(np.argmax(vals))
+        best_x = float(xs[idx])
+        best_val = float(vals[idx])
+
+        # Local refinement bracketed to neighbours of the grid winner.
+        lo = float(xs[max(idx - 1, 0)])
+        hi = float(xs[min(idx + 1, n_grid - 1)])
+        if hi > lo:
+            def neg_abs_slope(xv: float) -> float:
+                return -float(np.abs(self.slope(np.atleast_1d(xv))[0]))
+
+            try:
+                result = minimize_scalar(
+                    neg_abs_slope, bounds=(lo, hi), method="bounded"
+                )
+                refined_val = float(np.abs(self.slope(np.atleast_1d(result.x))[0]))
+                if refined_val > best_val:
+                    best_val = refined_val
+                    best_x = float(result.x)
+            except Exception:
+                # Fall back to grid winner on any optimizer hiccup.
+                pass
+
+        return float(np.arctan(best_val))
 
     def max_angle_approx(self) -> float:
         """Closed-form approximation: theta ~ arctan(2*pi*A / lambda) (radians)."""
@@ -224,10 +254,16 @@ class RectangularSinusoidal(WrinkleProfile):
         sech2 = 1.0 / np.cosh(arg) ** 2
         tanh_val = np.tanh(arg)
         sign = np.sign(dx)
-        # d2(env)/dx2 = 0.5 * 2 * sech^2(arg) * tanh(arg) * (sign/tw)^2 / tw
-        # via chain rule: d/dx[sech^2(arg)*(-sign/tw)] = ...
-        # Simplified: second deriv = sech^2(arg)*tanh(arg) / tw^2
-        return sech2 * tanh_val / (tw ** 2)
+        # env(x) = 0.5 * (tanh(arg) + 1) with arg = (w/2 - |dx|) / tw.
+        # d(env)/dx = 0.5 * sech^2(arg) * d(arg)/dx, d(arg)/dx = -sign(dx)/tw,
+        # so d(env)/dx = -0.5 * sech^2(arg) * sign(dx) / tw.
+        # Differentiating again (sign(dx) is locally constant for dx != 0):
+        #   d^2(env)/dx^2 = -0.5 * sign(dx) / tw * d/dx[sech^2(arg)]
+        #                 = -0.5 * sign(dx) / tw * (-2 sech^2(arg) tanh(arg)) * d(arg)/dx
+        #                 = -0.5 * sign(dx) / tw * (-2 sech^2(arg) tanh(arg)) * (-sign(dx)/tw)
+        #                 = - sech^2(arg) * tanh(arg) / tw^2
+        # (sign(dx)^2 = 1 for dx != 0).
+        return -sech2 * tanh_val / (tw ** 2)
 
     def displacement(self, x: np.ndarray) -> np.ndarray:
         x = np.asarray(x, dtype=float)
