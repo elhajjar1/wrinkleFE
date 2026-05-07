@@ -9,8 +9,13 @@ numpy==2.4.4
 scipy==1.17.1
 matplotlib==3.10.9
 
+# --- Streamlit web UI (entry point: streamlit_app.py at repo root) ---
+streamlit>=1.32
+
 # --- GUI (only imported by src/wrinklefe/gui/*; required for `wrinklefe-gui`) ---
 # Not installed in the current environment, so pinned to the project's declared
 # lower bound from pyproject.toml. Update the floor once a known-good version
 # is installed and verified.
-PyQt6>=6.5
+# Commented out so Streamlit Cloud can install without Qt system libraries.
+# Uncomment for desktop installs.
+# PyQt6>=6.5
