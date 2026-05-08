@@ -88,30 +88,25 @@ with st.sidebar:
     )
 
     st.header("Morphology & loading")
-    morphology = st.selectbox("Morphology", MORPHOLOGIES, index=0)
-    with st.popover("What do these morphologies mean?", use_container_width=True):
-        st.markdown(
-            "**Dual-wrinkle morphologies** — two adjacent wrinkles across the "
-            "laminate thickness, classified by the relative phase offset φ "
-            "between their centrelines (Jin et al. 2026):\n\n"
-            "- **Stack** (φ = 0): peaks and troughs aligned vertically. "
-            "Aggregate morphology factor M_f = 1.0 — the baseline case.\n"
-            "- **Convex** (φ = π/2): the interface between the two wrinkles "
-            "bulges outward. M_f < 1 — the *least* damaging configuration "
-            "under compression.\n"
-            "- **Concave** (φ = −π/2): the interface pinches inward. "
-            "M_f > 1 — the *most* damaging configuration; concave pinching "
-            "amplifies kink-band formation under compression.\n\n"
-            "**Single-wrinkle through-thickness modes** — one wrinkle, "
-            "varying how its amplitude propagates from the wrinkle core "
-            "outward to the laminate surfaces:\n\n"
-            "- **Uniform**: full amplitude on every ply — no through-thickness "
-            "decay. Worst case for through-thickness uniformity of damage.\n"
-            "- **Graded**: linear decay from the wrinkle interface to the "
-            "outer surfaces. The **Decay floor** slider sets the minimum "
-            "amplitude fraction retained at the surface plies "
-            "(0 = full decay to zero, 1 = uniform)."
-        )
+    morphology = st.selectbox(
+        "Morphology",
+        MORPHOLOGIES,
+        index=0,
+        help=(
+            "**Dual-wrinkle morphologies** (phase offset φ between two "
+            "adjacent wrinkle centrelines):\n"
+            "- **Stack** (φ = 0): peaks/troughs aligned, M_f = 1 — baseline.\n"
+            "- **Convex** (φ = π/2): outward bulge, M_f < 1 — *best* under "
+            "compression.\n"
+            "- **Concave** (φ = −π/2): inward pinch, M_f > 1 — *worst* "
+            "under compression (amplifies kink-band formation).\n\n"
+            "**Single-wrinkle through-thickness modes:**\n"
+            "- **Uniform**: full amplitude on every ply (no decay).\n"
+            "- **Graded**: linear decay from the wrinkle core to the outer "
+            "surfaces; the *Decay floor* slider sets the minimum amplitude "
+            "fraction at the surface plies."
+        ),
+    )
     decay_floor = 0.0
     if morphology == "graded":
         decay_floor = st.slider(
@@ -201,10 +196,34 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         analytical_only=cfg_dict["analytical_only"],
     )
     result = WrinkleAnalysis(cfg).run(analytical_only=cfg_dict["analytical_only"])
+
+    fe: dict | None = None
+    if not cfg_dict["analytical_only"] and result.field_results is not None:
+        max_disp_mm, _ = result.field_results.max_displacement()
+        rep = result.failure_report
+        fe = {
+            "modulus_retention": float(result.modulus_retention),
+            "retention_factors": {
+                k: float(v) for k, v in (result.retention_factors or {}).items()
+            },
+            "baseline_fi": {
+                k: float(v) for k, v in (result.baseline_fi or {}).items()
+            },
+            "n_nodes": int(result.mesh.n_nodes) if result.mesh else None,
+            "n_elements": int(result.mesh.n_elements) if result.mesh else None,
+            "max_displacement_mm": float(max_disp_mm),
+            "critical_criterion": getattr(rep, "critical_criterion", None),
+            "critical_mode": getattr(rep, "critical_mode", None),
+            "critical_ply": getattr(rep, "critical_ply", None),
+        }
+
     return {
         "summary": result.summary(),
         "max_angle_deg": float(np.degrees(result.max_angle_rad)),
         "analytical_knockdown": float(result.analytical_knockdown),
+        "analytical_strength_MPa": float(result.analytical_strength_MPa),
+        "damage_index": float(result.damage_index),
+        "fe": fe,
     }
 
 
@@ -274,10 +293,75 @@ with tab_results:
         st.info("Click **Run analysis** in the sidebar to compute results.")
     else:
         r = st.session_state["results"]
-        c1, c2 = st.columns(2)
+
+        st.subheader("Analytical predictions")
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Max fibre misalignment", f"{r['max_angle_deg']:.2f}°")
         c2.metric("Analytical knockdown", f"{r['analytical_knockdown']:.3f}")
-        st.subheader("Summary")
+        c3.metric("Predicted strength", f"{r['analytical_strength_MPa']:.1f} MPa")
+        c4.metric("Damage index D", f"{r['damage_index']:.3f}")
+
+        fe = r.get("fe")
+        if fe is not None:
+            st.subheader("FE solution")
+            f1, f2, f3 = st.columns(3)
+            f1.metric("Modulus retention", f"{fe['modulus_retention']:.3f}")
+            worst = (
+                min(fe["retention_factors"].values())
+                if fe["retention_factors"] else None
+            )
+            f2.metric(
+                "Strength retention (worst criterion)",
+                f"{worst:.3f}" if worst is not None else "—",
+            )
+            f3.metric("Max displacement", f"{fe['max_displacement_mm']:.4f} mm")
+
+            if fe["retention_factors"]:
+                st.markdown("**Strength retention by failure criterion**")
+                crits = list(fe["retention_factors"].keys())
+                vals = [fe["retention_factors"][c] for c in crits]
+                fig_ret, ax_ret = plt.subplots(
+                    figsize=(7, max(1.4, 0.45 * len(crits) + 1.0))
+                )
+                ax_ret.barh(crits, vals, color="#2ca02c")
+                ax_ret.axvline(1.0, color="grey", linestyle="--", linewidth=0.8)
+                ax_ret.set_xlabel("Retention (wrinkled / pristine)")
+                ax_ret.set_xlim(0, max(1.05, max(vals) * 1.1))
+                ax_ret.grid(axis="x", alpha=0.3)
+                st.pyplot(fig_ret, clear_figure=True)
+                st.caption(
+                    "Per-criterion strength retention = applied strain at "
+                    "first ply failure (wrinkled) / first ply failure "
+                    "(pristine). Values < 1 indicate knockdown."
+                )
+
+            crit = fe.get("critical_criterion")
+            if crit:
+                st.markdown(
+                    f"**Critical failure:** criterion `{crit}`"
+                    + (
+                        f", mode `{fe['critical_mode']}`"
+                        if fe.get("critical_mode") else ""
+                    )
+                    + (
+                        f", first failing ply index `{fe['critical_ply']}`"
+                        if fe.get("critical_ply") is not None else ""
+                    )
+                )
+
+            with st.expander("Mesh statistics"):
+                st.write(
+                    f"Nodes: **{fe['n_nodes']:,}**  ·  "
+                    f"Elements: **{fe['n_elements']:,}**"
+                )
+        else:
+            st.info(
+                "FE outputs are hidden because the run used **Analytical "
+                "only**. Untick that option in the sidebar's *Advanced* "
+                "panel and re-run to see modulus and strength retention."
+            )
+
+        st.subheader("Full text summary")
         st.text(r["summary"])
 
 with tab_export:
