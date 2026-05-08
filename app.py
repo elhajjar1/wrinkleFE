@@ -89,6 +89,29 @@ with st.sidebar:
 
     st.header("Morphology & loading")
     morphology = st.selectbox("Morphology", MORPHOLOGIES, index=0)
+    with st.popover("What do these morphologies mean?", use_container_width=True):
+        st.markdown(
+            "**Dual-wrinkle morphologies** — two adjacent wrinkles across the "
+            "laminate thickness, classified by the relative phase offset φ "
+            "between their centrelines (Jin et al. 2026):\n\n"
+            "- **Stack** (φ = 0): peaks and troughs aligned vertically. "
+            "Aggregate morphology factor M_f = 1.0 — the baseline case.\n"
+            "- **Convex** (φ = π/2): the interface between the two wrinkles "
+            "bulges outward. M_f < 1 — the *least* damaging configuration "
+            "under compression.\n"
+            "- **Concave** (φ = −π/2): the interface pinches inward. "
+            "M_f > 1 — the *most* damaging configuration; concave pinching "
+            "amplifies kink-band formation under compression.\n\n"
+            "**Single-wrinkle through-thickness modes** — one wrinkle, "
+            "varying how its amplitude propagates from the wrinkle core "
+            "outward to the laminate surfaces:\n\n"
+            "- **Uniform**: full amplitude on every ply — no through-thickness "
+            "decay. Worst case for through-thickness uniformity of damage.\n"
+            "- **Graded**: linear decay from the wrinkle interface to the "
+            "outer surfaces. The **Decay floor** slider sets the minimum "
+            "amplitude fraction retained at the surface plies "
+            "(0 = full decay to zero, 1 = uniform)."
+        )
     decay_floor = 0.0
     if morphology == "graded":
         decay_floor = st.slider(
@@ -117,14 +140,27 @@ with st.sidebar:
         help="Default: quasi-isotropic [0/45/-45/90]_3s (24 plies).",
     )
 
-    with st.expander("Advanced — mesh & solver"):
+    with st.expander("Advanced — mesh & solver", expanded=True):
         analytical_only = st.checkbox(
-            "Analytical only (skip FE solve)", value=True,
-            help="Recommended on Streamlit Cloud — full FE can take minutes.",
+            "Analytical only (skip FE solve)", value=False,
+            help=(
+                "Default off: the full FE solve runs (mesh, static "
+                "displacement-controlled solve, multi-criterion failure "
+                "evaluation) and yields stress fields, modulus retention, "
+                "and per-criterion strength retention. Tick this to fall "
+                "back to the closed-form analytical knockdown only — "
+                "much faster but no FE outputs."
+            ),
         )
         nx = st.number_input("Mesh divisions in x", 4, 64, 12, 2)
         ny = st.number_input("Mesh divisions in y", 4, 32, 6, 2)
         nz_per_ply = st.number_input("Mesh divisions per ply (z)", 1, 4, 1)
+        if not analytical_only:
+            st.caption(
+                ":hourglass_flowing_sand: Full FE solve. On Streamlit "
+                "Cloud's CPU this typically takes 30–90 s for the default "
+                "mesh; reducing nx, ny, or nz_per_ply speeds it up."
+            )
 
     run_clicked = st.button("Run analysis", type="primary", use_container_width=True)
 
