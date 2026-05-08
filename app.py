@@ -13,6 +13,8 @@ Deploy: see DEPLOYMENT_STREAMLIT.md.
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import List
 
 import matplotlib
@@ -22,6 +24,12 @@ matplotlib.use("Agg")  # headless backend; required on Streamlit Cloud
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
+
+# Make the src-layout package importable on Streamlit Cloud, which does not
+# pip-install the local repo.
+_SRC = Path(__file__).resolve().parent / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
