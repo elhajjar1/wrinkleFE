@@ -16,3 +16,4 @@ matplotlib>=3.9,<4
 
 # --- Web app ---
 streamlit>=1.32
+plotly>=5.18

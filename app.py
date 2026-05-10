@@ -39,6 +39,8 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 
+import streamlit_viz
+
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -252,6 +254,16 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
                 k: [float(v) for v in np.asarray(arr).ravel().tolist()]
                 for k, arr in rep.ply_failure_indices.items()
             }
+        mesh = result.mesh
+        fr = result.field_results
+        nodes_arr = np.asarray(mesh.nodes, dtype=np.float64)
+        elements_arr = np.asarray(mesh.elements, dtype=np.int64)
+        stress_per_elem = np.asarray(fr.stress_local).mean(axis=1)
+        element_centers = nodes_arr[elements_arr].mean(axis=1)
+        fi_per_gauss = {
+            k: np.asarray(v, dtype=np.float64)
+            for k, v in (result.failure_indices or {}).items()
+        }
         fe = {
             "modulus_retention": float(result.modulus_retention),
             "retention_factors": {
@@ -260,8 +272,8 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             "baseline_fi": {
                 k: float(v) for k, v in (result.baseline_fi or {}).items()
             },
-            "n_nodes": int(result.mesh.n_nodes) if result.mesh else None,
-            "n_elements": int(result.mesh.n_elements) if result.mesh else None,
+            "n_nodes": int(mesh.n_nodes),
+            "n_elements": int(mesh.n_elements),
             "max_displacement_mm": float(max_disp_mm),
             "critical_criterion": getattr(rep, "critical_criterion", None),
             "critical_mode": getattr(rep, "critical_mode", None),
@@ -271,6 +283,14 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
                 else None
             ),
             "ply_failure_indices": ply_fi,
+            # Numpy arrays for the 3D viz. Stripped from the JSON export.
+            "nodes": nodes_arr,
+            "elements": elements_arr,
+            "ply_ids": np.asarray(mesh.ply_ids, dtype=np.int64),
+            "displacement": np.asarray(fr.displacement, dtype=np.float64),
+            "stress_per_elem": stress_per_elem,
+            "element_centers": element_centers,
+            "fi_per_gauss": fi_per_gauss,
         }
 
     return {
@@ -574,6 +594,101 @@ with tab_results:
                     pieces.append(f"first failing ply index `{fe['critical_ply']}`")
                 st.markdown("**Critical failure:** " + ", ".join(pieces))
 
+            if (
+                isinstance(fe.get("nodes"), np.ndarray)
+                and isinstance(fe.get("elements"), np.ndarray)
+            ):
+                st.subheader("3D field viz")
+                st.caption(
+                    "Drag to rotate, scroll to zoom. Sliders below the plot "
+                    "re-render in milliseconds (the FE solve is cached)."
+                )
+                STRESS_COMPONENTS = [
+                    (0, "σ₁₁"), (1, "σ₂₂"), (2, "σ₃₃"),
+                    (3, "τ₂₃"), (4, "τ₁₃"), (5, "τ₁₂"),
+                ]
+                view_mode = st.radio(
+                    "View mode",
+                    ["Stress contour", "Deformed mesh", "Failure index"],
+                    horizontal=True,
+                    key="viz_view_mode",
+                )
+                if view_mode == "Stress contour":
+                    comp = st.selectbox(
+                        "Stress component (Voigt)",
+                        STRESS_COMPONENTS,
+                        index=2,
+                        format_func=lambda t: t[1],
+                        key="viz_stress_component",
+                    )
+                    fig_3d = streamlit_viz.stress_contour_figure(
+                        fe["nodes"], fe["elements"], fe["stress_per_elem"],
+                        component_index=comp[0],
+                        component_label=comp[1],
+                    )
+                    st.plotly_chart(fig_3d, use_container_width=True)
+                elif view_mode == "Deformed mesh":
+                    scale = st.slider(
+                        "Deformation exaggeration",
+                        1.0, 200.0, 50.0, 1.0,
+                        key="viz_deformation_scale",
+                        help=(
+                            "FE displacements are ~10⁻³ mm, far below the "
+                            "mesh dimensions. Multiply by this factor to "
+                            "make the deformation visible."
+                        ),
+                    )
+                    fig_3d = streamlit_viz.deformed_mesh_figure(
+                        fe["nodes"], fe["elements"], fe["displacement"],
+                        scale=scale,
+                    )
+                    st.plotly_chart(fig_3d, use_container_width=True)
+                else:
+                    fi_dict = fe.get("fi_per_gauss", {})
+                    fi_keys = list(fi_dict.keys())
+                    if not fi_keys:
+                        st.info("No per-gauss failure indices were captured.")
+                    else:
+                        crit_for_3d = st.selectbox(
+                            "Failure criterion",
+                            fi_keys,
+                            index=(
+                                fi_keys.index(fe.get("critical_criterion"))
+                                if fe.get("critical_criterion") in fi_keys else 0
+                            ),
+                            key="viz_fi_criterion",
+                        )
+                        fig_3d = streamlit_viz.fi_3d_figure(
+                            fe["nodes"], fe["elements"],
+                            fi_dict[crit_for_3d], crit_for_3d,
+                        )
+                        st.plotly_chart(fig_3d, use_container_width=True)
+
+                st.markdown("**y-slice scrubber**")
+                y_centers = fe["element_centers"][:, 1]
+                y_unique = np.unique(y_centers)
+                if y_unique.size > 1:
+                    y_station = st.select_slider(
+                        "y-station [mm]",
+                        options=[float(y) for y in y_unique],
+                        value=float(y_unique[len(y_unique) // 2]),
+                        key="viz_y_station",
+                    )
+                    slice_comp = st.selectbox(
+                        "Slice stress component",
+                        STRESS_COMPONENTS,
+                        index=2,
+                        format_func=lambda t: t[1],
+                        key="viz_slice_component",
+                    )
+                    fig_slice = streamlit_viz.y_slice_figure(
+                        fe["element_centers"], fe["elements"], fe["nodes"],
+                        fe["stress_per_elem"], slice_comp[0], y_station,
+                        component_label=slice_comp[1],
+                    )
+                    if fig_slice is not None:
+                        st.plotly_chart(fig_slice, use_container_width=True)
+
             with st.expander("Mesh statistics"):
                 st.write(
                     f"Nodes: **{fe['n_nodes']:,}**  ·  "
@@ -598,13 +713,26 @@ with tab_export:
         except PackageNotFoundError:
             _wrinklefe_version = "0.0.0+unknown"
 
+        def _strip_arrays(obj):
+            """Drop numpy arrays so the JSON export stays small. Arrays
+            are only useful for the in-app 3D viz."""
+            if isinstance(obj, dict):
+                return {
+                    k: _strip_arrays(v)
+                    for k, v in obj.items()
+                    if not isinstance(v, np.ndarray)
+                }
+            if isinstance(obj, list):
+                return [_strip_arrays(v) for v in obj]
+            return obj
+
         payload = {
             "meta": {
                 "wrinklefe_version": _wrinklefe_version,
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             },
             "config": dict(st.session_state["cfg_payload"]),
-            "results": st.session_state["results"],
+            "results": _strip_arrays(st.session_state["results"]),
         }
         payload["config"]["angles"] = list(payload["config"].pop("angles_tuple"))
 
