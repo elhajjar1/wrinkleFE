@@ -70,6 +70,61 @@ DEFAULT_LAYUP = (
 
 
 # ---------------------------------------------------------------------------
+# Sidebar helpers
+# ---------------------------------------------------------------------------
+
+@st.cache_data(show_spinner=False)
+def _morphology_schematic(morphology: str) -> bytes:
+    """Render a small cartoon schematic of a morphology as PNG bytes.
+
+    Used inside the in-sidebar help popover so users can see at a glance
+    what each morphology looks like before selecting one.
+    """
+    fig, ax = plt.subplots(figsize=(2.6, 1.6), dpi=110)
+    x = np.linspace(-1.0, 1.0, 400)
+    env = np.exp(-(x ** 2) / 0.32 ** 2)
+    carrier = np.cos(2 * np.pi * x / 0.55)
+    amp = 0.18
+    blue, red = "#1f77b4", "#d62728"
+
+    if morphology == "stack":
+        z = amp * env * carrier
+        ax.plot(x, z + 0.34, color=blue, lw=2.2)
+        ax.plot(x, z - 0.34, color=blue, lw=2.2)
+    elif morphology == "convex":
+        z1 = amp * env * carrier
+        z2 = amp * env * np.cos(2 * np.pi * x / 0.55 + np.pi / 2)
+        ax.plot(x, z1 + 0.34, color=blue, lw=2.2)
+        ax.plot(x, z2 - 0.34, color=blue, lw=2.2)
+    elif morphology == "concave":
+        z1 = amp * env * carrier
+        z2 = amp * env * np.cos(2 * np.pi * x / 0.55 - np.pi / 2)
+        ax.plot(x, z1 + 0.34, color=red, lw=2.2)
+        ax.plot(x, z2 - 0.34, color=red, lw=2.2)
+    elif morphology == "uniform":
+        z = 0.14 * env * carrier
+        for offset in np.linspace(-0.55, 0.55, 7):
+            ax.plot(x, z + offset, color=blue, lw=1.4)
+    elif morphology == "graded":
+        offsets = np.linspace(-0.55, 0.55, 7)
+        for offset in offsets:
+            decay = 1.0 - abs(offset) / 0.55  # 1 at core, 0 at surfaces
+            z = 0.18 * decay * env * carrier
+            ax.plot(x, z + offset, color=blue, lw=1.4)
+
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-0.85, 0.85)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.tight_layout(pad=0.1)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Sidebar inputs
 # ---------------------------------------------------------------------------
 
@@ -102,30 +157,62 @@ with st.sidebar:
     )
 
     st.markdown("**Morphology & loading**")
-    morphology = st.selectbox("Morphology", MORPHOLOGIES, index=0)
-    with st.popover("What do these morphologies mean?", use_container_width=True):
+    morphology = st.selectbox(
+        "Morphology", MORPHOLOGIES, index=0,
+        help=(
+            "Shape pattern of the wrinkle through the laminate thickness. "
+            "Stack/convex/concave are dual-wrinkle morphologies "
+            "differing by phase offset φ; uniform/graded are single-wrinkle "
+            "through-thickness modes. Click the **?** button below for "
+            "schematic illustrations."
+        ),
+    )
+    with st.popover("?", use_container_width=False):
         st.markdown(
-            "**Dual-wrinkle morphologies** — two adjacent wrinkles across the "
-            "laminate thickness, classified by the relative phase offset φ "
-            "between their centrelines (Jin et al. 2026):\n\n"
-            "- **Stack** (φ = 0): peaks and troughs aligned vertically. "
-            "Aggregate morphology factor M_f = 1.0 — the baseline case.\n"
-            "- **Convex** (φ = π/2): the interface between the two wrinkles "
-            "bulges outward. M_f < 1 — the *least* damaging configuration "
-            "under compression.\n"
-            "- **Concave** (φ = −π/2): the interface pinches inward. "
-            "M_f > 1 — the *most* damaging configuration; concave pinching "
-            "amplifies kink-band formation under compression.\n\n"
+            "**Dual-wrinkle morphologies** — two adjacent wrinkles across "
+            "the laminate thickness, classified by the relative phase offset "
+            "φ between their centrelines (Jin et al. 2026)."
+        )
+        cols = st.columns(3)
+        with cols[0]:
+            st.image(_morphology_schematic("stack"), use_container_width=True)
+            st.caption(
+                "**Stack** (φ = 0): peaks and troughs aligned vertically. "
+                "M_f = 1.0 — baseline."
+            )
+        with cols[1]:
+            st.image(_morphology_schematic("convex"), use_container_width=True)
+            st.caption(
+                "**Convex** (φ = π/2): interface bulges outward. "
+                "M_f < 1 — *least* damaging in compression."
+            )
+        with cols[2]:
+            st.image(_morphology_schematic("concave"), use_container_width=True)
+            st.caption(
+                "**Concave** (φ = −π/2): interface pinches inward. "
+                "M_f > 1 — *most* damaging in compression."
+            )
+
+        st.markdown(
             "**Single-wrinkle through-thickness modes** — one wrinkle, "
             "varying how its amplitude propagates from the wrinkle core "
-            "outward to the laminate surfaces:\n\n"
-            "- **Uniform**: full amplitude on every ply — no through-thickness "
-            "decay. Worst case for through-thickness uniformity of damage.\n"
-            "- **Graded**: linear decay from the wrinkle interface to the "
-            "outer surfaces. The **Decay floor** slider sets the minimum "
-            "amplitude fraction retained at the surface plies "
-            "(0 = full decay to zero, 1 = uniform)."
+            "outward to the laminate surfaces."
         )
+        cols = st.columns(2)
+        with cols[0]:
+            st.image(_morphology_schematic("uniform"), use_container_width=True)
+            st.caption(
+                "**Uniform**: full amplitude on every ply — no "
+                "through-thickness decay."
+            )
+        with cols[1]:
+            st.image(_morphology_schematic("graded"), use_container_width=True)
+            st.caption(
+                "**Graded**: linear decay from the wrinkle interface to the "
+                "outer surfaces. The **Decay floor** slider sets the minimum "
+                "amplitude fraction retained at the surface plies "
+                "(0 = full decay, 1 = uniform)."
+            )
     decay_floor = 0.0
     if morphology == "graded":
         decay_floor = st.slider(
