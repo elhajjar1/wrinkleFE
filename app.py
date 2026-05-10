@@ -101,43 +101,66 @@ DEFAULT_LAYUP = "[0/45/-45/90]_3s"
 # ---------------------------------------------------------------------------
 
 @st.cache_data(show_spinner=False)
-def _morphology_schematic(morphology: str) -> bytes:
-    """Render a small cartoon schematic of a morphology as PNG bytes.
+def _morphology_schematic(
+    morphology: str,
+    *,
+    amplitude: float,
+    wavelength: float,
+    width: float,
+    decay_floor: float = 0.0,
+) -> bytes:
+    """Render a cartoon schematic of a morphology as PNG bytes.
 
-    Used inside the in-sidebar help popover so users can see at a glance
-    what each morphology looks like before selecting one.
+    Uses the user's actual wrinkle geometry (the same
+    ``z(x) = A · exp(-(x/w)²) · cos(2πx/λ)`` profile shown on the
+    Geometry tab) so the schematic tracks the Amplitude / Wavelength /
+    Envelope width sliders. The Y axis is exaggerated relative to the
+    physical aspect ratio so the wave stays visible at typical input
+    values.
     """
-    fig, ax = plt.subplots(figsize=(2.6, 1.6), dpi=110)
-    x = np.linspace(-1.0, 1.0, 400)
-    env = np.exp(-(x ** 2) / 0.32 ** 2)
-    carrier = np.cos(2 * np.pi * x / 0.55)
-    amp = 0.18
-    blue, red = "#1f77b4", "#d62728"
+    lam = max(float(wavelength), 1e-6)
+    w = max(float(width), 1e-6)
 
+    fig, ax = plt.subplots(figsize=(2.6, 1.6), dpi=110)
+
+    # Canvas x ∈ [-1, 1] maps to physical x ∈ [-1.5 w, 1.5 w] — the
+    # window where the gaussian envelope has decayed to ~0.10.
+    x_canvas = np.linspace(-1.0, 1.0, 400)
+    env = np.exp(-((1.5 * x_canvas) ** 2))
+    # Number of carrier cycles visible across the window scales with w/λ;
+    # cap so a very wide envelope vs short wavelength stays readable.
+    cycles_in_window = float(np.clip(3.0 * w / lam, 0.4, 10.0))
+    phase = 2.0 * np.pi * (cycles_in_window / 2.0) * x_canvas
+
+    # Visual amplitude tracks the physical aspect ratio A/λ (∝ peak fibre
+    # slope) so peakier inputs look peakier; floor/cap keep tiny or huge
+    # values legible.
+    visual_amp = float(np.clip(8.0 * float(amplitude) / lam, 0.04, 0.28))
+
+    z = visual_amp * env * np.cos(phase)
+    z_plus = visual_amp * env * np.cos(phase + np.pi / 2)
+    z_minus = visual_amp * env * np.cos(phase - np.pi / 2)
+
+    blue, red = "#1f77b4", "#d62728"
     if morphology == "stack":
-        z = amp * env * carrier
-        ax.plot(x, z + 0.34, color=blue, lw=2.2)
-        ax.plot(x, z - 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z + 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z - 0.34, color=blue, lw=2.2)
     elif morphology == "convex":
-        z1 = amp * env * carrier
-        z2 = amp * env * np.cos(2 * np.pi * x / 0.55 + np.pi / 2)
-        ax.plot(x, z1 + 0.34, color=blue, lw=2.2)
-        ax.plot(x, z2 - 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z + 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z_plus - 0.34, color=blue, lw=2.2)
     elif morphology == "concave":
-        z1 = amp * env * carrier
-        z2 = amp * env * np.cos(2 * np.pi * x / 0.55 - np.pi / 2)
-        ax.plot(x, z1 + 0.34, color=red, lw=2.2)
-        ax.plot(x, z2 - 0.34, color=red, lw=2.2)
+        ax.plot(x_canvas, z + 0.34, color=red, lw=2.2)
+        ax.plot(x_canvas, z_minus - 0.34, color=red, lw=2.2)
     elif morphology == "uniform":
-        z = 0.14 * env * carrier
+        thin = 0.75 * z
         for offset in np.linspace(-0.55, 0.55, 7):
-            ax.plot(x, z + offset, color=blue, lw=1.4)
+            ax.plot(x_canvas, thin + offset, color=blue, lw=1.4)
     elif morphology == "graded":
         offsets = np.linspace(-0.55, 0.55, 7)
         for offset in offsets:
-            decay = 1.0 - abs(offset) / 0.55  # 1 at core, 0 at surfaces
-            z = 0.18 * decay * env * carrier
-            ax.plot(x, z + offset, color=blue, lw=1.4)
+            raw = 1.0 - abs(offset) / 0.55
+            decay = decay_floor + (1.0 - decay_floor) * raw
+            ax.plot(x_canvas, decay * z + offset, color=blue, lw=1.4)
 
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-0.85, 0.85)
@@ -293,6 +316,7 @@ with st.sidebar:
             "schematic illustrations."
         ),
     )
+    _geom_kwargs = dict(amplitude=amplitude, wavelength=wavelength, width=width)
     with st.popover("?", use_container_width=False):
         st.markdown(
             "**Dual-wrinkle morphologies** — two adjacent wrinkles across "
@@ -301,19 +325,28 @@ with st.sidebar:
         )
         cols = st.columns(3)
         with cols[0]:
-            st.image(_morphology_schematic("stack"), use_container_width=True)
+            st.image(
+                _morphology_schematic("stack", **_geom_kwargs),
+                use_container_width=True,
+            )
             st.caption(
                 "**Stack** (φ = 0): peaks and troughs aligned vertically. "
                 "M_f = 1.0 — baseline."
             )
         with cols[1]:
-            st.image(_morphology_schematic("convex"), use_container_width=True)
+            st.image(
+                _morphology_schematic("convex", **_geom_kwargs),
+                use_container_width=True,
+            )
             st.caption(
                 "**Convex** (φ = π/2): interface bulges outward. "
                 "M_f < 1 — *least* damaging in compression."
             )
         with cols[2]:
-            st.image(_morphology_schematic("concave"), use_container_width=True)
+            st.image(
+                _morphology_schematic("concave", **_geom_kwargs),
+                use_container_width=True,
+            )
             st.caption(
                 "**Concave** (φ = −π/2): interface pinches inward. "
                 "M_f > 1 — *most* damaging in compression."
@@ -326,13 +359,19 @@ with st.sidebar:
         )
         cols = st.columns(2)
         with cols[0]:
-            st.image(_morphology_schematic("uniform"), use_container_width=True)
+            st.image(
+                _morphology_schematic("uniform", **_geom_kwargs),
+                use_container_width=True,
+            )
             st.caption(
                 "**Uniform**: full amplitude on every ply — no "
                 "through-thickness decay."
             )
         with cols[1]:
-            st.image(_morphology_schematic("graded"), use_container_width=True)
+            st.image(
+                _morphology_schematic("graded", **_geom_kwargs),
+                use_container_width=True,
+            )
             st.caption(
                 "**Graded**: linear decay from the wrinkle interface to the "
                 "outer surfaces. The **Decay floor** slider sets the minimum "
@@ -347,8 +386,13 @@ with st.sidebar:
         )
 
     st.image(
-        _morphology_schematic(morphology),
-        caption=f"{morphology.capitalize()} morphology",
+        _morphology_schematic(
+            morphology, **_geom_kwargs, decay_floor=decay_floor,
+        ),
+        caption=(
+            f"{morphology.capitalize()} morphology · "
+            f"A = {amplitude:g} mm, λ = {wavelength:g} mm, w = {width:g} mm"
+        ),
         use_container_width=True,
     )
 
