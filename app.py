@@ -346,6 +346,12 @@ with st.sidebar:
             help="Minimum amplitude fraction at the outer surfaces.",
         )
 
+    st.image(
+        _morphology_schematic(morphology),
+        caption=f"{morphology.capitalize()} morphology",
+        use_container_width=True,
+    )
+
     loading = st.radio("Loading mode", ["compression", "tension"], horizontal=True)
     strain_mag_pct = st.number_input(
         "Applied strain magnitude [%]",
