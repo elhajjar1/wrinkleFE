@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
@@ -36,7 +37,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
-from wrinklefe.core.material import MaterialLibrary
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 
 import streamlit_viz
@@ -63,10 +64,36 @@ LIB = MaterialLibrary()
 MATERIAL_NAMES = sorted(LIB.list_names())
 MORPHOLOGIES = ["stack", "convex", "concave", "uniform", "graded"]
 
-DEFAULT_LAYUP = (
-    "0,45,-45,90,0,45,-45,90,0,45,-45,90,"
-    "90,-45,45,0,90,-45,45,0,90,-45,45,0"
+CUSTOM_MATERIAL_LABEL = "Custom…"
+MATERIAL_OPTIONS = MATERIAL_NAMES + [CUSTOM_MATERIAL_LABEL]
+
+# Field name -> (label, format, step, help) for the custom-material editor.
+# Limited to the elastic + strength allowables that drive most analyses;
+# hygrothermal/kink-band parameters fall back to the IM7/8552 defaults.
+CUSTOM_MAT_ELASTIC_FIELDS = (
+    ("E1", "E1 [MPa]", "%.0f"),
+    ("E2", "E2 [MPa]", "%.0f"),
+    ("E3", "E3 [MPa]", "%.0f"),
+    ("G12", "G12 [MPa]", "%.0f"),
+    ("G13", "G13 [MPa]", "%.0f"),
+    ("G23", "G23 [MPa]", "%.0f"),
+    ("nu12", "ν12", "%.3f"),
+    ("nu13", "ν13", "%.3f"),
+    ("nu23", "ν23", "%.3f"),
 )
+CUSTOM_MAT_STRENGTH_FIELDS = (
+    ("Xt", "Xt [MPa]", "%.1f"),
+    ("Xc", "Xc [MPa]", "%.1f"),
+    ("Yt", "Yt [MPa]", "%.1f"),
+    ("Yc", "Yc [MPa]", "%.1f"),
+    ("Zt", "Zt [MPa]", "%.1f"),
+    ("Zc", "Zc [MPa]", "%.1f"),
+    ("S12", "S12 [MPa]", "%.1f"),
+    ("S13", "S13 [MPa]", "%.1f"),
+    ("S23", "S23 [MPa]", "%.1f"),
+)
+
+DEFAULT_LAYUP = "[0/45/-45/90]_3s"
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +156,105 @@ def _morphology_schematic(morphology: str) -> bytes:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    st.markdown("**Material & layup**")
+    default_idx = (
+        MATERIAL_OPTIONS.index("IM7_8552") if "IM7_8552" in MATERIAL_OPTIONS else 0
+    )
+    material_choice = st.selectbox(
+        "Material", MATERIAL_OPTIONS, index=default_idx,
+        help=(
+            "Pick a built-in carbon/epoxy or glass/epoxy system, or choose "
+            f"**{CUSTOM_MATERIAL_LABEL}** to enter your own ply properties."
+        ),
+    )
+
+    if material_choice == CUSTOM_MATERIAL_LABEL:
+        # Seed the custom editor from a sensible default so users only have
+        # to override the values they care about.
+        _seed_name = (
+            "IM7_8552" if "IM7_8552" in MATERIAL_NAMES else MATERIAL_NAMES[0]
+        )
+        _seed = LIB.get(_seed_name)
+        with st.expander("Custom material properties", expanded=True):
+            st.caption(
+                "Defaults are seeded from "
+                f"**{_seed_name}**. Hygrothermal coefficients, gamma_Y and "
+                "LaRC parameters fall back to those defaults — only the "
+                "elastic constants and strength allowables below are "
+                "exposed here."
+            )
+            custom_name = st.text_input(
+                "Material name", value="custom", max_chars=64,
+                help="Free-text label used in exports and plots.",
+            )
+            st.markdown("*Elastic constants*")
+            elastic_vals: dict[str, float] = {}
+            elastic_cols = st.columns(3)
+            for i, (key, label, fmt) in enumerate(CUSTOM_MAT_ELASTIC_FIELDS):
+                col = elastic_cols[i % 3]
+                seed_val = float(getattr(_seed, key))
+                step = 0.01 if key.startswith("nu") else 100.0
+                elastic_vals[key] = col.number_input(
+                    label, min_value=0.0, value=seed_val,
+                    step=step, format=fmt, key=f"custom_{key}",
+                )
+            st.markdown("*Strength allowables*")
+            strength_vals: dict[str, float] = {}
+            strength_cols = st.columns(3)
+            for i, (key, label, fmt) in enumerate(CUSTOM_MAT_STRENGTH_FIELDS):
+                col = strength_cols[i % 3]
+                seed_val = float(getattr(_seed, key))
+                strength_vals[key] = col.number_input(
+                    label, min_value=0.0, value=seed_val,
+                    step=1.0, format=fmt, key=f"custom_{key}",
+                )
+
+        # Inherit non-exposed fields from the seed material.
+        material_dict = _seed.to_dict()
+        material_dict.update(elastic_vals)
+        material_dict.update(strength_vals)
+        material_dict["name"] = custom_name.strip() or "custom"
+    else:
+        material_dict = LIB.get(material_choice).to_dict()
+
+    ply_thickness = st.number_input(
+        "Ply thickness [mm]",
+        min_value=0.05, max_value=1.0, value=0.183, step=0.01,
+        help=(
+            "Thickness of one ply in mm. Default 0.183 mm matches "
+            "CYCOM X850/T800. Total laminate thickness = ply_thickness × "
+            "number of plies in the layup."
+        ),
+    )
+    layup_str = st.text_area(
+        "Layup",
+        value=DEFAULT_LAYUP, height=80,
+        help=(
+            "Accepts contracted notation like `[0/45/-45/90]_3s` "
+            "or an explicit comma-separated list of angles in degrees."
+        ),
+    )
+    with st.popover("Layup notation help", use_container_width=True):
+        st.markdown(
+            "**Contracted notation** — sublaminate in square brackets, "
+            "plies separated by `/`, optional repeat count and trailing "
+            "`s` for symmetry:\n\n"
+            "| Input | Expanded plies |\n"
+            "|---|---|\n"
+            "| `[0/45/-45/90]_3s` | `0/45/-45/90` × 3 then mirrored — **24 plies** (default quasi-isotropic) |\n"
+            "| `[0/±45/90]s` | `0,45,-45,90` mirrored — **8 plies** |\n"
+            "| `[0_2/90]_2` | `0,0,90` × 2 — **6 plies** |\n"
+            "| `[±30]_2` | `30,-30` × 2 — **4 plies** |\n\n"
+            "Modifiers:\n"
+            "- `±θ` expands to `θ, -θ` (two plies).\n"
+            "- `θ_n` repeats a single ply *n* times (e.g. `0_4` ⇒ four 0° plies).\n"
+            "- `_n` after the bracket repeats the whole sublaminate *n* times.\n"
+            "- Trailing `s` mirrors the stack to enforce symmetry.\n\n"
+            "**Explicit list** — comma-, semicolon-, or newline-separated "
+            "angles, e.g. `0, 45, -45, 90, 90, -45, 45, 0`. Both forms can be "
+            "edited freely in the textarea above."
+        )
+
     st.markdown("**Wrinkle geometry**")
     amplitude = st.number_input(
         "Amplitude A [mm]",
@@ -232,24 +358,6 @@ with st.sidebar:
     )
     applied_strain_pct = -strain_mag_pct if loading == "compression" else strain_mag_pct
 
-    st.markdown("**Material & layup**")
-    default_idx = MATERIAL_NAMES.index("IM7_8552") if "IM7_8552" in MATERIAL_NAMES else 0
-    material_name = st.selectbox("Material", MATERIAL_NAMES, index=default_idx)
-    ply_thickness = st.number_input(
-        "Ply thickness [mm]",
-        min_value=0.05, max_value=1.0, value=0.183, step=0.01,
-        help=(
-            "Thickness of one ply in mm. Default 0.183 mm matches "
-            "CYCOM X850/T800. Total laminate thickness = ply_thickness × "
-            "number of plies in the layup."
-        ),
-    )
-    layup_str = st.text_area(
-        "Layup (comma-separated angles in degrees)",
-        value=DEFAULT_LAYUP, height=80,
-        help="Default: quasi-isotropic [0/45/-45/90]_3s (24 plies).",
-    )
-
     with st.expander("Advanced — mesh & solver", expanded=True):
         analytical_only = st.checkbox(
             "Analytical only (skip FE solve)", value=False,
@@ -298,13 +406,73 @@ with st.sidebar:
 # Helpers
 # ---------------------------------------------------------------------------
 
+_PLY_TOKEN_RE = re.compile(
+    r"""\s*
+        (?P<sign>±)?\s*
+        (?P<angle>[+-]?\d+(?:\.\d+)?)\s*
+        (?:_(?P<rep>\d+))?\s*
+    """,
+    re.VERBOSE,
+)
+
+
+def _expand_ply_token(token: str) -> List[float]:
+    """Expand a single ply entry like ``0``, ``45_2``, ``±45``, or ``±30_2``."""
+    token = token.strip()
+    if not token:
+        return []
+    m = _PLY_TOKEN_RE.fullmatch(token)
+    if not m:
+        raise ValueError(f"Could not parse ply token: {token!r}")
+    angle = float(m.group("angle"))
+    rep = int(m.group("rep")) if m.group("rep") else 1
+    if m.group("sign") == "±":
+        return [angle, -angle] * rep
+    return [angle] * rep
+
+
+def _parse_contracted_layup(s: str) -> List[float]:
+    """Parse contracted notation like ``[0/45/-45/90]_3s`` or ``[0/±45/90]s``."""
+    m = re.fullmatch(
+        r"\s*\[\s*(?P<inner>[^\[\]]*)\]\s*_?\s*(?P<rep>\d+)?\s*(?P<sym>[sS])?\s*",
+        s,
+    )
+    if not m:
+        raise ValueError(
+            f"Could not parse contracted layup {s!r}. "
+            "Expected a form like '[0/45/-45/90]_3s'."
+        )
+    plies: List[float] = []
+    for tok in m.group("inner").split("/"):
+        plies.extend(_expand_ply_token(tok))
+    if not plies:
+        raise ValueError("Contracted layup contains no plies.")
+    repeat = int(m.group("rep")) if m.group("rep") else 1
+    plies = plies * repeat
+    if m.group("sym"):
+        plies = plies + plies[::-1]
+    return plies
+
+
 def parse_layup(s: str) -> List[float]:
-    """Parse '0,45,-45,90' (or whitespace/semicolon-separated) into floats."""
+    """Parse a layup string into a flat list of ply angles (degrees).
+
+    Two notations are accepted:
+
+    * **Contracted** — ``[0/45/-45/90]_3s`` (sublaminate in brackets, optional
+      repeat count, trailing ``s`` for symmetry). ``±`` and ``_n`` ply-level
+      modifiers are also supported, e.g. ``[0/±45/90_2]s``.
+    * **Explicit list** — comma-, semicolon-, or newline-separated angles,
+      e.g. ``0, 45, -45, 90, ...``.
+    """
+    s = s.strip()
+    if not s:
+        raise ValueError("Layup is empty.")
+    if "[" in s or "]" in s:
+        return _parse_contracted_layup(s)
     out: List[float] = []
     for tok in s.replace(";", ",").replace("\n", ",").split(","):
-        tok = tok.strip()
-        if tok:
-            out.append(float(tok))
+        out.extend(_expand_ply_token(tok))
     if not out:
         raise ValueError("Layup is empty.")
     return out
@@ -315,6 +483,8 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
     """Cached analysis run. cfg_payload is a hashable tuple of config items."""
     cfg_dict = dict(cfg_payload)
     angles = list(cfg_dict.pop("angles_tuple"))
+    material_dict = dict(cfg_dict.pop("material_tuple"))
+    material = OrthotropicMaterial.from_dict(material_dict)
     cfg = AnalysisConfig(
         amplitude=cfg_dict["amplitude"],
         wavelength=cfg_dict["wavelength"],
@@ -322,7 +492,7 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         morphology=cfg_dict["morphology"],
         decay_floor=cfg_dict["decay_floor"],
         loading=cfg_dict["loading"],
-        material=LIB.get(cfg_dict["material_name"]),
+        material=material,
         angles=angles,
         ply_thickness=cfg_dict["ply_thickness"],
         applied_strain=cfg_dict["applied_strain"],
@@ -417,6 +587,15 @@ if run_clicked:
         st.error(f"Could not parse layup: {e}")
         st.stop()
 
+    try:
+        # Validate the custom material up front so the cache isn't keyed on
+        # an invalid OrthotropicMaterial that will only blow up inside
+        # AnalysisConfig.
+        OrthotropicMaterial.from_dict(material_dict)
+    except ValueError as e:
+        st.error(f"Invalid custom material: {e}")
+        st.stop()
+
     cfg_payload = tuple(sorted({
         "amplitude": amplitude,
         "wavelength": wavelength,
@@ -428,7 +607,7 @@ if run_clicked:
         "angles_tuple": tuple(layup),
         "applied_strain": applied_strain_pct / 100.0,
         "nx": int(nx), "ny": int(ny), "nz_per_ply": int(nz_per_ply),
-        "material_name": material_name,
+        "material_tuple": tuple(sorted(material_dict.items())),
         "analytical_only": bool(analytical_only),
     }.items()))
 
@@ -822,6 +1001,7 @@ with tab_export:
             "results": _strip_arrays(st.session_state["results"]),
         }
         payload["config"]["angles"] = list(payload["config"].pop("angles_tuple"))
+        payload["config"]["material"] = dict(payload["config"].pop("material_tuple"))
 
         st.download_button(
             "Download results as JSON",
