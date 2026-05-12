@@ -286,59 +286,23 @@ with st.sidebar:
     morphology = st.selectbox(
         "Morphology", MORPHOLOGIES, index=0,
         help=(
-            "Shape pattern of the wrinkle through the laminate thickness. "
-            "Stack/convex/concave are dual-wrinkle morphologies "
-            "differing by phase offset φ; uniform/graded are single-wrinkle "
-            "through-thickness modes. Click the **?** button below for "
-            "schematic illustrations."
+            "Wrinkle shape pattern through the laminate thickness. The cartoon "
+            "below the dropdown shows the active choice; switch values to see "
+            "the others.\n\n"
+            "**Dual-wrinkle modes** — two adjacent wrinkles offset by phase φ "
+            "between their centrelines (Jin et al. 2026):\n"
+            "- *stack* (φ = 0): peaks aligned. M_f = 1.0 — baseline.\n"
+            "- *convex* (φ = π/2): interface bulges outward. M_f < 1 — "
+            "*least* damaging in compression.\n"
+            "- *concave* (φ = −π/2): interface pinches inward. M_f > 1 — "
+            "*most* damaging in compression.\n\n"
+            "**Single-wrinkle modes** — one wrinkle, varying through-thickness "
+            "amplitude:\n"
+            "- *uniform*: full amplitude on every ply.\n"
+            "- *graded*: linear decay from wrinkle core to surfaces, controlled "
+            "by the **Decay floor** slider (0 = full decay, 1 = uniform)."
         ),
     )
-    with st.popover("?", use_container_width=False):
-        st.markdown(
-            "**Dual-wrinkle morphologies** — two adjacent wrinkles across "
-            "the laminate thickness, classified by the relative phase offset "
-            "φ between their centrelines (Jin et al. 2026)."
-        )
-        cols = st.columns(3)
-        with cols[0]:
-            st.image(_morphology_schematic("stack"), use_container_width=True)
-            st.caption(
-                "**Stack** (φ = 0): peaks and troughs aligned vertically. "
-                "M_f = 1.0 — baseline."
-            )
-        with cols[1]:
-            st.image(_morphology_schematic("convex"), use_container_width=True)
-            st.caption(
-                "**Convex** (φ = π/2): interface bulges outward. "
-                "M_f < 1 — *least* damaging in compression."
-            )
-        with cols[2]:
-            st.image(_morphology_schematic("concave"), use_container_width=True)
-            st.caption(
-                "**Concave** (φ = −π/2): interface pinches inward. "
-                "M_f > 1 — *most* damaging in compression."
-            )
-
-        st.markdown(
-            "**Single-wrinkle through-thickness modes** — one wrinkle, "
-            "varying how its amplitude propagates from the wrinkle core "
-            "outward to the laminate surfaces."
-        )
-        cols = st.columns(2)
-        with cols[0]:
-            st.image(_morphology_schematic("uniform"), use_container_width=True)
-            st.caption(
-                "**Uniform**: full amplitude on every ply — no "
-                "through-thickness decay."
-            )
-        with cols[1]:
-            st.image(_morphology_schematic("graded"), use_container_width=True)
-            st.caption(
-                "**Graded**: linear decay from the wrinkle interface to the "
-                "outer surfaces. The **Decay floor** slider sets the minimum "
-                "amplitude fraction retained at the surface plies "
-                "(0 = full decay, 1 = uniform)."
-            )
     decay_floor = 0.0
     if morphology == "graded":
         decay_floor = st.slider(
@@ -378,6 +342,7 @@ with st.sidebar:
         )
         nx = st.number_input(
             "Mesh divisions in x", 4, 64, 12, 2,
+            disabled=analytical_only,
             help=(
                 "Hex elements along the wrinkle (x) direction across the "
                 "domain length. More elements resolve the curvature but "
@@ -386,6 +351,7 @@ with st.sidebar:
         )
         ny = st.number_input(
             "Mesh divisions in y", 4, 32, 6, 2,
+            disabled=analytical_only,
             help=(
                 "Hex elements across the laminate width (y). Wrinkle is "
                 "uniform in y, so a coarse mesh is usually adequate."
@@ -393,12 +359,18 @@ with st.sidebar:
         )
         nz_per_ply = st.number_input(
             "Mesh divisions per ply (z)", 1, 4, 1,
+            disabled=analytical_only,
             help=(
                 "Hex elements through the thickness of every individual "
                 "ply. Increase to capture interlaminar stress gradients."
             ),
         )
-        if not analytical_only:
+        if analytical_only:
+            st.caption(
+                "Mesh inputs are inactive — the closed-form analytical "
+                "knockdown skips the FE solve."
+            )
+        else:
             st.caption(
                 ":hourglass_flowing_sand: Full FE solve. On Streamlit "
                 "Cloud's CPU this typically takes 30–90 s for the default "
@@ -502,7 +474,9 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         angles=angles,
         ply_thickness=cfg_dict["ply_thickness"],
         applied_strain=cfg_dict["applied_strain"],
-        nx=cfg_dict["nx"], ny=cfg_dict["ny"], nz_per_ply=cfg_dict["nz_per_ply"],
+        nx=cfg_dict.get("nx", 12),
+        ny=cfg_dict.get("ny", 6),
+        nz_per_ply=cfg_dict.get("nz_per_ply", 1),
         analytical_only=cfg_dict["analytical_only"],
     )
     result = WrinkleAnalysis(cfg).run(analytical_only=cfg_dict["analytical_only"])
@@ -602,7 +576,7 @@ if run_clicked:
         st.error(f"Invalid custom material: {e}")
         st.stop()
 
-    cfg_payload = tuple(sorted({
+    cfg_items: dict = {
         "amplitude": amplitude,
         "wavelength": wavelength,
         "width": width,
@@ -612,10 +586,16 @@ if run_clicked:
         "ply_thickness": ply_thickness,
         "angles_tuple": tuple(layup),
         "applied_strain": applied_strain_pct / 100.0,
-        "nx": int(nx), "ny": int(ny), "nz_per_ply": int(nz_per_ply),
         "material_tuple": tuple(sorted(material_dict.items())),
         "analytical_only": bool(analytical_only),
-    }.items()))
+    }
+    # Mesh keys only matter for the FE path; omitting them in analytical-only
+    # mode means the cache key doesn't churn when the user tweaks nx/ny/nz.
+    if not analytical_only:
+        cfg_items["nx"] = int(nx)
+        cfg_items["ny"] = int(ny)
+        cfg_items["nz_per_ply"] = int(nz_per_ply)
+    cfg_payload = tuple(sorted(cfg_items.items()))
 
     with st.status("Running analysis…", expanded=True) as status:
         st.write("Building laminate, wrinkle geometry, and mesh…")
