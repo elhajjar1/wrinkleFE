@@ -24,7 +24,7 @@ An open-source Python finite element package for predicting strength and stiffne
 - **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **PyQt6 GUI:** Interactive analysis with real-time stress visualization
-- **4 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510
+- **5 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 (S-glass/epoxy)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Installation
