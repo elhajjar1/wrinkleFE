@@ -62,6 +62,7 @@ st.caption(
 
 LIB = MaterialLibrary()
 MATERIAL_NAMES = sorted(LIB.list_names())
+MATERIAL_NAMES = sorted(LIB.list_names())
 MORPHOLOGIES = ["stack", "convex", "concave", "uniform", "graded"]
 
 CUSTOM_MATERIAL_LABEL = "Custom…"
@@ -99,6 +100,90 @@ DEFAULT_LAYUP = "[0/45/-45/90]_3s"
 # ---------------------------------------------------------------------------
 # Sidebar helpers
 # ---------------------------------------------------------------------------
+
+@st.cache_data(show_spinner=False)
+def _hero_schematic() -> bytes:
+    """Three-panel cartoon: pristine laminate → wrinkled laminate → strength loss.
+
+    Rendered above the tabs as a 60-second orientation for first-time
+    visitors. Static — no parameters, cached forever per session.
+    """
+    fig, axes = plt.subplots(
+        1, 3, figsize=(8.4, 1.95), dpi=110,
+        gridspec_kw={"width_ratios": [1.0, 1.3, 0.7]},
+    )
+    n_plies = 7
+    band_h = 0.10
+    band_gap = 0.02
+    pitch = band_h + band_gap
+    ply_colors = [
+        "#1e3a8a", "#cbd5e0", "#1e3a8a", "#cbd5e0",
+        "#1e3a8a", "#cbd5e0", "#1e3a8a",
+    ]
+
+    # Panel 1 — pristine: stacked horizontal bands.
+    ax = axes[0]
+    for i in range(n_plies):
+        y = (i - (n_plies - 1) / 2) * pitch
+        ax.add_patch(plt.Rectangle(
+            (-0.85, y - band_h / 2), 1.7, band_h,
+            color=ply_colors[i], lw=0,
+        ))
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-0.9, 0.9)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title("Pristine laminate", fontsize=9, pad=4)
+
+    # Panel 2 — wrinkled: same bands deformed by a Gaussian-windowed cosine.
+    ax = axes[1]
+    x = np.linspace(-0.85, 0.85, 240)
+    env = np.exp(-(x ** 2) / 0.28 ** 2)
+    carrier = 0.10 * env * np.cos(2 * np.pi * x / 0.45)
+    p_mid = (n_plies - 1) / 2.0
+    for i in range(n_plies):
+        y0 = (i - p_mid) * pitch
+        # Slight through-thickness decay so the wrinkle "fades" outward.
+        decay = 1.0 - 0.40 * abs(i - p_mid) / p_mid
+        z_centre = y0 + decay * carrier
+        ax.fill_between(
+            x, z_centre - band_h / 2, z_centre + band_h / 2,
+            color=ply_colors[i], lw=0,
+        )
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-0.9, 0.9)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title("Wrinkled laminate", fontsize=9, pad=4)
+
+    # Panel 3 — predicted knockdown: two-bar strength comparison.
+    ax = axes[2]
+    ax.bar([0], [1.00], color="#94a3b8", width=0.55)
+    ax.bar([1], [0.62], color="#dc2626", width=0.55)
+    ax.set_xlim(-0.5, 1.5)
+    ax.set_ylim(0, 1.25)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["pristine", "wrinkled"], fontsize=8)
+    ax.set_yticks([])
+    ax.text(0, 1.04, "100%", ha="center", fontsize=8)
+    ax.text(1, 0.66, "62%", ha="center", fontsize=8)
+    ax.text(
+        0.5, 1.18, "−38% strength",
+        ha="center", fontsize=9, color="#dc2626", fontweight="bold",
+    )
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_title("Predicted knockdown", fontsize=9, pad=4)
+
+    fig.subplots_adjust(
+        left=0.02, right=0.98, top=0.85, bottom=0.05, wspace=0.30,
+    )
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return buf.getvalue()
+
 
 @st.cache_data(show_spinner=False)
 def _morphology_schematic(morphology: str) -> bytes:
@@ -149,6 +234,20 @@ def _morphology_schematic(morphology: str) -> bytes:
     fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Hero / orientation block — renders in the main column above the tabs
+# ---------------------------------------------------------------------------
+
+st.markdown(
+    "Carbon-fibre composite parts — aircraft skins, wind blades, pressure "
+    "vessels — develop tiny ripples (\"wrinkles\") during layup or cure. "
+    "Even a 0.5 mm wrinkle can cut compressive strength by **30–60 %**. "
+    "WrinkleFE predicts that loss in seconds so engineers and inspectors "
+    "can decide: **scrap, repair, or accept.**"
+)
+st.image(_hero_schematic(), use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
@@ -743,7 +842,23 @@ with tab_geom:
 
 with tab_results:
     if "results" not in st.session_state:
-        st.info("Click **Run analysis** in the sidebar to compute results.")
+        st.markdown("### No results yet")
+        st.markdown(
+            "Click **▶ Run analysis** in the sidebar. Once the analysis "
+            "completes this tab will show:\n\n"
+            "- The peak fibre misalignment angle in the wrinkle\n"
+            "- The analytical and FE-predicted strength knockdown\n"
+            "- A breakdown by failure criterion "
+            "(Tsai-Wu, Hashin, Puck, LaRC)\n"
+            "- A 3-D view of the stress field through the laminate\n"
+            "- Per-ply failure indices and the controlling ply"
+        )
+        st.caption(
+            "Tip: tick **Analytical only** inside the *Advanced — mesh & "
+            "solver* expander for a fast estimate that skips the FE solve. "
+            "Open the **What do these terms mean?** expander at the bottom "
+            "of the sidebar if any term is unfamiliar."
+        )
     else:
         r = st.session_state["results"]
 
