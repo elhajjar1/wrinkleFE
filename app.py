@@ -249,6 +249,19 @@ st.markdown(
 )
 st.image(_hero_schematic(), use_container_width=True)
 
+_demo_cols = st.columns([2, 1, 2])
+if _demo_cols[1].button(
+    "▶ Try a demo analysis",
+    type="primary",
+    use_container_width=True,
+    help=(
+        "One-click analytical run with IM7/8552 and a quasi-isotropic "
+        "[0/45/-45/90]_3s layup. Lands on the Results tab in ~2 s."
+    ),
+):
+    st.session_state["_demo_pending"] = True
+    st.rerun()
+
 
 # ---------------------------------------------------------------------------
 # Sidebar inputs
@@ -678,42 +691,69 @@ profile = GaussianSinusoidal(amplitude=amplitude, wavelength=wavelength, width=w
 # Run handler — execute BEFORE tabs render so the Results tab sees the
 # updated session_state and the empty-state placeholder doesn't render
 # alongside the running indicator.
-if run_clicked:
-    try:
-        layup = parse_layup(layup_str)
-    except ValueError as e:
-        st.error(f"Could not parse layup: {e}")
-        st.stop()
+_demo_pending = st.session_state.pop("_demo_pending", False)
+if run_clicked or _demo_pending:
+    if _demo_pending:
+        # Hardcoded analytical-only demo so a first-time visitor can land on
+        # the Results tab in ~2 s without touching the sidebar.
+        _demo_seed_name = (
+            "IM7_8552" if "IM7_8552" in MATERIAL_NAMES else MATERIAL_NAMES[0]
+        )
+        _demo_material_dict = LIB.get(_demo_seed_name).to_dict()
+        _demo_layup = (
+            0, 45, -45, 90, 0, 45, -45, 90, 0, 45, -45, 90,
+            90, -45, 45, 0, 90, -45, 45, 0, 90, -45, 45, 0,
+        )
+        cfg_payload = tuple(sorted({
+            "amplitude": 0.366,
+            "wavelength": 16.0,
+            "width": 12.0,
+            "morphology": "stack",
+            "decay_floor": 0.0,
+            "loading": "compression",
+            "ply_thickness": 0.183,
+            "angles_tuple": _demo_layup,
+            "applied_strain": -0.01,
+            "material_tuple": tuple(sorted(_demo_material_dict.items())),
+            "analytical_only": True,
+        }.items()))
+    else:
+        try:
+            layup = parse_layup(layup_str)
+        except ValueError as e:
+            st.error(f"Could not parse layup: {e}")
+            st.stop()
 
-    try:
-        # Validate the custom material up front so the cache isn't keyed on
-        # an invalid OrthotropicMaterial that will only blow up inside
-        # AnalysisConfig.
-        OrthotropicMaterial.from_dict(material_dict)
-    except ValueError as e:
-        st.error(f"Invalid custom material: {e}")
-        st.stop()
+        try:
+            # Validate the custom material up front so the cache isn't keyed
+            # on an invalid OrthotropicMaterial that will only blow up inside
+            # AnalysisConfig.
+            OrthotropicMaterial.from_dict(material_dict)
+        except ValueError as e:
+            st.error(f"Invalid custom material: {e}")
+            st.stop()
 
-    cfg_items: dict = {
-        "amplitude": amplitude,
-        "wavelength": wavelength,
-        "width": width,
-        "morphology": morphology,
-        "decay_floor": decay_floor,
-        "loading": loading,
-        "ply_thickness": ply_thickness,
-        "angles_tuple": tuple(layup),
-        "applied_strain": applied_strain_pct / 100.0,
-        "material_tuple": tuple(sorted(material_dict.items())),
-        "analytical_only": bool(analytical_only),
-    }
-    # Mesh keys only matter for the FE path; omitting them in analytical-only
-    # mode means the cache key doesn't churn when the user tweaks nx/ny/nz.
-    if not analytical_only:
-        cfg_items["nx"] = int(nx)
-        cfg_items["ny"] = int(ny)
-        cfg_items["nz_per_ply"] = int(nz_per_ply)
-    cfg_payload = tuple(sorted(cfg_items.items()))
+        cfg_items: dict = {
+            "amplitude": amplitude,
+            "wavelength": wavelength,
+            "width": width,
+            "morphology": morphology,
+            "decay_floor": decay_floor,
+            "loading": loading,
+            "ply_thickness": ply_thickness,
+            "angles_tuple": tuple(layup),
+            "applied_strain": applied_strain_pct / 100.0,
+            "material_tuple": tuple(sorted(material_dict.items())),
+            "analytical_only": bool(analytical_only),
+        }
+        # Mesh keys only matter for the FE path; omitting them in
+        # analytical-only mode means the cache key doesn't churn when the
+        # user tweaks nx/ny/nz.
+        if not analytical_only:
+            cfg_items["nx"] = int(nx)
+            cfg_items["ny"] = int(ny)
+            cfg_items["nz_per_ply"] = int(nz_per_ply)
+        cfg_payload = tuple(sorted(cfg_items.items()))
 
     with st.status("Running analysis…", expanded=True) as status:
         st.write("Building laminate, wrinkle geometry, and mesh…")
@@ -755,6 +795,14 @@ if run_clicked:
 
     st.session_state["results"] = results
     st.session_state["cfg_payload"] = cfg_payload
+    if _demo_pending:
+        st.success(
+            "✓ Demo analysis complete with sensible defaults "
+            "(IM7/8552, quasi-isotropic 24-ply, 1 % compression). "
+            "Open the **Results** tab below to see the numbers — "
+            "then tweak any sidebar parameter and click *Run analysis* "
+            "to compare against your own configuration."
+        )
 
 
 tab_geom, tab_results, tab_export = st.tabs(["Geometry", "Results", "Export"])
@@ -861,6 +909,70 @@ with tab_results:
         )
     else:
         r = st.session_state["results"]
+
+        # ------------------------------------------------------------------
+        # Before / after comparison card (#98 item 6)
+        # ------------------------------------------------------------------
+        _knockdown = float(r.get("analytical_knockdown", 1.0))
+        _wrinkled_strength = float(r.get("analytical_strength_MPa", 0.0))
+        _pristine_strength = (
+            _wrinkled_strength / _knockdown if _knockdown > 1e-6 else None
+        )
+        _strength_delta_pct = (1.0 - _knockdown) * 100.0
+
+        _cfg_runtime = dict(st.session_state.get("cfg_payload", ()))
+        _mat_runtime = dict(_cfg_runtime.get("material_tuple", ()))
+        _E1_pristine_GPa: float | None = None
+        if _mat_runtime.get("E1"):
+            _E1_pristine_GPa = float(_mat_runtime["E1"]) / 1000.0
+
+        _fe_runtime = r.get("fe")
+        _E1_wrinkled_GPa: float | None = None
+        _stiffness_delta_pct: float | None = None
+        if _fe_runtime is not None and _E1_pristine_GPa is not None:
+            _modulus_ret = float(_fe_runtime.get("modulus_retention", 1.0))
+            _E1_wrinkled_GPa = _E1_pristine_GPa * _modulus_ret
+            _stiffness_delta_pct = (1.0 - _modulus_ret) * 100.0
+
+        st.subheader("Before / after this wrinkle")
+        ba_cols = st.columns(2)
+        with ba_cols[0]:
+            st.markdown("**Pristine baseline**")
+            if _pristine_strength is not None:
+                st.markdown(f"Strength · **{_pristine_strength:,.0f} MPa**")
+            if _E1_pristine_GPa is not None:
+                st.markdown(f"Stiffness (E₁) · **{_E1_pristine_GPa:.1f} GPa**")
+        with ba_cols[1]:
+            st.markdown("**Your wrinkled laminate**")
+            _strength_arrow = "▼" if _strength_delta_pct >= 0 else "▲"
+            st.markdown(
+                f"Strength · **{_wrinkled_strength:,.0f} MPa**  "
+                f"({_strength_arrow} {abs(_strength_delta_pct):.0f} %)"
+            )
+            if _E1_wrinkled_GPa is not None and _stiffness_delta_pct is not None:
+                _stiff_arrow = "▼" if _stiffness_delta_pct >= 0 else "▲"
+                st.markdown(
+                    f"Stiffness (E₁) · **{_E1_wrinkled_GPa:.1f} GPa**  "
+                    f"({_stiff_arrow} {abs(_stiffness_delta_pct):.1f} %)"
+                )
+            else:
+                st.markdown(
+                    "Stiffness (E₁) · _run with FE on to compute_"
+                )
+
+        if _stiffness_delta_pct is not None:
+            st.caption(
+                f"This wrinkle costs you **{abs(_strength_delta_pct):.0f} %** "
+                f"of strength and **{abs(_stiffness_delta_pct):.1f} %** of "
+                "stiffness. Wrinkles almost always hurt strength far more "
+                "than stiffness."
+            )
+        else:
+            st.caption(
+                f"This wrinkle costs you **{abs(_strength_delta_pct):.0f} %** "
+                "of strength. Untick *Analytical only* in the sidebar's "
+                "*Advanced* expander to also see the stiffness drop."
+            )
 
         st.subheader("Analytical predictions")
         c1, c2, c3, c4 = st.columns(4)
