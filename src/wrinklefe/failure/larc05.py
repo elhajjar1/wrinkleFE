@@ -327,7 +327,9 @@ class LaRC05Criterion(FailureCriterion):
                 return float("inf")
             fi = (tau_12m / denom_l) ** 2 + (tau_23m / denom_t) ** 2
 
-        return max(fi, 0.0)
+        # Return linear-in-load FI (sqrt of the quadratic form) so it can
+        # be compared directly against the other sub-criteria — see #79.
+        return float(np.sqrt(max(fi, 0.0)))
 
     # ------------------------------------------------------------------
     # Matrix failure (fracture-plane search)
@@ -397,7 +399,9 @@ class LaRC05Criterion(FailureCriterion):
                     fi_arr[i] = (tnt / denom_t) ** 2 + (tn1 / denom_l) ** 2
 
         idx_max = int(np.argmax(fi_arr))
-        fi_max = float(fi_arr[idx_max])
+        # Return linear-in-load FI (sqrt of the quadratic form) so it can
+        # be compared directly against the other sub-criteria — see #79.
+        fi_max = float(np.sqrt(max(fi_arr[idx_max], 0.0)))
         mode = "matrix_tension" if sigma_n[idx_max] >= 0 else "matrix_compression"
         return fi_max, mode
 
@@ -464,11 +468,9 @@ class LaRC05Criterion(FailureCriterion):
         else:
             fi, mode = fi_matrix, mode_matrix
 
-        # Reserve factor: sqrt for quadratic criteria
-        if fi > 0:
-            rf = 1.0 / np.sqrt(fi) if mode != "fiber_tension" else 1.0 / fi
-        else:
-            rf = float("inf")
+        # Reserve factor. Every sub-FI is now on the linear-in-load scale
+        # (see #79), so rf = 1 / fi holds uniformly.
+        rf = 1.0 / fi if fi > 0 else float("inf")
 
         # Sub-criterion detail for diagnostics
         phi_c = self._compute_phi_c(

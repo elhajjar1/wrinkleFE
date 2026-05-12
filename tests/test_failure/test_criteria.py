@@ -167,3 +167,55 @@ class TestLaRC05Criterion:
         fi_comp = criterion.evaluate(s_comp, x850_material, ctx).index
         fi_tens = criterion.evaluate(s_tens, x850_material, ctx).index
         assert fi_comp > fi_tens
+
+    # ------------------------------------------------------------------
+    # Regression tests for issue #79 — sub-FI scale harmonisation
+    # ------------------------------------------------------------------
+
+    def test_sub_FIs_all_linear_in_load(self, x850_material):
+        """At half-allowable combined fibre+matrix load, every sub-FI must
+        be ~0.5 on the linear-in-load scale, and the governing index must
+        match. Pre-fix, fi_fiber would be 0.5 but fi_matrix would be 0.25
+        (mixed linear/quadratic scales). See issue #79.
+        """
+        criterion = LaRC05Criterion()
+        Yt_is, _ = criterion._in_situ_strengths(x850_material)
+        # Half of Xt longitudinal tension + half of (in-situ) Yt transverse
+        # tension, no shear.
+        stress = np.array([
+            0.5 * x850_material.Xt, 0.5 * Yt_is, 0.0, 0.0, 0.0, 0.0,
+        ])
+        result = criterion.evaluate(stress, x850_material)
+        # Both sub-FIs should be ~0.5 — exact equality up to the
+        # plane-of-action discretisation in _matrix_failure.
+        assert_allclose(result.detail["fi_fiber"], 0.5, atol=1e-6)
+        assert_allclose(result.detail["fi_matrix"], 0.5, atol=0.01)
+        assert_allclose(result.index, 0.5, atol=0.01)
+
+    def test_reserve_factor_is_inverse_of_index_below_failure(
+        self, x850_material
+    ):
+        """rf = 1 / index must hold uniformly now that every sub-FI is on
+        the linear-in-load scale. Pre-fix, rf for fiber_tension was
+        1 / fi but for kinking/matrix was 1 / sqrt(fi). See issue #79.
+        """
+        criterion = LaRC05Criterion()
+        cases = [
+            # (description, stress vector, context)
+            ("half-Xt fibre tension",
+             np.array([0.5 * x850_material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0]),
+             None),
+            ("half-Yt transverse tension",
+             np.array([0.0, 0.5 * x850_material.Yt, 0.0, 0.0, 0.0, 0.0]),
+             None),
+            ("compression with misalignment",
+             np.array([-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+             {"misalignment_angle": 0.10}),
+        ]
+        for label, stress, ctx in cases:
+            result = criterion.evaluate(stress, x850_material, ctx)
+            if result.index > 0:
+                assert_allclose(
+                    result.reserve_factor, 1.0 / result.index, rtol=1e-12,
+                    err_msg=f"rf != 1/index for case '{label}'",
+                )
