@@ -317,8 +317,9 @@ class OrthotropicMaterial:
 class MaterialLibrary:
     """Named collection of :class:`OrthotropicMaterial` instances.
 
-    Provides four built-in carbon/epoxy material systems and supports
-    JSON serialisation for user-defined materials.
+    Provides five built-in composite material systems (four carbon/epoxy
+    and one glass/epoxy) and supports JSON serialisation for user-defined
+    materials.
 
     Built-in materials
     ------------------
@@ -326,6 +327,7 @@ class MaterialLibrary:
     - ``IM7_8552`` : Hexcel IM7 / 8552 (toughened epoxy, widely characterised)
     - ``T300_914`` : Toray T300 / Hexcel 914 (legacy European aerospace)
     - ``T700_2510`` : Toray T700SC / Cytec 2510 (OOA VBO system)
+    - ``AC318_S6C10`` : AC318 / S6C10-800 (S-glass / epoxy, Li et al. 2026)
 
     Examples
     --------
@@ -334,7 +336,7 @@ class MaterialLibrary:
     >>> mat.E1
     171420.0
     >>> lib.list_names()
-    ['AS4_3501_6', 'IM7_8552', 'T300_914', 'T700_2510']
+    ['AC318_S6C10', 'AS4_3501_6', 'IM7_8552', 'T300_914', 'T700_2510']
     """
 
     def __init__(self) -> None:
