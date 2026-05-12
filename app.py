@@ -328,7 +328,7 @@ with st.sidebar:
     )
     applied_strain_pct = -strain_mag_pct if loading == "compression" else strain_mag_pct
 
-    with st.expander("Advanced — mesh & solver", expanded=True):
+    with st.expander("Advanced — mesh & solver", expanded=False):
         analytical_only = st.checkbox(
             "Analytical only (skip FE solve)", value=False,
             help=(
@@ -378,6 +378,25 @@ with st.sidebar:
             )
 
     run_clicked = st.button("Run analysis", type="primary", use_container_width=True)
+
+    with st.expander("What do these terms mean?", expanded=False):
+        st.markdown(
+            "**Wrinkle** — a ripple in the otherwise flat plies of a "
+            "composite part, introduced during layup or cure.\n\n"
+            "**Layup** — the stacking sequence of plies (e.g. 0°/45°/-45°/90°) "
+            "that gives the laminate its directional stiffness.\n\n"
+            "**Morphology** — how the wrinkle is shaped through the "
+            "thickness: aligned (stack), bulging (convex), pinched "
+            "(concave), uniform, or fading (graded).\n\n"
+            "**FE solve** — a 3-D finite-element calculation of the actual "
+            "stresses inside the wrinkled region. Slower than the analytical "
+            "estimate but gives stress fields and per-ply failure.\n\n"
+            "**Knockdown** — the fraction of pristine strength the part "
+            "still has. `0.62` means the wrinkle reduces strength to 62 % "
+            "of the pristine value.\n\n"
+            "**Damage index D** — a 0-to-1 score; `0` means no damage from "
+            "the wrinkle, `1` means complete loss of load-carrying capacity."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -730,15 +749,60 @@ with tab_results:
 
         st.subheader("Analytical predictions")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Max fibre misalignment", f"{r['max_angle_deg']:.2f}°")
-        c2.metric("Analytical knockdown", f"{r['analytical_knockdown']:.3f}")
-        c3.metric("Predicted strength", f"{r['analytical_strength_MPa']:.1f} MPa")
-        c4.metric("Damage index D", f"{r['damage_index']:.3f}")
+        c1.metric(
+            "Max fibre misalignment", f"{r['max_angle_deg']:.2f}°",
+            help=(
+                "How far the worst fibres have rotated away from straight. "
+                "Below ~3° is mild; above ~10° starts to dominate failure."
+            ),
+        )
+        c2.metric(
+            "Analytical knockdown", f"{r['analytical_knockdown']:.3f}",
+            help=(
+                "Fraction of pristine strength remaining. `1.0` = no loss; "
+                "`0.5` = half the strength lost; lower is worse."
+            ),
+        )
+        c3.metric(
+            "Predicted strength", f"{r['analytical_strength_MPa']:.1f} MPa",
+            help=(
+                "Closed-form failure stress estimate for the wrinkled "
+                "laminate. Compare against the allowable stress your "
+                "design needs to carry."
+            ),
+        )
+        c4.metric(
+            "Damage index D", f"{r['damage_index']:.3f}",
+            help=(
+                "0-to-1 severity score. `0` = no damage; `1` = total loss "
+                "of load-carrying capacity. Above 0.5 is severe."
+            ),
+        )
 
         d1, d2, d3 = st.columns(3)
-        d1.metric("Morphology factor M_f", f"{r['morphology_factor']:.3f}")
-        d2.metric("Effective fibre angle θ_eff", f"{r['effective_angle_deg']:.2f}°")
-        d3.metric("Yield strain γ_Y eff", f"{r['gamma_Y_eff']:.4f}")
+        d1.metric(
+            "Morphology factor M_f", f"{r['morphology_factor']:.3f}",
+            help=(
+                "How damaging this wrinkle shape is vs the stack baseline "
+                "(`1.0`). `>1` = more damaging; `<1` = less damaging."
+            ),
+        )
+        d2.metric(
+            "Effective fibre angle θ_eff", f"{r['effective_angle_deg']:.2f}°",
+            help=(
+                "Single-angle representation of the wrinkle that drives "
+                "the analytical knockdown. Roughly the peak misalignment "
+                "scaled by the wrinkle envelope."
+            ),
+        )
+        d3.metric(
+            "Yield strain γ_Y eff", f"{r['gamma_Y_eff']:.4f}",
+            help=(
+                "Matrix shear-yield strain used by the Budiansky-Fleck "
+                "kink-band model. Internal parameter — useful for "
+                "advanced calibration, less so for first-time interpretation."
+            ),
+        )
 
         if r.get("tension_mechanisms"):
             with st.expander(
@@ -771,7 +835,14 @@ with tab_results:
         if fe is not None:
             st.subheader("FE solution")
             f1, f2, f3 = st.columns(3)
-            f1.metric("Modulus retention", f"{fe['modulus_retention']:.3f}")
+            f1.metric(
+                "Modulus retention", f"{fe['modulus_retention']:.3f}",
+                help=(
+                    "Fraction of pristine stiffness remaining. Usually "
+                    "stays above `0.9` even for severe wrinkles — wrinkles "
+                    "hurt strength far more than they hurt stiffness."
+                ),
+            )
             worst = (
                 min(fe["retention_factors"].values())
                 if fe["retention_factors"] else None
@@ -779,8 +850,20 @@ with tab_results:
             f2.metric(
                 "Strength retention (worst criterion)",
                 f"{worst:.3f}" if worst is not None else "—",
+                help=(
+                    "Fraction of strength remaining under the *worst* of "
+                    "all failure criteria evaluated. `1.0` = no loss; the "
+                    "controlling criterion is shown below."
+                ),
             )
-            f3.metric("Max displacement", f"{fe['max_displacement_mm']:.4f} mm")
+            f3.metric(
+                "Max displacement", f"{fe['max_displacement_mm']:.4f} mm",
+                help=(
+                    "Peak nodal displacement magnitude in the FE solve. "
+                    "Sanity-check that this scales with the applied strain; "
+                    "extremely small values suggest constraint issues."
+                ),
+            )
 
             if fe["retention_factors"]:
                 st.markdown("**Strength retention by failure criterion**")
