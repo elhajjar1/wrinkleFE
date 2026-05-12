@@ -132,6 +132,32 @@ class TestMaterialValidation:
         with pytest.raises(ValueError, match="gamma_Y must be positive"):
             OrthotropicMaterial(gamma_Y=0.0)
 
+    def test_unphysical_poisson_caught_by_pos_definite(self):
+        """A Poisson value above the orthotropic stability bound
+        (|ν12| ≥ sqrt(E1/E2)) drives the compliance matrix non-physical,
+        and validate() should reject it via the positive-definiteness check.
+
+        This is the contract that replaces the old (tautological)
+        Poisson-symmetry check — see issue #82.
+        """
+        with pytest.raises(ValueError, match="not positive-definite"):
+            # ν12 = 4.5 with E1=171420, E2=9080 gives ν12^2 * E2/E1 ≈ 1.07 > 1,
+            # which violates the orthotropic stability bound
+            # (1 - ν12 * ν21) > 0 and produces a non-PD compliance.
+            OrthotropicMaterial(nu12=4.5)
+
+    def test_validate_docstring_does_not_claim_symmetry_check(self):
+        """Regression guard for issue #82: the docstring used to claim that
+        validate() enforced Poisson symmetry, but the check was a tautology.
+        After the fix, the docstring must not promise a check that doesn't exist.
+        """
+        doc = OrthotropicMaterial.validate.__doc__ or ""
+        # The string "tolerance of 5" was the giveaway in the old docstring.
+        assert "tolerance of 5" not in doc, (
+            "validate() docstring still references the removed 5% Poisson "
+            "symmetry check — see issue #82."
+        )
+
 
 class TestMaterialLibrary:
     """Test MaterialLibrary functionality."""

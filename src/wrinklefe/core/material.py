@@ -123,9 +123,20 @@ class OrthotropicMaterial:
         Checks
         ------
         1. All moduli and strengths are strictly positive.
-        2. Poisson's ratios satisfy symmetry: nu_ij / E_i = nu_ji / E_j
-           within a relative tolerance of 5 %.
+        2. Optional LaRC04/05 properties are within their physical ranges.
         3. The 6x6 compliance matrix is positive-definite (all eigenvalues > 0).
+           This implicitly enforces the orthotropic stability bounds on the
+           Poisson ratios (e.g. ``|ν12| < sqrt(E1/E2)``); a user-supplied
+           ν that drives the compliance non-physical fails here.
+
+        Notes
+        -----
+        Poisson symmetry ``nu_ij / E_i == nu_ji / E_j`` is automatic — the
+        dataclass only stores the major ratios (``nu12``, ``nu13``, ``nu23``)
+        and derives the minor ratios from them via the symmetry relation
+        (see :attr:`nu21`, :attr:`nu31`, :attr:`nu32`). A standalone
+        symmetry check would compare a value against itself; the constraint
+        is structurally guaranteed, not validated.
 
         Raises
         ------
@@ -150,28 +161,10 @@ class OrthotropicMaterial:
         if not (0 < self.alpha_0 < 90):
             raise ValueError(f"alpha_0 must be in (0, 90) degrees, got {self.alpha_0}")
 
-        # 2. Symmetric Poisson ratios
-        #    nu_ij / E_i  should equal  nu_ji / E_j
-        #    We derive nu_ji from user-supplied nu_ij.
-        nu21 = self.nu12 * self.E2 / self.E1
-        nu31 = self.nu13 * self.E3 / self.E1
-        nu32 = self.nu23 * self.E3 / self.E2
-
-        pairs = [
-            ("nu12", self.nu12, self.E1, "nu21", nu21, self.E2),
-            ("nu13", self.nu13, self.E1, "nu31", nu31, self.E3),
-            ("nu23", self.nu23, self.E2, "nu32", nu32, self.E3),
-        ]
-        for name_ij, nu_ij, Ei, name_ji, nu_ji, Ej in pairs:
-            lhs = nu_ij / Ei
-            rhs = nu_ji / Ej
-            if abs(lhs) > 0 and abs(rhs - lhs) / abs(lhs) > 0.05:
-                raise ValueError(
-                    f"Poisson symmetry violated: {name_ij}/E{name_ij[-1]} = {lhs:.6e} "
-                    f"vs {name_ji}/E{name_ji[-1]} = {rhs:.6e}"
-                )
-
-        # 3. Positive-definite compliance matrix
+        # 2. Positive-definite compliance matrix. This catches Poisson values
+        # that drive the elastic tensor non-physical (e.g. ν12 ≥ sqrt(E1/E2));
+        # the standalone Poisson-symmetry check that used to live here was a
+        # tautology — see the docstring above.
         S = self._build_compliance()
         eigvals = np.linalg.eigvalsh(S)
         if np.any(eigvals <= 0):
