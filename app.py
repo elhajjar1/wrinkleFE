@@ -237,17 +237,18 @@ def _morphology_schematic(morphology: str) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Hero / orientation block — renders in the main column above the tabs
+# Hero / orientation content — rendered inside the Overview tab below.
+# Defined here as small helpers so the demo-button click handler can run
+# before the tabs declaration (it needs to st.rerun() the whole script).
 # ---------------------------------------------------------------------------
 
-st.markdown(
+_HERO_INTRO_MD = (
     "Carbon-fibre composite parts — aircraft skins, wind blades, pressure "
     "vessels — develop tiny ripples (\"wrinkles\") during layup or cure. "
     "Even a 0.5 mm wrinkle can cut compressive strength by **30–60 %**. "
     "WrinkleFE predicts that loss in seconds so engineers and inspectors "
     "can decide: **scrap, repair, or accept.**"
 )
-st.image(_hero_schematic(), use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
@@ -255,19 +256,40 @@ st.image(_hero_schematic(), use_container_width=True)
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("**Material & layup**")
-    default_idx = (
-        MATERIAL_OPTIONS.index("IM7_8552") if "IM7_8552" in MATERIAL_OPTIONS else 0
-    )
-    material_choice = st.selectbox(
-        "Material", MATERIAL_OPTIONS, index=default_idx,
+    expert_mode = st.toggle(
+        "Expert mode", value=False, key="expert_mode",
         help=(
-            "Pick a built-in carbon/epoxy or glass/epoxy system, or choose "
-            f"**{CUSTOM_MATERIAL_LABEL}** to enter your own ply properties."
+            "**Off (default)** — simplified sidebar with the essentials: "
+            "material, layup, amplitude, wavelength, loading, strain.\n\n"
+            "**On** — full controls: ply thickness, envelope width, "
+            "morphology selector, custom-material editor, decay floor, "
+            "mesh density, and the full FE solve toggle."
         ),
     )
 
-    if material_choice == CUSTOM_MATERIAL_LABEL:
+    st.markdown("**Material & layup**")
+    _material_options = (
+        MATERIAL_OPTIONS if expert_mode else MATERIAL_NAMES
+    )
+    default_idx = (
+        _material_options.index("IM7_8552")
+        if "IM7_8552" in _material_options else 0
+    )
+    material_choice = st.selectbox(
+        "Material", _material_options, index=default_idx,
+        help=(
+            "Pick a built-in carbon/epoxy or glass/epoxy system."
+            + (
+                f" Choose **{CUSTOM_MATERIAL_LABEL}** to enter your own "
+                "ply properties."
+                if expert_mode else
+                " Switch on **Expert mode** at the top of the sidebar to "
+                "enter custom ply properties."
+            )
+        ),
+    )
+
+    if expert_mode and material_choice == CUSTOM_MATERIAL_LABEL:
         # Seed the custom editor from a sensible default so users only have
         # to override the values they care about.
         _seed_name = (
@@ -316,15 +338,18 @@ with st.sidebar:
     else:
         material_dict = LIB.get(material_choice).to_dict()
 
-    ply_thickness = st.number_input(
-        "Ply thickness [mm]",
-        min_value=0.05, max_value=1.0, value=0.183, step=0.01,
-        help=(
-            "Thickness of one ply in mm. Default 0.183 mm matches "
-            "CYCOM X850/T800. Total laminate thickness = ply_thickness × "
-            "number of plies in the layup."
-        ),
-    )
+    if expert_mode:
+        ply_thickness = st.number_input(
+            "Ply thickness [mm]",
+            min_value=0.05, max_value=1.0, value=0.183, step=0.01,
+            help=(
+                "Thickness of one ply in mm. Default 0.183 mm matches "
+                "CYCOM X850/T800. Total laminate thickness = ply_thickness × "
+                "number of plies in the layup."
+            ),
+        )
+    else:
+        ply_thickness = 0.183
     layup_str = st.text_area(
         "Layup",
         value=DEFAULT_LAYUP, height=80,
@@ -372,48 +397,59 @@ with st.sidebar:
             "lowers the peak fibre angle θ_max ≈ arctan(2πA/λ)."
         ),
     )
-    width = st.number_input(
-        "Envelope width w [mm]",
-        min_value=1.0, max_value=200.0, value=12.0, step=0.5,
-        help=(
-            "Half-width of the Gaussian envelope multiplying the cosine. "
-            "Smaller w localises the wrinkle to a few wavelengths near x = 0."
-        ),
-    )
-
-    st.markdown("**Morphology & loading**")
-    morphology = st.selectbox(
-        "Morphology", MORPHOLOGIES, index=0,
-        help=(
-            "Wrinkle shape pattern through the laminate thickness. The cartoon "
-            "below the dropdown shows the active choice; switch values to see "
-            "the others.\n\n"
-            "**Dual-wrinkle modes** — two adjacent wrinkles offset by phase φ "
-            "between their centrelines (Jin et al. 2026):\n"
-            "- *stack* (φ = 0): peaks aligned. M_f = 1.0 — baseline.\n"
-            "- *convex* (φ = π/2): interface bulges outward. M_f < 1 — "
-            "*least* damaging in compression.\n"
-            "- *concave* (φ = −π/2): interface pinches inward. M_f > 1 — "
-            "*most* damaging in compression.\n\n"
-            "**Single-wrinkle modes** — one wrinkle, varying through-thickness "
-            "amplitude:\n"
-            "- *uniform*: full amplitude on every ply.\n"
-            "- *graded*: linear decay from wrinkle core to surfaces, controlled "
-            "by the **Decay floor** slider (0 = full decay, 1 = uniform)."
-        ),
-    )
-    decay_floor = 0.0
-    if morphology == "graded":
-        decay_floor = st.slider(
-            "Decay floor", 0.0, 1.0, 0.0, 0.05,
-            help="Minimum amplitude fraction at the outer surfaces.",
+    if expert_mode:
+        width = st.number_input(
+            "Envelope width w [mm]",
+            min_value=1.0, max_value=200.0, value=12.0, step=0.5,
+            help=(
+                "Half-width of the Gaussian envelope multiplying the cosine. "
+                "Smaller w localises the wrinkle to a few wavelengths near x = 0."
+            ),
         )
+    else:
+        width = 12.0
 
-    st.image(
-        _morphology_schematic(morphology),
-        caption=f"{morphology.capitalize()} morphology",
-        use_container_width=True,
+    st.markdown(
+        "**Morphology & loading**" if expert_mode else "**Loading**"
     )
+    if expert_mode:
+        morphology = st.selectbox(
+            "Morphology", MORPHOLOGIES, index=0,
+            help=(
+                "Wrinkle shape pattern through the laminate thickness. The cartoon "
+                "below the dropdown shows the active choice; switch values to see "
+                "the others.\n\n"
+                "**Dual-wrinkle modes** — two adjacent wrinkles offset by phase φ "
+                "between their centrelines (Jin et al. 2026):\n"
+                "- *stack* (φ = 0): peaks aligned. M_f = 1.0 — baseline.\n"
+                "- *convex* (φ = π/2): interface bulges outward. M_f < 1 — "
+                "*least* damaging in compression.\n"
+                "- *concave* (φ = −π/2): interface pinches inward. M_f > 1 — "
+                "*most* damaging in compression.\n\n"
+                "**Single-wrinkle modes** — one wrinkle, varying through-thickness "
+                "amplitude:\n"
+                "- *uniform*: full amplitude on every ply.\n"
+                "- *graded*: linear decay from wrinkle core to surfaces, controlled "
+                "by the **Decay floor** slider (0 = full decay, 1 = uniform)."
+            ),
+        )
+        decay_floor = 0.0
+        if morphology == "graded":
+            decay_floor = st.slider(
+                "Decay floor", 0.0, 1.0, 0.0, 0.05,
+                help="Minimum amplitude fraction at the outer surfaces.",
+            )
+
+        st.image(
+            _morphology_schematic(morphology),
+            caption=f"{morphology.capitalize()} morphology",
+            use_container_width=True,
+        )
+    else:
+        # Sensible defaults; the cartoon and morphology selector are exposed
+        # in Expert mode for users who want to compare phase offsets.
+        morphology = "stack"
+        decay_floor = 0.0
 
     loading = st.radio("Loading mode", ["compression", "tension"], horizontal=True)
     strain_mag_pct = st.number_input(
@@ -427,54 +463,66 @@ with st.sidebar:
     )
     applied_strain_pct = -strain_mag_pct if loading == "compression" else strain_mag_pct
 
-    with st.expander("Advanced — mesh & solver", expanded=False):
-        analytical_only = st.checkbox(
-            "Analytical only (skip FE solve)", value=False,
-            help=(
-                "Default off: the full FE solve runs (mesh, static "
-                "displacement-controlled solve, multi-criterion failure "
-                "evaluation) and yields stress fields, modulus retention, "
-                "and per-criterion strength retention. Tick this to fall "
-                "back to the closed-form analytical knockdown only — "
-                "much faster but no FE outputs."
-            ),
-        )
-        nx = st.number_input(
-            "Mesh divisions in x", 4, 64, 12, 2,
-            disabled=analytical_only,
-            help=(
-                "Hex elements along the wrinkle (x) direction across the "
-                "domain length. More elements resolve the curvature but "
-                "scale solve time roughly linearly."
-            ),
-        )
-        ny = st.number_input(
-            "Mesh divisions in y", 4, 32, 6, 2,
-            disabled=analytical_only,
-            help=(
-                "Hex elements across the laminate width (y). Wrinkle is "
-                "uniform in y, so a coarse mesh is usually adequate."
-            ),
-        )
-        nz_per_ply = st.number_input(
-            "Mesh divisions per ply (z)", 1, 4, 1,
-            disabled=analytical_only,
-            help=(
-                "Hex elements through the thickness of every individual "
-                "ply. Increase to capture interlaminar stress gradients."
-            ),
-        )
-        if analytical_only:
-            st.caption(
-                "Mesh inputs are inactive — the closed-form analytical "
-                "knockdown skips the FE solve."
+    if expert_mode:
+        with st.expander("Advanced — mesh & solver", expanded=False):
+            analytical_only = st.checkbox(
+                "Analytical only (skip FE solve)", value=False,
+                help=(
+                    "Default off: the full FE solve runs (mesh, static "
+                    "displacement-controlled solve, multi-criterion failure "
+                    "evaluation) and yields stress fields, modulus retention, "
+                    "and per-criterion strength retention. Tick this to fall "
+                    "back to the closed-form analytical knockdown only — "
+                    "much faster but no FE outputs."
+                ),
             )
-        else:
-            st.caption(
-                ":hourglass_flowing_sand: Full FE solve. On Streamlit "
-                "Cloud's CPU this typically takes 30–90 s for the default "
-                "mesh; reducing nx, ny, or nz_per_ply speeds it up."
+            nx = st.number_input(
+                "Mesh divisions in x", 4, 64, 12, 2,
+                disabled=analytical_only,
+                help=(
+                    "Hex elements along the wrinkle (x) direction across the "
+                    "domain length. More elements resolve the curvature but "
+                    "scale solve time roughly linearly."
+                ),
             )
+            ny = st.number_input(
+                "Mesh divisions in y", 4, 32, 6, 2,
+                disabled=analytical_only,
+                help=(
+                    "Hex elements across the laminate width (y). Wrinkle is "
+                    "uniform in y, so a coarse mesh is usually adequate."
+                ),
+            )
+            nz_per_ply = st.number_input(
+                "Mesh divisions per ply (z)", 1, 4, 1,
+                disabled=analytical_only,
+                help=(
+                    "Hex elements through the thickness of every individual "
+                    "ply. Increase to capture interlaminar stress gradients."
+                ),
+            )
+            if analytical_only:
+                st.caption(
+                    "Mesh inputs are inactive — the closed-form analytical "
+                    "knockdown skips the FE solve."
+                )
+            else:
+                st.caption(
+                    ":hourglass_flowing_sand: Full FE solve. On Streamlit "
+                    "Cloud's CPU this typically takes 30–90 s for the default "
+                    "mesh; reducing nx, ny, or nz_per_ply speeds it up."
+                )
+    else:
+        # Novice path: fast analytical-only run, no FE. Switch on Expert
+        # mode to expose mesh density and the FE toggle.
+        analytical_only = True
+        nx = 12
+        ny = 6
+        nz_per_ply = 1
+        st.caption(
+            "Quick analytical estimate. Switch on **Expert mode** above "
+            "for the full FE solve, stress fields, and per-ply failure indices."
+        )
 
     run_clicked = st.button("Run analysis", type="primary", use_container_width=True)
 
@@ -678,42 +726,69 @@ profile = GaussianSinusoidal(amplitude=amplitude, wavelength=wavelength, width=w
 # Run handler — execute BEFORE tabs render so the Results tab sees the
 # updated session_state and the empty-state placeholder doesn't render
 # alongside the running indicator.
-if run_clicked:
-    try:
-        layup = parse_layup(layup_str)
-    except ValueError as e:
-        st.error(f"Could not parse layup: {e}")
-        st.stop()
+_demo_pending = st.session_state.pop("_demo_pending", False)
+if run_clicked or _demo_pending:
+    if _demo_pending:
+        # Hardcoded analytical-only demo so a first-time visitor can land on
+        # the Results tab in ~2 s without touching the sidebar.
+        _demo_seed_name = (
+            "IM7_8552" if "IM7_8552" in MATERIAL_NAMES else MATERIAL_NAMES[0]
+        )
+        _demo_material_dict = LIB.get(_demo_seed_name).to_dict()
+        _demo_layup = (
+            0, 45, -45, 90, 0, 45, -45, 90, 0, 45, -45, 90,
+            90, -45, 45, 0, 90, -45, 45, 0, 90, -45, 45, 0,
+        )
+        cfg_payload = tuple(sorted({
+            "amplitude": 0.366,
+            "wavelength": 16.0,
+            "width": 12.0,
+            "morphology": "stack",
+            "decay_floor": 0.0,
+            "loading": "compression",
+            "ply_thickness": 0.183,
+            "angles_tuple": _demo_layup,
+            "applied_strain": -0.01,
+            "material_tuple": tuple(sorted(_demo_material_dict.items())),
+            "analytical_only": True,
+        }.items()))
+    else:
+        try:
+            layup = parse_layup(layup_str)
+        except ValueError as e:
+            st.error(f"Could not parse layup: {e}")
+            st.stop()
 
-    try:
-        # Validate the custom material up front so the cache isn't keyed on
-        # an invalid OrthotropicMaterial that will only blow up inside
-        # AnalysisConfig.
-        OrthotropicMaterial.from_dict(material_dict)
-    except ValueError as e:
-        st.error(f"Invalid custom material: {e}")
-        st.stop()
+        try:
+            # Validate the custom material up front so the cache isn't keyed
+            # on an invalid OrthotropicMaterial that will only blow up inside
+            # AnalysisConfig.
+            OrthotropicMaterial.from_dict(material_dict)
+        except ValueError as e:
+            st.error(f"Invalid custom material: {e}")
+            st.stop()
 
-    cfg_items: dict = {
-        "amplitude": amplitude,
-        "wavelength": wavelength,
-        "width": width,
-        "morphology": morphology,
-        "decay_floor": decay_floor,
-        "loading": loading,
-        "ply_thickness": ply_thickness,
-        "angles_tuple": tuple(layup),
-        "applied_strain": applied_strain_pct / 100.0,
-        "material_tuple": tuple(sorted(material_dict.items())),
-        "analytical_only": bool(analytical_only),
-    }
-    # Mesh keys only matter for the FE path; omitting them in analytical-only
-    # mode means the cache key doesn't churn when the user tweaks nx/ny/nz.
-    if not analytical_only:
-        cfg_items["nx"] = int(nx)
-        cfg_items["ny"] = int(ny)
-        cfg_items["nz_per_ply"] = int(nz_per_ply)
-    cfg_payload = tuple(sorted(cfg_items.items()))
+        cfg_items: dict = {
+            "amplitude": amplitude,
+            "wavelength": wavelength,
+            "width": width,
+            "morphology": morphology,
+            "decay_floor": decay_floor,
+            "loading": loading,
+            "ply_thickness": ply_thickness,
+            "angles_tuple": tuple(layup),
+            "applied_strain": applied_strain_pct / 100.0,
+            "material_tuple": tuple(sorted(material_dict.items())),
+            "analytical_only": bool(analytical_only),
+        }
+        # Mesh keys only matter for the FE path; omitting them in
+        # analytical-only mode means the cache key doesn't churn when the
+        # user tweaks nx/ny/nz.
+        if not analytical_only:
+            cfg_items["nx"] = int(nx)
+            cfg_items["ny"] = int(ny)
+            cfg_items["nz_per_ply"] = int(nz_per_ply)
+        cfg_payload = tuple(sorted(cfg_items.items()))
 
     with st.status("Running analysis…", expanded=True) as status:
         st.write("Building laminate, wrinkle geometry, and mesh…")
@@ -755,11 +830,54 @@ if run_clicked:
 
     st.session_state["results"] = results
     st.session_state["cfg_payload"] = cfg_payload
+    if _demo_pending:
+        st.success(
+            "✓ Demo analysis complete with sensible defaults "
+            "(IM7/8552, quasi-isotropic 24-ply, 1 % compression). "
+            "Open the **Results** tab below to see the numbers — "
+            "then tweak any sidebar parameter and click *Run analysis* "
+            "to compare against your own configuration."
+        )
 
 
-tab_geom, tab_results, tab_export = st.tabs(["Geometry", "Results", "Export"])
+tab_overview, tab_configure, tab_results, tab_export = st.tabs(
+    ["Overview", "Configure", "Results", "Export"]
+)
 
-with tab_geom:
+with tab_overview:
+    st.markdown(_HERO_INTRO_MD)
+    st.image(_hero_schematic(), use_container_width=True)
+
+    _demo_cols = st.columns([2, 1, 2])
+    if _demo_cols[1].button(
+        "▶ Try a demo analysis",
+        type="primary",
+        use_container_width=True,
+        help=(
+            "One-click analytical run with IM7/8552 and a quasi-isotropic "
+            "[0/45/-45/90]_3s layup. Lands on the Results tab in ~2 s."
+        ),
+    ):
+        st.session_state["_demo_pending"] = True
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown(
+        "**What to do next**\n\n"
+        "1. *Try the demo above* for an instant analytical run with sensible "
+        "defaults — you'll land back here with results on the **Results** tab.\n"
+        "2. *Configure your own laminate* using the sidebar (material, layup, "
+        "wrinkle amplitude and wavelength, loading mode and strain).\n"
+        "3. *Click* **▶ Run analysis** at the bottom of the sidebar.\n"
+        "4. *Review* the Results tab — the **Before / after** card up top "
+        "shows strength and stiffness loss in plain language.\n"
+        "5. *Export* the run as JSON or CSV from the **Export** tab.\n\n"
+        "Switch on **Expert mode** at the top of the sidebar to expose the "
+        "morphology selector, custom-material editor, decay floor, mesh "
+        "density, and the full FE solve."
+    )
+
+with tab_configure:
     st.subheader("Wrinkle mid-surface profile")
     x = np.linspace(-3 * width, 3 * width, 800)
     z = profile.displacement(x)
@@ -861,6 +979,70 @@ with tab_results:
         )
     else:
         r = st.session_state["results"]
+
+        # ------------------------------------------------------------------
+        # Before / after comparison card (#98 item 6)
+        # ------------------------------------------------------------------
+        _knockdown = float(r.get("analytical_knockdown", 1.0))
+        _wrinkled_strength = float(r.get("analytical_strength_MPa", 0.0))
+        _pristine_strength = (
+            _wrinkled_strength / _knockdown if _knockdown > 1e-6 else None
+        )
+        _strength_delta_pct = (1.0 - _knockdown) * 100.0
+
+        _cfg_runtime = dict(st.session_state.get("cfg_payload", ()))
+        _mat_runtime = dict(_cfg_runtime.get("material_tuple", ()))
+        _E1_pristine_GPa: float | None = None
+        if _mat_runtime.get("E1"):
+            _E1_pristine_GPa = float(_mat_runtime["E1"]) / 1000.0
+
+        _fe_runtime = r.get("fe")
+        _E1_wrinkled_GPa: float | None = None
+        _stiffness_delta_pct: float | None = None
+        if _fe_runtime is not None and _E1_pristine_GPa is not None:
+            _modulus_ret = float(_fe_runtime.get("modulus_retention", 1.0))
+            _E1_wrinkled_GPa = _E1_pristine_GPa * _modulus_ret
+            _stiffness_delta_pct = (1.0 - _modulus_ret) * 100.0
+
+        st.subheader("Before / after this wrinkle")
+        ba_cols = st.columns(2)
+        with ba_cols[0]:
+            st.markdown("**Pristine baseline**")
+            if _pristine_strength is not None:
+                st.markdown(f"Strength · **{_pristine_strength:,.0f} MPa**")
+            if _E1_pristine_GPa is not None:
+                st.markdown(f"Stiffness (E₁) · **{_E1_pristine_GPa:.1f} GPa**")
+        with ba_cols[1]:
+            st.markdown("**Your wrinkled laminate**")
+            _strength_arrow = "▼" if _strength_delta_pct >= 0 else "▲"
+            st.markdown(
+                f"Strength · **{_wrinkled_strength:,.0f} MPa**  "
+                f"({_strength_arrow} {abs(_strength_delta_pct):.0f} %)"
+            )
+            if _E1_wrinkled_GPa is not None and _stiffness_delta_pct is not None:
+                _stiff_arrow = "▼" if _stiffness_delta_pct >= 0 else "▲"
+                st.markdown(
+                    f"Stiffness (E₁) · **{_E1_wrinkled_GPa:.1f} GPa**  "
+                    f"({_stiff_arrow} {abs(_stiffness_delta_pct):.1f} %)"
+                )
+            else:
+                st.markdown(
+                    "Stiffness (E₁) · _run with FE on to compute_"
+                )
+
+        if _stiffness_delta_pct is not None:
+            st.caption(
+                f"This wrinkle costs you **{abs(_strength_delta_pct):.0f} %** "
+                f"of strength and **{abs(_stiffness_delta_pct):.1f} %** of "
+                "stiffness. Wrinkles almost always hurt strength far more "
+                "than stiffness."
+            )
+        else:
+            st.caption(
+                f"This wrinkle costs you **{abs(_strength_delta_pct):.0f} %** "
+                "of strength. Untick *Analytical only* in the sidebar's "
+                "*Advanced* expander to also see the stiffness drop."
+            )
 
         st.subheader("Analytical predictions")
         c1, c2, c3, c4 = st.columns(4)
