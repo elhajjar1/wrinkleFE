@@ -188,6 +188,15 @@ class PuckCriterion(FailureCriterion):
         tau_nt = (s3 - s2) * sin_t * cos_t + t23 * (cos_t**2 - sin_t**2)
         tau_n1 = t12 * cos_t + t13 * sin_t
 
+        # Pre-compute the Mode B / Mode C corner slope. Mode B and C live on
+        # the compressive (sigma_n < 0) half of the action-plane failure
+        # envelope, and the corner between them is at a constant geometric
+        # ratio |tau_nt / sigma_n| = sqrt(1 + 2 p_psc). Above that ratio
+        # (shear-dominated) Mode C governs; below it (compression-dominated)
+        # Mode B governs. See issue #85 — previously the threshold simplified
+        # to a constant on |tau_nt| alone, with the labels physically swapped.
+        bc_corner_slope = self._mode_bc_corner_slope(p_psc)
+
         fi_arr = np.zeros_like(thetas)
         mode_arr = np.empty(len(thetas), dtype=object)
 
@@ -210,25 +219,52 @@ class PuckCriterion(FailureCriterion):
                     )
                 mode_arr[i] = "iff_mode_a"
             else:
-                # sigma_n < 0: distinguish Mode B vs Mode C
-                # Threshold: ratio |tau_nt / sigma_n|
-                ratio = abs(tnt / sn) if abs(sn) > 1e-12 else float("inf")
-                threshold = S23 / abs(sn) if abs(sn) > 1e-12 else 0.0
-
-                if ratio >= threshold:
-                    # Mode B
-                    inner = tnt**2 + (tn1 + p_ppc * sn) ** 2
-                    fi_arr[i] = np.sqrt(inner) / S12 + p_psc * sn / S23
-                    mode_arr[i] = "iff_mode_b"
-                else:
-                    # Mode C
+                # sigma_n < 0: distinguish Mode B vs Mode C using the
+                # geometric (stress-magnitude-independent) corner slope.
+                if abs(tnt) > bc_corner_slope * abs(sn):
+                    # Mode C: shear-dominated, mild compression.
                     denom_c = 2.0 * (1.0 + p_psc) * S23
                     bracket = (tnt / denom_c) ** 2 + (tn1 / S12) ** 2
                     fi_arr[i] = bracket * (-Yc / sn)
                     mode_arr[i] = "iff_mode_c"
+                else:
+                    # Mode B: compression-dominated, mild shear.
+                    inner = tnt**2 + (tn1 + p_ppc * sn) ** 2
+                    fi_arr[i] = np.sqrt(inner) / S12 + p_psc * sn / S23
+                    mode_arr[i] = "iff_mode_b"
 
         idx_max = int(np.argmax(fi_arr))
         return float(fi_arr[idx_max]), str(mode_arr[idx_max]), float(thetas[idx_max])
+
+    @staticmethod
+    def _mode_bc_corner_slope(p_psc: float) -> float:
+        """Slope ``|tau_nt / sigma_n|`` at the Mode B / Mode C corner.
+
+        Following Puck & Schurmann (2002), the corner sits at a constant
+        ratio derived from the action-plane strength ``RA_perp_perp`` and
+        the shear stress ``tau_nt_c`` at the corner — both proportional
+        to ``S23 / (1 + p_perp_psi_c)`` — leaving a stress-magnitude-
+        independent slope of ``sqrt(1 + 2 p_perp_psi_c)``.
+
+        Exposed as a static method so the Mode B/C classification can be
+        unit-tested without driving a full action-plane search (the Mode C
+        formula has a 1/|sigma_n| factor that dominates the argmax-over-
+        theta result and would mask classification regressions). See #85.
+        """
+        return float(np.sqrt(1.0 + 2.0 * float(p_psc)))
+
+    @staticmethod
+    def _classify_iff_mode_bc(sn: float, tnt: float, p_psc: float) -> str:
+        """Return ``"iff_mode_b"`` or ``"iff_mode_c"`` for a single plane
+        with ``sigma_n < 0``.
+
+        Mode C governs when the shear-to-compression ratio exceeds the
+        Mode B/C corner slope; Mode B governs below it. Pure helper for
+        tests; production code uses the inline check in
+        :meth:`_inter_fibre_failure` for vectorisation. See #85.
+        """
+        slope = PuckCriterion._mode_bc_corner_slope(p_psc)
+        return "iff_mode_c" if abs(tnt) > slope * abs(sn) else "iff_mode_b"
 
     # ------------------------------------------------------------------
     # Public interface
