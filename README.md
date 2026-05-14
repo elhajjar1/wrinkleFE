@@ -32,8 +32,8 @@ An open-source Python finite element package for predicting strength and stiffne
 ### From source (recommended)
 
 ```bash
-git clone https://github.com/elhajjar1/WrinkleFE.git
-cd WrinkleFE
+git clone https://github.com/elhajjar1/wrinklefe.git
+cd wrinklefe
 pip install -e ".[all]"
 ```
 
