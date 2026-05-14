@@ -771,6 +771,44 @@ class TestFieldResults:
         n_gp = dummy_results.stress_global.shape[1]
         assert mp.shape == (n_elem, n_gp)
 
+    def test_reaction_forces_shape_and_equilibrium(
+        self, bar_mesh, single_ply_iso_laminate
+    ):
+        """Regression for issue #48: reaction_forces returns (n_nodes, 4).
+
+        Each row is ``[node_id, Rx, Ry, Rz]``.  For a static problem with
+        only displacement BCs and no external forces, the sum of reaction
+        components must equal the (zero) external load per direction
+        (Newton's third law / equilibrium).
+        """
+        # Solve a small compression problem to get a real K, u, and BC set.
+        solver = StaticSolver(bar_mesh, single_ply_iso_laminate)
+        bcs = BoundaryHandler.compression_bcs(bar_mesh, applied_strain=-0.005)
+        results = solver.solve(bcs, solver="direct")
+
+        # Reach into the solver's stored K and constrained DOFs map.
+        K = solver._K
+        constrained = solver._constrained_dofs
+        assert len(constrained) > 0
+
+        R = results.reaction_forces(K, constrained)
+
+        # --- Shape contract (the core of issue #48) ---
+        # One row per *node* that has any constrained DOF, with four columns.
+        expected_nodes = sorted({dof // 3 for dof in constrained})
+        assert R.ndim == 2
+        assert R.shape == (len(expected_nodes), 4)
+
+        # Column 0 is the node id; remaining columns are Rx, Ry, Rz.
+        assert np.array_equal(R[:, 0].astype(int), np.array(expected_nodes))
+
+        # --- Equilibrium: only displacement BCs and zero external load,
+        # so global reaction sums must equal zero (the applied load).
+        # Use a tolerance scaled by the magnitude of the reactions.
+        R_total = R[:, 1:4].sum(axis=0)
+        scale = max(np.abs(R[:, 1:4]).max(), 1.0)
+        np.testing.assert_allclose(R_total, 0.0, atol=1e-6 * scale)
+
 
 # ======================================================================
 # Integration test: manual solve with assembler + handler (no StaticSolver)
