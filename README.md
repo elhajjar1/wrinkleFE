@@ -2,19 +2,15 @@
 
 An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fiber waviness defects.
 
-## Screenshots
+## Try it in your browser
 
-**Wrinkle Profile & Fiber Misalignment** — Convex dual-wrinkle morphology showing upper/lower ply profiles, interface gap, and through-thickness fiber angle distribution.
+The fastest way to use WrinkleFE is the hosted Streamlit app — no install required:
 
-![Profile Tab](figures/screenshot_profile.png)
+### [Launch the WrinkleFE Streamlit app](https://wrinklefe.streamlit.app/)
 
-**3D Finite Element Mesh** — Graded morphology with 8,640 hexahedral elements, color-coded by ply ID. Wrinkle amplitude decays from midplane to surface.
-
-![Mesh Tab](figures/screenshot_mesh.png)
-
-**Stress Analysis & Retention** — Through-thickness interlaminar stress (sigma_33) contour with strength and modulus retention bar chart. 58.3% strength retention, 97.9% modulus retention.
-
-![Stress Tab](figures/screenshot_stress.png)
+Pick a material, set the wrinkle amplitude / wavelength / morphology, and the
+app returns the analytical knockdown, plots, and (optionally) a full FE solve.
+Public link, no account needed.
 
 ## Features
 
@@ -23,13 +19,18 @@ An open-source Python finite element package for predicting strength and stiffne
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
 - **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
-- **PyQt6 GUI:** Interactive analysis with real-time stress visualization
 - **5 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 (S-glass/epoxy)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
-## Installation
+## Developer / library install
 
-### From source (recommended)
+If you want to script against the package or contribute to development:
+
+```bash
+pip install wrinklefe
+```
+
+Or install the latest source:
 
 ```bash
 git clone https://github.com/elhajjar1/wrinklefe.git
@@ -37,39 +38,19 @@ cd wrinklefe
 pip install -e ".[all]"
 ```
 
-### Dependencies only
-
-```bash
-pip install numpy scipy matplotlib PyQt6 pyvista pyvistaqt
-```
-
-### Verify installation
+Verify the install:
 
 ```bash
 python -c "import wrinklefe; print('WrinkleFE installed successfully')"
 ```
 
-### Run tests
+Run the test suite:
 
 ```bash
 pytest
 ```
 
-## Quick Start
-
-### GUI
-
-```bash
-wrinklefe-gui
-```
-
-### Command line
-
-```bash
-wrinklefe --help
-```
-
-### Python API
+## Quick Start (Python API)
 
 ```python
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
@@ -112,6 +93,12 @@ config = AnalysisConfig(
 )
 result = WrinkleAnalysis(config).run()
 print(result.analytical_knockdown)
+```
+
+### Command line
+
+```bash
+wrinklefe --help
 ```
 
 ## Validation
