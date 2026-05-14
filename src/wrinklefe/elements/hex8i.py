@@ -106,8 +106,17 @@ class Hex8IElement(Hex8Element):
         material: OrthotropicMaterial,
         ply_angle: float = 0.0,
         wrinkle_angles: np.ndarray | None = None,
+        elem_id: int | None = None,
+        strict_jacobian: bool = True,
     ) -> None:
-        super().__init__(node_coords, material, ply_angle, wrinkle_angles)
+        super().__init__(
+            node_coords,
+            material,
+            ply_angle,
+            wrinkle_angles,
+            elem_id=elem_id,
+            strict_jacobian=strict_jacobian,
+        )
 
         # Caches for static condensation — populated by stiffness_matrix()
         self._K_aa_inv: np.ndarray | None = None
@@ -135,7 +144,7 @@ class Hex8IElement(Hex8Element):
             Shape ``(3, 3)`` — inverse of *J0*.
         """
         J0 = self.jacobian(0.0, 0.0, 0.0)
-        detJ0 = np.linalg.det(J0)
+        detJ0 = self._check_detJ(float(np.linalg.det(J0)), gp_index=None)
         J0_inv = np.linalg.inv(J0)
         return J0, detJ0, J0_inv
 
@@ -248,7 +257,7 @@ class Hex8IElement(Hex8Element):
 
         # Patch-test correction: scale by detJ0 / detJ(xi, eta, zeta)
         J_local = self.jacobian(xi, eta, zeta)
-        detJ_local = np.linalg.det(J_local)
+        detJ_local = self._check_detJ(float(np.linalg.det(J_local)))
         scale = self._detJ0 / detJ_local
 
         dP_dphys = dP_dphys * scale
@@ -335,10 +344,13 @@ class Hex8IElement(Hex8Element):
             zeta = gp_coords[i_gp, 2]
             w_gp = gp_weights[i_gp]
 
-            # Standard B matrix and Jacobian from parent class
-            B = self.B_matrix(xi, eta, zeta)          # (6, 24)
+            # Check Jacobian determinant first to surface a Gauss-point-
+            # aware error for inverted/degenerate elements (issue #45).
             J = self.jacobian(xi, eta, zeta)           # (3, 3)
-            detJ = np.linalg.det(J)
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=i_gp)
+
+            # Standard B matrix from parent class
+            B = self.B_matrix(xi, eta, zeta)          # (6, 24)
 
             # Rotated material stiffness at this point
             C_bar = self.rotated_stiffness(xi, eta, zeta)  # (6, 6)

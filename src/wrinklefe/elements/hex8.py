@@ -81,6 +81,8 @@ class Hex8Element:
         material: OrthotropicMaterial,
         ply_angle: float = 0.0,
         wrinkle_angles: np.ndarray | None = None,
+        elem_id: int | None = None,
+        strict_jacobian: bool = True,
     ) -> None:
         self.node_coords = np.asarray(node_coords, dtype=float)
         if self.node_coords.shape != (8, 3):
@@ -100,8 +102,63 @@ class Hex8Element:
                 f"wrinkle_angles must have shape (8,), got {self.wrinkle_angles.shape}."
             )
 
+        self.elem_id = elem_id
+        self.strict_jacobian = bool(strict_jacobian)
+
         # Pre-compute Gauss quadrature points and weights (2x2x2 for hex8)
         self._gauss_points, self._gauss_weights = gauss_points_hex(order=2)
+
+    # ------------------------------------------------------------------
+    # Jacobian determinant validation
+    # ------------------------------------------------------------------
+
+    # Tolerance below which |detJ| is treated as zero (degenerate element).
+    _JAC_ZERO_TOL: float = 1.0e-14
+
+    def _check_detJ(self, detJ: float, gp_index: int | None = None) -> float:
+        """Validate a Jacobian determinant value at a quadrature point.
+
+        Raises a descriptive ``ValueError`` if ``detJ`` is non-positive
+        (inverted element) or effectively zero (degenerate / zero-volume
+        element).  This guard is enabled by default; pass
+        ``strict_jacobian=False`` to the element constructor to opt out
+        (not recommended — silently using ``abs(detJ)`` yields a
+        non-physical, possibly negative-definite element stiffness).
+
+        Parameters
+        ----------
+        detJ : float
+            Computed determinant of the Jacobian at a quadrature point.
+        gp_index : int or None, optional
+            Index of the offending Gauss point, used only in the error
+            message.
+
+        Returns
+        -------
+        float
+            ``detJ`` unchanged when the check passes (or when strict
+            checking is disabled).
+        """
+        if not self.strict_jacobian:
+            return detJ
+
+        if detJ <= 0.0 or abs(detJ) < self._JAC_ZERO_TOL:
+            elem_label = (
+                f"Hex8 element {self.elem_id}"
+                if self.elem_id is not None
+                else "Hex8 element"
+            )
+            gp_label = (
+                f" at gauss point {gp_index}"
+                if gp_index is not None
+                else ""
+            )
+            raise ValueError(
+                f"{elem_label}: non-positive Jacobian determinant "
+                f"{detJ:.3e}{gp_label}; element is inverted or degenerate. "
+                "Check node ordering and mesh quality."
+            )
+        return detJ
 
     # ------------------------------------------------------------------
     # Shape functions
@@ -202,6 +259,7 @@ class Hex8Element:
         """
         dN_dxi = self.shape_derivatives(xi, eta, zeta)  # (3, 8)
         J = dN_dxi @ self.node_coords  # (3, 3)
+        self._check_detJ(float(np.linalg.det(J)))
         J_inv = np.linalg.inv(J)
         dN_dx = J_inv @ dN_dxi  # (3, 8) — derivatives in physical coords
 
@@ -295,10 +353,15 @@ class Hex8Element:
             xi, eta, zeta = self._gauss_points[gp_idx]
             w = self._gauss_weights[gp_idx]
 
+            # Check Jacobian determinant first so that an inverted or
+            # degenerate element is rejected with a Gauss-point-aware
+            # error message (issue #45) before B_matrix attempts its
+            # own (less informative) check.
+            J = self.jacobian(xi, eta, zeta)  # (3, 3)
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=gp_idx)
+
             B = self.B_matrix(xi, eta, zeta)  # (6, 24)
             C_bar = self.rotated_stiffness(xi, eta, zeta)  # (6, 6)
-            J = self.jacobian(xi, eta, zeta)  # (3, 3)
-            detJ = np.linalg.det(J)
 
             Ke += (B.T @ C_bar @ B) * detJ * w
 
@@ -390,9 +453,9 @@ class Hex8Element:
             xi, eta, zeta = self._gauss_points[gp_idx]
             w = self._gauss_weights[gp_idx]
 
-            N_scalar = self.shape_functions(xi, eta, zeta)  # (8,)
             J = self.jacobian(xi, eta, zeta)
-            detJ = np.linalg.det(J)
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=gp_idx)
+            N_scalar = self.shape_functions(xi, eta, zeta)  # (8,)
 
             # Build (3, 24) shape function matrix: N_mat
             N_mat = np.zeros((3, 24))
@@ -426,7 +489,8 @@ class Hex8Element:
             xi, eta, zeta = self._gauss_points[gp_idx]
             w = self._gauss_weights[gp_idx]
             J = self.jacobian(xi, eta, zeta)
-            vol += np.linalg.det(J) * w
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=gp_idx)
+            vol += detJ * w
         return float(vol)
 
     # ------------------------------------------------------------------
