@@ -1395,7 +1395,7 @@ if HAS_PYQT6:
             """Show about dialog."""
             QMessageBox.about(
                 self, "About WrinkleFE",
-                "<h3>WrinkleFE v0.1.0</h3>"
+                "<h3>WrinkleFE v1.0.0</h3>"
                 "<p>Finite element analysis of wrinkled composite laminates.</p>"
                 "<p>Combines 3D cross-laminated plate theory with advanced "
                 "composite failure criteria for modeling fiber waviness "
