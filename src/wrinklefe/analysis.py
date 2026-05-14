@@ -36,7 +36,7 @@ References
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -719,18 +719,31 @@ class WrinkleAnalysis:
         AttributeError
             If *parameter* is not a valid :class:`AnalysisConfig` field.
         """
-        if not hasattr(base_config, parameter):
+        valid_field_names = {f.name for f in fields(base_config)}
+        if parameter not in valid_field_names:
             raise AttributeError(
                 f"AnalysisConfig has no field '{parameter}'"
             )
 
         results_list: List[AnalysisResults] = []
 
+        # If domain_length was auto-derived from wavelength in the base
+        # config (i.e. user left it at the sentinel 0.0), we must reset
+        # it to the sentinel before each replace() so __post_init__
+        # re-derives it from the swept value. ``replace`` only invokes
+        # ``__post_init__``; it does not reset un-passed fields, so a
+        # previously-derived ``domain_length`` would otherwise stick.
+        reset_domain_length = (
+            parameter == "wavelength"
+            and "domain_length" in valid_field_names
+            and base_config.domain_length == 3.0 * base_config.wavelength
+        )
+
         for val in values:
-            cfg = replace(base_config, **{parameter: val})
-            # Rerun __post_init__ if domain_length depends on wavelength
-            if parameter == "wavelength" and base_config.domain_length <= 0:
-                cfg.domain_length = 3.0 * val
+            overrides = {parameter: val}
+            if reset_domain_length:
+                overrides["domain_length"] = 0.0
+            cfg = replace(base_config, **overrides)
 
             results_list.append(
                 WrinkleAnalysis(cfg).run(analytical_only=analytical_only)
