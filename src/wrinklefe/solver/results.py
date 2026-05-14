@@ -389,7 +389,7 @@ class FieldResults:
         K_global: sparse.csc_matrix,
         constrained_dofs: dict[int, float],
     ) -> np.ndarray:
-        """Compute reaction forces at constrained DOFs.
+        """Compute reaction forces at nodes with constrained DOFs.
 
         The reaction force vector is:
 
@@ -401,6 +401,11 @@ class FieldResults:
         (displacement BCs), the reaction at those DOFs is simply ``K @ u``
         restricted to the constrained rows.
 
+        Results are grouped by node (using the convention ``dof = 3 * node_id + d``
+        with ``d in {0, 1, 2}`` for ``Rx, Ry, Rz``).  For a node where only some
+        of the three DOFs are constrained, the unconstrained components are
+        reported as ``0.0``.
+
         Parameters
         ----------
         K_global : scipy.sparse.csc_matrix
@@ -411,19 +416,26 @@ class FieldResults:
         Returns
         -------
         np.ndarray
-            Shape ``(n_constrained, 4)`` array where each row is
-            ``[dof_index, Rx, Ry, Rz]``.  For a single-DOF constraint,
-            only the constrained component is non-zero, but the full
-            node reaction is returned when all 3 DOFs of a node are constrained.
+            Shape ``(n_nodes_with_reactions, 4)`` array where each row is
+            ``[node_id, Rx, Ry, Rz]``.  Rows are sorted by ``node_id``.
         """
         u_flat = self.displacement.ravel()
-        R_full = K_global @ u_flat  # full residual
+        R_full = np.asarray(K_global @ u_flat).ravel()  # full residual
 
-        dof_indices = sorted(constrained_dofs.keys())
-        result = np.empty((len(dof_indices), 2))
-        for i, dof in enumerate(dof_indices):
-            result[i, 0] = dof
-            result[i, 1] = R_full[dof]
+        # Group constrained DOFs by node id (dof = 3 * node + d).
+        node_reactions: dict[int, np.ndarray] = {}
+        for dof in constrained_dofs:
+            node_id = int(dof) // 3
+            d = int(dof) % 3
+            if node_id not in node_reactions:
+                node_reactions[node_id] = np.zeros(3, dtype=float)
+            node_reactions[node_id][d] = float(R_full[int(dof)])
+
+        node_ids = sorted(node_reactions.keys())
+        result = np.empty((len(node_ids), 4), dtype=float)
+        for i, node_id in enumerate(node_ids):
+            result[i, 0] = node_id
+            result[i, 1:4] = node_reactions[node_id]
 
         return result
 
