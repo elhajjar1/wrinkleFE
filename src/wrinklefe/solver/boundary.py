@@ -275,10 +275,12 @@ class BoundaryHandler:
         For each constrained DOF *i* with prescribed value *v*:
 
         .. math::
-            K_{ii} \\mathrel{+}= \\alpha, \\qquad F_i = \\alpha \\, v
+            K_{ii} \\mathrel{+}= \\alpha, \\qquad F_i \\mathrel{+}= \\alpha \\, v
 
         where alpha is the penalty parameter.  The large diagonal entry
-        forces the solution ``u_i`` to be approximately ``v``.
+        forces the solution ``u_i`` to be approximately ``v``.  The force
+        contribution is accumulated so any previously applied force at
+        the same DOF is preserved.
 
         The method converts ``K`` to LIL format for efficient element
         access, modifies it, and converts back to CSC.
@@ -309,7 +311,7 @@ class BoundaryHandler:
 
         for dof, val in constrained_dofs.items():
             K_lil[dof, dof] += penalty
-            F_mod[dof] = penalty * val
+            F_mod[dof] += penalty * val
 
         return K_lil.tocsc(), F_mod
 
