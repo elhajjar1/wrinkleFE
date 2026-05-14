@@ -134,7 +134,7 @@ class PlyDiscount(ProgressiveDamageModel):
         - ``fiber_tension`` / ``fiber_compression``:
           E1, nu12, nu13 are multiplied by *residual_factor*.
         - ``matrix_tension`` / ``matrix_compression``:
-          E2, G12, G23, nu23 are multiplied by *residual_factor*.
+          E2, E3, G12, G23, nu23 are multiplied by *residual_factor*.
         - ``shear`` / ``shear_12``:
           G12 is multiplied by *residual_factor*.
         - ``shear_13``:
