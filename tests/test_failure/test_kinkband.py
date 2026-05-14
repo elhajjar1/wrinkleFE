@@ -101,6 +101,39 @@ class TestBudianskyFleckKinkBand:
         expected_fi = abs(s1) / (x850_material.Xc * ckd)
         assert_allclose(result.index, expected_fi, rtol=1e-10)
 
+    def test_tensile_sigma11_returns_zero_fi(self, x850_material):
+        """Regression test for #20: kink-band must not fire under tensile sigma_11.
+
+        Kink-banding is a compression-only mechanism. With sigma_11 = +Xc
+        (tensile, equal in magnitude to the compressive allowable), the
+        criterion must return FI = 0 and reserve_factor = +inf -- it must
+        not spuriously report failure.
+        """
+        kb = BudianskyFleckKinkBand(theta_eff=0.0, damage_index=0.0)
+        stress = np.array([+x850_material.Xc, 0.0, 0.0, 0.0, 0.0, 0.0])
+        result = kb.evaluate(stress, x850_material)
+        assert result.index == 0.0
+        assert result.reserve_factor == float("inf")
+        assert result.criterion_name == "budiansky_fleck"
+
+    def test_compressive_sigma11_at_xc_gives_fi_one(self, x850_material):
+        """Regression test for #20: compressive sigma_11 = -Xc with no
+        knockdown (theta=0, D=0) must give FI approx 1 (true failure)."""
+        kb = BudianskyFleckKinkBand(theta_eff=0.0, damage_index=0.0)
+        stress = np.array([-x850_material.Xc, 0.0, 0.0, 0.0, 0.0, 0.0])
+        result = kb.evaluate(stress, x850_material)
+        assert_allclose(result.index, 1.0, rtol=1e-12)
+        assert result.mode == "kink_band"
+        assert_allclose(result.reserve_factor, 1.0, rtol=1e-12)
+
+    def test_zero_sigma11_returns_zero_fi(self, x850_material):
+        """Zero sigma_11 must be treated as non-failing (FI=0)."""
+        kb = BudianskyFleckKinkBand(theta_eff=0.1, damage_index=0.1)
+        stress = np.zeros(6)
+        result = kb.evaluate(stress, x850_material)
+        assert result.index == 0.0
+        assert result.reserve_factor == float("inf")
+
     def test_negative_theta_raises(self):
         with pytest.raises(ValueError):
             BudianskyFleckKinkBand(theta_eff=-0.1)
