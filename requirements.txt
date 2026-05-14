@@ -5,9 +5,8 @@
 # 3.10-3.12 matrix.
 #
 # stdlib modules and dev tools (pytest, ruff, mypy) are excluded by design.
-# PyQt6 is intentionally NOT here — it cannot run on Streamlit Cloud and is
-# only needed for the local desktop GUI. It is declared in pyproject's
-# [project.optional-dependencies] gui extra.
+# This project is Streamlit-first (web) and CLI-only — there is no desktop GUI,
+# so PyQt6 / pyvistaqt deliberately do not appear here.
 
 # --- Core (numerical + plotting) ---
 numpy>=2.1,<3

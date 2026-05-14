@@ -3,7 +3,7 @@
 ## Module Dependency Diagram
 
 ```
-core ──→ elements ──→ solver ──→ failure ──→ analysis ──→ gui
+core ──→ elements ──→ solver ──→ failure ──→ analysis
   │                                            ↑
   └──────────────────── viz                    │
                                      sweep ────┘
@@ -79,28 +79,6 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `viz/plots_3d.py` | 3D PyVista plots (mesh, damage contours) |
 | `viz/style.py` | Publication styling constants and helpers |
 | `sweep/parametric_sweep.py` | Parametric sweep over amplitude/wavelength/morphology; CSV output |
-| `gui/` | PyQt6 desktop application (see below) |
-
-## GUI Architecture
-
-```
-WrinkleFEMainWindow (QMainWindow)
-  ├── MaterialPanel       ─┐
-  ├── WrinklePanel         │  input panels (left dock)
-  ├── MeshPanel            │  each emits Qt signals on change
-  ├── AnalysisPanel       ─┘
-  ├── SweepPanel              parametric sweep tab
-  └── results area            plots + summary (central widget)
-
-Signals flow:  panel.configChanged → MainWindow.on_config_changed → validate
-               MainWindow.runAnalysis → AnalysisWorker(QThread) → result signal
-               MainWindow.runSweep   → SweepWorker(QThread)    → result signal
-```
-
-- **Panels** expose input widgets and emit `configChanged` signals.
-- **MainWindow** collects panel state into an `AnalysisConfig` and dispatches to workers.
-- **AnalysisWorker / SweepWorker** (QThread subclasses) run the computation off the UI thread and emit result signals on completion.
-- **Dialogs** (`gui/dialogs/`) is a placeholder package (TODO: planned for material library, parametric study, and export dialogs; not yet implemented).
 
 ## Confinement Model
 
