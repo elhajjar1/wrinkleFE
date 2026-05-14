@@ -333,7 +333,8 @@ class StaticSolver:
 
         callback = _callback if verbose else None
 
-        u, info = spla.cg(K, F, tol=tol, maxiter=maxiter, M=M_op,
+        # SciPy >=1.12 deprecated ``tol=`` in favour of ``rtol=``.
+        u, info = spla.cg(K, F, rtol=tol, maxiter=maxiter, M=M_op,
                           callback=callback)
 
         if info != 0:
