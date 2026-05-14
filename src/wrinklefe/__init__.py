@@ -9,4 +9,6 @@ from importlib.metadata import version, PackageNotFoundError
 try:
     __version__ = version("wrinklefe")
 except PackageNotFoundError:
-    __version__ = "0.0.0+unknown"
+    # Fallback for when the package isn't installed (e.g. running from source).
+    # Keep this in sync with pyproject.toml and CITATION.cff.
+    __version__ = "1.0.0"
