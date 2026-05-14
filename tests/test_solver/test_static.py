@@ -335,6 +335,46 @@ class TestBoundaryHandler:
         assert np.isclose(F_mod[0], 0.0, atol=1e-5)
         assert F_mod[3] < 0  # negative prescribed displacement
 
+    def test_apply_penalty_accumulates_force(
+        self, small_mesh, single_ply_laminate
+    ):
+        """Regression test for issue #46.
+
+        ``apply_penalty`` must accumulate (``+=``) into the force vector
+        for constrained DOFs, not overwrite (``=``).  Otherwise any force
+        applied at the same DOF by another BC (or pre-existing F entry)
+        is silently wiped out.
+        """
+        assembler = GlobalAssembler(small_mesh, single_ply_laminate)
+        K = assembler.assemble_stiffness()
+        handler = BoundaryHandler(small_mesh)
+
+        # Seed an applied force at DOF 3 and DOF 0
+        F = np.zeros(small_mesh.n_dof)
+        original_force_dof3 = 12.5
+        original_force_dof0 = -7.25
+        F[3] = original_force_dof3
+        F[0] = original_force_dof0
+
+        penalty = 1e20
+        prescribed_val_dof3 = -0.01
+        prescribed_val_dof0 = 0.0
+        constrained = {0: prescribed_val_dof0, 3: prescribed_val_dof3}
+
+        K_mod, F_mod = handler.apply_penalty(
+            K, F, constrained, penalty=penalty
+        )
+
+        # The penalty assignment must accumulate, not overwrite
+        expected_dof3 = original_force_dof3 + penalty * prescribed_val_dof3
+        expected_dof0 = original_force_dof0 + penalty * prescribed_val_dof0
+        assert F_mod[3] == pytest.approx(expected_dof3, rel=1e-12)
+        assert F_mod[0] == pytest.approx(expected_dof0, rel=0, abs=1e-6)
+
+        # Sanity: input F must not be mutated in place
+        assert F[3] == original_force_dof3
+        assert F[0] == original_force_dof0
+
     def test_apply_elimination(self, small_mesh, single_ply_laminate):
         """Elimination method reduces the system size."""
         assembler = GlobalAssembler(small_mesh, single_ply_laminate)
