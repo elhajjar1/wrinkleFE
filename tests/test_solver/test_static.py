@@ -7,6 +7,8 @@ Covers:
 - FieldResults: basic shape and property checks
 """
 
+import warnings
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -827,3 +829,67 @@ class TestManualSolveIntegration:
         xmax_nodes = mesh.nodes_on_face("x_max")
         for nid in xmax_nodes:
             assert u_full[3 * nid] < 0
+
+
+# ======================================================================
+# Regression tests for scipy CG ``rtol=`` migration (issue #47)
+# ======================================================================
+
+class TestCGSolverScipyRtolKwarg:
+    """Regression: ``scipy.sparse.linalg.cg`` must be called with ``rtol=``.
+
+    SciPy >=1.12 deprecated the ``tol=`` kwarg on iterative Krylov solvers
+    (``cg``, ``cgs``, ``bicg``, ``bicgstab``, ``gmres``, ``lgmres``, etc.)
+    in favour of ``rtol=`` and ``atol=``. Using the old kwarg emits a
+    ``DeprecationWarning`` on 1.12-1.13 and raises ``TypeError`` on 1.14+.
+    """
+
+    def test_iterative_solver_no_deprecation_warning(
+        self, small_mesh, single_ply_laminate
+    ):
+        """The iterative CG solver must not emit a DeprecationWarning.
+
+        Catches *all* warnings during a full ``solver='iterative'`` solve
+        and asserts none of them relate to the deprecated ``tol=`` kwarg.
+        """
+        solver = StaticSolver(small_mesh, single_ply_laminate)
+        bcs = BoundaryHandler.compression_bcs(small_mesh, applied_strain=-0.001)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            results = solver.solve(bcs, solver="iterative")
+
+        # FieldResults must come back as usual.
+        assert isinstance(results, FieldResults)
+        assert results.displacement.shape == (small_mesh.n_nodes, 3)
+
+        # No deprecation about the ``tol`` kwarg should bubble up.
+        offenders = [
+            w for w in caught
+            if issubclass(w.category, DeprecationWarning)
+            and "tol" in str(w.message).lower()
+        ]
+        assert not offenders, (
+            "scipy CG emitted a tol-related DeprecationWarning: "
+            + "; ".join(str(w.message) for w in offenders)
+        )
+
+    def test_cg_accepts_rtol_directly(self):
+        """Sanity check that the installed scipy CG accepts ``rtol=``.
+
+        Guards against accidental rollback to ``tol=`` in static.py.
+        """
+        from scipy.sparse import csc_matrix
+        from scipy.sparse import linalg as spla
+
+        # Trivial SPD system: identity, RHS = ones.
+        n = 5
+        K = csc_matrix(np.eye(n))
+        F = np.ones(n)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            u, info = spla.cg(K, F, rtol=1e-10, maxiter=100)
+
+        assert info == 0
+        np.testing.assert_allclose(u, np.ones(n), atol=1e-8)
