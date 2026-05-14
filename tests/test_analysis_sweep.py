@@ -9,6 +9,7 @@ and only override the swept parameters.
 
 from __future__ import annotations
 
+from dataclasses import fields, replace
 from unittest.mock import patch
 
 import pytest
@@ -129,3 +130,92 @@ class TestDecayFloorPreservedInSweep:
             assert cfg.ny == 2
             assert cfg.domain_width == pytest.approx(10.0)
             assert cfg.decay_floor == pytest.approx(0.3)
+
+
+class TestSweepDomainLengthDerivation:
+    """Issue #44: sweeping wavelength must re-run __post_init__ so the
+    auto-derived ``domain_length`` (3 * wavelength) tracks the swept value.
+
+    Before the fix, ``parametric_sweep`` patched ``cfg.domain_length``
+    directly after ``dataclasses.replace``, bypassing ``__post_init__``
+    and leaving derived state stale for any base config where
+    ``domain_length`` was originally auto-derived.
+    """
+
+    def _base_auto_domain(self):
+        # ``domain_length=0.0`` → __post_init__ sets it to 3 * wavelength.
+        return AnalysisConfig(
+            amplitude=0.366,
+            wavelength=10.0,
+            width=12.0,
+            morphology="stack",
+            loading="compression",
+            material=MaterialLibrary().get("IM7_8552"),
+            angles=[0, 90, 0, 90],
+            interface_1=1,
+            interface_2=2,
+            nx=4,
+            ny=2,
+            nz_per_ply=1,
+            domain_length=0.0,  # auto-derive
+            domain_width=10.0,
+            applied_strain=-0.005,
+            verbose=False,
+        )
+
+    def test_wavelength_sweep_redrives_domain_length(self):
+        """Each swept wavelength must produce domain_length == 3 * wavelength."""
+        base = self._base_auto_domain()
+        # Sanity: base auto-derivation worked.
+        assert base.domain_length == pytest.approx(30.0)
+
+        captured = []
+
+        def fake_run(self, analytical_only=None):
+            captured.append(self.config)
+            return _make_stub_result(self.config)
+
+        wavelengths = [5.0, 12.0, 25.0]
+        with patch.object(WrinkleAnalysis, "run", fake_run):
+            WrinkleAnalysis.parametric_sweep(base, "wavelength", wavelengths)
+
+        assert len(captured) == 3
+        for cfg, wl in zip(captured, wavelengths):
+            assert cfg.wavelength == pytest.approx(wl)
+            assert cfg.domain_length == pytest.approx(3.0 * wl), (
+                f"domain_length stale after sweep: got {cfg.domain_length}, "
+                f"expected {3.0 * wl} for wavelength {wl}"
+            )
+
+    def test_wavelength_sweep_respects_explicit_domain_length(self):
+        """If the user pinned domain_length, sweeping wavelength must keep it."""
+        base = self._base_auto_domain()
+        # Override domain_length explicitly with a value the auto-derivation
+        # would never produce (3 * 10.0 == 30.0; we pick 99.0).
+        pinned = replace(base, domain_length=99.0)
+        assert pinned.domain_length == pytest.approx(99.0)
+        # Quick sanity: ``fields(pinned)`` is non-empty (used to ensure the
+        # `fields` import is exercised; also documents the contract).
+        assert any(f.name == "domain_length" for f in fields(pinned))
+
+        captured = []
+
+        def fake_run(self, analytical_only=None):
+            captured.append(self.config)
+            return _make_stub_result(self.config)
+
+        with patch.object(WrinkleAnalysis, "run", fake_run):
+            WrinkleAnalysis.parametric_sweep(pinned, "wavelength", [5.0, 12.0])
+
+        for cfg in captured:
+            assert cfg.domain_length == pytest.approx(99.0), (
+                "Explicit domain_length must not be overwritten by sweep"
+            )
+
+    def test_invalid_parameter_rejects_non_field_attributes(self):
+        """Sweep must reject method/descriptor names, not just unknown attrs."""
+        base = self._base_auto_domain()
+        # ``__post_init__`` exists as an attribute on the dataclass instance
+        # but is not a field; the stricter check must reject it.
+        with pytest.raises(AttributeError, match="has no field"):
+            WrinkleAnalysis.parametric_sweep(base, "__post_init__", [1.0])
