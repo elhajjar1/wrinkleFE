@@ -29,8 +29,12 @@ from wrinklefe.io.export import export_abaqus_inp, export_results_json, export_v
 def analysis_result():
     """Run a small WrinkleAnalysis once for the entire module."""
     mat = MaterialLibrary().get("IM7_8552")
+    # NOTE: amplitude kept below the inversion threshold for this 1-element-
+    # per-ply mesh; the original 0.366 mm value produced inverted hex
+    # elements (see issue #45) and was silently masked by the old
+    # abs(detJ) behaviour.
     cfg = AnalysisConfig(
-        amplitude=0.366,
+        amplitude=0.25,
         wavelength=16.0,
         width=12.0,
         morphology="stack",
@@ -77,7 +81,7 @@ class TestJSONExport:
         out = tmp_path / "results.json"
         export_results_json(analysis_result, out)
         cfg = json.loads(out.read_text())["configuration"]
-        assert cfg["amplitude_mm"] == pytest.approx(0.366)
+        assert cfg["amplitude_mm"] == pytest.approx(0.25)
         assert cfg["wavelength_mm"] == pytest.approx(16.0)
         assert cfg["morphology"] == "stack"
         assert cfg["loading"] == "compression"

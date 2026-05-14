@@ -545,3 +545,108 @@ class TestRotatedStiffness:
         C_pristine = x850_material.stiffness_matrix
         # Wrinkle rotation should change the stiffness
         assert not np.allclose(C_wrinkled, C_pristine, atol=1e-6)
+
+
+# ======================================================================
+# Jacobian determinant guard (issue #45)
+# ======================================================================
+
+class TestJacobianGuard:
+    """Hex8 must refuse to assemble stiffness for inverted/degenerate
+    elements rather than silently producing negative stiffness.
+    """
+
+    @staticmethod
+    def _inverted_cube_nodes():
+        """Unit cube with two nodes swapped to invert the element.
+
+        Swapping nodes 0 and 4 mirrors the bottom and top faces and
+        reverses the local zeta axis, producing det(J) < 0.
+        """
+        nodes = np.array([
+            [0.0, 0.0, 1.0],  # 0  (was node 4)
+            [1.0, 0.0, 0.0],  # 1
+            [1.0, 1.0, 0.0],  # 2
+            [0.0, 1.0, 0.0],  # 3
+            [0.0, 0.0, 0.0],  # 4  (was node 0)
+            [1.0, 0.0, 1.0],  # 5
+            [1.0, 1.0, 1.0],  # 6
+            [0.0, 1.0, 1.0],  # 7
+        ], dtype=float)
+        return nodes
+
+    @staticmethod
+    def _degenerate_cube_nodes():
+        """Cube flattened to zero thickness in z (zero-volume)."""
+        return np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ], dtype=float)
+
+    def test_wellformed_hex_passes(self, unit_cube_element):
+        """A well-formed hex assembles its stiffness without raising."""
+        Ke = unit_cube_element.stiffness_matrix()
+        assert Ke.shape == (24, 24)
+        # Positive-definite contribution: diagonal must be strictly positive
+        assert np.all(np.diag(Ke) > 0.0)
+
+    def test_inverted_hex_raises_valueerror(self, x850_material):
+        """An inverted element raises ValueError with a clear message."""
+        nodes = self._inverted_cube_nodes()
+        elem = Hex8Element(nodes, x850_material, elem_id=42)
+
+        with pytest.raises(ValueError, match="non-positive Jacobian"):
+            elem.stiffness_matrix()
+
+    def test_inverted_hex_error_mentions_element_and_gauss_point(
+        self, x850_material
+    ):
+        """The error message identifies the element and Gauss point."""
+        nodes = self._inverted_cube_nodes()
+        elem = Hex8Element(nodes, x850_material, elem_id=7)
+
+        with pytest.raises(ValueError) as exc_info:
+            elem.stiffness_matrix()
+
+        msg = str(exc_info.value)
+        assert "Hex8 element 7" in msg
+        assert "gauss point" in msg
+        assert "inverted or degenerate" in msg
+
+    def test_degenerate_hex_raises(self, x850_material):
+        """A zero-volume (collapsed) element also raises."""
+        nodes = self._degenerate_cube_nodes()
+        elem = Hex8Element(nodes, x850_material)
+
+        with pytest.raises(ValueError, match="non-positive Jacobian"):
+            elem.stiffness_matrix()
+
+    def test_opt_out_allows_inverted(self, x850_material):
+        """With strict_jacobian=False, inverted elements no longer raise."""
+        nodes = self._inverted_cube_nodes()
+        elem = Hex8Element(nodes, x850_material, strict_jacobian=False)
+        # Should not raise — caller has explicitly opted out of the guard.
+        Ke = elem.stiffness_matrix()
+        assert Ke.shape == (24, 24)
+
+    def test_mass_matrix_also_guarded(self, x850_material):
+        """The Jacobian guard applies to mass assembly as well."""
+        nodes = self._inverted_cube_nodes()
+        elem = Hex8Element(nodes, x850_material)
+
+        with pytest.raises(ValueError, match="non-positive Jacobian"):
+            elem.mass_matrix()
+
+    def test_volume_guarded(self, x850_material):
+        """Volume integration also raises for an inverted element."""
+        nodes = self._inverted_cube_nodes()
+        elem = Hex8Element(nodes, x850_material)
+
+        with pytest.raises(ValueError, match="non-positive Jacobian"):
+            _ = elem.volume
