@@ -440,35 +440,33 @@ class StaticSolver:
             )
         )
 
-        # Apply traction on x_max face from Nx
-        # Traction = Nx / Ly  (N/mm per unit width, distributed over face)
-        x_max_nodes = self.mesh.nodes_on_face("x_max")
+        # Apply traction on x_max face from Nx via a pressure BC so the
+        # total face force is distributed by consistent face integration
+        # (see boundary.BoundaryHandler.get_force_dofs and issue #50).
+        # CLT Nx has units of force per unit width (N/mm), so the total
+        # nodal force across the face is Nx * Ly.
         _, Ly, Lz = self.mesh.domain_size
-        n_face_nodes = len(x_max_nodes)
+        x_max_has_elements = self.mesh.nx > 0 and self.mesh.ny > 0 and self.mesh.nz > 0
 
-        if n_face_nodes > 0 and not np.isclose(load.Nx, 0.0):
-            # Total force = Nx * Ly (since Nx is per unit width)
-            # Distribute equally to face nodes
+        if x_max_has_elements and not np.isclose(load.Nx, 0.0):
             total_force_x = load.Nx * Ly
-            force_per_node = total_force_x / n_face_nodes
             bcs.append(
                 BoundaryCondition(
-                    bc_type="force",
-                    node_ids=x_max_nodes,
+                    bc_type="pressure",
+                    face="x_max",
                     dofs=[0],
-                    value=force_per_node,
+                    value=total_force_x,
                 )
             )
 
-        if n_face_nodes > 0 and not np.isclose(load.Nxy, 0.0):
+        if x_max_has_elements and not np.isclose(load.Nxy, 0.0):
             total_force_y = load.Nxy * Ly
-            force_per_node = total_force_y / n_face_nodes
             bcs.append(
                 BoundaryCondition(
-                    bc_type="force",
-                    node_ids=x_max_nodes,
+                    bc_type="pressure",
+                    face="x_max",
                     dofs=[1],
-                    value=force_per_node,
+                    value=total_force_y,
                 )
             )
 

@@ -174,6 +174,49 @@ class TestNodesOnFace:
         npt.assert_allclose(x_values, 0.0, atol=1e-10)
 
 
+class TestFaceElements:
+    """Tests for ``MeshData.face_elements`` (issue #50)."""
+
+    def test_face_elements_shape_x_max(self, small_mesh_generator, small_mesh):
+        gen = small_mesh_generator
+        quads = small_mesh.face_elements("x_max")
+        assert quads.shape == (gen.ny * gen.nz, 4)
+
+    def test_face_elements_shape_z_max(self, small_mesh_generator, small_mesh):
+        gen = small_mesh_generator
+        quads = small_mesh.face_elements("z_max")
+        assert quads.shape == (gen.nx * gen.ny, 4)
+
+    def test_face_elements_corners_on_face(self, small_mesh):
+        """Every corner of every face quad must belong to the face's node set."""
+        for face in ("x_min", "x_max", "y_min", "y_max", "z_min", "z_max"):
+            quads = small_mesh.face_elements(face)
+            face_nodes = set(small_mesh.nodes_on_face(face).tolist())
+            for q in quads:
+                for nid in q:
+                    assert int(nid) in face_nodes
+
+    def test_face_elements_quad_area_sums_to_face_area(self, small_mesh):
+        """Sum of Q4 quad areas equals the rectangular face area on flat mesh."""
+        from wrinklefe.solver.boundary import _quad_areas
+        Lx, Ly, Lz = small_mesh.domain_size
+        face_to_area = {
+            "x_min": Ly * Lz, "x_max": Ly * Lz,
+            "y_min": Lx * Lz, "y_max": Lx * Lz,
+            "z_min": Lx * Ly, "z_max": Lx * Ly,
+        }
+        for face, expected_area in face_to_area.items():
+            quads = small_mesh.face_elements(face)
+            total = float(_quad_areas(small_mesh.nodes, quads).sum())
+            assert np.isclose(total, expected_area, rtol=1e-10), (
+                f"{face}: total area {total} != expected {expected_area}"
+            )
+
+    def test_face_elements_invalid_face_raises(self, small_mesh):
+        with pytest.raises(ValueError, match="Unknown face"):
+            small_mesh.face_elements("top")
+
+
 class TestElementConnectivity:
     """Test element connectivity and adjacency."""
 
