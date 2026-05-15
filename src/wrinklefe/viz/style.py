@@ -16,13 +16,16 @@ Elhajjar, R. (2025). Scientific Reports, 15, 25977.
 
 from __future__ import annotations
 
-from typing import Optional
+import os
+from contextlib import contextmanager
+from typing import Any, Iterator, Optional, Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
+from matplotlib.figure import Figure
 from matplotlib.image import AxesImage
 
 
@@ -237,3 +240,77 @@ def ensure_axes(
     if projection is not None:
         return fig.add_subplot(111, projection=projection)
     return fig.add_subplot(111)
+
+
+def save_figure(
+    ax_or_fig: Union[Axes, Figure],
+    path: Union[str, "os.PathLike[str]"],
+    *,
+    close: bool = True,
+    dpi: int = 300,
+    **savefig_kwargs: Any,
+) -> None:
+    """Save the figure backing ``ax_or_fig`` to ``path`` and (by default) close it.
+
+    This is the recommended way to persist plots produced by the ``plot_*``
+    functions in batch / sweep / CLI / headless code. Those functions return an
+    :class:`~matplotlib.axes.Axes` whose parent :class:`~matplotlib.figure.Figure`
+    is created internally by :func:`ensure_axes`; if such loops never call
+    :func:`matplotlib.pyplot.close`, the figures accumulate (memory leak and the
+    ``More than 20 figures have been opened`` warning).
+
+    Parameters
+    ----------
+    ax_or_fig : Axes or Figure
+        The object returned by a ``plot_*`` function (an ``Axes``), or a
+        ``Figure`` directly.
+    path : str or os.PathLike
+        Destination file path for :meth:`~matplotlib.figure.Figure.savefig`.
+    close : bool, optional
+        If ``True`` (default), close the figure after writing so it does not
+        leak. Pass ``False`` only if the caller still needs the live figure
+        (e.g. to display it interactively afterwards).
+    dpi : int, optional
+        Resolution passed to ``savefig``. Default is 300.
+    **savefig_kwargs
+        Extra keyword arguments forwarded to
+        :meth:`~matplotlib.figure.Figure.savefig` (e.g. ``bbox_inches='tight'``).
+    """
+    fig = ax_or_fig if isinstance(ax_or_fig, Figure) else ax_or_fig.figure
+    savefig_kwargs.setdefault("bbox_inches", "tight")
+    fig.savefig(path, dpi=dpi, **savefig_kwargs)
+    if close:
+        plt.close(fig)
+
+
+@contextmanager
+def figure_context(ax_or_fig: Union[Axes, Figure]) -> Iterator[Figure]:
+    """Context manager that closes an internally-created figure on exit.
+
+    Use this to wrap a ``plot_*`` call in leak-prone batch loops when you are
+    not going through :func:`save_figure`::
+
+        for case in cases:
+            with figure_context(plot_wrinkle_profile(case.profile)) as fig:
+                fig.savefig(case.out_path)
+        # every figure is closed; plt.get_fignums() does not grow
+
+    Interactive / Streamlit callers should simply not use this helper (and not
+    pass ``close=True`` to :func:`save_figure`); the figure they receive stays
+    alive exactly as before.
+
+    Parameters
+    ----------
+    ax_or_fig : Axes or Figure
+        The object returned by a ``plot_*`` function, or a ``Figure``.
+
+    Yields
+    ------
+    Figure
+        The parent figure, guaranteed closed when the ``with`` block exits.
+    """
+    fig = ax_or_fig if isinstance(ax_or_fig, Figure) else ax_or_fig.figure
+    try:
+        yield fig
+    finally:
+        plt.close(fig)

@@ -28,7 +28,9 @@ from wrinklefe.viz.style import (
     MORPHOLOGY_MARKERS,
     colorbar_setup,
     ensure_axes,
+    figure_context,
     get_morphology_style,
+    save_figure,
     set_publication_style,
 )
 
@@ -67,6 +69,8 @@ __all__ = [
     "FIGSIZE_DOUBLE_WIDE",
     "colorbar_setup",
     "ensure_axes",
+    "save_figure",
+    "figure_context",
     "get_morphology_style",
     # 2D plots
     "plot_wrinkle_profile",
