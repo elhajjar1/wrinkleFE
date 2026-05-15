@@ -355,11 +355,7 @@ with st.sidebar:
         value=DEFAULT_LAYUP, height=80,
         help=(
             "Accepts contracted notation like `[0/45/-45/90]_3s` "
-            "or an explicit comma-separated list of angles in degrees."
-        ),
-    )
-    with st.popover("Layup notation help", use_container_width=True):
-        st.markdown(
+            "or an explicit comma-separated list of angles in degrees.\n\n"
             "**Contracted notation** — sublaminate in square brackets, "
             "plies separated by `/`, optional repeat count and trailing "
             "`s` for symmetry:\n\n"
@@ -377,7 +373,8 @@ with st.sidebar:
             "**Explicit list** — comma-, semicolon-, or newline-separated "
             "angles, e.g. `0, 45, -45, 90, 90, -45, 45, 0`. Both forms can be "
             "edited freely in the textarea above."
-        )
+        ),
+    )
 
     st.markdown("**Wrinkle geometry**")
     amplitude = st.number_input(
