@@ -52,6 +52,71 @@ _NODE_COORDS = np.array([
 ], dtype=float)
 
 
+# Shape-function derivatives at the element centroid (xi=eta=zeta=0).
+# For trilinear shape functions, every (1 + xi_i * 0) factor reduces to 1,
+# so dN_j/d(xi_i) at the centroid simplifies to 0.125 * xi_i_j, where
+# xi_i_j is the i-th natural coordinate of node j.  Pre-computed here as a
+# (3, 8) array so the centroid Jacobian can be evaluated with a single
+# matmul ``_DN_CENTROID @ coords`` — used by :func:`_detJ_at_centroid` and
+# by ``MeshData.validate()`` to flag inverted elements before assembly.
+_DN_CENTROID = 0.125 * _NODE_COORDS.T  # (3, 8)
+
+
+def _detJ_at_centroid(coords: np.ndarray) -> float:
+    """Determinant of the hex8 Jacobian evaluated at the element centroid.
+
+    The centroid is ``(xi, eta, zeta) = (0, 0, 0)`` in natural coordinates.
+    A non-positive value indicates an inverted or degenerate element; this
+    helper is the cheap detector used by ``MeshData.validate()`` (issue
+    #94) and shares its shape-function math with the strict element-level
+    check (``Hex8Element._check_detJ``, issue #45 / PR #120).
+
+    Parameters
+    ----------
+    coords : np.ndarray
+        Shape ``(8, 3)`` — physical (x, y, z) coordinates of the 8 nodes
+        in the standard VTK / Abaqus ordering.
+
+    Returns
+    -------
+    float
+        Determinant of the 3x3 Jacobian ``dx/d(xi)`` at the centroid.
+    """
+    coords = np.asarray(coords, dtype=float)
+    if coords.shape != (8, 3):
+        raise ValueError(
+            f"coords must have shape (8, 3), got {coords.shape}."
+        )
+    J = _DN_CENTROID @ coords  # (3, 3)
+    return float(np.linalg.det(J))
+
+
+def _detJ_at_centroid_batch(elem_coords: np.ndarray) -> np.ndarray:
+    """Vectorised centroid det(J) for an array of hex8 elements.
+
+    Parameters
+    ----------
+    elem_coords : np.ndarray
+        Shape ``(n_elem, 8, 3)`` — node coordinates for each element in
+        the standard VTK / Abaqus ordering.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(n_elem,)`` array of Jacobian determinants at each
+        element's centroid.
+    """
+    elem_coords = np.asarray(elem_coords, dtype=float)
+    if elem_coords.ndim != 3 or elem_coords.shape[1:] != (8, 3):
+        raise ValueError(
+            "elem_coords must have shape (n_elem, 8, 3), got "
+            f"{elem_coords.shape}."
+        )
+    # J has shape (n_elem, 3, 3); broadcast _DN_CENTROID across n_elem.
+    J = np.einsum("ij,njk->nik", _DN_CENTROID, elem_coords)
+    return np.linalg.det(J)
+
+
 class Hex8Element:
     """8-node isoparametric hexahedral element for 3-D composite analysis.
 
