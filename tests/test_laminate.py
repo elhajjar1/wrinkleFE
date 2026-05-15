@@ -318,3 +318,263 @@ class TestLoadState:
         npt.assert_allclose(load.to_vector(), np.zeros(6))
         assert load.delta_T == 0.0
         assert load.delta_C == 0.0
+
+
+class TestLaminateThermal:
+    """Coverage for the CLT thermal path: ``Ply.thermal_strain_global``,
+    ``Laminate.thermal_resultants`` and the thermal branch of
+    ``Laminate.midplane_strains``.
+
+    Hand-computed references are derived from the conventional CLT formulation
+    (Jones 1999, Reddy 2004):
+
+        N^T = ΔT · Σ_k Q̄_k · α_k · t_k
+        M^T = ΔT · Σ_k Q̄_k · α_k · z̄_k · t_k
+        A·ε⁰ + B·κ = N_applied + N^T
+        B·ε⁰ + D·κ = M_applied + M^T
+
+    so free thermal expansion of an unrestrained laminate satisfies
+    ``ε⁰ = α_eff · ΔT`` with the *same* sign as α.
+    """
+
+    # -- helpers -----------------------------------------------------------
+
+    @staticmethod
+    def _hand_thermal_resultants(lam, delta_T):
+        """Independent reimplementation of Σ Q̄·α·ΔT·t (and the z-weighted M^T).
+
+        Kept separate from production code so a refactor in laminate.py cannot
+        silently re-route through the same buggy branch.
+        """
+        NT = np.zeros(3)
+        MT = np.zeros(3)
+        zc = lam.z_coords()
+        for k, ply in enumerate(lam.plies):
+            Qb = ply.Q_bar()
+            alpha = ply.thermal_strain_global()
+            t_k = zc[k + 1] - zc[k]
+            z_mid = 0.5 * (zc[k] + zc[k + 1])
+            Qa = Qb @ alpha
+            NT += Qa * delta_T * t_k
+            MT += Qa * delta_T * z_mid * t_k
+        return NT, MT
+
+    # -- Ply.thermal_strain_global -----------------------------------------
+
+    def test_thermal_strain_global_at_0deg(self, x850_material):
+        """0° ply returns [α1, α2, 0] in laminate coordinates."""
+        ply = Ply(material=x850_material, angle=0.0, thickness=0.183)
+        a = ply.thermal_strain_global()
+        npt.assert_allclose(
+            a, [x850_material.alpha1, x850_material.alpha2, 0.0], atol=1e-18
+        )
+
+    def test_thermal_strain_global_at_90deg(self, x850_material):
+        """90° ply swaps α1 ↔ α2 and keeps α_xy = 0."""
+        ply = Ply(material=x850_material, angle=90.0, thickness=0.183)
+        a = ply.thermal_strain_global()
+        npt.assert_allclose(
+            a, [x850_material.alpha2, x850_material.alpha1, 0.0], atol=1e-18
+        )
+
+    def test_thermal_strain_global_at_45deg_engineering_shear(self, x850_material):
+        """45° ply: α_x = α_y = (α1+α2)/2, α_xy = (α1-α2) (engineering shear).
+
+        Locks the engineering-shear convention ``α_xy = 2(α1-α2)·s·c`` against
+        a future "fix" to the tensor form (which would halve the shear term and
+        silently change every off-axis ply stress under ΔT ≠ 0).
+        """
+        a1, a2 = x850_material.alpha1, x850_material.alpha2
+        ply = Ply(material=x850_material, angle=45.0, thickness=0.183)
+        a = ply.thermal_strain_global()
+        npt.assert_allclose(
+            a, [0.5 * (a1 + a2), 0.5 * (a1 + a2), (a1 - a2)], atol=1e-18
+        )
+
+    def test_thermal_strain_global_delta_T_independence(self, x850_material):
+        """``thermal_strain_global`` returns CTE only — no ΔT dependence."""
+        ply = Ply(material=x850_material, angle=30.0, thickness=0.183)
+        # The method takes no ΔT argument; just sanity-check the return shape
+        # and that it matches the closed-form transformation.
+        a1, a2 = x850_material.alpha1, x850_material.alpha2
+        c, s = np.cos(np.deg2rad(30.0)), np.sin(np.deg2rad(30.0))
+        expected = np.array(
+            [a1 * c**2 + a2 * s**2, a1 * s**2 + a2 * c**2, 2 * (a1 - a2) * s * c]
+        )
+        npt.assert_allclose(ply.thermal_strain_global(), expected, atol=1e-18)
+
+    # -- Laminate.thermal_resultants --------------------------------------
+
+    def test_thermal_resultants_zero_delta_T(self, x850_material):
+        """ΔT = 0 → NT = MT = 0 for any stacking sequence."""
+        lam = Laminate.from_angles(
+            [0, 45, -45, 90], material=x850_material, ply_thickness=0.183
+        )
+        NT, MT = lam.thermal_resultants(0.0)
+        npt.assert_allclose(NT, np.zeros(3), atol=1e-18)
+        npt.assert_allclose(MT, np.zeros(3), atol=1e-18)
+
+    def test_thermal_resultants_symmetric_balanced_MT_zero(self, x850_material):
+        """Symmetric ``[0/90/90/0]``: M^T = 0; N^T has zero shear, nonzero
+        normal components, equal by symmetry of stacking through-thickness.
+        """
+        lam = Laminate.from_angles(
+            [0, 90, 90, 0], material=x850_material, ply_thickness=0.183
+        )
+        NT, MT = lam.thermal_resultants(-100.0)
+        # By symmetry about the midplane, MT must vanish exactly.
+        npt.assert_allclose(MT, np.zeros(3), atol=1e-9)
+        # No off-axis plies => no thermal shear coupling.
+        npt.assert_allclose(NT[2], 0.0, atol=1e-12)
+        # NT_x and NT_y are nonzero for nonzero ΔT (sanity).
+        assert abs(NT[0]) > 1e-3
+        assert abs(NT[1]) > 1e-3
+        # Cross-check against hand reimplementation.
+        NT_ref, MT_ref = self._hand_thermal_resultants(lam, -100.0)
+        npt.assert_allclose(NT, NT_ref, rtol=1e-12, atol=1e-12)
+        npt.assert_allclose(MT, MT_ref, rtol=1e-12, atol=1e-9)
+
+    def test_thermal_resultants_unsymmetric_MT_nonzero(self, x850_material):
+        """Unsymmetric ``[0/90]``: M^T ≠ 0 and matches a hand-computed reference.
+
+        For two plies of equal thickness t, the 0° ply sits at z̄ = -t/2 and the
+        90° ply at z̄ = +t/2. Because Q̄·α differs between the two plies, the
+        z-weighted sum no longer cancels:
+
+            M^T = ΔT · [ Q̄_0·α_0 · (-t/2) · t  +  Q̄_90·α_90 · (+t/2) · t ]
+                = ΔT · (t²/2) · [ Q̄_90·α_90 - Q̄_0·α_0 ]
+        """
+        t = 0.125
+        dT = -120.0  # cure-down from cure to room temperature
+        lam = Laminate.from_angles([0, 90], material=x850_material, ply_thickness=t)
+        NT, MT = lam.thermal_resultants(dT)
+
+        # Hand reference using two independent ply contributions.
+        ply0, ply90 = lam.plies[0], lam.plies[1]
+        Qa0 = ply0.Q_bar() @ ply0.thermal_strain_global()
+        Qa90 = ply90.Q_bar() @ ply90.thermal_strain_global()
+        NT_expect = dT * t * (Qa0 + Qa90)
+        MT_expect = dT * (t**2 / 2.0) * (Qa90 - Qa0)
+        npt.assert_allclose(NT, NT_expect, rtol=1e-12, atol=1e-12)
+        npt.assert_allclose(MT, MT_expect, rtol=1e-12, atol=1e-12)
+
+        # MT must be genuinely nonzero on the normal components.
+        assert abs(MT[0]) > 1e-6
+        assert abs(MT[1]) > 1e-6
+
+    # -- Laminate.midplane_strains (thermal branch) -----------------------
+
+    def test_midplane_strains_no_op_when_delta_T_zero(self, x850_material):
+        """``delta_T == 0`` skips the thermal branch entirely — result must
+        match ``abd_inverse @ NM`` to bit precision (regression guard on the
+        ``np.isclose(load.delta_T, 0.0)`` branch in laminate.py:526).
+        """
+        lam = Laminate.from_angles(
+            [0, 45, -45, 90], material=x850_material, ply_thickness=0.183
+        )
+        load = LoadState(Nx=100.0, My=5.0, delta_T=0.0)
+        observed = lam.midplane_strains(load)
+        expected = lam.abd_inverse() @ load.to_vector()
+        npt.assert_array_equal(observed, expected)
+
+    @pytest.mark.xfail(
+        reason=(
+            "Sign-flip bug in Laminate.midplane_strains: subtracts thermal "
+            "resultants when it should add them (see issue #133). The hand "
+            "reference here is the correct CLT free-thermal-expansion result."
+        ),
+        strict=True,
+    )
+    def test_free_thermal_expansion_single_ply(self, x850_material):
+        """Single unidirectional 0° ply, N = M = 0, ΔT > 0 → ε⁰ = α·ΔT, κ = 0.
+
+        Locks the CLT sign convention: for an unrestrained laminate heated by
+        ΔT, the midplane strain equals the free thermal strain.
+        """
+        dT = 100.0
+        lam = Laminate.from_angles([0.0], material=x850_material, ply_thickness=0.5)
+        observed = lam.midplane_strains(LoadState(delta_T=dT))
+        expected_eps0 = np.array(
+            [x850_material.alpha1 * dT, x850_material.alpha2 * dT, 0.0]
+        )
+        npt.assert_allclose(observed[0:3], expected_eps0, rtol=1e-12, atol=1e-14)
+        npt.assert_allclose(observed[3:6], np.zeros(3), atol=1e-14)
+
+    @pytest.mark.xfail(
+        reason=(
+            "Sign-flip bug in Laminate.midplane_strains: subtracts thermal "
+            "resultants when it should add them (see issue #133)."
+        ),
+        strict=True,
+    )
+    def test_midplane_strains_symmetric_free_thermal_recovers_alpha_eff(
+        self, x850_material
+    ):
+        """Symmetric ``[0/90]_s`` under ΔT only (no applied N/M): solving
+        ``A·ε⁰ = N^T`` recovers the laminate effective thermal expansion
+        coefficients, and curvatures are exactly zero (because both
+        ``B = 0`` and ``M^T = 0`` by symmetry).
+        """
+        dT = -80.0
+        lam = Laminate.symmetric(
+            [0.0, 90.0], material=x850_material, ply_thickness=0.183
+        )
+        # Symmetric: B = 0, MT = 0.  Decoupled system: A·ε⁰ = N^T (correct sign).
+        NT, MT = lam.thermal_resultants(dT)
+        npt.assert_allclose(MT, np.zeros(3), atol=1e-8)
+        eps0_expected = np.linalg.solve(lam.A, NT)
+
+        observed = lam.midplane_strains(LoadState(delta_T=dT))
+        npt.assert_allclose(observed[0:3], eps0_expected, rtol=1e-12, atol=1e-12)
+        npt.assert_allclose(observed[3:6], np.zeros(3), atol=1e-12)
+
+    @pytest.mark.xfail(
+        reason=(
+            "Sign-flip bug in Laminate.midplane_strains: subtracts thermal "
+            "resultants when it should add them (see issue #133)."
+        ),
+        strict=True,
+    )
+    def test_midplane_strains_thermal_coupling_unsymmetric(self, x850_material):
+        """Unsymmetric ``[0/90]`` with ΔT only:
+        ``(ε⁰; κ) = ABD⁻¹ · [N^T; M^T]``. Couples in-plane and bending.
+        """
+        dT = -100.0
+        lam = Laminate.from_angles(
+            [0, 90], material=x850_material, ply_thickness=0.125
+        )
+        NT, MT = lam.thermal_resultants(dT)
+        rhs = np.concatenate([NT, MT])  # correct CLT sign
+        expected = lam.abd_inverse() @ rhs
+
+        observed = lam.midplane_strains(LoadState(delta_T=dT))
+        npt.assert_allclose(observed, expected, rtol=1e-12, atol=1e-12)
+        # Unsymmetric laminate develops nonzero curvature under pure ΔT.
+        assert np.linalg.norm(observed[3:6]) > 1e-6
+
+    def test_midplane_strains_45deg_minus45_free_expansion_shear_signs(
+        self, x850_material
+    ):
+        """For a symmetric ``[+45/-45]_s`` laminate, ``thermal_strain_global``
+        of the +45 and -45 plies share identical normal components but
+        equal-and-opposite shear (engineering convention). The summed N^T
+        therefore has *zero* shear (the ±45 pairs cancel), while each
+        individual ply still carries a nonzero α_xy.
+        """
+        ply_p45 = Ply(material=x850_material, angle=+45.0, thickness=0.183)
+        ply_m45 = Ply(material=x850_material, angle=-45.0, thickness=0.183)
+        a_p = ply_p45.thermal_strain_global()
+        a_m = ply_m45.thermal_strain_global()
+        # Normals identical, shear mirrored.
+        npt.assert_allclose(a_p[:2], a_m[:2], atol=1e-18)
+        npt.assert_allclose(a_p[2], -a_m[2], atol=1e-18)
+        # The shear component is the engineering-shear (α1-α2) magnitude.
+        assert abs(a_p[2]) > 1e-9
+
+        # Symmetric ±45 laminate: NT_xy must cancel across the pair.
+        lam = Laminate.symmetric(
+            [+45.0, -45.0], material=x850_material, ply_thickness=0.183
+        )
+        NT, MT = lam.thermal_resultants(-100.0)
+        npt.assert_allclose(NT[2], 0.0, atol=1e-9)
+        npt.assert_allclose(MT, np.zeros(3), atol=1e-9)
