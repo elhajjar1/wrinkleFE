@@ -328,6 +328,10 @@ class MaterialLibrary:
     - ``T300_914`` : Toray T300 / Hexcel 914 (legacy European aerospace)
     - ``T700_2510`` : Toray T700SC / Cytec 2510 (OOA VBO system)
     - ``AC318_S6C10`` : AC318 / S6C10-800 (S-glass / epoxy, Li et al. 2026)
+    - ``T800S_M21`` : Hexcel T800S / M21 toughened epoxy (A350 / A400M primary)
+    - ``IM10_8552`` : Hexcel IM10 / 8552 (high-strain toughened epoxy)
+    - ``S2_GLASS_EPOXY`` : Generic S-2 glass / epoxy (MIL-HDBK-17 / CMH-17)
+    - ``KEVLAR49_EPOXY`` : Generic Kevlar 49 / epoxy aramid system
 
     Examples
     --------
@@ -335,8 +339,10 @@ class MaterialLibrary:
     >>> mat = lib.get("IM7_8552")
     >>> mat.E1
     171420.0
-    >>> lib.list_names()
-    ['AC318_S6C10', 'AS4_3501_6', 'IM7_8552', 'T300_914', 'T700_2510']
+    >>> sorted(lib.list_names())  # doctest: +NORMALIZE_WHITESPACE
+    ['AC318_S6C10', 'AS4_3501_6', 'IM10_8552', 'IM7_8552',
+     'KEVLAR49_EPOXY', 'S2_GLASS_EPOXY', 'T300_914', 'T700_2510',
+     'T800S_M21']
     """
 
     def __init__(self) -> None:
@@ -457,7 +463,8 @@ class MaterialLibrary:
     # ------------------------------------------------------------------
 
     def _load_builtins(self) -> None:
-        """Register the built-in material systems (4 carbon/epoxy + 1 glass/epoxy)."""
+        """Register the built-in material systems (carbon/epoxy, glass/epoxy,
+        and aramid/epoxy reference systems)."""
 
         # 1. AS4 / 3501-6  (Soden et al. 1998; MIL-HDBK-17)
         self.add(OrthotropicMaterial(
@@ -531,6 +538,92 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.3, beta3=0.3,
             gamma_Y=0.02,
             GIc=0.25, GIIc=0.75, alpha_0=53.0,
+        ))
+
+        # 6. T800S / M21  (Hexcel T800S fibre / M21 toughened epoxy).
+        #    Properties from Hexcel HexPly M21 product data sheet and the
+        #    open characterisation in Catalanotti, Camanho & Marques (2013)
+        #    "Three-dimensional failure criteria for fibre-reinforced
+        #    laminates", Composite Structures 95:63-79 (Table 1) and
+        #    Vogler, Camanho et al. (2013) "Modelling the inelastic
+        #    deformation and fracture of polymer composites — Part II",
+        #    Mech. Mater. 59:43-58.  Vf ≈ 0.59.
+        self.add(OrthotropicMaterial(
+            name="T800S_M21",
+            E1=157_000.0, E2=8_500.0, E3=8_500.0,
+            G12=4_200.0, G13=4_200.0, G23=2_800.0,
+            nu12=0.35, nu13=0.35, nu23=0.50,
+            Xt=2_950.0, Xc=1_680.0,
+            Yt=70.0, Yc=290.0,
+            Zt=70.0, Zc=290.0,
+            S12=98.0, S13=98.0, S23=80.0,
+            alpha1=-0.4e-6, alpha2=30.0e-6, alpha3=30.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.02,
+            GIc=0.21, GIIc=0.77, alpha_0=53.0,
+        ))
+
+        # 7. IM10 / 8552  (Hexcel IM10 fibre / 8552 toughened epoxy).
+        #    Hexcel IM10 product data sheet (fibre Ef ≈ 310 GPa, Xt_fibre ≈
+        #    6964 MPa) with HexPly 8552 matrix properties.  Lamina-level
+        #    values are bracketed by Lopes et al. (2007) "Physically-sound
+        #    simulation of low-velocity impact on fiber reinforced laminates"
+        #    and Hexcel IM10/8552 prepreg datasheet (Table 1, 60% Vf cured
+        #    ply properties).
+        self.add(OrthotropicMaterial(
+            name="IM10_8552",
+            E1=185_000.0, E2=9_400.0, E3=9_400.0,
+            G12=5_500.0, G13=5_500.0, G23=3_900.0,
+            nu12=0.32, nu13=0.32, nu23=0.43,
+            Xt=3_310.0, Xc=1_690.0,
+            Yt=63.0, Yc=240.0,
+            Zt=63.0, Zc=240.0,
+            S12=95.0, S13=95.0, S23=75.0,
+            alpha1=-0.4e-6, alpha2=26.0e-6, alpha3=26.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.02,
+            GIc=0.28, GIIc=0.79, alpha_0=53.0,
+        ))
+
+        # 8. S-2 Glass / Epoxy  (generic).
+        #    Reference values from MIL-HDBK-17-3F / CMH-17 Vol 2 (S-2 glass
+        #    laminate tables) and Daniel & Ishai (2006) "Engineering
+        #    Mechanics of Composite Materials", 2nd ed., Table A.4.
+        #    Representative cured-ply values at Vf ≈ 0.60.
+        self.add(OrthotropicMaterial(
+            name="S2_GLASS_EPOXY",
+            E1=52_000.0, E2=19_000.0, E3=19_000.0,
+            G12=6_700.0, G13=6_700.0, G23=6_500.0,
+            nu12=0.30, nu13=0.30, nu23=0.46,
+            Xt=1_700.0, Xc=970.0,
+            Yt=49.0, Yc=158.0,
+            Zt=49.0, Zc=158.0,
+            S12=83.0, S13=83.0, S23=60.0,
+            alpha1=6.6e-6, alpha2=19.7e-6, alpha3=19.7e-6,
+            beta1=0.0, beta2=0.3, beta3=0.3,
+            gamma_Y=0.02,
+            GIc=None, GIIc=None, alpha_0=53.0,
+        ))
+
+        # 9. Kevlar 49 / Epoxy  (generic aramid).
+        #    Reference values from Daniel & Ishai (2006) Table A.4 and
+        #    Kaw (2005) "Mechanics of Composite Materials", 2nd ed.,
+        #    Table 2.2.  Representative cured-ply values at Vf ≈ 0.60.
+        #    Note: longitudinal compressive strength of aramid prepregs
+        #    is markedly lower than tensile because of fibre kinking.
+        self.add(OrthotropicMaterial(
+            name="KEVLAR49_EPOXY",
+            E1=76_000.0, E2=5_500.0, E3=5_500.0,
+            G12=2_300.0, G13=2_300.0, G23=1_800.0,
+            nu12=0.34, nu13=0.34, nu23=0.50,
+            Xt=1_400.0, Xc=235.0,
+            Yt=12.0, Yc=53.0,
+            Zt=12.0, Zc=53.0,
+            S12=34.0, S13=34.0, S23=25.0,
+            alpha1=-4.0e-6, alpha2=79.0e-6, alpha3=79.0e-6,
+            beta1=0.0, beta2=0.6, beta3=0.6,
+            gamma_Y=0.02,
+            GIc=None, GIIc=None, alpha_0=53.0,
         ))
 
 

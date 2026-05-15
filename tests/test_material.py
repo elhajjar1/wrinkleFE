@@ -159,21 +159,32 @@ class TestMaterialValidation:
         )
 
 
+BUILTIN_NAMES = (
+    "AS4_3501_6",
+    "IM7_8552",
+    "T300_914",
+    "T700_2510",
+    "AC318_S6C10",
+    "T800S_M21",
+    "IM10_8552",
+    "S2_GLASS_EPOXY",
+    "KEVLAR49_EPOXY",
+)
+
+
 class TestMaterialLibrary:
     """Test MaterialLibrary functionality."""
 
-    def test_has_five_builtins(self):
+    def test_has_nine_builtins(self):
         lib = MaterialLibrary()
-        assert len(lib) == 5
+        assert len(lib) == len(BUILTIN_NAMES)
 
     def test_list_names_sorted(self):
         lib = MaterialLibrary()
         names = lib.list_names()
         assert names == sorted(names)
-        assert "IM7_8552" in names
-        assert "AS4_3501_6" in names
-        assert "T300_914" in names
-        assert "T700_2510" in names
+        for n in BUILTIN_NAMES:
+            assert n in names, f"missing built-in {n!r} in {names}"
 
     def test_get_existing_material(self):
         lib = MaterialLibrary()
@@ -192,12 +203,57 @@ class TestMaterialLibrary:
         lib.add(custom)
         assert "custom_mat" in lib
         assert lib.get("custom_mat") is custom
-        assert len(lib) == 6
+        assert len(lib) == len(BUILTIN_NAMES) + 1
 
     def test_contains(self):
         lib = MaterialLibrary()
         assert "IM7_8552" in lib
         assert "nonexistent" not in lib
+
+
+class TestNewBuiltinMaterials:
+    """Verify each newly-added built-in is retrievable with sensible values.
+
+    Covers the aerospace-prepreg expansion of issue #88: T800S/M21, IM10/8552,
+    S-2 glass/epoxy, and Kevlar-49/epoxy.
+    """
+
+    NEW_NAMES = ("T800S_M21", "IM10_8552", "S2_GLASS_EPOXY", "KEVLAR49_EPOXY")
+
+    @pytest.mark.parametrize("name", NEW_NAMES)
+    def test_retrievable_by_name(self, name):
+        lib = MaterialLibrary()
+        mat = lib.get(name)
+        assert mat.name == name
+
+    @pytest.mark.parametrize("name", NEW_NAMES)
+    def test_positive_moduli(self, name):
+        lib = MaterialLibrary()
+        mat = lib.get(name)
+        for attr in ("E1", "E2", "E3", "G12", "G13", "G23"):
+            val = getattr(mat, attr)
+            assert val > 0, f"{name}: {attr} = {val} not positive"
+        # Fibre-direction stiffness should dominate transverse stiffness
+        # for the unidirectional prepregs we ship.
+        assert mat.E1 > mat.E2
+
+    @pytest.mark.parametrize("name", NEW_NAMES)
+    def test_positive_strengths(self, name):
+        lib = MaterialLibrary()
+        mat = lib.get(name)
+        for attr in ("Xt", "Xc", "Yt", "Yc", "Zt", "Zc",
+                     "S12", "S13", "S23"):
+            val = getattr(mat, attr)
+            assert val > 0, f"{name}: {attr} = {val} not positive"
+
+    @pytest.mark.parametrize("name", NEW_NAMES)
+    def test_compliance_positive_definite(self, name):
+        lib = MaterialLibrary()
+        mat = lib.get(name)
+        eigvals = np.linalg.eigvalsh(mat.compliance_matrix)
+        assert np.all(eigvals > 0), (
+            f"{name}: non-PD compliance, eigenvalues={eigvals}"
+        )
 
 
 class TestMaterialSerialization:
