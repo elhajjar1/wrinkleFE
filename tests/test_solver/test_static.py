@@ -303,8 +303,14 @@ class TestBoundaryHandler:
         # Force at node 0, DOF 0
         assert np.isclose(F[0], 100.0)
 
-    def test_pressure_bc_distribution(self, small_mesh):
-        """Pressure BC distributes total force equally among face nodes."""
+    def test_pressure_bc_distribution_total_force(self, small_mesh):
+        """Pressure BC: summed nodal forces equal the prescribed total.
+
+        Regression for issue #50: the distribution is *not* equal per
+        node (corners, edges, and interior face nodes get different
+        weights), but the global sum must match the prescribed total
+        force on the face.
+        """
         handler = BoundaryHandler(small_mesh)
         total_force = 600.0
         bcs = [
@@ -314,10 +320,201 @@ class TestBoundaryHandler:
         ]
         F = handler.get_force_dofs(bcs)
         xmax_nodes = small_mesh.nodes_on_face("x_max")
-        n_face = len(xmax_nodes)
-        force_per_node = total_force / n_face
+        # Global equilibrium: sum of nodal Fx equals the total prescribed
+        applied_x = F[3 * xmax_nodes].sum()
+        assert np.isclose(applied_x, total_force, rtol=1e-12, atol=1e-9)
+        # And no Fx force leaks elsewhere
+        other = np.ones(small_mesh.n_dof, dtype=bool)
+        other[3 * xmax_nodes] = False
+        assert np.allclose(F[other], 0.0)
+
+    def test_pressure_bc_consistent_tributary_weights(self, small_mesh):
+        """Pressure BC distribution follows corner-1/4, edge-1/2, interior-1.
+
+        On a flat structured mesh with uniform face quads of area ``A``,
+        consistent face integration produces nodal forces:
+
+        - corner face nodes (in 1 quad): ``t * A / 4``
+        - edge face nodes  (in 2 quads): ``t * A / 2``
+        - interior nodes   (in 4 quads): ``t * A``
+
+        where ``t = total_force / total_face_area``.
+        """
+        handler = BoundaryHandler(small_mesh)
+        total_force = 600.0
+        bcs = [
+            BoundaryCondition(
+                bc_type="pressure", face="x_max", dofs=[0], value=total_force
+            ),
+        ]
+        F = handler.get_force_dofs(bcs)
+
+        face_quads = small_mesh.face_elements("x_max")
+        # Total face area (sum of quad areas)
+        from wrinklefe.solver.boundary import _quad_areas
+        areas = _quad_areas(small_mesh.nodes, face_quads)
+        A_total = float(areas.sum())
+        traction = total_force / A_total
+        # Number of face quads each node belongs to
+        from collections import Counter
+        share_count = Counter(face_quads.ravel().tolist())
+
+        # Each face node's expected Fx = traction * sum(quad_area)/4 over
+        # all quads that touch it.  For a regular grid quads have equal
+        # area so this reduces to traction * A_e * (n_quads_touching)/4.
+        for nid in small_mesh.nodes_on_face("x_max"):
+            mask = (face_quads == nid).any(axis=1)
+            expected = traction * areas[mask].sum() / 4.0
+            assert np.isclose(F[3 * nid], expected, rtol=1e-10, atol=1e-12), (
+                f"node {nid} (n_quads={share_count[int(nid)]}): "
+                f"F={F[3 * nid]}, expected={expected}"
+            )
+
+    def test_pressure_bc_uniform_face_buckets(self, small_mesh):
+        """On a flat uniform grid, face nodes group into corner/edge/interior buckets.
+
+        Verifies the canonical 1:2:4 ratio of consistent nodal forces.
+        """
+        # small_mesh is 3x2x1 (Lx=3, Ly=2), so x_max face has
+        # (ny+1)*(nz+1) = 3*2 = 6 nodes and ny*nz = 2 quads.
+        # With only 2 quads (one row in z, two columns in y), every
+        # face node is either at a quad corner (touched by 1 quad) or
+        # at the shared edge (touched by 2 quads).  Use a denser face
+        # by inflating ny, nz.
+        from wrinklefe.core.mesh import WrinkleMesh
+        from wrinklefe.core.material import OrthotropicMaterial
+        from wrinklefe.core.laminate import Laminate
+
+        mat = OrthotropicMaterial()
+        lam = Laminate.from_angles([0.0], material=mat, ply_thickness=1.0)
+        gen = WrinkleMesh(
+            laminate=lam, wrinkle_config=None,
+            Lx=3.0, Ly=3.0, nx=3, ny=3, nz_per_ply=3,
+        )
+        mesh = gen.generate()
+
+        handler = BoundaryHandler(mesh)
+        total_force = 90.0  # nice round number with Lx not in the load
+        bcs = [
+            BoundaryCondition(
+                bc_type="pressure", face="x_max", dofs=[0], value=total_force,
+            ),
+        ]
+        F = handler.get_force_dofs(bcs)
+
+        face_quads = mesh.face_elements("x_max")
+        face_nodes = mesh.nodes_on_face("x_max")
+        # On a regular grid all face quads have equal area:
+        from wrinklefe.solver.boundary import _quad_areas
+        areas = _quad_areas(mesh.nodes, face_quads)
+        np.testing.assert_allclose(areas, areas[0], rtol=1e-12)
+        A_total = float(areas.sum())
+        A_e = float(areas[0])
+        traction = total_force / A_total
+
+        # Tally how many quads each face node belongs to and check the
+        # nodal force matches t * A_e * count / 4.
+        from collections import Counter
+        counts = Counter(face_quads.ravel().tolist())
+
+        # Sanity: we should see counts {1, 2, 4} for a uniform interior face
+        unique_counts = set(counts[int(nid)] for nid in face_nodes)
+        assert unique_counts == {1, 2, 4}, unique_counts
+
+        for nid in face_nodes:
+            expected = traction * A_e * counts[int(nid)] / 4.0
+            assert np.isclose(F[3 * nid], expected, rtol=1e-10), (
+                f"node {nid} (count={counts[int(nid)]}): "
+                f"F={F[3 * nid]}, expected={expected}"
+            )
+
+        # Global equilibrium
+        assert np.isclose(F[3 * face_nodes].sum(), total_force, rtol=1e-12)
+
+    def test_pressure_bc_wrinkled_mesh_equilibrium(self, x850_material):
+        """Consistent face integration preserves total force on a wrinkled mesh.
+
+        Regression for issue #50: on a wrinkled mesh, face quads have
+        unequal areas; the legacy equal-per-node distribution gave the
+        wrong tributary weighting (corner over-loading).  With the
+        consistent-integration fix, the *summed* face force still equals
+        the prescribed total, and corners now get less than the
+        legacy 1/N share.
+        """
+        from wrinklefe.core.mesh import WrinkleMesh
+        from wrinklefe.core.laminate import Laminate
+        from wrinklefe.core.wrinkle import GaussianSinusoidal
+        from wrinklefe.core.morphology import WrinkleConfiguration
+
+        lam = Laminate.from_angles(
+            [0.0, 0.0, 0.0, 0.0],
+            material=x850_material, ply_thickness=0.183,
+        )
+        wrinkle = GaussianSinusoidal(
+            amplitude=0.4, wavelength=8.0, width=6.0, center=0.0,
+        )
+        cfg = WrinkleConfiguration.dual_wrinkle(
+            profile=wrinkle, interface1=1, interface2=2, phase=0.0,
+        )
+        gen = WrinkleMesh(
+            laminate=lam, wrinkle_config=cfg,
+            Lx=10.0, Ly=6.0, nx=8, ny=4, nz_per_ply=1,
+        )
+        mesh = gen.generate()
+
+        handler = BoundaryHandler(mesh)
+        total_force = 1234.5
+        bcs = [
+            BoundaryCondition(
+                bc_type="pressure", face="z_max", dofs=[2],
+                value=total_force,
+            ),
+        ]
+        F = handler.get_force_dofs(bcs)
+
+        face_nodes = mesh.nodes_on_face("z_max")
+        # Equilibrium: the integrated normal force matches the
+        # prescribed total to numerical tolerance.
+        assert np.isclose(F[3 * face_nodes + 2].sum(), total_force, rtol=1e-10)
+
+        # On a wrinkled face the corner nodes should receive *less*
+        # than the legacy equal-share value because they sit in one
+        # quad (1/4 area weight) while interior nodes accumulate area
+        # from four neighbouring quads.
+        face_quads = mesh.face_elements("z_max")
+        from collections import Counter
+        counts = Counter(face_quads.ravel().tolist())
+        corner_nodes = [n for n in face_nodes if counts[int(n)] == 1]
+        interior_nodes = [n for n in face_nodes if counts[int(n)] == 4]
+        assert corner_nodes and interior_nodes
+        legacy_share = total_force / len(face_nodes)
+        for n in corner_nodes:
+            assert F[3 * n + 2] < legacy_share
+        for n in interior_nodes:
+            assert F[3 * n + 2] > legacy_share
+
+    def test_pressure_bc_nodeid_fallback_legacy(self, small_mesh):
+        """Pressure BC with explicit ``node_ids`` falls back to equal split.
+
+        Without face topology there is no way to integrate over surface
+        shape functions, so we keep the legacy equal-per-node behaviour
+        as a documented fallback.
+        """
+        handler = BoundaryHandler(small_mesh)
+        xmax_nodes = small_mesh.nodes_on_face("x_max")
+        total_force = 1000.0
+        bcs = [
+            BoundaryCondition(
+                bc_type="pressure",
+                node_ids=xmax_nodes,
+                dofs=[0],
+                value=total_force,
+            ),
+        ]
+        F = handler.get_force_dofs(bcs)
+        per_node = total_force / len(xmax_nodes)
         for nid in xmax_nodes:
-            assert np.isclose(F[3 * nid], force_per_node)
+            assert np.isclose(F[3 * nid], per_node)
 
     def test_apply_penalty(self, small_mesh, single_ply_laminate):
         """Penalty method modifies diagonal and force vector."""

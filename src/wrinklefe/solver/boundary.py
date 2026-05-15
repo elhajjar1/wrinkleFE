@@ -30,6 +30,43 @@ from wrinklefe.core.laminate import LoadState
 
 
 # ======================================================================
+# Internal helpers
+# ======================================================================
+
+def _quad_areas(nodes: np.ndarray, quads: np.ndarray) -> np.ndarray:
+    """Return the area of each Q4 quadrilateral, by triangle split.
+
+    Splits each quad ``(n0, n1, n2, n3)`` along the ``n0-n2`` diagonal
+    into two triangles and sums ``|d1 x d2| / 2`` for each.  This is
+    exact for planar quads and a sensible bilinear approximation for
+    mildly non-planar (e.g. wrinkled) faces.
+
+    Parameters
+    ----------
+    nodes : np.ndarray
+        Shape ``(n_nodes, 3)`` coordinate array.
+    quads : np.ndarray
+        Shape ``(n_quads, 4)`` corner-node-index array.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(n_quads,)`` array of areas.
+    """
+    p0 = nodes[quads[:, 0]]
+    p1 = nodes[quads[:, 1]]
+    p2 = nodes[quads[:, 2]]
+    p3 = nodes[quads[:, 3]]
+    # Triangle 0-1-2
+    cross1 = np.cross(p1 - p0, p2 - p0)
+    # Triangle 0-2-3
+    cross2 = np.cross(p2 - p0, p3 - p0)
+    a1 = 0.5 * np.linalg.norm(cross1, axis=1)
+    a2 = 0.5 * np.linalg.norm(cross2, axis=1)
+    return a1 + a2
+
+
+# ======================================================================
 # BoundaryCondition dataclass
 # ======================================================================
 
@@ -222,9 +259,23 @@ class BoundaryHandler:
         For ``"force"`` BCs, the value is applied directly to each
         specified node in the specified DOFs.
 
-        For ``"pressure"`` BCs, the total force (``bc.value``) is
-        distributed equally among all nodes on the specified face
-        in the specified DOFs.
+        For ``"pressure"`` BCs the value is the *total* force over the
+        face and is distributed via **consistent face integration**
+        (issue #50).  For each face quad with area :math:`A_e` we
+        contribute :math:`t \\cdot A_e / 4` to each of its four corner
+        nodes, where the traction :math:`t = \\text{value} / A_\\text{face}`
+        is uniform over the face:
+
+        .. math::
+
+            F_i = \\int_\\Gamma N_i(\\xi, \\eta)\\, t\\, dA
+                = t \\sum_{e \\ni i} \\frac{A_e}{4}.
+
+        On a uniform grid this reproduces the corner-1/4, edge-1/2,
+        interior-1 tributary-area weights; on a wrinkled mesh the
+        per-quad areas vary so the weights are area-correct.  When a
+        pressure BC is supplied via explicit ``node_ids`` (no face
+        topology available) we fall back to equal per-node distribution.
 
         Parameters
         ----------
@@ -248,16 +299,59 @@ class BoundaryHandler:
                         F[3 * int(nid) + d] += bc.value
 
             elif bc.bc_type == "pressure":
+                self._apply_pressure_bc(bc, F)
+
+        return F
+
+    def _apply_pressure_bc(
+        self, bc: BoundaryCondition, F: np.ndarray,
+    ) -> None:
+        """Accumulate consistent nodal forces from a pressure BC.
+
+        See :meth:`get_force_dofs` for the underlying math.  This method
+        mutates ``F`` in place.
+        """
+        if bc.face is not None:
+            face_elems = self.mesh.face_elements(bc.face)
+            if face_elems.shape[0] == 0:
+                return
+            quad_areas = _quad_areas(self.mesh.nodes, face_elems)
+            total_area = float(quad_areas.sum())
+            if total_area <= 0.0:
+                # Degenerate face — fall back to equal split to stay
+                # consistent with the legacy behaviour.
                 nodes = bc.resolve_nodes(self.mesh)
                 n_nodes = len(nodes)
                 if n_nodes == 0:
-                    continue
-                force_per_node = bc.value / n_nodes
+                    return
+                share = bc.value / n_nodes
                 for nid in nodes:
                     for d in bc.dofs:
-                        F[3 * int(nid) + d] += force_per_node
+                        F[3 * int(nid) + d] += share
+                return
 
-        return F
+            traction = bc.value / total_area
+            # Each face quad contributes t * A_e / 4 to each of its
+            # 4 corner nodes (Q4 bilinear shape functions, uniform t).
+            contrib = traction * quad_areas * 0.25  # shape (n_face_e,)
+            for d in bc.dofs:
+                # Scatter-add into F[3*nid + d] for each corner.
+                np.add.at(
+                    F, 3 * face_elems.ravel() + d,
+                    np.repeat(contrib, 4),
+                )
+            return
+
+        # No face topology — explicit node list.  Fall back to equal
+        # division (legacy behaviour for ``node_ids``-based pressure).
+        nodes = bc.resolve_nodes(self.mesh)
+        n_nodes = len(nodes)
+        if n_nodes == 0:
+            return
+        share = bc.value / n_nodes
+        for nid in nodes:
+            for d in bc.dofs:
+                F[3 * int(nid) + d] += share
 
     # ------------------------------------------------------------------
     # Penalty method

@@ -220,6 +220,90 @@ class MeshData:
         target_grid = 0 if side == "min" else (self.nx, self.ny, self.nz)[axis]
         return np.flatnonzero(grid_idx == target_grid)
 
+    def face_elements(self, face: str) -> np.ndarray:
+        """Return Q4 face-element connectivity on a boundary face.
+
+        For consistent face-load integration (issue #50) we need to know
+        which 4 corner nodes form each surface quadrilateral on a face,
+        not just the unordered set of face nodes.  Each row gives the
+        four global node indices of one face quad, counter-clockwise when
+        viewed from outside the domain.
+
+        The quads are enumerated topologically from the structured ``(i,
+        j, k)`` grid (same convention as :meth:`nodes_on_face`), so the
+        result is correct for both flat and wrinkled meshes — only the
+        geometric node coordinates change, never the connectivity.
+
+        Parameters
+        ----------
+        face : str
+            One of ``'x_min'``, ``'x_max'``, ``'y_min'``, ``'y_max'``,
+            ``'z_min'``, ``'z_max'``.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(n_face_elements, 4)`` array of node indices
+            (0-based).  ``n_face_elements`` is ``ny*nz`` for x-faces,
+            ``nx*nz`` for y-faces, and ``nx*ny`` for z-faces.
+
+        Raises
+        ------
+        ValueError
+            If *face* is not a recognised name.
+        """
+        valid = {"x_min", "x_max", "y_min", "y_max", "z_min", "z_max"}
+        if face not in valid:
+            raise ValueError(
+                f"Unknown face '{face}'. Must be one of {sorted(valid)}"
+            )
+
+        nxp = self.nx + 1
+        nyp = self.ny + 1
+
+        def node_id(i: np.ndarray, j: np.ndarray, k: np.ndarray) -> np.ndarray:
+            return k * (nyp * nxp) + j * nxp + i
+
+        if face in ("x_min", "x_max"):
+            i_fix = 0 if face == "x_min" else self.nx
+            ej = np.arange(self.ny)
+            ek = np.arange(self.nz)
+            kk, jj = np.meshgrid(ek, ej, indexing="ij")
+            kk = kk.ravel()
+            jj = jj.ravel()
+            ii = np.full_like(jj, i_fix)
+            # CCW viewed from outside (+x or -x normal)
+            n0 = node_id(ii, jj, kk)
+            n1 = node_id(ii, jj + 1, kk)
+            n2 = node_id(ii, jj + 1, kk + 1)
+            n3 = node_id(ii, jj, kk + 1)
+        elif face in ("y_min", "y_max"):
+            j_fix = 0 if face == "y_min" else self.ny
+            ei = np.arange(self.nx)
+            ek = np.arange(self.nz)
+            kk, ii = np.meshgrid(ek, ei, indexing="ij")
+            kk = kk.ravel()
+            ii = ii.ravel()
+            jj = np.full_like(ii, j_fix)
+            n0 = node_id(ii, jj, kk)
+            n1 = node_id(ii + 1, jj, kk)
+            n2 = node_id(ii + 1, jj, kk + 1)
+            n3 = node_id(ii, jj, kk + 1)
+        else:  # z_min, z_max
+            k_fix = 0 if face == "z_min" else self.nz
+            ei = np.arange(self.nx)
+            ej = np.arange(self.ny)
+            jj, ii = np.meshgrid(ej, ei, indexing="ij")
+            jj = jj.ravel()
+            ii = ii.ravel()
+            kk = np.full_like(ii, k_fix)
+            n0 = node_id(ii, jj, kk)
+            n1 = node_id(ii + 1, jj, kk)
+            n2 = node_id(ii + 1, jj + 1, kk)
+            n3 = node_id(ii, jj + 1, kk)
+
+        return np.column_stack([n0, n1, n2, n3]).astype(np.intp)
+
     def elements_in_ply(self, ply_idx: int) -> np.ndarray:
         """Return element indices belonging to a given ply.
 
