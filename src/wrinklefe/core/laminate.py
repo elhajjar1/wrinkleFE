@@ -506,7 +506,7 @@ class Laminate:
             \\begin{bmatrix} \\varepsilon^0 \\\\ \\kappa \\end{bmatrix}
             = [ABD]^{-1} \\left(
               \\begin{bmatrix} N \\\\ M \\end{bmatrix}
-              - \\begin{bmatrix} N^T \\\\ M^T \\end{bmatrix}
+              + \\begin{bmatrix} N^T \\\\ M^T \\end{bmatrix}
             \\right)
 
         Parameters
@@ -522,11 +522,13 @@ class Laminate:
         """
         NM = load.to_vector()
 
-        # Subtract thermal resultants if temperature change is present
+        # Add thermal resultants if temperature change is present.
+        # Standard CLT solves [A B; B D]{eps0; kappa} = {N + N^T; M + M^T},
+        # so the effective RHS load ADDS the thermal resultants.
         if not np.isclose(load.delta_T, 0.0):
             NT, MT = self.thermal_resultants(load.delta_T)
-            NM[0:3] -= NT
-            NM[3:6] -= MT
+            NM[0:3] += NT
+            NM[3:6] += MT
 
         return self.abd_inverse() @ NM
 

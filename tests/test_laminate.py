@@ -477,14 +477,6 @@ class TestLaminateThermal:
         expected = lam.abd_inverse() @ load.to_vector()
         npt.assert_array_equal(observed, expected)
 
-    @pytest.mark.xfail(
-        reason=(
-            "Sign-flip bug in Laminate.midplane_strains: subtracts thermal "
-            "resultants when it should add them (see issue #133). The hand "
-            "reference here is the correct CLT free-thermal-expansion result."
-        ),
-        strict=True,
-    )
     def test_free_thermal_expansion_single_ply(self, x850_material):
         """Single unidirectional 0° ply, N = M = 0, ΔT > 0 → ε⁰ = α·ΔT, κ = 0.
 
@@ -500,13 +492,6 @@ class TestLaminateThermal:
         npt.assert_allclose(observed[0:3], expected_eps0, rtol=1e-12, atol=1e-14)
         npt.assert_allclose(observed[3:6], np.zeros(3), atol=1e-14)
 
-    @pytest.mark.xfail(
-        reason=(
-            "Sign-flip bug in Laminate.midplane_strains: subtracts thermal "
-            "resultants when it should add them (see issue #133)."
-        ),
-        strict=True,
-    )
     def test_midplane_strains_symmetric_free_thermal_recovers_alpha_eff(
         self, x850_material
     ):
@@ -528,13 +513,6 @@ class TestLaminateThermal:
         npt.assert_allclose(observed[0:3], eps0_expected, rtol=1e-12, atol=1e-12)
         npt.assert_allclose(observed[3:6], np.zeros(3), atol=1e-12)
 
-    @pytest.mark.xfail(
-        reason=(
-            "Sign-flip bug in Laminate.midplane_strains: subtracts thermal "
-            "resultants when it should add them (see issue #133)."
-        ),
-        strict=True,
-    )
     def test_midplane_strains_thermal_coupling_unsymmetric(self, x850_material):
         """Unsymmetric ``[0/90]`` with ΔT only:
         ``(ε⁰; κ) = ABD⁻¹ · [N^T; M^T]``. Couples in-plane and bending.
