@@ -564,52 +564,152 @@ class StaticSolver:
 
         return stress_global, stress_local, strain_global, strain_local
 
+    # Cached (extrapolation_matrix, node_to_gp) for hex8 / 2x2x2.
+    # Populated lazily by :meth:`_extrapolate_to_nodes`.
+    _hex8_extrap_cache: tuple[np.ndarray, np.ndarray] | None = None
+
+    @classmethod
+    def _build_hex8_extrapolation(cls) -> tuple[np.ndarray, np.ndarray]:
+        """Build (and cache) the hex8 / 2x2x2 Gauss-to-node extrapolation matrix.
+
+        Two ordering conventions are at play and **must not be conflated**:
+
+        - ``gauss_points_hex(order=2)`` orders the 8 Gauss points
+          **lexicographically** in ``(xi, eta, zeta)`` via
+          ``np.meshgrid(..., indexing="ij")`` — zeta varies fastest.
+        - :data:`wrinklefe.elements.hex8._NODE_COORDS` orders the 8 nodes by
+          the **VTK / Abaqus** convention (bottom face CCW, then top face CCW).
+
+        The i-th Gauss point is **not** at the natural coordinate of the
+        i-th node.  Pairing them by index alone (a tempting but wrong
+        simplification) scrambles the extrapolated nodal field — this is
+        the trap reported in issue #51.
+
+        We build the relationship explicitly: for each VTK node *j*, find
+        the lexicographic Gauss-point index ``node_to_gp[j]`` whose natural
+        coordinates have the same sign pattern as node *j*.  That gives
+        the 1-to-1 nearest-neighbour mapping the caller usually wants for
+        diagnostics, and is used by the regression test in
+        ``tests/test_solver/test_extrapolate.py``.
+
+        The extrapolation itself uses the full inverse shape-function
+        matrix (not just the nearest-neighbour pairing), which is exact
+        for a tri-linear field:
+
+        .. math::
+
+            \\mathbf{N}_{gp}[i, j] = N_j(\\xi_{gp,i})
+            \\quad\\Rightarrow\\quad
+            \\mathbf{f}_{nodes} = \\mathbf{N}_{gp}^{-1} \\, \\mathbf{f}_{gp}
+
+        where row *i* uses **lex** Gauss-point ordering and column *j* uses
+        **VTK** node ordering — so the output is naturally indexed by VTK
+        node order, matching ``mesh.elements`` connectivity.
+
+        Returns
+        -------
+        N_inv : np.ndarray
+            Shape ``(8, 8)`` — extrapolation matrix; ``f_nodes = N_inv @ f_gp``
+            where ``f_gp`` is in **lex** order and ``f_nodes`` is in **VTK**
+            order.
+        node_to_gp : np.ndarray
+            Shape ``(8,)`` integer array; ``node_to_gp[j]`` is the lex GP
+            index nearest to VTK node *j*.  For the default conventions
+            this is ``[0, 4, 6, 2, 1, 5, 7, 3]``.
+        """
+        if cls._hex8_extrap_cache is not None:
+            return cls._hex8_extrap_cache
+
+        from wrinklefe.elements.hex8 import Hex8Element, _NODE_COORDS
+        from wrinklefe.elements.gauss import gauss_points_hex
+
+        gp_coords, _ = gauss_points_hex(order=2)  # lex order, shape (8, 3)
+
+        # Build node->GP nearest mapping by matching sign patterns.  Each
+        # GP sits at the centroid of one of the 8 sub-cubes; for a hex8
+        # the unambiguous pairing is by sign of (xi, eta, zeta).
+        node_to_gp = np.empty(8, dtype=int)
+        for j in range(8):
+            target = _NODE_COORDS[j]  # (+/-1, +/-1, +/-1)
+            # Use sign-match: argmin over distance is equivalent here and
+            # is robust to any future change in the GP magnitudes.
+            sign_match = np.all(
+                np.sign(gp_coords) == np.sign(target)[None, :], axis=1
+            )
+            matches = np.flatnonzero(sign_match)
+            if matches.size != 1:
+                raise RuntimeError(
+                    "Failed to pair hex8 VTK node {} with a unique 2x2x2 "
+                    "Gauss point (matches={}). Did the GP or node ordering "
+                    "convention change?".format(j, matches.tolist())
+                )
+            node_to_gp[j] = int(matches[0])
+
+        # Sanity check: mapping must be a permutation of 0..7.
+        if sorted(node_to_gp.tolist()) != list(range(8)):
+            raise RuntimeError(
+                "hex8 node->GP mapping is not a permutation: "
+                f"{node_to_gp.tolist()}"
+            )
+
+        # Build shape-function matrix: row i uses lex GP i, col j is VTK node j.
+        N_gp = np.empty((8, 8))
+        for i in range(8):
+            xi, eta, zeta = gp_coords[i]
+            N_gp[i] = Hex8Element.shape_functions(xi, eta, zeta)
+        N_inv = np.linalg.inv(N_gp)
+
+        cls._hex8_extrap_cache = (N_inv, node_to_gp)
+        return cls._hex8_extrap_cache
+
     def _extrapolate_to_nodes(self, gauss_values: np.ndarray) -> np.ndarray:
         """Extrapolate values from 2x2x2 Gauss points to 8 hex nodes.
 
         Uses the inverse of the shape function matrix evaluated at the
-        Gauss points.  For a hex8 element with 2x2x2 Gauss quadrature,
-        the 8 Gauss points and 8 nodes yield a square (8x8) interpolation
-        matrix whose inverse provides the extrapolation.
+        Gauss points.  For a hex8 element with 2x2x2 Gauss quadrature
+        this is exact for any tri-linear field.
 
-        .. math::
+        **Ordering contract** (see :meth:`_build_hex8_extrapolation` for
+        the full discussion of issue #51):
 
-            \\mathbf{N}_{gp} = [N_j(\\xi_{gp,i})]_{8 \\times 8}
+        - ``gauss_values`` is indexed by **lexicographic** Gauss-point
+          order — exactly what ``Hex8Element._gauss_points`` and
+          ``stress_at_gauss_points`` produce.
+        - The returned nodal array is indexed by **VTK / Abaqus** node
+          order — exactly what ``mesh.elements`` connectivity expects.
 
-            \\mathbf{f}_{nodes} = \\mathbf{N}_{gp}^{-1} \\, \\mathbf{f}_{gp}
+        These two orders are *not* the same; a naive "pair GP i with node
+        i" simplification would scramble the result spatially.
 
         Parameters
         ----------
         gauss_values : np.ndarray
-            Shape ``(8, n_components)`` values at the 8 Gauss points.
+            Shape ``(8,)`` or ``(8, n_components)`` values at the 8 Gauss
+            points, in lexicographic order.
 
         Returns
         -------
         np.ndarray
-            Shape ``(8, n_components)`` extrapolated nodal values.
+            Same shape as ``gauss_values`` — extrapolated nodal values in
+            VTK node order.
 
         Notes
         -----
-        The Gauss points for 2-point rule are at
+        The Gauss points for the 2-point rule are at
         ``xi = +/- 1/sqrt(3) ~ +/- 0.57735``.  The extrapolation matrix
-        is constant for all hex8 elements and can be cached.
+        is constant across all hex8 elements and is cached on the class.
         """
-        from wrinklefe.elements.hex8 import Hex8Element
-        from wrinklefe.elements.gauss import gauss_points_hex
-
         gauss_values = np.asarray(gauss_values, dtype=float)
+        squeeze = False
         if gauss_values.ndim == 1:
             gauss_values = gauss_values[:, np.newaxis]
+            squeeze = True
+        if gauss_values.shape[0] != 8:
+            raise ValueError(
+                "gauss_values must have 8 rows (one per 2x2x2 Gauss point), "
+                f"got shape {gauss_values.shape}."
+            )
 
-        # Build shape function matrix evaluated at Gauss points
-        gp_coords, _ = gauss_points_hex(order=2)
-        n_gp = gp_coords.shape[0]
-        N_gp = np.empty((n_gp, 8))
-        for i in range(n_gp):
-            xi, eta, zeta = gp_coords[i]
-            N_gp[i] = Hex8Element.shape_functions(xi, eta, zeta)
-
-        # Invert: N_gp is 8x8 for hex8 with 2x2x2 quadrature
-        N_inv = np.linalg.inv(N_gp)
-
-        return N_inv @ gauss_values
+        N_inv, _node_to_gp = self._build_hex8_extrapolation()
+        nodal = N_inv @ gauss_values
+        return nodal[:, 0] if squeeze else nodal
