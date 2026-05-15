@@ -33,11 +33,26 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from wrinklefe.core.laminate import Laminate
+from wrinklefe.elements.hex8 import _detJ_at_centroid_batch
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from wrinklefe.core.morphology import WrinkleConfiguration
+
+
+# Below this absolute tolerance, a centroid det(J) is treated as zero
+# (degenerate element); strictly non-positive values are always rejected.
+_DETJ_TOL: float = 1.0e-12
+
+
+class MeshValidationError(ValueError):
+    """Raised by :meth:`MeshData.validate` when the mesh contains
+    inverted or degenerate hex8 elements (det(J) <= 0 at the element
+    centroid).  Catching ``ValueError`` also catches this exception
+    for backwards compatibility with callers that previously relied on
+    ``WrinkleMesh.generate()`` only ever raising ``ValueError``.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -305,11 +320,26 @@ class MeshData:
         * Element connectivity indices are within ``[0, n_nodes)``.
         * Element aspect ratios (bounding-box based) do not exceed 10:1.
         * No degenerate elements (all 8 nodes collapsed to a single point).
+        * Element Jacobian determinant ``det(J)`` at the centroid is
+          strictly positive for every hex8 element.  This is the upstream
+          analogue of the strict per-Gauss-point check in
+          ``Hex8Element._check_detJ`` (issue #45, PR #120) and ensures
+          inverted / tangled elements are rejected during mesh
+          construction rather than mid-solve.  When any element fails this
+          check, ``validate()`` raises :class:`MeshValidationError`
+          listing the offending indices.
 
         Returns
         -------
         list[str]
-            Warning messages for any failed checks.
+            Warning messages for any failed checks (excluding the
+            Jacobian check, which raises on failure).
+
+        Raises
+        ------
+        MeshValidationError
+            If one or more hex8 elements have non-positive Jacobian
+            determinant at the centroid (inverted or degenerate).
         """
         warnings: list[str] = []
 
@@ -364,6 +394,35 @@ class MeshData:
                     f"{n_degen}/{n_check} sampled elements are degenerate "
                     f"(all nodes at same point)"
                 )
+
+        # 5. Jacobian-sign check at the element centroid (every element).
+        #    Cheap (one (3,3) determinant per element) and catches gross
+        #    inversion / tangling that the bounding-box-based checks above
+        #    cannot see.  Failure here raises rather than warns: an
+        #    inverted hex8 element produces non-physical stiffness in the
+        #    solver and there is no useful work to do downstream.
+        if self.elements.size > 0 and connectivity_ok and np.all(np.isfinite(self.nodes)):
+            elem_coords = self.nodes[self.elements]  # (n_elem, 8, 3)
+            detJ = _detJ_at_centroid_batch(elem_coords)  # (n_elem,)
+            bad_mask = detJ <= _DETJ_TOL
+            n_bad = int(bad_mask.sum())
+            if n_bad > 0:
+                bad_indices = np.flatnonzero(bad_mask)
+                worst_idx = int(bad_indices[np.argmin(detJ[bad_indices])])
+                # Show up to 10 indices in the message; full list still
+                # available on the ``inverted_element_indices`` attribute
+                # of the exception.
+                shown = bad_indices[:10].tolist()
+                tail = "" if n_bad <= 10 else f", ... ({n_bad - 10} more)"
+                err = MeshValidationError(
+                    f"{n_bad} inverted hex8 elements at indices "
+                    f"{shown}{tail} (worst: element {worst_idx}, "
+                    f"det(J)={detJ[worst_idx]:.3e} at centroid). "
+                    "Check node ordering / wrinkle amplitude vs element size."
+                )
+                err.inverted_element_indices = bad_indices
+                err.detJ = detJ
+                raise err
 
         return warnings
 

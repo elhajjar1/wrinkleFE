@@ -8,7 +8,7 @@ from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 from wrinklefe.core.morphology import WrinkleConfiguration
-from wrinklefe.core.mesh import MeshData, WrinkleMesh
+from wrinklefe.core.mesh import MeshData, MeshValidationError, WrinkleMesh
 
 
 @pytest.fixture
@@ -210,7 +210,13 @@ class TestWrinkledMesh:
 
     @pytest.fixture
     def wrinkled_mesh(self, small_laminate):
-        profile = GaussianSinusoidal(amplitude=0.366, wavelength=16.0, width=12.0, center=5.0)
+        # Mild-wrinkle parameters: amplitude small enough that no hex8
+        # element inverts at this resolution (4x3x4).  The previous
+        # amplitude (0.366) produced 6 genuinely inverted elements that
+        # the old validate() silently let through (issue #94); validate()
+        # now refuses such a mesh, so the fixture uses a physically valid
+        # configuration.
+        profile = GaussianSinusoidal(amplitude=0.1, wavelength=16.0, width=12.0, center=5.0)
         config = WrinkleConfiguration.dual_wrinkle(
             profile, interface1=1, interface2=2, phase=0.0
         )
@@ -349,3 +355,110 @@ class TestMultipleElementsPerPly:
         nz = small_laminate.n_plies * 2
         expected = 2 * 2 * nz
         assert mesh.n_elements == expected
+
+
+class TestValidateJacobianSign:
+    """Regression tests for issue #94 — MeshData.validate() must reject
+    inverted hex8 elements via the centroid det(J) check."""
+
+    def test_clean_mesh_validate_does_not_raise(self, small_mesh):
+        """A freshly generated flat mesh has all det(J) > 0."""
+        warnings = small_mesh.validate()
+        # No inverted-element error, and no Jacobian-related warning text
+        for w in warnings:
+            assert "inverted" not in w.lower()
+
+    def test_inverted_element_raises(self, small_mesh):
+        """Flipping an element's bottom/top faces inverts det(J) and must
+        be caught by validate() with a descriptive message."""
+        # Copy to avoid mutating the fixture for other tests
+        nodes = small_mesh.nodes.copy()
+        elements = small_mesh.elements.copy()
+
+        # Swap bottom (nodes 0..3) and top (nodes 4..7) of element 0 in
+        # the connectivity table.  This reverses the zeta-direction and
+        # makes det(J) at the centroid negative.
+        bad_id = 0
+        bottom = elements[bad_id, 0:4].copy()
+        top = elements[bad_id, 4:8].copy()
+        elements[bad_id, 0:4] = top
+        elements[bad_id, 4:8] = bottom
+
+        bad_mesh = MeshData(
+            nodes=nodes,
+            elements=elements,
+            ply_ids=small_mesh.ply_ids.copy(),
+            fiber_angles=small_mesh.fiber_angles.copy(),
+            ply_angles=small_mesh.ply_angles.copy(),
+            nx=small_mesh.nx,
+            ny=small_mesh.ny,
+            nz=small_mesh.nz,
+        )
+
+        with pytest.raises(MeshValidationError) as exc_info:
+            bad_mesh.validate()
+
+        msg = str(exc_info.value)
+        assert "inverted" in msg
+        assert "hex8" in msg
+        assert str(bad_id) in msg
+        # Exception carries the full list of bad indices for callers.
+        assert bad_id in exc_info.value.inverted_element_indices.tolist()
+
+    def test_multiple_inverted_elements_reported(self, small_mesh):
+        """validate() reports all inverted elements, not just the first."""
+        nodes = small_mesh.nodes.copy()
+        elements = small_mesh.elements.copy()
+
+        bad_ids = [0, 2, 5]
+        for bad_id in bad_ids:
+            bottom = elements[bad_id, 0:4].copy()
+            top = elements[bad_id, 4:8].copy()
+            elements[bad_id, 0:4] = top
+            elements[bad_id, 4:8] = bottom
+
+        bad_mesh = MeshData(
+            nodes=nodes,
+            elements=elements,
+            ply_ids=small_mesh.ply_ids.copy(),
+            fiber_angles=small_mesh.fiber_angles.copy(),
+            ply_angles=small_mesh.ply_angles.copy(),
+            nx=small_mesh.nx,
+            ny=small_mesh.ny,
+            nz=small_mesh.nz,
+        )
+
+        with pytest.raises(MeshValidationError) as exc_info:
+            bad_mesh.validate()
+
+        msg = str(exc_info.value)
+        assert f"{len(bad_ids)} inverted" in msg
+        reported = set(exc_info.value.inverted_element_indices.tolist())
+        assert set(bad_ids).issubset(reported)
+
+    def test_generate_raises_on_inverted_mesh(self, small_laminate):
+        """End-to-end: a manually corrupted MeshData through validate()
+        surfaces during construction-time quality gating."""
+        gen = WrinkleMesh(
+            laminate=small_laminate,
+            wrinkle_config=None,
+            Lx=10.0, Ly=5.0,
+            nx=4, ny=3, nz_per_ply=1,
+        )
+        mesh = gen.generate()
+        # Corrupt and re-validate to confirm the error path.
+        elements = mesh.elements.copy()
+        elements[1, 0:4], elements[1, 4:8] = (
+            elements[1, 4:8].copy(),
+            elements[1, 0:4].copy(),
+        )
+        bad = MeshData(
+            nodes=mesh.nodes,
+            elements=elements,
+            ply_ids=mesh.ply_ids,
+            fiber_angles=mesh.fiber_angles,
+            ply_angles=mesh.ply_angles,
+            nx=mesh.nx, ny=mesh.ny, nz=mesh.nz,
+        )
+        with pytest.raises(MeshValidationError, match=r"inverted hex8"):
+            bad.validate()
