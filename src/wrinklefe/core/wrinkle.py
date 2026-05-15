@@ -100,19 +100,40 @@ class WrinkleProfile(ABC):
     def max_angle(self) -> float:
         """Numerical maximum fiber misalignment angle (radians).
 
-        ``|dz/dx|`` is generally multimodal across the wrinkle domain (each
-        oscillation contributes a local extremum), so a single bounded
-        Brent search can latch onto a local-only peak.  Instead we scan a
-        dense uniform grid over the domain to identify the global argmax,
-        then refine locally with :func:`scipy.optimize.minimize_scalar`
-        bracketed to a single grid cell around that winner.
+        ``|dz/dx|`` is generally **multimodal** across the wrinkle domain:
+        for a sinusoidal/Gaussian-windowed wrinkle there is one slope
+        extremum per quarter wavelength, and the envelope makes many of
+        these peaks of *comparable* height.  A single bounded Brent search
+        (``scipy.optimize.minimize_scalar(method="bounded")``) assumes
+        unimodality and therefore routinely converges to a local-only peak,
+        under-reporting the true peak misalignment angle (issue #16).
+
+        Instead we use a robust two-stage global search appropriate for a
+        smooth 1-D function on a known finite interval:
+
+        1. Evaluate ``|slope(x)|`` on a dense uniform grid spanning the
+           profile's support and take the ``argmax`` (O(n), vectorised).
+        2. Polish that winner with a bounded Brent search bracketed to the
+           single grid cell around it, for sub-grid precision.
+
+        Sample density rationale (Nyquist vs wrinkle wavelength).  The
+        finest oscillation in ``slope(x)`` has period ``wavelength``; its
+        derivative content is band-limited to that scale.  Resolving every
+        |slope| lobe requires at least a few samples per quarter-wave.  The
+        domain spans at most ~6 envelope widths or ~6 wavelengths, so
+        ``n_grid = 4096`` yields hundreds of samples per wavelength even for
+        the most oscillatory profiles in this module -- far above the
+        Nyquist limit -- guaranteeing every local peak is bracketed and the
+        true global one is selected before the local polish.
         """
         xlo, xhi = self.domain()
 
         def abs_slope_arr(xv: np.ndarray) -> np.ndarray:
             return np.abs(self.slope(np.asarray(xv, dtype=float)))
 
-        # Dense grid sweep to locate the global argmax robustly.
+        # Dense grid sweep to locate the global argmax robustly.  4096 pts
+        # over a <=6-wavelength support => hundreds of samples per wrinkle
+        # period, well above Nyquist for the |slope| oscillation.
         n_grid = 4096
         xs = np.linspace(xlo, xhi, n_grid)
         vals = abs_slope_arr(xs)

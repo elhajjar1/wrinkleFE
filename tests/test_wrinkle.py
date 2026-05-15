@@ -4,10 +4,13 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
+from scipy.optimize import minimize_scalar
+
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
     PureSinusoidal,
     GaussianBump,
+    RectangularSinusoidal,
     WrinkleSurface3D,
 )
 
@@ -118,6 +121,112 @@ class TestPureSinusoidal:
         x = np.array([16.0])
         z = pure_wrinkle.displacement(x)
         npt.assert_allclose(z, [0.366], atol=1e-12)
+
+
+class TestMaxAngleGlobalSearch:
+    """Regression tests for issue #16: ``max_angle`` must find the GLOBAL peak.
+
+    ``|dz/dx|`` of an enveloped multi-period wrinkle is multimodal (one peak
+    per quarter-period).  The original implementation used a single bounded
+    Brent search (``scipy.optimize.minimize_scalar(method="bounded")``), which
+    assumes unimodality and routinely converges to a *local* maximum, thereby
+    under-reporting the true peak fibre misalignment angle.  The fix performs
+    a dense uniform grid sweep over the domain followed by a bracketed local
+    polish, so these tests assert the GLOBAL maximum is returned.
+    """
+
+    @staticmethod
+    def _reference_max_angle(profile, n=2_000_000):
+        """Brute-force reference: max |slope| on a very dense grid."""
+        xlo, xhi = profile.domain()
+        xs = np.linspace(xlo, xhi, n)
+        return float(np.arctan(np.max(np.abs(profile.slope(xs)))))
+
+    @staticmethod
+    def _old_bounded_brent_angle(profile):
+        """Reproduce the buggy pre-fix algorithm: bounded Brent over the
+        whole domain. Used to prove the new code beats the old behaviour."""
+        xlo, xhi = profile.domain()
+
+        def neg_abs_slope(xv):
+            return -float(np.abs(profile.slope(np.atleast_1d(xv))[0]))
+
+        res = minimize_scalar(
+            neg_abs_slope, bounds=(xlo, xhi), method="bounded"
+        )
+        return float(np.arctan(-res.fun))
+
+    def test_multimodal_gaussian_returns_global_not_local(self):
+        """Multi-period Gaussian wrinkle: the global |slope| peak sits near
+        the center, but bounded Brent latches a smaller off-center local peak.
+
+        With A=0.5, lambda=1.5, w=8.0 the domain spans 32 wavelengths so
+        |slope| has ~64 comparable peaks.  The analytical global maximum is
+        arctan(2*pi*A/lambda) attenuated slightly by the Gaussian envelope
+        (~64.4 deg).  Naive full-domain bounded Brent converges to a local
+        peak near x~3.4 and reports only ~60.3 deg -- a >4 deg under-report
+        that this test would have caught on the old code.
+        """
+        prof = GaussianSinusoidal(amplitude=0.5, wavelength=1.5, width=8.0)
+
+        reference = self._reference_max_angle(prof)
+        new_value = prof.max_angle()
+        old_buggy = self._old_bounded_brent_angle(prof)
+
+        # New implementation recovers the true global maximum.
+        npt.assert_allclose(new_value, reference, rtol=1e-3)
+
+        # And it is meaningfully better than the old bounded-Brent result:
+        # the old algorithm under-reports the peak angle by several degrees.
+        assert old_buggy < reference - np.radians(2.0), (
+            f"expected old bounded-Brent to under-report; "
+            f"old={np.degrees(old_buggy):.3f} deg, "
+            f"true={np.degrees(reference):.3f} deg"
+        )
+        assert new_value > old_buggy + np.radians(2.0), (
+            f"new max_angle should beat old bounded Brent by >2 deg; "
+            f"new={np.degrees(new_value):.3f} deg, "
+            f"old={np.degrees(old_buggy):.3f} deg"
+        )
+
+    def test_pure_sinusoid_analytic_max_slope(self):
+        """For a pure cosine, max |dz/dx| = 2*pi*A/lambda at every
+        quarter-wave point, so max_angle == arctan(2*pi*A/lambda) exactly.
+
+        This pins the documented analytic value and the radian convention.
+        """
+        A, lam = 0.42, 9.0
+        prof = PureSinusoidal(amplitude=A, wavelength=lam, width=7.0)
+        expected = np.arctan(2.0 * np.pi * A / lam)
+        npt.assert_allclose(prof.max_angle(), expected, rtol=1e-10)
+
+    def test_multimodal_rectangular_window_global(self):
+        """Flat-top (tanh) window over many periods: every interior peak has
+        equal height, and the steepest slope is a specific one.  The grid
+        sweep must still return the true global value (envelope <= 1, so the
+        analytic ceiling is arctan(2*pi*A/lambda))."""
+        A, lam, w = 0.4, 3.0, 30.0
+        prof = RectangularSinusoidal(amplitude=A, wavelength=lam, width=w)
+
+        reference = self._reference_max_angle(prof, n=4_000_000)
+        new_value = prof.max_angle()
+        ceiling = np.arctan(2.0 * np.pi * A / lam)
+
+        npt.assert_allclose(new_value, reference, rtol=2e-3)
+        assert new_value <= ceiling + 1e-9
+
+    def test_max_angle_signature_unchanged(self):
+        """Public contract: max_angle() takes no args and returns a float
+        in radians (consistent with fiber_angle / max_angle_approx)."""
+        prof = GaussianSinusoidal(amplitude=0.3, wavelength=2.0, width=20.0)
+        value = prof.max_angle()
+        assert isinstance(value, float)
+        # Radians, not degrees: a wrinkle this steep is ~0.75 rad (~43 deg),
+        # which would be a nonsensical >40 if it were degrees-as-radians.
+        assert 0.0 < value < np.pi / 2.0
+        npt.assert_allclose(
+            value, prof.max_angle_approx(), rtol=5e-3
+        )
 
 
 class TestGaussianBump:
