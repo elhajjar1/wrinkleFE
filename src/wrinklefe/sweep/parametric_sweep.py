@@ -85,13 +85,20 @@ def validate_args(sweep_params, ranges):
 
 
 def _make_config(params, fine_mesh=False):
-    """Build an AnalysisConfig from a parameter dict."""
+    """Build an AnalysisConfig from a parameter dict.
+
+    A ``phase`` entry (when not ``None``) is plumbed through to
+    ``AnalysisConfig.phase`` so phase sweeps actually change the
+    dual-wrinkle geometry instead of being silently dropped (issue #49).
+    """
     nx, ny = (50, 20) if fine_mesh else (30, 15)
+    phase = params.get('phase')
     return AnalysisConfig(
         amplitude=params['amplitude'],
         wavelength=params['wavelength'],
         width=params.get('width', DEFAULTS['width']),
         morphology=params.get('morphology', 'stack'),
+        phase=None if phase is None else float(phase),
         nx=nx,
         ny=ny,
     )
@@ -173,15 +180,14 @@ def run_sweep(sweep_config, fine_mesh=False):
         print(f"  [{idx+1}/{total}] {param_str} ...", end='', flush=True)
 
         if is_phase_sweep:
-            # Phase sweep: use the phase value directly as morphology offset
-            phase = params['phase']
-            base_cfg = _make_config(params, fine_mesh)
-            # Create a stack config and override morphology via phase
-            base_cfg.morphology = 'stack'
-            ar_list = WrinkleAnalysis.parametric_sweep(base_cfg, 'amplitude',
-                                                        [params['amplitude']])
-            # For phase sweeps we do a single run with custom phase
-            ar = ar_list[0]
+            # Phase sweep: the swept phase value is plumbed straight into
+            # AnalysisConfig.phase (issue #49), which overrides the
+            # named-morphology phase so each point uses a distinct
+            # dual-wrinkle geometry instead of an identical 'stack' one.
+            phase = float(params['phase'])
+            params['morphology'] = 'stack'  # named phase is overridden anyway
+            cfg = _make_config(params, fine_mesh)
+            ar = WrinkleAnalysis(cfg).run()
             point_results = {
                 'custom': {
                     **_result_to_metrics(ar),
