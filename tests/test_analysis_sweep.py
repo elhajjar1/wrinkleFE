@@ -9,6 +9,7 @@ and only override the swept parameters.
 
 from __future__ import annotations
 
+import math
 from dataclasses import fields, replace
 from unittest.mock import patch
 
@@ -219,3 +220,116 @@ class TestSweepDomainLengthDerivation:
         # but is not a field; the stricter check must reject it.
         with pytest.raises(AttributeError, match="has no field"):
             WrinkleAnalysis.parametric_sweep(base, "__post_init__", [1.0])
+
+
+class TestPhaseSweep:
+    """Issue #49: sweeping ``phase`` must change the dual-wrinkle geometry.
+
+    Previously ``AnalysisConfig`` had no ``phase`` field, so a phase
+    sweep silently produced N identical configurations (every point used
+    the same named-morphology phase).  ``phase`` is now a real numeric
+    field that overrides the named-morphology phase and is threaded into
+    the wrinkle profile via ``WrinkleConfiguration.dual_wrinkle``.
+    """
+
+    def _phase_base(self):
+        return AnalysisConfig(
+            amplitude=0.366,
+            wavelength=16.0,
+            width=12.0,
+            morphology="stack",
+            loading="compression",
+            material=MaterialLibrary().get("IM7_8552"),
+            angles=[0, 90, 0, 90, 0, 90, 90, 0, 90, 0, 90, 0],
+            interface_1=5,
+            interface_2=6,
+            nx=4,
+            ny=2,
+            nz_per_ply=1,
+            domain_width=10.0,
+            applied_strain=-0.005,
+            analytical_only=True,
+            verbose=False,
+        )
+
+    def test_phase_is_a_sweepable_field(self):
+        """``phase`` must be a real AnalysisConfig field (no AttributeError)."""
+        assert any(f.name == "phase" for f in fields(AnalysisConfig))
+        # Default leaves phase unset so named morphology still governs.
+        assert AnalysisConfig().phase is None
+
+    def test_parametric_sweep_phase_produces_distinct_configs(self):
+        """Each swept phase must reach AnalysisConfig.phase as a distinct value."""
+        captured = []
+
+        def fake_run(self, analytical_only=None):
+            captured.append(self.config)
+            return _make_stub_result(self.config)
+
+        phases = [0.0, math.pi / 4, math.pi / 2, 3 * math.pi / 4]
+        with patch.object(WrinkleAnalysis, "run", fake_run):
+            results = WrinkleAnalysis.parametric_sweep(
+                self._phase_base(), "phase", phases
+            )
+
+        assert len(results) == len(phases)
+        for cfg, expected in zip(captured, phases):
+            assert cfg.phase == pytest.approx(expected)
+        # All swept phase values are distinct (no silent collapse).
+        assert len({round(c.phase, 9) for c in captured}) == len(phases)
+
+    def test_parametric_sweep_phase_changes_knockdown(self):
+        """Distinct phases must yield distinct morphology factors / knockdowns."""
+        base = self._phase_base()
+        # Phases chosen so sin(phi) is strictly increasing (the morphology
+        # factor is exp(-alpha*sin(phi) - ...)); avoid points that share a
+        # sin value, e.g. phi=0/pi or phi=pi/4 vs 3pi/4, which are
+        # *physically* identical (this is correct morphology physics, not
+        # a no-op).  Within [0, pi/2] sin is monotonic.
+        phases = [0.0, math.pi / 6, math.pi / 3, math.pi / 2]
+        results = WrinkleAnalysis.parametric_sweep(
+            base, "phase", phases, analytical_only=True
+        )
+
+        mfs = [r.morphology_factor for r in results]
+        kds = [r.analytical_knockdown for r in results]
+        # N distinct morphology factors and knockdowns — not a no-op.
+        assert len({round(m, 8) for m in mfs}) == len(phases), (
+            f"phase sweep produced non-distinct morphology factors: {mfs}"
+        )
+        assert len({round(k, 8) for k in kds}) == len(phases), (
+            f"phase sweep produced non-distinct knockdowns (silent no-op): {kds}"
+        )
+
+    def test_explicit_phase_matches_named_morphology(self):
+        """phase=+pi/2 must reproduce the named 'convex' morphology exactly."""
+        base = self._phase_base()
+        named_convex = WrinkleAnalysis(
+            replace(base, morphology="convex")
+        ).run(analytical_only=True)
+        explicit = WrinkleAnalysis(
+            replace(base, morphology="stack", phase=math.pi / 2)
+        ).run(analytical_only=True)
+        assert explicit.analytical_knockdown == pytest.approx(
+            named_convex.analytical_knockdown
+        )
+        assert explicit.morphology_factor == pytest.approx(
+            named_convex.morphology_factor
+        )
+
+    def test_phase_none_preserves_named_morphology(self):
+        """phase=None (default) must keep using the named-morphology phase."""
+        base = self._phase_base()
+        concave = WrinkleAnalysis(
+            replace(base, morphology="concave", phase=None)
+        ).run(analytical_only=True)
+        stack = WrinkleAnalysis(
+            replace(base, morphology="stack", phase=None)
+        ).run(analytical_only=True)
+        # Named morphologies still differentiate when phase is unset.
+        assert concave.morphology_factor != pytest.approx(
+            stack.morphology_factor
+        )
+        # concave amplifies (M_f > 1), stack is baseline (M_f == 1).
+        assert concave.morphology_factor > 1.0
+        assert stack.morphology_factor == pytest.approx(1.0)

@@ -51,6 +51,7 @@ from wrinklefe.core.morphology import (
     WrinkleConfiguration,
     WrinklePlacement,
     MORPHOLOGY_PHASES,
+    SINGLE_WRINKLE_MODES,
 )
 from wrinklefe.core.mesh import WrinkleMesh, MeshData
 from wrinklefe.solver.static import StaticSolver
@@ -295,6 +296,14 @@ class AnalysisConfig:
     morphology : str
         Morphology name: ``'stack'``, ``'convex'``, or ``'concave'``.
         Default is ``'stack'``.
+    phase : float or None
+        Explicit dual-wrinkle phase offset phi [radians] between the two
+        wrinkles.  When ``None`` (default), the phase is derived from
+        ``morphology`` via :data:`MORPHOLOGY_PHASES` (stack=0,
+        convex=+pi/2, concave=-pi/2).  When set to a float, it overrides
+        the named-morphology phase, allowing arbitrary dual-wrinkle phase
+        offsets to be analysed or swept (e.g. between 0 and pi).  Ignored
+        for single-wrinkle morphologies (``'uniform'``, ``'graded'``).
     loading : str
         Loading mode: ``'compression'`` or ``'tension'``.
         Default is ``'compression'``.
@@ -343,6 +352,11 @@ class AnalysisConfig:
 
     # Morphology
     morphology: str = "stack"
+    # Explicit dual-wrinkle phase offset phi [rad]. None → derive from
+    # `morphology` (stack=0, convex=+pi/2, concave=-pi/2). A float
+    # overrides the named-morphology phase so arbitrary phases can be
+    # analysed/swept. Ignored for single-wrinkle modes (uniform/graded).
+    phase: Optional[float] = None
     decay_floor: float = 0.0  # graded mode: min amplitude fraction at surfaces (0–1)
 
     # Loading
@@ -595,12 +609,25 @@ class WrinkleAnalysis:
             width=cfg.width,
             center=wrinkle_center,
         )
-        wrinkle_config = WrinkleConfiguration.from_morphology_name(
-            cfg.morphology, profile,
-            interface1=cfg.interface_1,
-            interface2=cfg.interface_2,
-            decay_floor=cfg.decay_floor,
-        )
+        if cfg.phase is not None and (
+            cfg.morphology.lower().strip() not in SINGLE_WRINKLE_MODES
+        ):
+            # Explicit phase overrides the named-morphology phase so
+            # arbitrary dual-wrinkle phase offsets can be analysed/swept.
+            wrinkle_config = WrinkleConfiguration.dual_wrinkle(
+                profile,
+                interface1=cfg.interface_1,
+                interface2=cfg.interface_2,
+                phase=float(cfg.phase),
+            )
+            wrinkle_config.decay_floor = max(0.0, min(1.0, cfg.decay_floor))
+        else:
+            wrinkle_config = WrinkleConfiguration.from_morphology_name(
+                cfg.morphology, profile,
+                interface1=cfg.interface_1,
+                interface2=cfg.interface_2,
+                decay_floor=cfg.decay_floor,
+            )
         results.wrinkle_config = wrinkle_config
 
         # 3. Analytical predictions
