@@ -95,6 +95,56 @@ CUSTOM_MAT_STRENGTH_FIELDS = (
 )
 
 DEFAULT_LAYUP = "[0/45/-45/90]_3s"
+DEFAULT_EXPERT_MODE = False
+DEFAULT_MATERIAL = "IM7_8552"
+DEFAULT_CUSTOM_NAME = "custom"
+DEFAULT_PLY_THICKNESS = 0.183
+DEFAULT_AMPLITUDE = 0.366
+DEFAULT_WAVELENGTH = 16.0
+DEFAULT_WIDTH = 12.0
+DEFAULT_MORPHOLOGY = "stack"
+DEFAULT_DECAY_FLOOR = 0.0
+DEFAULT_LOADING = "compression"
+DEFAULT_STRAIN_MAG_PCT = 1.0
+DEFAULT_ANALYTICAL_ONLY = False
+DEFAULT_NX = 12
+DEFAULT_NY = 6
+DEFAULT_NZ_PER_PLY = 1
+
+# Keys for sidebar input widgets. Used by the "Reset to defaults" button to
+# clear modified values from st.session_state so widgets fall back to their
+# default= argument on the next rerun.
+SIDEBAR_INPUT_KEYS = (
+    "expert_mode",
+    "sb_material",
+    "sb_custom_name",
+    "sb_ply_thickness",
+    "sb_layup",
+    "sb_amplitude",
+    "sb_wavelength",
+    "sb_width",
+    "sb_morphology",
+    "sb_decay_floor",
+    "sb_loading",
+    "sb_strain_mag_pct",
+    "sb_analytical_only",
+    "sb_nx",
+    "sb_ny",
+    "sb_nz_per_ply",
+)
+
+
+def _reset_sidebar_defaults() -> None:
+    """Clear sidebar input keys from session_state so widgets reload defaults.
+
+    Also clears the dynamic custom-material editor keys (``custom_*``), which
+    are seeded from the chosen material on each rerun.
+    """
+    for k in SIDEBAR_INPUT_KEYS:
+        st.session_state.pop(k, None)
+    for k in list(st.session_state.keys()):
+        if isinstance(k, str) and k.startswith("custom_"):
+            st.session_state.pop(k, None)
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +307,7 @@ _HERO_INTRO_MD = (
 
 with st.sidebar:
     expert_mode = st.toggle(
-        "Expert mode", value=False, key="expert_mode",
+        "Expert mode", value=DEFAULT_EXPERT_MODE, key="expert_mode",
         help=(
             "**Off (default)** — simplified sidebar with the essentials: "
             "material, layup, amplitude, wavelength, loading, strain.\n\n"
@@ -272,11 +322,12 @@ with st.sidebar:
         MATERIAL_OPTIONS if expert_mode else MATERIAL_NAMES
     )
     default_idx = (
-        _material_options.index("IM7_8552")
-        if "IM7_8552" in _material_options else 0
+        _material_options.index(DEFAULT_MATERIAL)
+        if DEFAULT_MATERIAL in _material_options else 0
     )
     material_choice = st.selectbox(
         "Material", _material_options, index=default_idx,
+        key="sb_material",
         help=(
             "Pick a built-in carbon/epoxy or glass/epoxy system."
             + (
@@ -305,7 +356,8 @@ with st.sidebar:
                 "exposed here."
             )
             custom_name = st.text_input(
-                "Material name", value="custom", max_chars=64,
+                "Material name", value=DEFAULT_CUSTOM_NAME, max_chars=64,
+                key="sb_custom_name",
                 help="Free-text label used in exports and plots.",
             )
             st.markdown("*Elastic constants*")
@@ -341,7 +393,9 @@ with st.sidebar:
     if expert_mode:
         ply_thickness = st.number_input(
             "Ply thickness [mm]",
-            min_value=0.05, max_value=1.0, value=0.183, step=0.01,
+            min_value=0.05, max_value=1.0,
+            value=DEFAULT_PLY_THICKNESS, step=0.01,
+            key="sb_ply_thickness",
             help=(
                 "Thickness of one ply in mm. Default 0.183 mm matches "
                 "CYCOM X850/T800. Total laminate thickness = ply_thickness × "
@@ -349,10 +403,11 @@ with st.sidebar:
             ),
         )
     else:
-        ply_thickness = 0.183
+        ply_thickness = DEFAULT_PLY_THICKNESS
     layup_str = st.text_area(
         "Layup",
         value=DEFAULT_LAYUP, height=80,
+        key="sb_layup",
         help=(
             "Accepts contracted notation like `[0/45/-45/90]_3s` "
             "or an explicit comma-separated list of angles in degrees.\n\n"
@@ -379,7 +434,9 @@ with st.sidebar:
     st.markdown("**Wrinkle geometry**")
     amplitude = st.number_input(
         "Amplitude A [mm]",
-        min_value=0.0, max_value=5.0, value=0.366, step=0.01,
+        min_value=0.0, max_value=5.0,
+        value=DEFAULT_AMPLITUDE, step=0.01,
+        key="sb_amplitude",
         help=(
             "Peak displacement of the wrinkled mid-surface from the flat "
             "reference (crest height, NOT peak-to-peak). Measure as "
@@ -388,7 +445,9 @@ with st.sidebar:
     )
     wavelength = st.number_input(
         "Wavelength λ [mm]",
-        min_value=1.0, max_value=200.0, value=16.0, step=0.5,
+        min_value=1.0, max_value=200.0,
+        value=DEFAULT_WAVELENGTH, step=0.5,
+        key="sb_wavelength",
         help=(
             "Spatial period of the cosine carrier. Larger λ at fixed A "
             "lowers the peak fibre angle θ_max ≈ arctan(2πA/λ)."
@@ -397,21 +456,28 @@ with st.sidebar:
     if expert_mode:
         width = st.number_input(
             "Envelope width w [mm]",
-            min_value=1.0, max_value=200.0, value=12.0, step=0.5,
+            min_value=1.0, max_value=200.0,
+            value=DEFAULT_WIDTH, step=0.5,
+            key="sb_width",
             help=(
                 "Half-width of the Gaussian envelope multiplying the cosine. "
                 "Smaller w localises the wrinkle to a few wavelengths near x = 0."
             ),
         )
     else:
-        width = 12.0
+        width = DEFAULT_WIDTH
 
     st.markdown(
         "**Morphology & loading**" if expert_mode else "**Loading**"
     )
     if expert_mode:
+        _morph_default_idx = (
+            MORPHOLOGIES.index(DEFAULT_MORPHOLOGY)
+            if DEFAULT_MORPHOLOGY in MORPHOLOGIES else 0
+        )
         morphology = st.selectbox(
-            "Morphology", MORPHOLOGIES, index=0,
+            "Morphology", MORPHOLOGIES, index=_morph_default_idx,
+            key="sb_morphology",
             help=(
                 "Wrinkle shape pattern through the laminate thickness. The cartoon "
                 "below the dropdown shows the active choice; switch values to see "
@@ -430,10 +496,11 @@ with st.sidebar:
                 "by the **Decay floor** slider (0 = full decay, 1 = uniform)."
             ),
         )
-        decay_floor = 0.0
+        decay_floor = DEFAULT_DECAY_FLOOR
         if morphology == "graded":
             decay_floor = st.slider(
-                "Decay floor", 0.0, 1.0, 0.0, 0.05,
+                "Decay floor", 0.0, 1.0, DEFAULT_DECAY_FLOOR, 0.05,
+                key="sb_decay_floor",
                 help="Minimum amplitude fraction at the outer surfaces.",
             )
 
@@ -445,13 +512,23 @@ with st.sidebar:
     else:
         # Sensible defaults; the cartoon and morphology selector are exposed
         # in Expert mode for users who want to compare phase offsets.
-        morphology = "stack"
-        decay_floor = 0.0
+        morphology = DEFAULT_MORPHOLOGY
+        decay_floor = DEFAULT_DECAY_FLOOR
 
-    loading = st.radio("Loading mode", ["compression", "tension"], horizontal=True)
+    _loading_options = ["compression", "tension"]
+    _loading_default_idx = (
+        _loading_options.index(DEFAULT_LOADING)
+        if DEFAULT_LOADING in _loading_options else 0
+    )
+    loading = st.radio(
+        "Loading mode", _loading_options, horizontal=True,
+        index=_loading_default_idx, key="sb_loading",
+    )
     strain_mag_pct = st.number_input(
         "Applied strain magnitude [%]",
-        min_value=0.0, max_value=5.0, value=1.0, step=0.1,
+        min_value=0.0, max_value=5.0,
+        value=DEFAULT_STRAIN_MAG_PCT, step=0.1,
+        key="sb_strain_mag_pct",
         help=(
             "Magnitude only — the sign is taken from the loading mode "
             "(compression → negative, tension → positive). Editing this "
@@ -463,7 +540,9 @@ with st.sidebar:
     if expert_mode:
         with st.expander("Advanced — mesh & solver", expanded=False):
             analytical_only = st.checkbox(
-                "Analytical only (skip FE solve)", value=False,
+                "Analytical only (skip FE solve)",
+                value=DEFAULT_ANALYTICAL_ONLY,
+                key="sb_analytical_only",
                 help=(
                     "Default off: the full FE solve runs (mesh, static "
                     "displacement-controlled solve, multi-criterion failure "
@@ -474,8 +553,9 @@ with st.sidebar:
                 ),
             )
             nx = st.number_input(
-                "Mesh divisions in x", 4, 64, 12, 2,
+                "Mesh divisions in x", 4, 64, DEFAULT_NX, 2,
                 disabled=analytical_only,
+                key="sb_nx",
                 help=(
                     "Hex elements along the wrinkle (x) direction across the "
                     "domain length. More elements resolve the curvature but "
@@ -483,16 +563,18 @@ with st.sidebar:
                 ),
             )
             ny = st.number_input(
-                "Mesh divisions in y", 4, 32, 6, 2,
+                "Mesh divisions in y", 4, 32, DEFAULT_NY, 2,
                 disabled=analytical_only,
+                key="sb_ny",
                 help=(
                     "Hex elements across the laminate width (y). Wrinkle is "
                     "uniform in y, so a coarse mesh is usually adequate."
                 ),
             )
             nz_per_ply = st.number_input(
-                "Mesh divisions per ply (z)", 1, 4, 1,
+                "Mesh divisions per ply (z)", 1, 4, DEFAULT_NZ_PER_PLY,
                 disabled=analytical_only,
+                key="sb_nz_per_ply",
                 help=(
                     "Hex elements through the thickness of every individual "
                     "ply. Increase to capture interlaminar stress gradients."
@@ -513,15 +595,29 @@ with st.sidebar:
         # Novice path: fast analytical-only run, no FE. Switch on Expert
         # mode to expose mesh density and the FE toggle.
         analytical_only = True
-        nx = 12
-        ny = 6
-        nz_per_ply = 1
+        nx = DEFAULT_NX
+        ny = DEFAULT_NY
+        nz_per_ply = DEFAULT_NZ_PER_PLY
         st.caption(
             "Quick analytical estimate. Switch on **Expert mode** above "
             "for the full FE solve, stress fields, and per-ply failure indices."
         )
 
     run_clicked = st.button("Run analysis", type="primary", use_container_width=True)
+
+    st.divider()
+    reset_clicked = st.button(
+        "↻ Reset to defaults",
+        use_container_width=True,
+        help=(
+            "Restore every sidebar input (material, layup, wrinkle geometry, "
+            "loading, mesh) to its original default value. Modified entries "
+            "are discarded; the page reruns immediately."
+        ),
+    )
+    if reset_clicked:
+        _reset_sidebar_defaults()
+        st.rerun()
 
     with st.expander("What do these terms mean?", expanded=False):
         st.markdown(
