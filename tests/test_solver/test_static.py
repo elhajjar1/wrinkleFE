@@ -451,7 +451,7 @@ class TestBoundaryHandler:
             material=x850_material, ply_thickness=0.183,
         )
         wrinkle = GaussianSinusoidal(
-            amplitude=0.4, wavelength=8.0, width=6.0, center=0.0,
+            amplitude=0.2, wavelength=8.0, width=6.0, center=0.0,
         )
         cfg = WrinkleConfiguration.dual_wrinkle(
             profile=wrinkle, interface1=1, interface2=2, phase=0.0,
