@@ -19,7 +19,7 @@ Public link, no account needed.
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
 - **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
-- **5 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 (S-glass/epoxy)
+- **9 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 (S-glass/epoxy), T800S/M21, IM10/8552, S-2 glass/epoxy, Kevlar-49/epoxy
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Developer / library install
