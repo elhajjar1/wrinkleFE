@@ -200,13 +200,25 @@ class MeshData:
                 f"Unknown face '{face}'. Must be one of {list(axis_map)}"
             )
         axis, side = axis_map[face]
-        coords = self.nodes[:, axis]
-        tol = 1.0e-10 * (coords.max() - coords.min() + 1.0e-30)
-        if side == "min":
-            target = coords.min()
-        else:
-            target = coords.max()
-        return np.flatnonzero(np.abs(coords - target) < tol)
+
+        # Resolve faces topologically using the structured (i, j, k) grid
+        # rather than geometrically.  On wrinkled meshes the z-coordinates of
+        # the k=0 and k=nz planes are perturbed, so an exact-equality test
+        # against ``coords.min()/max()`` silently drops most surface nodes
+        # (see issue #93).  Using the (i, j, k) layout — i fastest, k slowest
+        # with node index ``k*(ny+1)*(nx+1) + j*(nx+1) + i`` — makes the face
+        # sets independent of geometry and correct for both flat and wrinkled
+        # meshes.
+        nxp = self.nx + 1
+        nyp = self.ny + 1
+        n = self.n_nodes
+        # Recover (i, j, k) for every node from its flat index.
+        flat = np.arange(n)
+        k_idx, rem = np.divmod(flat, nxp * nyp)
+        j_idx, i_idx = np.divmod(rem, nxp)
+        grid_idx = (i_idx, j_idx, k_idx)[axis]
+        target_grid = 0 if side == "min" else (self.nx, self.ny, self.nz)[axis]
+        return np.flatnonzero(grid_idx == target_grid)
 
     def elements_in_ply(self, ply_idx: int) -> np.ndarray:
         """Return element indices belonging to a given ply.

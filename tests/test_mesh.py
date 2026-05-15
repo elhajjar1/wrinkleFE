@@ -239,6 +239,41 @@ class TestWrinkledMesh:
         expected = (nx + 1) * (ny + 1) * (nz + 1)
         assert wrinkled_mesh.n_nodes == expected
 
+    def test_wrinkled_z_min_face_count(self, small_laminate, wrinkled_mesh):
+        """On a wrinkled mesh, z_min must still return the full k=0 plane.
+
+        Regression test for issue #93: the old geometric tolerance test
+        silently dropped nodes whose perturbed z deviated from the global
+        minimum z, leaving only the trough nodes.
+        """
+        nx, ny, nz_per_ply = 4, 3, 1
+        nz = small_laminate.n_plies * nz_per_ply
+        face_nodes = wrinkled_mesh.nodes_on_face("z_min")
+        assert len(face_nodes) == (nx + 1) * (ny + 1)
+        # The k=0 plane is the first (nx+1)*(ny+1) nodes in canonical order.
+        expected_nodes = np.arange((nx + 1) * (ny + 1))
+        npt.assert_array_equal(face_nodes, expected_nodes)
+
+    def test_wrinkled_z_max_face_count(self, small_laminate, wrinkled_mesh):
+        """On a wrinkled mesh, z_max must still return the full k=nz plane."""
+        nx, ny, nz_per_ply = 4, 3, 1
+        nz = small_laminate.n_plies * nz_per_ply
+        face_nodes = wrinkled_mesh.nodes_on_face("z_max")
+        assert len(face_nodes) == (nx + 1) * (ny + 1)
+        # The k=nz plane is the last (nx+1)*(ny+1) nodes in canonical order.
+        n_per_layer = (nx + 1) * (ny + 1)
+        expected_nodes = np.arange(nz * n_per_layer, (nz + 1) * n_per_layer)
+        npt.assert_array_equal(face_nodes, expected_nodes)
+
+    def test_wrinkled_x_y_faces_unaffected(self, wrinkled_mesh):
+        """x/y faces should also still produce the correct surface count."""
+        nx, ny, nz_per_ply = 4, 3, 1
+        nz = 4 * nz_per_ply  # 4-ply laminate
+        assert len(wrinkled_mesh.nodes_on_face("x_min")) == (ny + 1) * (nz + 1)
+        assert len(wrinkled_mesh.nodes_on_face("x_max")) == (ny + 1) * (nz + 1)
+        assert len(wrinkled_mesh.nodes_on_face("y_min")) == (nx + 1) * (nz + 1)
+        assert len(wrinkled_mesh.nodes_on_face("y_max")) == (nx + 1) * (nz + 1)
+
 
 class TestMeshValidation:
     """Test WrinkleMesh input validation."""
