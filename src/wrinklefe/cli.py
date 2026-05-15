@@ -102,15 +102,30 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument(
         "--buckling", action="store_true", default=False,
-        help="Run linear buckling analysis",
+        help="Run linear buckling analysis (implies full FE solve)",
     )
     p_analyze.add_argument(
         "--montecarlo", action="store_true", default=False,
-        help="Run Monte Carlo simulation",
+        help="Run Monte Carlo simulation (implies full FE solve)",
     )
     p_analyze.add_argument(
         "--mc-samples", type=int, default=5000,
         help="Number of Monte Carlo samples (default: 5000)",
+    )
+    p_analyze.add_argument(
+        "--fe", action=argparse.BooleanOptionalAction, default=None,
+        help=(
+            "Force a full FE solve (--fe) or skip it (--no-fe). "
+            "Default: FE on unless overridden. --buckling/--montecarlo "
+            "imply --fe."
+        ),
+    )
+    p_analyze.add_argument(
+        "--analytical-only", action="store_true", default=False,
+        help=(
+            "Run analytical predictions only, skipping the FE solve, "
+            "buckling, and Monte Carlo branches."
+        ),
     )
     p_analyze.add_argument(
         "--verbose", action="store_true", default=False,
@@ -142,8 +157,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Gaussian envelope half-width in mm (default: 12.0)",
     )
     p_compare.add_argument(
-        "--analytical-only", action="store_true", default=True,
-        help="Run analytical predictions only, no FE (default: True)",
+        "--analytical-only", action=argparse.BooleanOptionalAction, default=True,
+        help=(
+            "Run analytical predictions only and skip the FE solve "
+            "(default). Use --no-analytical-only to run the full FE "
+            "comparison for all three morphologies."
+        ),
     )
     p_compare.add_argument(
         "--verbose", action="store_true", default=False,
@@ -178,6 +197,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--morphology", type=str, default="stack",
         choices=["stack", "convex", "concave"],
         help="Morphology for the sweep (default: stack)",
+    )
+    p_sweep.add_argument(
+        "--analytical-only", action=argparse.BooleanOptionalAction, default=True,
+        help=(
+            "Run analytical predictions only for each sweep value "
+            "(default). Use --no-analytical-only to run a full FE "
+            "sweep (slow)."
+        ),
     )
     p_sweep.add_argument(
         "--verbose", action="store_true", default=False,
@@ -220,6 +247,30 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
 
     angles = _parse_angles(args.angles)
 
+    # Resolve analytical-only vs. full FE intent.
+    #
+    # Precedence (highest first):
+    #   1. --analytical-only       -> skip FE / buckling / MC
+    #   2. --buckling / --montecarlo / --fe -> full FE solve
+    #   3. --no-fe                 -> analytical-only
+    #   4. default                 -> full FE solve
+    if args.analytical_only:
+        if args.buckling or args.montecarlo:
+            print(
+                "error: --analytical-only is incompatible with "
+                "--buckling/--montecarlo (those flags require a full "
+                "FE solve).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        analytical_only = True
+    elif args.buckling or args.montecarlo or args.fe is True:
+        analytical_only = False
+    elif args.fe is False:
+        analytical_only = True
+    else:
+        analytical_only = False
+
     config = AnalysisConfig(
         amplitude=args.amplitude,
         wavelength=args.wavelength,
@@ -235,11 +286,16 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         run_buckling=args.buckling,
         run_montecarlo=args.montecarlo,
         mc_samples=args.mc_samples,
+        analytical_only=analytical_only,
         verbose=args.verbose,
     )
 
     analysis = WrinkleAnalysis(config)
-    result = analysis.run(analytical_only=True)
+    try:
+        result = analysis.run(analytical_only=analytical_only)
+    except Exception as exc:  # pragma: no cover - exercised via tests/CLI
+        print(f"error: analysis failed: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     print(result.summary())
 
@@ -317,7 +373,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
         config,
         parameter=args.parameter,
         values=values,
-        analytical_only=True,
+        analytical_only=args.analytical_only,
     )
 
     print("=" * 60)
