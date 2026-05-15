@@ -225,8 +225,12 @@ def export_vtk(
 
     - ``ply_id`` (integer)
     - ``ply_angle`` (degrees)
-    - ``stress_11`` (MPa, element average at first Gauss point) if
-      *field_results* is provided
+    - ``stress_11``, ``stress_22``, ``stress_33``, ``stress_23``,
+      ``stress_13``, ``stress_12`` (MPa, true element average over the
+      element's Gauss points) if *field_results* is provided.  Each value
+      is the mean of the corresponding global-frame stress component over
+      all Gauss points in the element, so the field is a genuine
+      per-element representative value rather than a single sampled point.
 
     Parameters
     ----------
@@ -301,10 +305,23 @@ def export_vtk(
         for eid in range(n_elem):
             f.write(f"{mesh.ply_angles[eid]:.4f}\n")
 
-        # Stress sigma_11 (if available) -- element average at first Gauss point
-        if field_results is not None:
-            f.write("SCALARS stress_11 double 1\n")
-            f.write("LOOKUP_TABLE default\n")
-            for eid in range(n_elem):
-                s11 = field_results.stress_global[eid, 0, 0]
-                f.write(f"{s11:.6e}\n")
+        # Stress components (if available) -- true element average over the
+        # element's Gauss points.  Voigt ordering of stress_global is
+        # [sigma_11, sigma_22, sigma_33, tau_23, tau_13, tau_12].
+        if field_results is not None and field_results.stress_global.size > 0:
+            stress = field_results.stress_global  # (n_elem, n_gauss, 6)
+            # Mean over Gauss-point axis -> (n_elem, 6)
+            elem_avg = stress.mean(axis=1)
+            component_names = (
+                "stress_11",
+                "stress_22",
+                "stress_33",
+                "stress_23",
+                "stress_13",
+                "stress_12",
+            )
+            for comp_idx, name in enumerate(component_names):
+                f.write(f"SCALARS {name} double 1\n")
+                f.write("LOOKUP_TABLE default\n")
+                for eid in range(n_elem):
+                    f.write(f"{elem_avg[eid, comp_idx]:.6e}\n")

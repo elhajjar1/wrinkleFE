@@ -295,3 +295,97 @@ class TestVTKExport:
         assert "SCALARS fiber_angle" in content
         # Should not have displacement vectors
         assert "displacement" not in content
+
+    def test_stress_fields_are_true_element_averages(self, tmp_path):
+        """Regression for #52: exported stress_* is the mean over the
+        element's Gauss points, not the first Gauss point only.
+
+        Builds a tiny synthetic mesh + FieldResults where the Gauss-point
+        stresses differ within each element, then parses the VTK cell-data
+        block and asserts every exported component equals the per-element
+        Gauss-point mean (not stress_global[eid, 0, comp]).
+        """
+        from wrinklefe.solver.results import FieldResults
+
+        n_nodes = 8
+        n_elem = 1
+        n_gauss = 8
+
+        class _Mesh:
+            pass
+
+        mesh = _Mesh()
+        # Unit cube hex8
+        mesh.nodes = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
+            ],
+            dtype=float,
+        )
+        mesh.elements = np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=int)
+        mesh.n_nodes = n_nodes
+        mesh.n_elements = n_elem
+        mesh.fiber_angles = np.zeros(n_nodes)
+        mesh.ply_ids = np.zeros(n_elem, dtype=int)
+        mesh.ply_angles = np.zeros(n_elem)
+
+        rng = np.random.default_rng(52)
+        # Deliberately distinct stresses at every Gauss point/component so
+        # the mean differs from the first Gauss point's value.
+        stress_global = rng.normal(scale=100.0, size=(n_elem, n_gauss, 6))
+        # Make GP0 a clear outlier so a "first GP" bug would be obvious.
+        stress_global[0, 0, :] += 5000.0
+
+        zeros = np.zeros((n_elem, n_gauss, 6))
+        field = FieldResults(
+            displacement=np.zeros((n_nodes, 3)),
+            stress_global=stress_global,
+            stress_local=zeros.copy(),
+            strain_global=zeros.copy(),
+            strain_local=zeros.copy(),
+            mesh=mesh,
+            laminate=None,
+        )
+
+        out = tmp_path / "synthetic.vtk"
+        export_vtk(mesh, field, out)
+        lines = out.read_text().splitlines()
+
+        # Parse each "SCALARS <name> double 1" block (one value, n_elem==1).
+        exported: dict[str, float] = {}
+        for i, line in enumerate(lines):
+            if line.startswith("SCALARS stress_"):
+                name = line.split()[1]
+                # line i+1 is LOOKUP_TABLE, line i+2 is the value
+                exported[name] = float(lines[i + 2])
+
+        # Voigt order of stress_global columns.
+        comp_index = {
+            "stress_11": 0,
+            "stress_22": 1,
+            "stress_33": 2,
+            "stress_23": 3,
+            "stress_13": 4,
+            "stress_12": 5,
+        }
+        assert set(exported) == set(comp_index), (
+            f"Expected all 6 stress components, got {sorted(exported)}"
+        )
+
+        for name, col in comp_index.items():
+            expected_mean = stress_global[0, :, col].mean()
+            first_gp = stress_global[0, 0, col]
+            assert exported[name] == pytest.approx(expected_mean, rel=1e-6), (
+                f"{name}: exported {exported[name]} != element mean "
+                f"{expected_mean}"
+            )
+            # Guard: the mean must be distinguishable from the old
+            # first-Gauss-point behaviour for this fixture.
+            assert abs(expected_mean - first_gp) > 1.0
