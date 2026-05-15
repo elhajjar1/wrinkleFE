@@ -11,6 +11,11 @@ All plot functions follow the same interface as :mod:`wrinklefe.viz.plots_2d`:
 - Return the :class:`~matplotlib.axes.Axes` object.
 - Apply publication styling from :mod:`wrinklefe.viz.style`.
 
+.. note::
+   As with :mod:`wrinklefe.viz.plots_2d`, batch / sweep / headless loops must
+   close internally-created figures; use :func:`wrinklefe.viz.save_figure`
+   or :func:`wrinklefe.viz.figure_context`. Interactive callers are unaffected.
+
 Colormap convention
 -------------------
 Use perceptually uniform colormaps (``jet`` is deprecated for scientific viz):

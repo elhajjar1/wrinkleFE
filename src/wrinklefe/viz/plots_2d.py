@@ -11,6 +11,14 @@ All plot functions follow a consistent interface:
 - Return the :class:`~matplotlib.axes.Axes` object for further customization.
 - Apply publication styling from :mod:`wrinklefe.viz.style`.
 
+.. note::
+   When ``ax=None`` the returned ``Axes`` has a *new* parent ``Figure`` that
+   the caller owns. Interactive / Streamlit callers keep it (e.g.
+   ``st.pyplot(ax.figure)``). Batch / sweep / headless code that calls these
+   in a loop **must** close the figure to avoid leaking it; use
+   :func:`wrinklefe.viz.save_figure` (saves then closes by default) or
+   :func:`wrinklefe.viz.figure_context`.
+
 References
 ----------
 Jin, L. et al. (2026). Thin-Walled Structures, 219, 114237.
