@@ -8,11 +8,24 @@ all six strain components.
 Mathematical Formulation
 ------------------------
 Given stress vector ``sigma`` in Voigt notation (11, 22, 33, 23, 13, 12),
-compute the strain vector::
+the working strains are the *uncoupled engineering strains* obtained by
+dividing each stress component by its corresponding direct modulus::
 
-    epsilon = [S] @ sigma
+    epsilon = [sigma_11/E1, sigma_22/E2, sigma_33/E3,
+               tau_23/G23,  tau_13/G13,  tau_12/G12]
 
-where ``[S]`` is the 6x6 compliance matrix.
+This deliberately omits the Poisson-coupling off-diagonal terms of the
+full compliance matrix ``[S]``.  It is the standard engineering
+"maximum strain" convention (Jones, *Mechanics of Composite Materials*;
+Daniel & Ishai; Tsai), and it is the *only* basis on which the working
+strains are consistent with the uniaxial-test allowables below: each
+uniaxial strength then maps exactly to a failure index of 1.0.
+
+Using the coupled compliance path (``epsilon = [S] @ sigma``) instead
+breaks this self-calibration -- e.g. pure transverse compression
+``sigma_22 = -Yc`` induces a Poisson strain ``eps_33 = nu23*Yc/E2`` that
+is compared against the unrelated allowable ``Zt/E3``, spuriously firing
+a through-thickness tension failure (FI ~ 1.38 instead of 1.0).
 
 Ultimate strains are derived from uniaxial strengths::
 
@@ -92,8 +105,20 @@ class MaxStrainCriterion(FailureCriterion):
             Failure index, dominant mode, reserve factor, and criterion name.
         """
         stress_local = np.asarray(stress_local, dtype=np.float64)
-        S = material.compliance_matrix
-        strain = S @ stress_local
+
+        # Uncoupled engineering strains (no Poisson off-diagonal coupling).
+        # This is the basis on which the uniaxial-test allowables below are
+        # defined, so each uniaxial strength maps exactly to FI = 1.0.
+        # Using the full compliance matrix would introduce Poisson-coupled
+        # strains that are inconsistent with the uniaxial allowables.
+        strain = np.array([
+            stress_local[0] / material.E1,
+            stress_local[1] / material.E2,
+            stress_local[2] / material.E3,
+            stress_local[3] / material.G23,
+            stress_local[4] / material.G13,
+            stress_local[5] / material.G12,
+        ])
 
         # Ultimate strains (all positive magnitudes)
         eps1t = material.Xt / material.E1
