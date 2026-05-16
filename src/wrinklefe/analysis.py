@@ -36,6 +36,7 @@ References
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, fields, replace
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -408,6 +409,164 @@ class AnalysisConfig:
             # Quasi-isotropic [0/45/-45/90]_3s → 24 plies
             base = [0, 45, -45, 90]
             self.angles = (base * 3) + list(reversed(base * 3))
+
+        self._validate()
+
+    def _validate(self) -> None:
+        """Fail fast on physically invalid configuration.
+
+        Called from :meth:`__post_init__` after defaults (``domain_length``,
+        ``material``, ``angles``) have been resolved.  Each check raises a
+        :class:`ValueError` naming the offending field and value so that
+        misconfiguration surfaces at construction time rather than as an
+        obscure traceback deep in the solver/mesh path.
+        """
+        # --- Wrinkle geometry -----------------------------------------
+        # amplitude == 0 is a legitimate "no wrinkle" (flat) case: the
+        # mid-surface profile z(x) = A * envelope reduces to 0, so the
+        # closed-form misalignment angle arctan(2*pi*A/lambda) is 0.
+        # Only a negative amplitude is physically meaningless.
+        if self.amplitude < 0:
+            raise ValueError(
+                f"AnalysisConfig.amplitude must be >= 0 "
+                f"(0 = flat / no wrinkle), got {self.amplitude}"
+            )
+        if not (self.wavelength > 0):
+            # Strictly positive: lambda divides into the closed-form
+            # slope (2*pi*A/lambda) and the auto-derived domain_length.
+            raise ValueError(
+                f"AnalysisConfig.wavelength must be > 0, "
+                f"got {self.wavelength}"
+            )
+        if not (self.width > 0):
+            raise ValueError(
+                f"AnalysisConfig.width must be > 0, got {self.width}"
+            )
+        if not (self.domain_length > 0):
+            raise ValueError(
+                f"AnalysisConfig.domain_length must be > 0, "
+                f"got {self.domain_length}"
+            )
+        if not (self.domain_width > 0):
+            raise ValueError(
+                f"AnalysisConfig.domain_width must be > 0, "
+                f"got {self.domain_width}"
+            )
+        if not (self.ply_thickness > 0):
+            raise ValueError(
+                f"AnalysisConfig.ply_thickness must be > 0, "
+                f"got {self.ply_thickness}"
+            )
+
+        # --- Morphology / phase ---------------------------------------
+        # run() resolves morphology by name (possibly lower/strip'd) via
+        # WrinkleConfiguration.from_morphology_name; an explicit numeric
+        # ``phase`` overrides the named-morphology phase for dual-wrinkle
+        # modes but the name is still consumed (single-wrinkle modes and
+        # the from_morphology_name fallback both require a known name).
+        valid_morphologies = sorted(
+            set(MORPHOLOGY_PHASES) | set(SINGLE_WRINKLE_MODES)
+        )
+        if (
+            not isinstance(self.morphology, str)
+            or self.morphology.lower().strip() not in valid_morphologies
+        ):
+            raise ValueError(
+                f"AnalysisConfig.morphology must be one of "
+                f"{valid_morphologies}, got {self.morphology!r}"
+            )
+        if self.phase is not None and not math.isfinite(float(self.phase)):
+            raise ValueError(
+                f"AnalysisConfig.phase must be finite when set, "
+                f"got {self.phase}"
+            )
+        if not (0.0 <= self.decay_floor <= 1.0):
+            raise ValueError(
+                f"AnalysisConfig.decay_floor must be in [0, 1], "
+                f"got {self.decay_floor}"
+            )
+
+        # --- Loading --------------------------------------------------
+        valid_loadings = ("compression", "tension")
+        if (
+            not isinstance(self.loading, str)
+            or self.loading.lower().strip() not in valid_loadings
+        ):
+            raise ValueError(
+                f"AnalysisConfig.loading must be one of "
+                f"{list(valid_loadings)}, got {self.loading!r}"
+            )
+        if not math.isfinite(self.applied_strain):
+            raise ValueError(
+                f"AnalysisConfig.applied_strain must be finite, "
+                f"got {self.applied_strain}"
+            )
+
+        # --- Wrinkle placement (interface indices) --------------------
+        n_plies = len(self.angles)
+        for name in ("interface_1", "interface_2"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be an int, got {value!r}"
+                )
+            if not (0 <= value < n_plies):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be in [0, {n_plies}) "
+                    f"(0 <= interface < number of plies), got {value}"
+                )
+
+        # --- Mesh resolution (structural integers) --------------------
+        for name in ("nx", "ny", "nz_per_ply"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be an int, got {value!r}"
+                )
+            if value < 1:
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be >= 1, got {value}"
+                )
+
+        # --- Solver ---------------------------------------------------
+        valid_solvers = ("direct", "iterative")
+        if (
+            not isinstance(self.solver, str)
+            or self.solver.lower().strip() not in valid_solvers
+        ):
+            raise ValueError(
+                f"AnalysisConfig.solver must be one of "
+                f"{list(valid_solvers)}, got {self.solver!r}"
+            )
+
+        # --- Optional analyses ---------------------------------------
+        if not isinstance(self.n_buckling_modes, int) or isinstance(
+            self.n_buckling_modes, bool
+        ):
+            raise ValueError(
+                f"AnalysisConfig.n_buckling_modes must be an int, "
+                f"got {self.n_buckling_modes!r}"
+            )
+        if self.n_buckling_modes < 1:
+            raise ValueError(
+                f"AnalysisConfig.n_buckling_modes must be >= 1, "
+                f"got {self.n_buckling_modes}"
+            )
+        # mc_samples must be a usable sample count.  Both issues ask for
+        # mc_samples >= 1; reject <= 0 unconditionally (a clearly-invalid
+        # value) and require a valid int whenever Monte Carlo will run.
+        if not isinstance(self.mc_samples, int) or isinstance(
+            self.mc_samples, bool
+        ):
+            raise ValueError(
+                f"AnalysisConfig.mc_samples must be an int, "
+                f"got {self.mc_samples!r}"
+            )
+        if self.mc_samples < 1:
+            raise ValueError(
+                f"AnalysisConfig.mc_samples must be >= 1, "
+                f"got {self.mc_samples}"
+            )
 
 
 # ======================================================================
