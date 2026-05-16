@@ -507,17 +507,6 @@ class TestPhaseVsNamedMorphology:
 # KNOWN BUG (issue #146): partial ply_ids desyncs the two decay fields
 # ----------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Issue #146: fiber_angles_at_nodes infers n_plies = ply_ids.max()+1 "
-        "while apply_to_nodes takes n_plies explicitly. With a partial "
-        "ply_ids array (top ply absent) the displacement and angle decay "
-        "fields silently desynchronise. TEST-ONLY scope: pinned as a "
-        "strict xfail until #146 is fixed (do not assert the buggy value "
-        "as correct)."
-    ),
-)
 def test_partial_ply_ids_decay_stays_synced():
     prof = GaussianSinusoidal(
         amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
@@ -532,7 +521,7 @@ def test_partial_ply_ids_decay_stays_synced():
     nodes = np.array([[x, 0.0, 0.0] for _ in ply], float)
 
     dz = (cfg.apply_to_nodes(nodes, ply, n_plies=8) - nodes)[:, 2]
-    ang = cfg.fiber_angles_at_nodes(nodes, ply)
+    ang = cfg.fiber_angles_at_nodes(nodes, ply, n_plies=8)
 
     decay_from_disp = dz / prof_val
     decay_from_angle = ang / ang_base

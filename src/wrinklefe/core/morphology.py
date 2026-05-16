@@ -600,6 +600,7 @@ class WrinkleConfiguration:
         self,
         nodes: np.ndarray,
         ply_ids: np.ndarray,
+        n_plies: int | None = None,
     ) -> np.ndarray:
         """Compute local fiber misalignment angle at each node.
 
@@ -618,6 +619,15 @@ class WrinkleConfiguration:
             Shape (N, 3) array of node coordinates [x, y, z].
         ply_ids : np.ndarray
             Shape (N,) integer array of ply indices for each node.
+        n_plies : int, optional
+            Total number of plies in the laminate. This is the same
+            authoritative count that :meth:`apply_to_nodes` takes, and
+            it sets the through-thickness decay basis. It MUST be passed
+            (matching the value given to :meth:`apply_to_nodes`) whenever
+            ``ply_ids`` does not span the full laminate, otherwise the
+            displacement and angle decay fields desynchronise (issue
+            #146). When omitted it falls back to ``ply_ids.max() + 1``,
+            which is only correct when ``ply_ids`` reaches the top ply.
 
         Returns
         -------
@@ -639,7 +649,12 @@ class WrinkleConfiguration:
         the aggregate misalignment.
         """
         n_nodes = len(nodes)
-        n_plies = int(ply_ids.max()) + 1 if len(ply_ids) > 0 else 1
+        if n_plies is None:
+            # Backward-compatible fallback: only correct when ply_ids
+            # spans the full laminate. Callers with a partial ply_ids
+            # array must pass the explicit n_plies (the same value given
+            # to apply_to_nodes) so both decay fields stay synced (#146).
+            n_plies = int(ply_ids.max()) + 1 if len(ply_ids) > 0 else 1
         angle_sq = np.zeros(n_nodes, dtype=np.float64)
 
         for wrinkle in self.wrinkles:
