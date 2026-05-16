@@ -806,7 +806,12 @@ class WrinkleMesh:
         """
         if self.wrinkle_config is None:
             return np.zeros(nodes.shape[0], dtype=float)
-        return self.wrinkle_config.fiber_angles_at_nodes(nodes, ply_ids_per_node)
+        # Pass the authoritative laminate ply count -- the same value
+        # given to apply_to_nodes -- so the displacement and fibre-angle
+        # decay fields share an identical through-thickness basis (#146).
+        return self.wrinkle_config.fiber_angles_at_nodes(
+            nodes, ply_ids_per_node, self.laminate.n_plies
+        )
 
     # =======================================================================
     # Export methods
