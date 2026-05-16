@@ -24,6 +24,14 @@ from typing import List, Optional, Sequence
 
 import numpy as np
 
+from wrinklefe.core.layup import parse_layup
+from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
+
+# Single source of truth for the morphology names the CLI accepts. Pulled
+# straight from ``core.morphology`` so the CLI can never drift from the
+# engine / Streamlit app (see issue #83).
+MORPHOLOGY_CHOICES = sorted(set(MORPHOLOGY_PHASES.keys()) | SINGLE_WRINKLE_MODES)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with subcommands."""
@@ -64,8 +72,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument(
         "--morphology", type=str, default="stack",
-        choices=["stack", "convex", "concave"],
-        help="Wrinkle morphology type (default: stack)",
+        choices=MORPHOLOGY_CHOICES,
+        help=(
+            "Wrinkle morphology type (default: stack). "
+            f"One of: {', '.join(MORPHOLOGY_CHOICES)}."
+        ),
     )
     p_analyze.add_argument(
         "--loading", type=str, default="compression",
@@ -77,9 +88,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Material name from MaterialLibrary (default: IM7_8552)",
     )
     p_analyze.add_argument(
-        "--angles", type=str, default=None,
+        "--angles", "--layup", type=str, default=None, dest="angles",
         help=(
-            "Ply angles as comma-separated values, e.g. '0,45,-45,90'. "
+            "Ply layup. Accepts an explicit comma-separated list "
+            "(e.g. '0,45,-45,90') or contracted notation "
+            "(e.g. '[0/45/-45/90]_3s', '[0/±45/90]s'). "
             "Default: quasi-isotropic [0/45/-45/90]_3s"
         ),
     )
@@ -195,8 +208,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_sweep.add_argument(
         "--morphology", type=str, default="stack",
-        choices=["stack", "convex", "concave"],
-        help="Morphology for the sweep (default: stack)",
+        choices=MORPHOLOGY_CHOICES,
+        help=(
+            "Morphology for the sweep (default: stack). "
+            f"One of: {', '.join(MORPHOLOGY_CHOICES)}."
+        ),
     )
     p_sweep.add_argument(
         "--analytical-only", action=argparse.BooleanOptionalAction, default=True,
@@ -228,10 +244,21 @@ def _build_parser() -> argparse.ArgumentParser:
 # ====================================================================== #
 
 def _parse_angles(angles_str: Optional[str]) -> Optional[List[float]]:
-    """Parse a comma-separated angle string into a list of floats."""
+    """Parse a layup string into a list of ply angles (degrees).
+
+    Accepts both an explicit comma/semicolon/newline-separated list
+    (e.g. ``0,45,-45,90``) and contracted notation
+    (e.g. ``[0/45/-45/90]_3s``) via the shared
+    :func:`wrinklefe.core.layup.parse_layup` parser. On a malformed
+    layup, prints a clear error and exits with a non-zero status.
+    """
     if angles_str is None:
         return None
-    return [float(a.strip()) for a in angles_str.split(",")]
+    try:
+        return parse_layup(angles_str)
+    except ValueError as exc:
+        print(f"error: invalid layup: {exc}", file=sys.stderr)
+        sys.exit(2)
 
 
 def _cmd_analyze(args: argparse.Namespace) -> None:
