@@ -18,7 +18,15 @@ import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
-from wrinklefe.io.export import export_abaqus_inp, export_results_json, export_vtk
+from wrinklefe.io.export import (
+    build_ncr,
+    export_abaqus_inp,
+    export_ncr,
+    export_results_json,
+    export_vtk,
+    recommend_disposition,
+    render_ncr_markdown,
+)
 
 
 # ======================================================================
@@ -389,3 +397,194 @@ class TestVTKExport:
             # Guard: the mean must be distinguishable from the old
             # first-Gauss-point behaviour for this fixture.
             assert abs(expected_mean - first_gp) > 1.0
+
+
+# ======================================================================
+# NCR (MRB decision-support) tests
+# ======================================================================
+
+@pytest.fixture(scope="module")
+def ncr_inputs(analysis_result):
+    """Build build_ncr() defect/engineering dicts from the fixture."""
+    r = analysis_result
+    cfg = r.config
+    defect = {
+        "amplitude_mm": cfg.amplitude,
+        "wavelength_mm": cfg.wavelength,
+        "width_mm": cfg.width,
+        "morphology": cfg.morphology,
+        "loading": cfg.loading,
+        "ply_thickness_mm": cfg.ply_thickness,
+        "n_plies": len(cfg.angles),
+        "layup": list(cfg.angles),
+        "material_name": cfg.material.name if cfg.material else None,
+    }
+    engineering = {
+        "analytical_knockdown": float(r.analytical_knockdown),
+        "analytical_strength_MPa": float(r.analytical_strength_MPa),
+        "damage_index": float(r.damage_index),
+        "max_angle_deg": float(np.degrees(r.max_angle_rad)),
+        "effective_angle_deg": float(np.degrees(r.effective_angle_rad)),
+        "morphology_factor": float(r.morphology_factor),
+        "fe": None,
+    }
+    return defect, engineering
+
+
+class TestRecommendDisposition:
+    """Tests for recommend_disposition severity banding."""
+
+    def test_never_final(self):
+        """The tool never issues a final disposition."""
+        d = recommend_disposition(0.99, 0.01)
+        assert d["is_final"] is False
+
+    def test_pristine_is_negligible(self):
+        d = recommend_disposition(1.0, 0.0)
+        assert d["severity"] == "Negligible"
+
+    def test_severe_for_large_loss(self):
+        d = recommend_disposition(0.30, 0.80)
+        assert d["severity"] == "Severe"
+
+    def test_worst_metric_governs(self):
+        """A benign knockdown but high damage index -> conservative."""
+        d = recommend_disposition(0.99, 0.90)
+        assert d["severity"] == "Severe"
+
+    def test_severity_monotonic_in_knockdown(self):
+        order = ["Negligible", "Minor", "Moderate", "Major", "Severe"]
+        seq = [
+            recommend_disposition(kd, 0.0)["severity"]
+            for kd in (0.99, 0.93, 0.80, 0.60, 0.40)
+        ]
+        ranks = [order.index(s) for s in seq]
+        assert ranks == sorted(ranks)
+        assert ranks == [0, 1, 2, 3, 4]
+
+    def test_approvals_grow_with_severity(self):
+        few = recommend_disposition(1.0, 0.0)["required_approvals"]
+        many = recommend_disposition(0.3, 0.9)["required_approvals"]
+        assert len(many) >= len(few)
+
+    def test_compression_note_in_rationale(self):
+        d = recommend_disposition(0.8, 0.2, loading="compression")
+        assert "compression" in d["rationale"].lower()
+
+
+class TestBuildNCR:
+    """Tests for build_ncr structured report."""
+
+    def test_required_sections(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        for key in (
+            "header",
+            "nonconformance",
+            "engineering_analysis",
+            "criteria_cited",
+            "disposition_recommendation",
+            "mrb_disposition",
+            "disclaimer",
+        ):
+            assert key in ncr
+
+    def test_recommendation_not_final(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        rec = ncr["disposition_recommendation"]
+        assert rec["is_final_disposition"] is False
+        assert "Material Review Board" in rec["note"]
+
+    def test_mrb_signoff_is_blank(self, ncr_inputs):
+        """The MRB block is left for the board to complete."""
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        mrb = ncr["mrb_disposition"]
+        assert mrb["final_disposition"] == ""
+        assert all(a["signature"] == "" for a in mrb["approvals"])
+        assert len(mrb["approvals"]) >= 1
+
+    def test_metadata_passthrough(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(
+            metadata={"ncr_number": "NCR-2026-001", "part_number": "PN-42"},
+            defect=defect,
+            engineering=engineering,
+        )
+        assert ncr["header"]["ncr_number"] == "NCR-2026-001"
+        assert ncr["header"]["part_number"] == "PN-42"
+
+    def test_missing_metadata_has_placeholders(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        assert ncr["header"]["ncr_number"] == "(to be assigned)"
+
+    def test_geometry_carried_through(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        geo = ncr["nonconformance"]["as_found_geometry"]
+        assert geo["amplitude_mm"] == pytest.approx(defect["amplitude_mm"])
+        assert geo["wavelength_mm"] == pytest.approx(defect["wavelength_mm"])
+
+    def test_json_serialisable(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        # Must not raise.
+        json.dumps(ncr)
+
+    def test_fe_block_cited_when_present(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        eng = dict(engineering)
+        eng["fe"] = {
+            "modulus_retention": 0.92,
+            "retention_factors": {"hashin": 0.81, "puck": 0.88},
+            "critical_criterion": "hashin",
+            "critical_mode": "fiber_compression",
+            "critical_ply": 3,
+        }
+        ncr = build_ncr(defect=defect, engineering=eng)
+        fe_block = ncr["engineering_analysis"]["finite_element"]
+        assert fe_block["min_strength_retention"] == pytest.approx(0.81)
+        assert any(
+            "hashin" in c.lower() for c in ncr["criteria_cited"]
+        )
+
+
+class TestRenderAndExportNCR:
+    """Tests for render_ncr_markdown and export_ncr."""
+
+    def test_markdown_has_key_headers(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        md = render_ncr_markdown(build_ncr(defect=defect, engineering=engineering))
+        assert "# Nonconformance Report (NCR)" in md
+        assert "Engineering Analysis" in md
+        assert "Recommended Disposition (NON-BINDING)" in md
+        assert "MRB Disposition" in md
+
+    def test_markdown_states_non_binding(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        md = render_ncr_markdown(build_ncr(defect=defect, engineering=engineering))
+        assert "do not constitute a final material disposition" in md
+
+    def test_export_md(self, ncr_inputs, tmp_path):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        out = tmp_path / "sub" / "ncr.md"
+        export_ncr(ncr, out, fmt="md")
+        assert out.exists()
+        assert out.read_text().startswith("# Nonconformance Report")
+
+    def test_export_json(self, ncr_inputs, tmp_path):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        out = tmp_path / "ncr.json"
+        export_ncr(ncr, out, fmt="json")
+        data = json.loads(out.read_text())
+        assert data["report_type"] == "Nonconformance Report (NCR)"
+
+    def test_export_invalid_fmt(self, ncr_inputs, tmp_path):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        with pytest.raises(ValueError):
+            export_ncr(ncr, tmp_path / "ncr.txt", fmt="txt")
