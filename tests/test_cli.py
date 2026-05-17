@@ -8,7 +8,6 @@ the configs/kwargs the CLI hands them.
 
 from __future__ import annotations
 
-import functools
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -44,30 +43,6 @@ def _stub_analysis_run():
     return captured, patch(
         "wrinklefe.analysis.WrinkleAnalysis.run", new=fake_run
     )
-
-
-def _valid_interfaces(interface_1: int, interface_2: int):
-    """Patch ``AnalysisConfig`` so the CLI builds it with valid interfaces.
-
-    ``_cmd_analyze`` does not expose ``--interface-1/--interface-2`` and
-    always relies on the dataclass defaults (11/12), which are only valid
-    for layups with >=13 plies. Tests that exercise *small* layups purely
-    to verify layup parsing must therefore supply an interface pair that
-    is valid for that ply count; otherwise ``AnalysisConfig.__post_init__``
-    (added in #147) rejects the config before parsing can be asserted.
-
-    This binds valid interface defaults via ``functools.partial`` so the
-    test stays test-only and does not alter CLI defaults or #147's
-    validation.
-    """
-    from wrinklefe import analysis as _analysis
-
-    bound = functools.partial(
-        _analysis.AnalysisConfig,
-        interface_1=interface_1,
-        interface_2=interface_2,
-    )
-    return patch("wrinklefe.analysis.AnalysisConfig", new=bound)
 
 
 # --------------------------------------------------------------------------- #
@@ -361,31 +336,37 @@ def test_analyze_contracted_layup_matches_shared_parser():
     from wrinklefe.core.layup import parse_layup
 
     captured, patcher = _stub_analysis_run()
-    # "[0/±45/90]s" expands to 8 plies; the CLI's default interfaces
-    # (11/12) are out of range for it, so supply a valid interior pair.
-    with patcher, _valid_interfaces(3, 4):
+    # "[0/±45/90]s" expands to 8 plies. The CLI does not expose
+    # --interface-1/--interface-2 and relies on the dataclass defaults;
+    # those must now adapt to short layups (regression #154/#156).
+    with patcher:
         cli_main([
             "analyze",
             "--layup", "[0/±45/90]s",
             "--analytical-only",
         ])
 
-    assert captured["config"].angles == parse_layup("[0/±45/90]s")
+    cfg = captured["config"]
+    assert cfg.angles == parse_layup("[0/±45/90]s")
+    n_plies = len(cfg.angles)
+    assert 0 <= cfg.interface_1 < cfg.interface_2 < n_plies
 
 
 def test_analyze_explicit_comma_list_still_works():
     """Backwards compatibility: the original comma-separated form."""
     captured, patcher = _stub_analysis_run()
-    # This layup has 4 plies; the CLI's default interfaces (11/12) are
-    # out of range for it, so supply an interface pair valid at 4 plies.
-    with patcher, _valid_interfaces(1, 2):
+    # This layup has 4 plies. The CLI relies on the dataclass interface
+    # defaults, which must adapt to short layups (regression #154/#156).
+    with patcher:
         cli_main([
             "analyze",
             "--angles", "0, 45, -45, 90",
             "--analytical-only",
         ])
 
-    assert captured["config"].angles == [0.0, 45.0, -45.0, 90.0]
+    cfg = captured["config"]
+    assert cfg.angles == [0.0, 45.0, -45.0, 90.0]
+    assert 0 <= cfg.interface_1 < cfg.interface_2 < len(cfg.angles)
 
 
 def test_analyze_invalid_layup_exits_nonzero_with_message(capsys):

@@ -81,6 +81,40 @@ def test_valid_loadings_accepted(loading):
     assert AnalysisConfig(loading=loading).loading == loading
 
 
+@pytest.mark.parametrize("morphology", ["stack", "convex", "concave"])
+def test_short_layup_dual_wrinkle_derives_interface_defaults(morphology):
+    """A <12-ply layup must not be rejected when interfaces are unset.
+
+    Regression for #154 / #156: hard-coded interface defaults of 11/12
+    spuriously rejected any layup with fewer than 12 plies (including the
+    app's advertised examples) even though the user never set interfaces.
+    Defaults now straddle the mid-thickness derived from the ply count.
+    """
+    angles = [0, 45, -45, 90, 90, -45, 45, 0]  # 8 plies
+    cfg = AnalysisConfig(angles=angles, morphology=morphology)
+    n_plies = len(angles)
+    assert cfg.interface_1 == n_plies // 2 - 1
+    assert cfg.interface_2 == n_plies // 2
+    assert 0 <= cfg.interface_1 < cfg.interface_2 < n_plies
+
+
+def test_explicit_out_of_range_interface_still_raises_on_short_layup():
+    """Explicitly-set interfaces are still range-validated, not derived."""
+    with pytest.raises(ValueError, match=r"interface_2 must be in \[0, 8\)"):
+        AnalysisConfig(
+            angles=[0, 45, -45, 90, 90, -45, 45, 0],
+            interface_1=3,
+            interface_2=8,
+        )
+
+
+def test_standard_layup_default_interfaces_unchanged():
+    """The 24-ply default layup keeps the historical 11/12 interfaces."""
+    cfg = AnalysisConfig()
+    assert cfg.interface_1 == 11
+    assert cfg.interface_2 == 12
+
+
 def test_boundary_valid_values_accepted():
     """Smallest/edge values that are still valid must be accepted."""
     # amplitude == 0 is the legitimate "no wrinkle" (flat) case.

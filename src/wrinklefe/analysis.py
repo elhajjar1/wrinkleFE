@@ -313,10 +313,14 @@ class AnalysisConfig:
     angles : list[float] or None
         Ply angles in degrees.  ``None`` uses a quasi-isotropic
         ``[0/45/-45/90]_3s`` layup (24 plies).
-    interface_1 : int
-        Ply interface for the first wrinkle.  Default 11.
-    interface_2 : int
-        Ply interface for the second wrinkle.  Default 12.
+    interface_1 : int or None
+        Ply interface for the first wrinkle.  ``None`` (default) derives
+        a layup-aware interface straddling the mid-thickness from the
+        number of plies, so short (<12-ply) laminates are not rejected.
+    interface_2 : int or None
+        Ply interface for the second wrinkle.  ``None`` (default) derives
+        a layup-aware interface straddling the mid-thickness from the
+        number of plies.
     nx : int
         Mesh divisions in x.  Default 12.
     ny : int
@@ -370,9 +374,11 @@ class AnalysisConfig:
     # Ply thickness
     ply_thickness: float = 0.183  # mm (1 ply thickness for CYCOM X850/T800)
 
-    # Wrinkle placement
-    interface_1: int = 11
-    interface_2: int = 12
+    # Wrinkle placement. None → derived from the layup in __post_init__
+    # (two interfaces straddling the mid-thickness). An explicit int is
+    # preserved and still range-validated.
+    interface_1: Optional[int] = None
+    interface_2: Optional[int] = None
 
     # Mesh
     nx: int = 12
@@ -409,6 +415,16 @@ class AnalysisConfig:
             # Quasi-isotropic [0/45/-45/90]_3s → 24 plies
             base = [0, 45, -45, 90]
             self.angles = (base * 3) + list(reversed(base * 3))
+
+        # Layup-aware interface defaults: two interfaces straddling the
+        # mid-thickness so short (<12-ply) laminates are not spuriously
+        # rejected. Explicitly-set interfaces are preserved and validated.
+        n_plies = len(self.angles)
+        mid = n_plies // 2
+        if self.interface_1 is None:
+            self.interface_1 = max(0, mid - 1)
+        if self.interface_2 is None:
+            self.interface_2 = min(n_plies - 1, mid)
 
         self._validate()
 
