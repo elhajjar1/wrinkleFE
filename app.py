@@ -38,6 +38,7 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.wrinkle import GaussianSinusoidal
+from wrinklefe.io.export import build_ncr, render_ncr_markdown
 
 import streamlit_viz
 
@@ -1424,3 +1425,131 @@ with tab_export:
             f"WrinkleFE {_wrinklefe_version} · "
             f"export timestamp {payload['meta']['timestamp_utc']}"
         )
+
+        # ------------------------------------------------------------------
+        # Nonconformance Report (NCR) — MRB decision-support tool
+        # ------------------------------------------------------------------
+        st.divider()
+        st.subheader("Create a Nonconformance Report (NCR)")
+        st.caption(
+            "For a field engineer to raise an NCR on this wrinkle. WrinkleFE "
+            "produces a structured analysis, cites the criteria, and "
+            "recommends a disposition path. It does **not** issue a final "
+            "disposition — a qualified Material Review Board reviews, may "
+            "modify, and approves the outcome."
+        )
+
+        _cfg = dict(st.session_state["cfg_payload"])
+        _mat = dict(_cfg.get("material_tuple", ()))
+        _angles = list(_cfg.get("angles_tuple", ()))
+        _res = st.session_state["results"]
+
+        with st.form("ncr_form"):
+            nc1, nc2 = st.columns(2)
+            with nc1:
+                ncr_number = st.text_input("NCR number", placeholder="NCR-…")
+                part_number = st.text_input("Part number")
+                serial_lot = st.text_input("Serial / lot number")
+                program = st.text_input("Program / project")
+                originator = st.text_input("Originating engineer")
+            with nc2:
+                part_name = st.text_input("Part name / description")
+                work_order = st.text_input("Work order / job number")
+                quantity = st.text_input("Quantity affected", value="1")
+                defect_location = st.text_input("Defect location on part")
+                detection_method = st.selectbox(
+                    "Detection method",
+                    [
+                        "Visual",
+                        "Ultrasonic (UT)",
+                        "Radiographic / CT",
+                        "Cross-section / metallography",
+                        "Other",
+                    ],
+                )
+            drawing_spec = st.text_input(
+                "Violated drawing / specification requirement"
+            )
+            remarks = st.text_area("Originator remarks", height=80)
+            ncr_submit = st.form_submit_button("Generate NCR")
+
+        if ncr_submit:
+            _fe = _res.get("fe")
+            ncr = build_ncr(
+                metadata={
+                    "ncr_number": ncr_number,
+                    "originator": originator,
+                    "part_number": part_number,
+                    "part_name": part_name,
+                    "serial_lot": serial_lot,
+                    "work_order": work_order,
+                    "program": program,
+                    "quantity": quantity,
+                    "defect_location": defect_location,
+                    "detection_method": detection_method,
+                    "drawing_spec": drawing_spec,
+                    "remarks": remarks,
+                },
+                defect={
+                    "amplitude_mm": _cfg.get("amplitude"),
+                    "wavelength_mm": _cfg.get("wavelength"),
+                    "width_mm": _cfg.get("width"),
+                    "morphology": _cfg.get("morphology"),
+                    "loading": _cfg.get("loading"),
+                    "ply_thickness_mm": _cfg.get("ply_thickness"),
+                    "n_plies": len(_angles),
+                    "layup": _angles,
+                    "material_name": _mat.get("name"),
+                },
+                engineering={
+                    "analytical_knockdown": _res.get("analytical_knockdown"),
+                    "analytical_strength_MPa": _res.get(
+                        "analytical_strength_MPa"
+                    ),
+                    "damage_index": _res.get("damage_index"),
+                    "max_angle_deg": _res.get("max_angle_deg"),
+                    "effective_angle_deg": _res.get("effective_angle_deg"),
+                    "morphology_factor": _res.get("morphology_factor"),
+                    "fe": (
+                        {
+                            "modulus_retention": _fe.get("modulus_retention"),
+                            "retention_factors": _fe.get(
+                                "retention_factors"
+                            ),
+                            "critical_criterion": _fe.get(
+                                "critical_criterion"
+                            ),
+                            "critical_mode": _fe.get("critical_mode"),
+                            "critical_ply": _fe.get("critical_ply"),
+                        }
+                        if _fe
+                        else None
+                    ),
+                },
+            )
+
+            _dr = ncr["disposition_recommendation"]
+            st.success(
+                f"Severity: **{_dr['severity']}** · Recommended path "
+                f"(non-binding): {_dr['recommended_path']}"
+            )
+            ncr_md = render_ncr_markdown(ncr)
+            with st.expander("Preview NCR", expanded=True):
+                st.markdown(ncr_md)
+
+            _fn_base = (ncr_number or "ncr").strip().replace(" ", "_") or "ncr"
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                st.download_button(
+                    "Download NCR (Markdown)",
+                    data=ncr_md.encode(),
+                    file_name=f"{_fn_base}.md",
+                    mime="text/markdown",
+                )
+            with dl2:
+                st.download_button(
+                    "Download NCR (JSON)",
+                    data=json.dumps(ncr, indent=2).encode(),
+                    file_name=f"{_fn_base}.json",
+                    mime="application/json",
+                )
