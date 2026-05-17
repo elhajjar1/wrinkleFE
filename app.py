@@ -506,7 +506,7 @@ with st.sidebar:
         st.image(
             _morphology_schematic(morphology),
             caption=f"{morphology.capitalize()} morphology",
-            use_container_width=True,
+            width="stretch",
         )
     else:
         # Sensible defaults; the cartoon and morphology selector are exposed
@@ -602,12 +602,12 @@ with st.sidebar:
             "for the full FE solve, stress fields, and per-ply failure indices."
         )
 
-    run_clicked = st.button("Run analysis", type="primary", use_container_width=True)
+    run_clicked = st.button("Run analysis", type="primary", width="stretch")
 
     st.divider()
     reset_clicked = st.button(
         "↻ Reset to defaults",
-        use_container_width=True,
+        width="stretch",
         help=(
             "Restore every sidebar input (material, layup, wrinkle geometry, "
             "loading, mesh) to its original default value. Modified entries "
@@ -866,13 +866,13 @@ tab_overview, tab_configure, tab_results, tab_export = st.tabs(
 
 with tab_overview:
     st.markdown(_HERO_INTRO_MD)
-    st.image(_hero_schematic(), use_container_width=True)
+    st.image(_hero_schematic(), width="stretch")
 
     _demo_cols = st.columns([2, 1, 2])
     if _demo_cols[1].button(
         "▶ Try a demo analysis",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         help=(
             "One-click analytical run with IM7/8552 and a quasi-isotropic "
             "[0/45/-45/90]_3s layup. Lands on the Results tab in ~2 s."
@@ -1278,7 +1278,7 @@ with tab_results:
                         component_index=comp[0],
                         component_label=comp[1],
                     )
-                    st.plotly_chart(fig_3d, use_container_width=True)
+                    st.plotly_chart(fig_3d, width="stretch")
                 elif view_mode == "Deformed mesh":
                     scale = st.slider(
                         "Deformation exaggeration",
@@ -1294,7 +1294,7 @@ with tab_results:
                         fe["nodes"], fe["elements"], fe["displacement"],
                         scale=scale,
                     )
-                    st.plotly_chart(fig_3d, use_container_width=True)
+                    st.plotly_chart(fig_3d, width="stretch")
                 else:
                     fi_dict = fe.get("fi_per_gauss", {})
                     fi_keys = list(fi_dict.keys())
@@ -1314,7 +1314,7 @@ with tab_results:
                             fe["nodes"], fe["elements"],
                             fi_dict[crit_for_3d], crit_for_3d,
                         )
-                        st.plotly_chart(fig_3d, use_container_width=True)
+                        st.plotly_chart(fig_3d, width="stretch")
 
                 st.markdown("**y-slice scrubber**")
                 y_centers = fe["element_centers"][:, 1]
@@ -1339,7 +1339,7 @@ with tab_results:
                         component_label=slice_comp[1],
                     )
                     if fig_slice is not None:
-                        st.plotly_chart(fig_slice, use_container_width=True)
+                        st.plotly_chart(fig_slice, width="stretch")
 
             with st.expander("Mesh statistics"):
                 st.write(
