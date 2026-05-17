@@ -70,6 +70,9 @@ MORPHOLOGY_LABELS: dict[str, str] = {
 }
 """Display labels for morphology types with phase offset notation."""
 
+NEUTRAL_GREY: str = "#333333"
+"""Neutral dark-grey accent for non-morphology elements (e.g. aggregate bars)."""
+
 
 # ======================================================================
 # Standard figure sizes

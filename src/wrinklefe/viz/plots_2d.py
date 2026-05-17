@@ -41,6 +41,7 @@ from wrinklefe.viz.style import (
     MORPHOLOGY_COLORS,
     MORPHOLOGY_LABELS,
     MORPHOLOGY_LINESTYLES,
+    NEUTRAL_GREY,
     colorbar_setup,
     ensure_axes,
     get_morphology_style,
@@ -88,7 +89,7 @@ def plot_wrinkle_profile(
     x = np.linspace(xlo, xhi, n_points)
     z = profile.displacement(x)
 
-    ax.plot(x, z, color="#1f77b4", linewidth=1.5)
+    ax.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
     ax.axhline(0, color="0.6", linewidth=0.5, zorder=0)
     ax.set_xlabel("$x$ (mm)")
     ax.set_ylabel("$z$ (mm)")
@@ -157,14 +158,14 @@ def plot_dual_wrinkle_profiles(
     z_upper = p_upper.displacement(x)
     z_lower = p_lower.displacement(x)
 
-    ax.plot(x, z_upper, color="#1f77b4", linewidth=1.5, label="Upper wrinkle")
-    ax.plot(x, z_lower, color="#d62728", linewidth=1.5, label="Lower wrinkle")
+    ax.plot(x, z_upper, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5, label="Upper wrinkle")
+    ax.plot(x, z_lower, color=MORPHOLOGY_COLORS["concave"], linewidth=1.5, label="Lower wrinkle")
 
     if show_gap:
         gap = z_upper - z_lower
         ax.fill_between(
             x, z_lower, z_upper,
-            alpha=0.15, color="#2ca02c", label="Interface gap",
+            alpha=0.15, color=MORPHOLOGY_COLORS["convex"], label="Interface gap",
         )
 
     ax.axhline(0, color="0.6", linewidth=0.5, zorder=0)
@@ -442,7 +443,7 @@ def plot_strength_distribution(
     else:
         ax.hist(
             strengths, bins=n_bins, density=True,
-            color="#1f77b4", alpha=0.7, edgecolor="white", linewidth=0.3,
+            color=MORPHOLOGY_COLORS["stack"], alpha=0.7, edgecolor="white", linewidth=0.3,
             label="Histogram",
         )
 
@@ -451,7 +452,7 @@ def plot_strength_distribution(
             from scipy.stats import gaussian_kde
             kde = gaussian_kde(strengths)
             x_kde = np.linspace(strengths.min(), strengths.max(), 300)
-            ax.plot(x_kde, kde(x_kde), color="#d62728", linewidth=1.5, label="KDE")
+            ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"], linewidth=1.5, label="KDE")
         except ImportError:
             pass
 
@@ -498,7 +499,7 @@ def plot_jensen_gap(
 
     labels = ["Overall"]
     values = [jensen_result.jensen_gap]
-    colors = ["#333333"]
+    colors = [NEUTRAL_GREY]
 
     for morph, gap in sorted(jensen_result.gap_by_morphology.items()):
         labels.append(MORPHOLOGY_LABELS.get(morph, morph))
@@ -593,12 +594,12 @@ def plot_failure_envelope(
         safe_mask = ~failed
         ax.scatter(
             x_vals[safe_mask], y_vals[safe_mask],
-            c="#2ca02c", s=20, marker="o", label="Safe",
+            c=MORPHOLOGY_COLORS["convex"], s=20, marker="o", label="Safe",
             edgecolors="0.3", linewidths=0.3,
         )
         ax.scatter(
             x_vals[failed], y_vals[failed],
-            c="#d62728", s=20, marker="x", label="Failed",
+            c=MORPHOLOGY_COLORS["concave"], s=20, marker="x", label="Failed",
             linewidths=1.0,
         )
         ax.legend(loc="best", fontsize=7)
