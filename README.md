@@ -70,6 +70,30 @@ measured wrinkle (e.g. from a cross-section micrograph or CT slice),
 `θ_max ≈ arctan(2πA/λ)`, which drives the Budiansky-Fleck compressive
 knockdown.
 
+### Wrinkle geometry parameters
+
+All wrinkle length parameters use a single, consistent unit:
+**millimetres (mm)** — the same unit as `ply_thickness` and
+`domain_length` (the default `amplitude=0.366` mm is exactly two ply
+thicknesses of 0.183 mm). Lengths are **not** normalized by thickness.
+The longitudinal coordinate `x` runs along the laminate in the fibre
+direction; out-of-plane displacement `z(x)` is measured from the flat
+(undeformed) mid-surface. Angles are in **radians**.
+
+| Parameter | Symbol | Definition | Units |
+|-----------|--------|------------|-------|
+| `amplitude` | A | Peak crest height from the flat mid-surface to the wrinkle crest (peak-to-midplane, **not** peak-to-peak; `A = (z_max − z_min)/2` for a measured wrinkle). Must be ≥ 0. | mm |
+| `wavelength` | λ | Period of the `cos(2πx/λ)` carrier along the longitudinal x-direction (crest-to-crest distance). Must be > 0. Wavenumber `k = 2π/λ`. | mm |
+| `width` | w | Longitudinal envelope decay length about the centre. Exact meaning is profile-dependent: Gaussian length scale `exp(−(x−x₀)²/w²)`, tapered flat-top extent (`\|x−x₀\| < w/2`), or triangular half-base (`\|x−x₀\| < w`). Must be > 0. | mm |
+| `center` | x₀ | Longitudinal position of the wrinkle crest / envelope peak, in the global x coordinate. Default 0.0. | mm |
+| `phase_offset` | φ | Phase of one wrinkle relative to a reference, mapping to a geometric offset `Δx = φλ/(2π)`. Stack φ=0, convex φ=+π/2, concave φ=−π/2. | rad |
+| `decay_floor` | — | Fraction of amplitude retained at the surface plies in `graded` mode (0 = full decay to zero, 1 = no decay). Clamped to [0, 1]. | dimensionless |
+
+Peak fibre misalignment: `θ_max ≈ arctan(2πA/λ)` (exact for a pure
+cosine; dimensionless because A and λ share the mm length unit). See the
+`WrinkleProfile` class docstring in `src/wrinklefe/core/wrinkle.py` for
+the full per-profile geometric definitions.
+
 ### Tension analysis
 
 ```python

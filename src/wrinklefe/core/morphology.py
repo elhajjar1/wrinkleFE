@@ -98,20 +98,27 @@ class WrinklePlacement:
         a :class:`WrinkleSurface3D` extends this to z(x, y).
     ply_interface : int
         Interface index between ply *i* and ply *i+1* where the wrinkle
-        is located. For a laminate with *N* plies, valid indices are
-        0 through N-2 (inclusive).
+        is located (dimensionless integer). For a laminate with *N*
+        plies, valid indices are 0 through N-2 (inclusive).
     phase_offset : float
-        Phase offset phi in radians relative to a reference wrinkle.
-        The first wrinkle in a configuration typically uses phi = 0.
+        Phase offset phi in **radians** relative to a reference wrinkle,
+        in the range that maps naturally to ``[-pi, pi]``. The first
+        wrinkle in a configuration typically uses phi = 0. Canonical
+        dual-wrinkle morphologies: phi = 0 (stack, aligned crests),
+        phi = +pi/2 (convex), phi = -pi/2 (concave). Sign convention
+        follows :data:`MORPHOLOGY_PHASES`.
 
     Notes
     -----
     The phase offset is the key parameter that determines the dual-wrinkle
-    morphology. It relates to a geometric longitudinal offset Delta_x by:
+    morphology. It is a pure angle (radians) that relates to a *geometric*
+    longitudinal offset Delta_x (mm) between wrinkle centres by:
 
-        phi = 2 * pi * Delta_x / lambda
+        phi = 2 * pi * Delta_x / lambda      (radians)
 
-    where lambda is the wrinkle wavelength (Jin et al., 2026, Eq. 4).
+    where lambda is the wrinkle wavelength (mm) (Jin et al., 2026, Eq. 4).
+    Equivalently Delta_x = phi * lambda / (2 * pi) (mm). Because both
+    Delta_x and lambda are in millimetres, phi is dimensionless.
     """
 
     profile: Union[WrinkleProfile, WrinkleSurface3D]
@@ -147,6 +154,17 @@ class WrinkleConfiguration:
     wrinkles : list of WrinklePlacement
         One or more wrinkle placements sorted by ply interface. At least
         one wrinkle is required.
+    decay_mode : str, optional
+        Through-thickness amplitude distribution. ``"default"`` (linear
+        decay from the wrinkle interface to the laminate surfaces),
+        ``"uniform"`` (full amplitude at every ply), or ``"graded"``
+        (linear decay from mid-ply to surfaces). Default ``"default"``.
+    decay_floor : float, optional
+        Dimensionless fraction in ``[0, 1]`` used only by the ``"graded"``
+        decay mode: the minimum fraction of the wrinkle amplitude retained
+        at the surface plies. ``0.0`` means full decay to zero amplitude
+        at the surfaces (pure graded); ``1.0`` means no decay (equivalent
+        to uniform). Values outside ``[0, 1]`` are clamped. Default 0.0.
 
     Raises
     ------

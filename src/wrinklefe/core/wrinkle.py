@@ -5,6 +5,17 @@ and several alternative envelope shapes. Each profile class provides analytical
 displacement, slope, and curvature, plus convenience methods for fiber
 misalignment angle computation.
 
+Units convention
+-----------------
+Every length parameter in this module -- ``amplitude`` (*A*),
+``wavelength`` (*lambda*), ``width`` (*w*), ``center`` (*x0*), and the
+coordinate arrays *x*, *y* -- is in **millimetres (mm)**, consistent
+with ``Ply.thickness`` and ``domain_length`` used elsewhere in the
+package.  Slopes (``dz/dx``) are dimensionless, curvatures are 1/mm,
+and all fibre misalignment angles are in **radians**.  See
+:class:`WrinkleProfile` for the full geometric definitions and sign
+conventions.
+
 References
 ----------
 Jin, L. et al. (2026). Interlaminar damage analysis of dual-wrinkled composite
@@ -28,17 +39,55 @@ from scipy.optimize import minimize_scalar
 class WrinkleProfile(ABC):
     """Base class for 1-D wrinkle profiles z(x).
 
+    Geometry and units
+    ------------------
+    All length quantities use a single, consistent unit: **millimetres
+    (mm)**, the same unit as ``Ply.thickness`` and ``domain_length``
+    elsewhere in the package (e.g. the reference amplitude
+    ``A = 0.183 mm`` is exactly one ply thickness, and the README
+    default ``0.366 mm`` is two ply thicknesses).  The longitudinal
+    coordinate *x* runs along the laminate in the fibre direction; the
+    out-of-plane displacement *z(x)* is measured from the flat
+    (undeformed) mid-surface.  Angles are returned in **radians**.
+
+    Sign / convention notes:
+
+    - Profiles are *crest-referenced*: at ``x = center`` the cosine is at
+      a maximum, so ``z(center) = amplitude`` (a positive +z crest).
+    - ``amplitude`` is the peak-to-midplane height, **not** peak-to-peak.
+      For a measured wrinkle, ``A = (z_max - z_min) / 2``.
+    - The peak fibre misalignment angle scales as
+      ``theta_max ~= arctan(2*pi*A/lambda)`` (exact for a pure cosine);
+      this is dimensionless precisely because *A* and *lambda* share the
+      same length unit.
+
     Parameters
     ----------
     amplitude : float
-        Peak out-of-plane displacement *A* (mm).
+        Peak out-of-plane crest height *A* (mm), measured from the flat
+        mid-surface to the wrinkle crest (peak-to-midplane, not
+        peak-to-peak).  Must be non-negative.  Larger *A* increases the
+        fibre misalignment angle and the strength knockdown.
     wavelength : float
-        Sinusoidal wavelength *lambda* (mm).
+        Sinusoidal wavelength *lambda* (mm) along the longitudinal
+        *x*-direction: the period of the underlying ``cos(2*pi*x/lambda)``
+        carrier, i.e. the crest-to-crest distance of the wave.  Must be
+        positive.  The wavenumber is ``k = 2*pi/lambda`` (1/mm).
     width : float
-        Envelope width parameter *w* (mm).  Interpretation depends on the
-        concrete subclass (Gaussian sigma, half-extent, etc.).
+        Envelope width parameter *w* (mm) controlling how far the wrinkle
+        decays longitudinally about ``center``.  Must be positive.  Its
+        precise geometric meaning depends on the concrete subclass:
+        Gaussian ``exp(-(x-x0)^2 / w^2)`` length scale
+        (:class:`GaussianSinusoidal`, :class:`GaussianBump`), the
+        full flat-top extent of the tapered window
+        (:class:`RectangularSinusoidal`, plateau ``|x-x0| < w/2``), the
+        triangular half-base (:class:`TriangularSinusoidal`, support
+        ``|x-x0| < w``), or unused for the unbounded
+        :class:`PureSinusoidal`.
     center : float, optional
-        Longitudinal center position *x0* (mm).  Default is 0.0.
+        Longitudinal centre position *x0* (mm) of the wrinkle crest /
+        envelope peak, expressed in the same global *x* coordinate as the
+        mesh.  Default is 0.0.
     """
 
     def __init__(
