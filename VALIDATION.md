@@ -64,6 +64,38 @@ DOI 10.1007/s12289-019-01514-2.
   paper's refs [3]/[4] — Mukhopadhyay, Jones & Hallett (2015) — already an
   active dataset above.
 
+### Sun, Zhou, Zheng & Wang (2025)
+
+*Inversion analysis of constitutive relations of blade spar laminates with
+wrinkle defects.* AIP Advances 15, 065118. DOI 10.1063/5.0276297.
+
+- **Evaluated**: 2026-05-17
+- **Decision**: Not added to the knockdown validation database.
+- **Rationale**:
+  1. *No measured strength or knockdown* — the paper is an inverse
+     parameter-identification study (BRBP neural network + PSO) that
+     back-fits elastic constants (E₁, E₂, G₁₂, ν₂₁) from tensile
+     load–displacement curves. Outputs are load–displacement curves and
+     inverted moduli focused on *initial-damage onset* (stress relaxation),
+     not ultimate failure. No failure-stress vs A/λ data is reported.
+  2. *No pristine baseline* — all four groups (A–D) are wrinkled, so no
+     defect-free reference exists to normalise a knockdown against.
+  3. *Strengths are reference values, not measurements* — Table III
+     (XT=2100, XC=−1346, YT=44.46, SL=60.28 MPa, etc.) are taken from
+     GB/T 3961-2005, the manufacturer, and wind-farm literature as FE
+     inputs; explicitly not measured here, so they cannot anchor a
+     "measured" material entry.
+  4. Paper validates an ML inversion method (errors <5%, FE-vs-test <8%),
+     not a wrinkle knockdown model.
+- **Usable cross-reference only**: flat UD `[0]₆` glass/epoxy coupons
+  (A12/HRC1, single-ply 0.734 mm, 150×25×5 mm, ASTM D3039) in tension with
+  clean wrinkle geometry (A/λ = 0.01 / 0.1 / 0.18 / 0.25; amplitudes from
+  0.1 / 1.1 / 1.8 / 2.5 mm copper-wire molds, λ ≈ 10 mm). Geometrically in
+  our model's domain, but the strength response is absent. Digitising the
+  Fig. 4 / Fig. 14 load–displacement curves against the near-flat Group A
+  would yield only a figure-derived, non-pristine apparent KD biased to the
+  initial-damage region — below the database data-quality bar.
+
 ## Identified — pending evaluation
 
 - Li, Y., Li, X., Ge, J. & Liang, J. (2025). *Experimental Investigation on
