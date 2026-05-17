@@ -810,6 +810,193 @@ def render_ncr_markdown(ncr: dict) -> str:
     return "\n".join(lines)
 
 
+# A4 portrait page geometry (inches) and 1-inch margins.
+_PDF_PAGE_W = 8.27
+_PDF_PAGE_H = 11.69
+_PDF_MARGIN = 0.9
+# Per-line style: fontsize (pt), bold, italic, x-indent (in), gap-before (in).
+_PDF_STYLES = {
+    "title": (17.0, True, False, 0.0, 0.0),
+    "h2": (12.5, True, False, 0.0, 0.22),
+    "subhead": (10.0, True, False, 0.0, 0.10),
+    "bullet": (9.5, False, False, 0.18, 0.0),
+    "quote": (9.5, False, True, 0.22, 0.06),
+    "table": (8.5, False, False, 0.10, 0.0),
+    "rule": (9.5, False, False, 0.0, 0.06),
+    "normal": (9.5, False, False, 0.0, 0.0),
+    "disclaimer": (8.0, False, True, 0.0, 0.10),
+}
+
+
+def _classify_ncr_line(line: str) -> tuple[str, str]:
+    """Map one Markdown line to a (style-kind, plain-text) pair."""
+    raw = line.rstrip()
+    stripped = raw.strip()
+    if stripped == "":
+        return "blank", ""
+    if stripped.startswith("# "):
+        return "title", stripped[2:].strip()
+    if stripped.startswith("## "):
+        return "h2", stripped[3:].strip()
+    if stripped.startswith(("---", "***", "___")) and set(
+        stripped
+    ) <= {"-", "*", "_"}:
+        return "rule", ""
+    if stripped.startswith(">"):
+        return "quote", _strip_md_inline(stripped[1:].strip())
+    if stripped.startswith("|"):
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        non_empty = [c for c in cells if c]
+        if non_empty and all(set(c) <= {"-", ":"} for c in non_empty):
+            return "rule", ""
+        widths = (26, 16, 16, 12)
+        out = []
+        for i, c in enumerate(cells):
+            w = widths[i] if i < len(widths) else 14
+            out.append(c.ljust(w))
+        return "table", " ".join(out).rstrip()
+    if stripped.startswith("- "):
+        return "bullet", _strip_md_inline(stripped[2:].strip())
+    if (
+        stripped.startswith("_")
+        and stripped.endswith("_")
+        and len(stripped) > 2
+    ):
+        return "disclaimer", _strip_md_inline(stripped)
+    if (
+        stripped.startswith("**")
+        and stripped.endswith("**")
+        and "**" not in stripped[2:-2]
+    ):
+        return "subhead", _strip_md_inline(stripped)
+    return "normal", _strip_md_inline(stripped)
+
+
+def _strip_md_inline(text: str) -> str:
+    """Drop inline Markdown emphasis markers for flat PDF text."""
+    return (
+        text.replace("**", "")
+        .replace("`", "")
+        .replace("__", "")
+        .strip("_")
+    )
+
+
+def render_ncr_pdf(ncr: dict) -> bytes:
+    """Render an NCR (from :func:`build_ncr`) as a paginated PDF.
+
+    Uses Matplotlib's PDF backend (already a project dependency, headless-
+    safe) so no extra packages are required. The structured Markdown form
+    is laid out in a monospaced font with automatic word-wrap and
+    pagination.
+
+    Parameters
+    ----------
+    ncr : dict
+        A report produced by :func:`build_ncr`.
+
+    Returns
+    -------
+    bytes
+        The PDF document.
+    """
+    import io as _io
+    import textwrap
+
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
+
+    lines = render_ncr_markdown(ncr).split("\n")
+    usable_w = _PDF_PAGE_W - 2 * _PDF_MARGIN
+    usable_h = _PDF_PAGE_H - 2 * _PDF_MARGIN
+
+    # Pre-compute wrapped, styled physical lines: (kind, text, fs, bold,
+    # italic, indent_in, gap_in, line_h_in).
+    items: list[tuple] = []
+    for line in lines:
+        kind, text = _classify_ncr_line(line)
+        if kind == "blank":
+            items.append(("blank", "", 9.5, False, False, 0.0, 0.0, 0.11))
+            continue
+        fs, bold, italic, indent, gap = _PDF_STYLES[kind]
+        line_h = fs / 72.0 * 1.55
+        if kind == "rule":
+            items.append(
+                ("rule", "", fs, False, False, 0.0, gap, line_h)
+            )
+            continue
+        char_w = fs * 0.60 / 72.0  # monospace advance, inches
+        max_chars = max(8, int((usable_w - indent) / char_w))
+        if kind == "table":
+            wrapped = [text]  # keep table rows intact (monospaced)
+        else:
+            wrapped = textwrap.wrap(
+                text, width=max_chars, break_long_words=True
+            ) or [""]
+        for j, seg in enumerate(wrapped):
+            items.append(
+                (
+                    kind,
+                    seg,
+                    fs,
+                    bold,
+                    italic,
+                    indent,
+                    gap if j == 0 else 0.0,
+                    line_h,
+                )
+            )
+
+    buf = _io.BytesIO()
+    fig: Optional[Any] = None
+    cursor = 0.0  # inches consumed from the top of the usable area
+
+    def _new_page(pdf: Any) -> Any:
+        f = Figure(figsize=(_PDF_PAGE_W, _PDF_PAGE_H))
+        return f
+
+    with PdfPages(buf) as pdf:
+        fig = _new_page(pdf)
+        for kind, text, fs, bold, italic, indent, gap, line_h in items:
+            need = gap + line_h
+            if cursor + need > usable_h:
+                pdf.savefig(fig)
+                fig = _new_page(pdf)
+                cursor = 0.0
+            cursor += gap
+            y = 1.0 - (_PDF_MARGIN + cursor + line_h * 0.5) / _PDF_PAGE_H
+            if kind == "rule":
+                xa = _PDF_MARGIN / _PDF_PAGE_W
+                xb = (_PDF_PAGE_W - _PDF_MARGIN) / _PDF_PAGE_W
+                fig.add_artist(
+                    Line2D(
+                        [xa, xb],
+                        [y, y],
+                        transform=fig.transFigure,
+                        color="0.4",
+                        linewidth=0.6,
+                    )
+                )
+            elif text:
+                x = (_PDF_MARGIN + indent) / _PDF_PAGE_W
+                fig.text(
+                    x,
+                    y,
+                    text,
+                    fontsize=fs,
+                    fontweight="bold" if bold else "normal",
+                    fontstyle="italic" if italic else "normal",
+                    family="monospace",
+                    va="center",
+                    ha="left",
+                )
+            cursor += line_h
+        pdf.savefig(fig)
+
+    return buf.getvalue()
+
+
 def export_ncr(
     ncr: dict,
     filepath: Union[str, Path],
@@ -824,9 +1011,10 @@ def export_ncr(
         The structured NCR.
     filepath : str or Path
         Output path.
-    fmt : {'md', 'json'}
+    fmt : {'md', 'json', 'pdf'}
         ``'md'`` writes the rendered Markdown form (default); ``'json'``
-        writes the structured report.
+        writes the structured report; ``'pdf'`` writes a paginated PDF
+        of the NCR form.
     """
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -834,5 +1022,9 @@ def export_ncr(
         filepath.write_text(json.dumps(ncr, indent=2), encoding="utf-8")
     elif fmt == "md":
         filepath.write_text(render_ncr_markdown(ncr), encoding="utf-8")
+    elif fmt == "pdf":
+        filepath.write_bytes(render_ncr_pdf(ncr))
     else:
-        raise ValueError(f"Unsupported fmt {fmt!r}; use 'md' or 'json'.")
+        raise ValueError(
+            f"Unsupported fmt {fmt!r}; use 'md', 'json', or 'pdf'."
+        )

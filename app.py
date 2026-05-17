@@ -38,7 +38,7 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.io.export import build_ncr, render_ncr_markdown
+from wrinklefe.io.export import build_ncr, render_ncr_markdown, render_ncr_pdf
 
 import streamlit_viz
 
@@ -1538,15 +1538,22 @@ with tab_export:
                 st.markdown(ncr_md)
 
             _fn_base = (ncr_number or "ncr").strip().replace(" ", "_") or "ncr"
-            dl1, dl2 = st.columns(2)
+            dl1, dl2, dl3 = st.columns(3)
             with dl1:
+                st.download_button(
+                    "Download NCR (PDF)",
+                    data=render_ncr_pdf(ncr),
+                    file_name=f"{_fn_base}.pdf",
+                    mime="application/pdf",
+                )
+            with dl2:
                 st.download_button(
                     "Download NCR (Markdown)",
                     data=ncr_md.encode(),
                     file_name=f"{_fn_base}.md",
                     mime="text/markdown",
                 )
-            with dl2:
+            with dl3:
                 st.download_button(
                     "Download NCR (JSON)",
                     data=json.dumps(ncr, indent=2).encode(),

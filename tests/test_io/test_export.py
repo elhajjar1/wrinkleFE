@@ -26,6 +26,7 @@ from wrinklefe.io.export import (
     export_vtk,
     recommend_disposition,
     render_ncr_markdown,
+    render_ncr_pdf,
 )
 
 
@@ -588,3 +589,44 @@ class TestRenderAndExportNCR:
         ncr = build_ncr(defect=defect, engineering=engineering)
         with pytest.raises(ValueError):
             export_ncr(ncr, tmp_path / "ncr.txt", fmt="txt")
+
+    def test_render_pdf_returns_pdf_bytes(self, ncr_inputs):
+        defect, engineering = ncr_inputs
+        pdf = render_ncr_pdf(build_ncr(defect=defect, engineering=engineering))
+        assert isinstance(pdf, bytes)
+        assert pdf.startswith(b"%PDF")
+        assert b"%%EOF" in pdf
+
+    def test_export_pdf(self, ncr_inputs, tmp_path):
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(defect=defect, engineering=engineering)
+        out = tmp_path / "deep" / "ncr.pdf"
+        export_ncr(ncr, out, fmt="pdf")
+        assert out.exists()
+        assert out.read_bytes().startswith(b"%PDF")
+
+    def test_pdf_paginates_long_report(self, ncr_inputs):
+        """A long remarks block must not raise and must paginate.
+
+        The exported PDF should contain more than one page object once the
+        content overflows a single A4 page.
+        """
+        defect, engineering = ncr_inputs
+        ncr = build_ncr(
+            metadata={"remarks": ("Lorem ipsum dolor sit amet. " * 400)},
+            defect=defect,
+            engineering=engineering,
+        )
+        pdf = render_ncr_pdf(ncr)
+        assert pdf.startswith(b"%PDF")
+        # Each page is emitted as a "/Type /Page" object in the PDF.
+        assert pdf.count(b"/Type /Page") >= 2
+
+    def test_pdf_handles_minimal_inputs(self):
+        """No metadata / no FE block still produces a valid PDF."""
+        ncr = build_ncr(
+            defect={"loading": "compression"},
+            engineering={"analytical_knockdown": 0.6, "damage_index": 0.5},
+        )
+        pdf = render_ncr_pdf(ncr)
+        assert pdf.startswith(b"%PDF")

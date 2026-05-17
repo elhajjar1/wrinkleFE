@@ -8,6 +8,7 @@ Public API
 .. autofunction:: build_ncr
 .. autofunction:: recommend_disposition
 .. autofunction:: render_ncr_markdown
+.. autofunction:: render_ncr_pdf
 .. autofunction:: export_ncr
 """
 
@@ -19,6 +20,7 @@ from wrinklefe.io.export import (
     export_vtk,
     recommend_disposition,
     render_ncr_markdown,
+    render_ncr_pdf,
 )
 
 __all__ = [
@@ -28,5 +30,6 @@ __all__ = [
     "build_ncr",
     "recommend_disposition",
     "render_ncr_markdown",
+    "render_ncr_pdf",
     "export_ncr",
 ]
