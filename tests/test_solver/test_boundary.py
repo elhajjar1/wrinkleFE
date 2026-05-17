@@ -330,12 +330,14 @@ class TestPureMx:
         assert len(disp) == len(xmax)
         assert all(b.dofs == [0] for b in disp)
 
-    def test_linear_through_thickness_profile(self, bending_mesh):
-        """ux(z) = kappa_x * (z - z_mid) * Lx with the *current* contract
-        kappa_x = Mx / 1.0 (see #149).  Midplane node ux == 0; top &
-        bottom fibers equal and opposite."""
+    def test_linear_through_thickness_profile(self, bending_mesh,
+                                              two_ply_laminate):
+        """ux(z) = kappa_x * (z - z_mid) * Lx with kappa_x = Mx / D11
+        (issue #149).  Midplane node ux == 0; top & bottom fibers equal
+        and opposite."""
         Lx, Ly, Lz = bending_mesh.domain_size
         Mx = 2.0
+        D11 = float(two_ply_laminate.D[0, 0])
         bcs = BoundaryHandler.load_state_to_bcs(LoadState(Mx=Mx), bending_mesh)
         disp = {int(b.node_ids[0]): b.value
                 for b in bcs if b.bc_type == "displacement"}
@@ -344,7 +346,7 @@ class TestPureMx:
         z_mid = 0.5 * (z.min() + z.max())
         for nid in xmax:
             zz = float(bending_mesh.nodes[nid, 2])
-            assert disp[nid] == pytest.approx(Mx * (zz - z_mid) * Lx)
+            assert disp[nid] == pytest.approx((Mx / D11) * (zz - z_mid) * Lx)
         # Midplane node (z == z_mid) has zero prescribed displacement.
         mid = [nid for nid in xmax
                if abs(float(bending_mesh.nodes[nid, 2]) - z_mid) < 1e-9]
@@ -356,16 +358,10 @@ class TestPureMx:
         bot = min(xmax, key=lambda n: bending_mesh.nodes[n, 2])
         assert disp[top] == pytest.approx(-disp[bot])
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Bug #149: kappa_x uses hard-coded 1.0 divisor, not D11. "
-               "Pins the physically-correct contract; flips green when "
-               "boundary.py is fixed.",
-    )
     def test_curvature_should_scale_with_D11(self, bending_mesh,
                                              two_ply_laminate):
-        """Physically kappa_x should be Mx / D11.  Currently it is Mx / 1.0,
-        so the top-fiber displacement is D11x too large."""
+        """Physically kappa_x == Mx / D11 (issue #149); the top-fiber
+        prescribed ux scales with the laminate bending stiffness."""
         Lx, Ly, Lz = bending_mesh.domain_size
         Mx = 2.0
         D11 = float(two_ply_laminate.D[0, 0])
@@ -391,6 +387,56 @@ class TestPureMx:
         assert len(xmin_fix) == 1 and xmin_fix[0].dofs == [0]
         nodefix = _node_fix_bcs(bcs)
         assert len(nodefix) == 1 and sorted(nodefix[0].dofs) == [1, 2]
+
+
+# ======================================================================
+# Issue #149 regression: bending curvature uses laminate D, not 1.0
+# ======================================================================
+
+class TestBendingCurvatureUsesLaminateD:
+    """Reproduction of issue #149: kappa_x == Mx / D11, kappa_y == My / D22."""
+
+    def _make_mesh(self):
+        mat = OrthotropicMaterial()
+        lam = Laminate.from_angles([0.0, 0.0], material=mat,
+                                   ply_thickness=0.183)
+        mesh = WrinkleMesh(
+            laminate=lam, wrinkle_config=None,
+            Lx=3.0, Ly=2.0, nx=3, ny=2, nz_per_ply=1,
+        ).generate()
+        return lam, mesh
+
+    def test_kappa_x_equals_mx_over_d11(self):
+        lam, mesh = self._make_mesh()
+        Mx = 2.0
+        D11 = float(lam.D[0, 0])
+        assert D11 != pytest.approx(1.0)  # guard: a real, non-unit divisor
+        Lx, Ly, Lz = mesh.domain_size
+        bcs = BoundaryHandler.load_state_to_bcs(LoadState(Mx=Mx), mesh)
+        disp = {int(b.node_ids[0]): b.value
+                for b in bcs if b.bc_type == "displacement"}
+        xmax = mesh.nodes_on_face("x_max")
+        z = mesh.nodes[xmax, 2]
+        z_mid = 0.5 * (z.min() + z.max())
+        for nid in xmax:
+            zz = float(mesh.nodes[nid, 2])
+            assert disp[nid] == pytest.approx((Mx / D11) * (zz - z_mid) * Lx)
+
+    def test_kappa_y_equals_my_over_d22(self):
+        lam, mesh = self._make_mesh()
+        My = 3.0
+        D22 = float(lam.D[1, 1])
+        assert D22 != pytest.approx(1.0)  # guard: a real, non-unit divisor
+        Lx, Ly, Lz = mesh.domain_size
+        bcs = BoundaryHandler.load_state_to_bcs(LoadState(My=My), mesh)
+        disp = {int(b.node_ids[0]): b.value
+                for b in bcs if b.bc_type == "displacement"}
+        ymax = mesh.nodes_on_face("y_max")
+        z = mesh.nodes[ymax, 2]
+        z_mid = 0.5 * (z.min() + z.max())
+        for nid in ymax:
+            zz = float(mesh.nodes[nid, 2])
+            assert disp[nid] == pytest.approx((My / D22) * (zz - z_mid) * Ly)
 
 
 # ======================================================================

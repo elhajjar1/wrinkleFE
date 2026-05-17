@@ -85,6 +85,9 @@ class MeshData:
         Number of elements in y.
     nz : int
         Number of elements in z (= ``n_plies * nz_per_ply``).
+    laminate : Laminate, optional
+        Source laminate, retained so downstream CLT-to-3-D converters can
+        access stiffness terms (e.g. the bending-stiffness D matrix).
     """
 
     nodes: np.ndarray
@@ -95,6 +98,7 @@ class MeshData:
     nx: int
     ny: int
     nz: int
+    laminate: Laminate | None = None
 
     # ---- derived quantities ------------------------------------------------
 
@@ -609,6 +613,7 @@ class WrinkleMesh:
             nx=self.nx,
             ny=self.ny,
             nz=self.nz,
+            laminate=self.laminate,
         )
 
         # Run basic quality checks

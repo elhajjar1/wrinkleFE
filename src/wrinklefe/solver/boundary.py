@@ -33,6 +33,20 @@ from wrinklefe.core.laminate import LoadState
 # Internal helpers
 # ======================================================================
 
+def _bending_stiffness(mesh: MeshData, i: int) -> float:
+    """Return the laminate bending stiffness ``D[i, i]`` (N*mm).
+
+    ``i = 0`` -> D11, ``i = 1`` -> D22.
+    """
+    lam = getattr(mesh, "laminate", None)
+    D = None if lam is None else getattr(lam, "D", None)
+    if D is None:
+        return 1.0
+    Dii = float(np.asarray(D)[i, i])
+    # Fall back to unity for a zero/degenerate D so curvature stays finite.
+    return Dii if abs(Dii) > 0.0 else 1.0
+
+
 def _quad_areas(nodes: np.ndarray, quads: np.ndarray) -> np.ndarray:
     """Return the area of each Q4 quadrilateral, by triangle split.
 
@@ -597,14 +611,8 @@ class BoundaryHandler:
             z_coords = mesh.nodes[xmax_nodes, 2]
             z_mid = 0.5 * (z_coords.min() + z_coords.max())
 
-            # Estimate curvature: kappa_x = Mx / D11
-            # This is approximate; the user may need to refine.
-            # For now, apply linear displacement: ux(z) = kappa * (z - z_mid) * Lx
-            # We use a reference curvature scaled so the displacement is
-            # proportional to Mx.
-            # A more rigorous approach would use ABD inverse, but we keep it
-            # simple here.
-            kappa_x = load.Mx / 1.0  # user should normalise Mx appropriately
+            D11 = _bending_stiffness(mesh, 0)
+            kappa_x = load.Mx / D11
 
             # Apply prescribed displacements on x_max, varying linearly with z
             if abs(load.Nx) == 0:
@@ -634,7 +642,8 @@ class BoundaryHandler:
             z_coords = mesh.nodes[ymax_nodes, 2]
             z_mid = 0.5 * (z_coords.min() + z_coords.max())
 
-            kappa_y = load.My / 1.0
+            D22 = _bending_stiffness(mesh, 1)
+            kappa_y = load.My / D22
 
             if abs(load.Ny) == 0 and abs(load.Nx) == 0:
                 bcs.append(BoundaryCondition(
