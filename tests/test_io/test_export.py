@@ -19,14 +19,14 @@ import pytest
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
 from wrinklefe.io.export import (
-    build_ncr,
+    build_analysis_summary,
     export_abaqus_inp,
-    export_ncr,
     export_results_json,
+    export_summary,
     export_vtk,
     recommend_disposition,
-    render_ncr_markdown,
-    render_ncr_pdf,
+    render_summary_markdown,
+    render_summary_pdf,
 )
 
 
@@ -401,12 +401,12 @@ class TestVTKExport:
 
 
 # ======================================================================
-# NCR (MRB decision-support) tests
+# Analysis validation summary (NCR attachment) tests
 # ======================================================================
 
 @pytest.fixture(scope="module")
-def ncr_inputs(analysis_result):
-    """Build build_ncr() defect/engineering dicts from the fixture."""
+def summary_inputs(analysis_result):
+    """Build build_analysis_summary() defect/engineering dicts."""
     r = analysis_result
     cfg = r.config
     defect = {
@@ -473,69 +473,77 @@ class TestRecommendDisposition:
         assert "compression" in d["rationale"].lower()
 
 
-class TestBuildNCR:
-    """Tests for build_ncr structured report."""
+class TestBuildAnalysisSummary:
+    """Tests for build_analysis_summary structured report."""
 
-    def test_required_sections(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
+    def test_required_sections(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
         for key in (
             "header",
-            "nonconformance",
+            "wrinkle_geometry",
+            "laminate",
             "engineering_analysis",
             "criteria_cited",
             "disposition_recommendation",
-            "mrb_disposition",
+            "notes",
             "disclaimer",
         ):
-            assert key in ncr
+            assert key in s
 
-    def test_recommendation_not_final(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        rec = ncr["disposition_recommendation"]
+    def test_no_qms_admin_or_mrb_signoff(self, summary_inputs):
+        """The attachment must not carry NCR/part admin or sign-off."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        assert "mrb_disposition" not in s
+        assert "nonconformance" not in s
+        for forbidden in ("ncr_number", "part_number", "serial_or_lot",
+                          "work_order", "quantity_affected"):
+            assert forbidden not in s["header"]
+
+    def test_recommendation_not_final(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        rec = s["disposition_recommendation"]
         assert rec["is_final_disposition"] is False
         assert "Material Review Board" in rec["note"]
 
-    def test_mrb_signoff_is_blank(self, ncr_inputs):
-        """The MRB block is left for the board to complete."""
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        mrb = ncr["mrb_disposition"]
-        assert mrb["final_disposition"] == ""
-        assert all(a["signature"] == "" for a in mrb["approvals"])
-        assert len(mrb["approvals"]) >= 1
-
-    def test_metadata_passthrough(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(
-            metadata={"ncr_number": "NCR-2026-001", "part_number": "PN-42"},
+    def test_optional_fields_passthrough(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
             defect=defect,
             engineering=engineering,
+            reference="NCR-2026-001",
+            prepared_by="J. Field",
+            notes="UT-detected; adjacent bay clear.",
+            tool_version="1.0.0",
         )
-        assert ncr["header"]["ncr_number"] == "NCR-2026-001"
-        assert ncr["header"]["part_number"] == "PN-42"
+        assert s["header"]["reference"] == "NCR-2026-001"
+        assert s["header"]["prepared_by"] == "J. Field"
+        assert s["header"]["tool_version"] == "1.0.0"
+        assert s["notes"] == "UT-detected; adjacent bay clear."
 
-    def test_missing_metadata_has_placeholders(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        assert ncr["header"]["ncr_number"] == "(to be assigned)"
+    def test_missing_optionals_have_placeholders(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        assert s["header"]["reference"] == "(not specified)"
+        assert s["notes"] == "(none)"
 
-    def test_geometry_carried_through(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        geo = ncr["nonconformance"]["as_found_geometry"]
+    def test_geometry_carried_through(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        geo = s["wrinkle_geometry"]
         assert geo["amplitude_mm"] == pytest.approx(defect["amplitude_mm"])
         assert geo["wavelength_mm"] == pytest.approx(defect["wavelength_mm"])
 
-    def test_json_serialisable(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
+    def test_json_serialisable(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
         # Must not raise.
-        json.dumps(ncr)
+        json.dumps(s)
 
-    def test_fe_block_cited_when_present(self, ncr_inputs):
-        defect, engineering = ncr_inputs
+    def test_fe_block_cited_when_present(self, summary_inputs):
+        defect, engineering = summary_inputs
         eng = dict(engineering)
         eng["fe"] = {
             "modulus_retention": 0.92,
@@ -544,89 +552,97 @@ class TestBuildNCR:
             "critical_mode": "fiber_compression",
             "critical_ply": 3,
         }
-        ncr = build_ncr(defect=defect, engineering=eng)
-        fe_block = ncr["engineering_analysis"]["finite_element"]
+        s = build_analysis_summary(defect=defect, engineering=eng)
+        fe_block = s["engineering_analysis"]["finite_element"]
         assert fe_block["min_strength_retention"] == pytest.approx(0.81)
         assert any(
-            "hashin" in c.lower() for c in ncr["criteria_cited"]
+            "hashin" in c.lower() for c in s["criteria_cited"]
         )
 
 
-class TestRenderAndExportNCR:
-    """Tests for render_ncr_markdown and export_ncr."""
+class TestRenderAndExportSummary:
+    """Tests for render_summary_markdown / pdf and export_summary."""
 
-    def test_markdown_has_key_headers(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        md = render_ncr_markdown(build_ncr(defect=defect, engineering=engineering))
-        assert "# Nonconformance Report (NCR)" in md
-        assert "Engineering Analysis" in md
-        assert "Recommended Disposition (NON-BINDING)" in md
-        assert "MRB Disposition" in md
+    def test_markdown_has_key_headers(self, summary_inputs):
+        defect, engineering = summary_inputs
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
+        assert "# Wrinkle Analysis Validation Summary" in md
+        assert "As-analyzed wrinkle geometry" in md
+        assert "Engineering analysis" in md
+        assert "Recommended disposition (NON-BINDING)" in md
 
-    def test_markdown_states_non_binding(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        md = render_ncr_markdown(build_ncr(defect=defect, engineering=engineering))
+    def test_markdown_states_non_binding(self, summary_inputs):
+        defect, engineering = summary_inputs
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
         assert "do not constitute a final material disposition" in md
 
-    def test_export_md(self, ncr_inputs, tmp_path):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        out = tmp_path / "sub" / "ncr.md"
-        export_ncr(ncr, out, fmt="md")
+    def test_export_md(self, summary_inputs, tmp_path):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        out = tmp_path / "sub" / "summary.md"
+        export_summary(s, out, fmt="md")
         assert out.exists()
-        assert out.read_text().startswith("# Nonconformance Report")
+        assert out.read_text().startswith(
+            "# Wrinkle Analysis Validation Summary"
+        )
 
-    def test_export_json(self, ncr_inputs, tmp_path):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        out = tmp_path / "ncr.json"
-        export_ncr(ncr, out, fmt="json")
+    def test_export_json(self, summary_inputs, tmp_path):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        out = tmp_path / "summary.json"
+        export_summary(s, out, fmt="json")
         data = json.loads(out.read_text())
-        assert data["report_type"] == "Nonconformance Report (NCR)"
+        assert data["report_type"] == "Wrinkle Analysis Validation Summary"
 
-    def test_export_invalid_fmt(self, ncr_inputs, tmp_path):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
+    def test_export_invalid_fmt(self, summary_inputs, tmp_path):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
         with pytest.raises(ValueError):
-            export_ncr(ncr, tmp_path / "ncr.txt", fmt="txt")
+            export_summary(s, tmp_path / "s.txt", fmt="txt")
 
-    def test_render_pdf_returns_pdf_bytes(self, ncr_inputs):
-        defect, engineering = ncr_inputs
-        pdf = render_ncr_pdf(build_ncr(defect=defect, engineering=engineering))
+    def test_render_pdf_returns_pdf_bytes(self, summary_inputs):
+        defect, engineering = summary_inputs
+        pdf = render_summary_pdf(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
         assert isinstance(pdf, bytes)
         assert pdf.startswith(b"%PDF")
         assert b"%%EOF" in pdf
 
-    def test_export_pdf(self, ncr_inputs, tmp_path):
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(defect=defect, engineering=engineering)
-        out = tmp_path / "deep" / "ncr.pdf"
-        export_ncr(ncr, out, fmt="pdf")
+    def test_export_pdf(self, summary_inputs, tmp_path):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        out = tmp_path / "deep" / "summary.pdf"
+        export_summary(s, out, fmt="pdf")
         assert out.exists()
         assert out.read_bytes().startswith(b"%PDF")
 
-    def test_pdf_paginates_long_report(self, ncr_inputs):
-        """A long remarks block must not raise and must paginate.
+    def test_pdf_paginates_long_report(self, summary_inputs):
+        """A long notes block must not raise and must paginate.
 
         The exported PDF should contain more than one page object once the
         content overflows a single A4 page.
         """
-        defect, engineering = ncr_inputs
-        ncr = build_ncr(
-            metadata={"remarks": ("Lorem ipsum dolor sit amet. " * 400)},
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
             defect=defect,
             engineering=engineering,
+            notes=("Lorem ipsum dolor sit amet. " * 400),
         )
-        pdf = render_ncr_pdf(ncr)
+        pdf = render_summary_pdf(s)
         assert pdf.startswith(b"%PDF")
         # Each page is emitted as a "/Type /Page" object in the PDF.
         assert pdf.count(b"/Type /Page") >= 2
 
     def test_pdf_handles_minimal_inputs(self):
-        """No metadata / no FE block still produces a valid PDF."""
-        ncr = build_ncr(
+        """No optionals / no FE block still produces a valid PDF."""
+        s = build_analysis_summary(
             defect={"loading": "compression"},
             engineering={"analytical_knockdown": 0.6, "damage_index": 0.5},
         )
-        pdf = render_ncr_pdf(ncr)
+        pdf = render_summary_pdf(s)
         assert pdf.startswith(b"%PDF")

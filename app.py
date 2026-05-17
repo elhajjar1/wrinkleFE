@@ -38,7 +38,11 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.io.export import build_ncr, render_ncr_markdown, render_ncr_pdf
+from wrinklefe.io.export import (
+    build_analysis_summary,
+    render_summary_markdown,
+    render_summary_pdf,
+)
 
 import streamlit_viz
 
@@ -1427,16 +1431,18 @@ with tab_export:
         )
 
         # ------------------------------------------------------------------
-        # Nonconformance Report (NCR) — MRB decision-support tool
+        # Analysis validation summary — NCR attachment
         # ------------------------------------------------------------------
         st.divider()
-        st.subheader("Create a Nonconformance Report (NCR)")
+        st.subheader("Analysis validation summary (NCR attachment)")
         st.caption(
-            "For a field engineer to raise an NCR on this wrinkle. WrinkleFE "
-            "produces a structured analysis, cites the criteria, and "
-            "recommends a disposition path. It does **not** issue a final "
-            "disposition — a qualified Material Review Board reviews, may "
-            "modify, and approves the outcome."
+            "A concise engineering validation of this wrinkle, intended to "
+            "be attached to a Nonconformance Report. It carries the "
+            "geometry, laminate, WrinkleFE analysis, cited criteria, and a "
+            "**non-binding** recommended disposition — no part/serial or "
+            "MRB sign-off (that lives on the NCR itself). It does not issue "
+            "a final disposition; a qualified Material Review Board reviews, "
+            "may modify, and approves the outcome."
         )
 
         _cfg = dict(st.session_state["cfg_payload"])
@@ -1444,52 +1450,22 @@ with tab_export:
         _angles = list(_cfg.get("angles_tuple", ()))
         _res = st.session_state["results"]
 
-        with st.form("ncr_form"):
-            nc1, nc2 = st.columns(2)
-            with nc1:
-                ncr_number = st.text_input("NCR number", placeholder="NCR-…")
-                part_number = st.text_input("Part number")
-                serial_lot = st.text_input("Serial / lot number")
-                program = st.text_input("Program / project")
-                originator = st.text_input("Originating engineer")
-            with nc2:
-                part_name = st.text_input("Part name / description")
-                work_order = st.text_input("Work order / job number")
-                quantity = st.text_input("Quantity affected", value="1")
-                defect_location = st.text_input("Defect location on part")
-                detection_method = st.selectbox(
-                    "Detection method",
-                    [
-                        "Visual",
-                        "Ultrasonic (UT)",
-                        "Radiographic / CT",
-                        "Cross-section / metallography",
-                        "Other",
-                    ],
-                )
-            drawing_spec = st.text_input(
-                "Violated drawing / specification requirement"
+        with st.form("summary_form"):
+            summary_reference = st.text_input(
+                "Reference (optional)",
+                placeholder="e.g. NCR no. or part reference",
             )
-            remarks = st.text_area("Originator remarks", height=80)
-            ncr_submit = st.form_submit_button("Generate NCR")
+            summary_prepared_by = st.text_input("Prepared by (optional)")
+            summary_notes = st.text_area(
+                "Engineering notes (optional)", height=80
+            )
+            summary_submit = st.form_submit_button(
+                "Generate analysis summary"
+            )
 
-        if ncr_submit:
+        if summary_submit:
             _fe = _res.get("fe")
-            ncr = build_ncr(
-                metadata={
-                    "ncr_number": ncr_number,
-                    "originator": originator,
-                    "part_number": part_number,
-                    "part_name": part_name,
-                    "serial_lot": serial_lot,
-                    "work_order": work_order,
-                    "program": program,
-                    "quantity": quantity,
-                    "defect_location": defect_location,
-                    "detection_method": detection_method,
-                    "drawing_spec": drawing_spec,
-                    "remarks": remarks,
-                },
+            summary = build_analysis_summary(
                 defect={
                     "amplitude_mm": _cfg.get("amplitude"),
                     "wavelength_mm": _cfg.get("wavelength"),
@@ -1526,37 +1502,46 @@ with tab_export:
                         else None
                     ),
                 },
+                reference=summary_reference,
+                prepared_by=summary_prepared_by,
+                notes=summary_notes,
+                tool_version=_wrinklefe_version,
             )
 
-            _dr = ncr["disposition_recommendation"]
+            _dr = summary["disposition_recommendation"]
             st.success(
                 f"Severity: **{_dr['severity']}** · Recommended path "
                 f"(non-binding): {_dr['recommended_path']}"
             )
-            ncr_md = render_ncr_markdown(ncr)
-            with st.expander("Preview NCR", expanded=True):
-                st.markdown(ncr_md)
+            summary_md = render_summary_markdown(summary)
+            with st.expander("Preview summary", expanded=True):
+                st.markdown(summary_md)
 
-            _fn_base = (ncr_number or "ncr").strip().replace(" ", "_") or "ncr"
+            _fn_base = (
+                (summary_reference or "wrinkle_analysis_summary")
+                .strip()
+                .replace(" ", "_")
+                or "wrinkle_analysis_summary"
+            )
             dl1, dl2, dl3 = st.columns(3)
             with dl1:
                 st.download_button(
-                    "Download NCR (PDF)",
-                    data=render_ncr_pdf(ncr),
+                    "Download summary (PDF)",
+                    data=render_summary_pdf(summary),
                     file_name=f"{_fn_base}.pdf",
                     mime="application/pdf",
                 )
             with dl2:
                 st.download_button(
-                    "Download NCR (Markdown)",
-                    data=ncr_md.encode(),
+                    "Download summary (Markdown)",
+                    data=summary_md.encode(),
                     file_name=f"{_fn_base}.md",
                     mime="text/markdown",
                 )
             with dl3:
                 st.download_button(
-                    "Download NCR (JSON)",
-                    data=json.dumps(ncr, indent=2).encode(),
+                    "Download summary (JSON)",
+                    data=json.dumps(summary, indent=2).encode(),
                     file_name=f"{_fn_base}.json",
                     mime="application/json",
                 )

@@ -5,31 +5,31 @@ Public API
 .. autofunction:: export_results_json
 .. autofunction:: export_abaqus_inp
 .. autofunction:: export_vtk
-.. autofunction:: build_ncr
+.. autofunction:: build_analysis_summary
 .. autofunction:: recommend_disposition
-.. autofunction:: render_ncr_markdown
-.. autofunction:: render_ncr_pdf
-.. autofunction:: export_ncr
+.. autofunction:: render_summary_markdown
+.. autofunction:: render_summary_pdf
+.. autofunction:: export_summary
 """
 
 from wrinklefe.io.export import (
-    build_ncr,
+    build_analysis_summary,
     export_abaqus_inp,
-    export_ncr,
     export_results_json,
+    export_summary,
     export_vtk,
     recommend_disposition,
-    render_ncr_markdown,
-    render_ncr_pdf,
+    render_summary_markdown,
+    render_summary_pdf,
 )
 
 __all__ = [
     "export_results_json",
     "export_abaqus_inp",
     "export_vtk",
-    "build_ncr",
+    "build_analysis_summary",
     "recommend_disposition",
-    "render_ncr_markdown",
-    "render_ncr_pdf",
-    "export_ncr",
+    "render_summary_markdown",
+    "render_summary_pdf",
+    "export_summary",
 ]
