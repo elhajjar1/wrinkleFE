@@ -329,23 +329,26 @@ def export_vtk(
 
 
 # ====================================================================== #
-# Nonconformance Report (NCR) — MRB decision-support export
+# Wrinkle analysis validation summary — NCR attachment
 # ====================================================================== #
 #
 # These helpers turn a WrinkleFE analysis of an out-of-plane fibre wrinkle
-# into a structured Nonconformance Report for a field engineer to raise and
-# for a Material Review Board (MRB) to review.
+# into a concise engineering validation summary that an engineer can
+# attach to a Nonconformance Report (NCR).  It deliberately carries no
+# QMS/admin fields (NCR number, part/serial, work order, MRB sign-off):
+# that paperwork lives on the NCR itself.  This artefact is the technical
+# validation only.
 #
 # Scope/authority note: the recommendation produced here is *decision
 # support only*.  It does not constitute a final disposition.  Severity
 # thresholds below are generic engineering guidance and MUST be superseded
 # by the program-specific allowables, drawing requirements, and process
-# specifications that the MRB applies.  The qualified MRB reviews, may
-# modify, and approves the final disposition.
+# specifications that the Material Review Board (MRB) applies.  The
+# qualified MRB reviews, may modify, and approves the final disposition.
 
 # Residual-strength fraction (= analytical knockdown) and damage-index
 # severity bands.  The worst (lowest) tier from either metric governs.
-_NCR_SEVERITY_BANDS = (
+_SEVERITY_BANDS = (
     # (label, min_knockdown, max_damage_index, recommended_path, approvals)
     (
         "Negligible",
@@ -430,22 +433,22 @@ def recommend_disposition(
 
     # Pick the worst (latest) band each metric falls into, then take the
     # more conservative of the two.
-    by_knockdown = len(_NCR_SEVERITY_BANDS) - 1
-    for idx, (_, min_kd, _, _, _) in enumerate(_NCR_SEVERITY_BANDS):
+    by_knockdown = len(_SEVERITY_BANDS) - 1
+    for idx, (_, min_kd, _, _, _) in enumerate(_SEVERITY_BANDS):
         if kd >= min_kd:
             by_knockdown = idx
             break
 
     by_damage = 0
-    for idx, (_, _, max_di, _, _) in enumerate(_NCR_SEVERITY_BANDS):
+    for idx, (_, _, max_di, _, _) in enumerate(_SEVERITY_BANDS):
         if di < max_di:
             by_damage = idx
             break
     else:
-        by_damage = len(_NCR_SEVERITY_BANDS) - 1
+        by_damage = len(_SEVERITY_BANDS) - 1
 
     band_idx = max(by_knockdown, by_damage)
-    label, _, _, path, approvals = _NCR_SEVERITY_BANDS[band_idx]
+    label, _, _, path, approvals = _SEVERITY_BANDS[band_idx]
 
     if by_knockdown >= by_damage:
         governed_by = "residual strength (analytical knockdown)"
@@ -484,52 +487,58 @@ def recommend_disposition(
     }
 
 
-def build_ncr(
+def build_analysis_summary(
     *,
-    metadata: Optional[dict] = None,
     defect: dict,
     engineering: dict,
+    reference: Optional[str] = None,
+    prepared_by: Optional[str] = None,
+    notes: Optional[str] = None,
+    tool_version: Optional[str] = None,
 ) -> dict:
-    """Assemble a structured Nonconformance Report (NCR) for an MRB.
+    """Assemble a wrinkle-analysis validation summary for an NCR.
 
-    Combines field-engineer metadata, the as-found wrinkle defect, and
-    the WrinkleFE engineering analysis into a single structured report,
-    including the cited criteria and a *recommended* (non-binding)
-    disposition path for the Material Review Board.
+    Produces the *technical validation only* — the wrinkle geometry, the
+    affected laminate, the WrinkleFE engineering analysis, the cited
+    criteria, and a *recommended* (non-binding) disposition path. It
+    carries no QMS/admin fields (NCR number, part/serial, work order, MRB
+    sign-off): that paperwork lives on the NCR this is attached to.
 
     Parameters
     ----------
-    metadata : dict, optional
-        Field-engineer / QMS fields.  Recognised keys (all optional):
-        ``ncr_number``, ``originator``, ``date``, ``part_number``,
-        ``part_name``, ``serial_lot``, ``work_order``, ``program``,
-        ``quantity``, ``defect_location``, ``detection_method``,
-        ``drawing_spec``, ``remarks``.
     defect : dict
-        As-found wrinkle + laminate.  Recognised keys: ``amplitude_mm``,
-        ``wavelength_mm``, ``width_mm``, ``morphology``, ``loading``,
-        ``ply_thickness_mm``, ``n_plies``, ``layup``, ``material_name``.
+        As-analyzed wrinkle + laminate.  Recognised keys:
+        ``amplitude_mm``, ``wavelength_mm``, ``width_mm``, ``morphology``,
+        ``loading``, ``ply_thickness_mm``, ``n_plies``, ``layup``,
+        ``material_name``.
     engineering : dict
         WrinkleFE results.  Recognised keys: ``analytical_knockdown``,
         ``analytical_strength_MPa``, ``damage_index``, ``max_angle_deg``,
         ``effective_angle_deg``, ``morphology_factor``, and an optional
         ``fe`` sub-dict (``modulus_retention``, ``retention_factors``,
         ``critical_criterion``, ``critical_mode``, ``critical_ply``).
+    reference : str, optional
+        Free-text label tying this attachment to its NCR (e.g. the NCR
+        number or part reference).  Optional by design.
+    prepared_by : str, optional
+        Who ran the analysis.
+    notes : str, optional
+        Free-text engineering notes.
+    tool_version : str, optional
+        WrinkleFE version string, recorded for traceability.
 
     Returns
     -------
     dict
-        The structured NCR.  JSON-serialisable.
+        The structured validation summary.  JSON-serialisable.
     """
-    meta = dict(metadata or {})
 
-    def _m(key: str, default: str = "(to be assigned)") -> Any:
-        val = meta.get(key)
+    def _clean(val: Optional[str], default: str) -> str:
         if val is None or (isinstance(val, str) and not val.strip()):
             return default
-        return val
+        return str(val).strip()
 
-    date = _m("date", datetime.now(timezone.utc).date().isoformat())
+    date = datetime.now(timezone.utc).date().isoformat()
 
     kd = float(engineering.get("analytical_knockdown", 1.0))
     di = float(engineering.get("damage_index", 0.0))
@@ -565,48 +574,36 @@ def build_ncr(
                 + "."
             )
     criteria.append(
-        "Generic severity banding in this report is advisory only and is "
+        "Generic severity banding in this summary is advisory only and is "
         "superseded by the program-specific allowables, drawing "
         "requirements, and process specifications applied by the MRB."
     )
 
-    ncr = {
-        "report_type": "Nonconformance Report (NCR)",
-        "tool": "WrinkleFE MRB decision-support export",
+    summary = {
+        "report_type": "Wrinkle Analysis Validation Summary",
+        "intended_use": (
+            "Engineering validation attachment to a Nonconformance "
+            "Report (NCR). Not a standalone NCR."
+        ),
+        "tool": "WrinkleFE",
         "header": {
-            "ncr_number": _m("ncr_number"),
             "date": date,
-            "originator": _m("originator", "(field engineer)"),
-            "program": _m("program"),
-            "part_number": _m("part_number"),
-            "part_name": _m("part_name", "(not specified)"),
-            "serial_or_lot": _m("serial_lot"),
-            "work_order": _m("work_order"),
-            "quantity_affected": _m("quantity", "1"),
+            "reference": _clean(reference, "(not specified)"),
+            "prepared_by": _clean(prepared_by, "(not specified)"),
+            "tool_version": _clean(tool_version, "(unspecified)"),
         },
-        "nonconformance": {
-            "defect_type": "Out-of-plane fibre wrinkle (ply waviness)",
-            "defect_location": _m("defect_location", "(not specified)"),
-            "detection_method": _m("detection_method", "(not specified)"),
-            "violated_requirement": _m(
-                "drawing_spec",
-                "(drawing/specification reference not supplied — MRB "
-                "to confirm the controlling requirement)",
-            ),
-            "as_found_geometry": {
-                "amplitude_mm": defect.get("amplitude_mm"),
-                "wavelength_mm": defect.get("wavelength_mm"),
-                "envelope_half_width_mm": defect.get("width_mm"),
-                "morphology": defect.get("morphology"),
-                "loading_condition": loading,
-            },
-            "laminate": {
-                "material": defect.get("material_name"),
-                "ply_thickness_mm": defect.get("ply_thickness_mm"),
-                "n_plies": defect.get("n_plies"),
-                "layup_deg": defect.get("layup"),
-            },
-            "originator_remarks": _m("remarks", "(none)"),
+        "wrinkle_geometry": {
+            "amplitude_mm": defect.get("amplitude_mm"),
+            "wavelength_mm": defect.get("wavelength_mm"),
+            "envelope_half_width_mm": defect.get("width_mm"),
+            "morphology": defect.get("morphology"),
+            "loading_condition": loading,
+        },
+        "laminate": {
+            "material": defect.get("material_name"),
+            "ply_thickness_mm": defect.get("ply_thickness_mm"),
+            "n_plies": defect.get("n_plies"),
+            "layup_deg": defect.get("layup"),
         },
         "engineering_analysis": {
             "analytical_knockdown": kd,
@@ -635,23 +632,17 @@ def build_ncr(
                 "the controlling drawing and program allowables."
             ),
         },
-        "mrb_disposition": {
-            "final_disposition": "",  # MRB to complete
-            "mrb_rationale": "",
-            "approvals": [
-                {"role": role, "name": "", "signature": "", "date": ""}
-                for role in disposition["required_approvals"]
-            ],
-        },
+        "notes": _clean(notes, "(none)"),
         "disclaimer": (
-            "This NCR was prepared with WrinkleFE decision-support "
-            "tooling. The analysis and recommendation are advisory and do "
-            "not constitute a final material disposition. A qualified "
-            "Material Review Board must review, may modify, and formally "
-            "approve the disposition."
+            "This validation summary was prepared with WrinkleFE "
+            "decision-support tooling and is intended as an attachment to "
+            "a Nonconformance Report. The analysis and recommendation are "
+            "advisory and do not constitute a final material disposition. "
+            "A qualified Material Review Board must review, may modify, "
+            "and formally approve the disposition."
         ),
     }
-    return ncr
+    return summary
 
 
 def _fmt(value: Any, default: str = "—") -> str:
@@ -664,58 +655,40 @@ def _fmt(value: Any, default: str = "—") -> str:
     return str(value)
 
 
-def render_ncr_markdown(ncr: dict) -> str:
-    """Render a :func:`build_ncr` report as a human-readable Markdown form.
+def render_summary_markdown(summary: dict) -> str:
+    """Render a :func:`build_analysis_summary` as Markdown.
 
-    Suitable for a field engineer to print/attach to the MRB package.
+    Produces a concise validation attachment an engineer can staple to
+    an NCR — geometry, laminate, analysis, criteria, and the non-binding
+    recommended disposition. No QMS/admin or MRB sign-off block.
 
     Parameters
     ----------
-    ncr : dict
-        A report produced by :func:`build_ncr`.
+    summary : dict
+        A report produced by :func:`build_analysis_summary`.
 
     Returns
     -------
     str
         Markdown text.
     """
-    h = ncr["header"]
-    nc = ncr["nonconformance"]
-    ea = ncr["engineering_analysis"]
-    dr = ncr["disposition_recommendation"]
-    geo = nc["as_found_geometry"]
-    lam = nc["laminate"]
+    h = summary["header"]
+    geo = summary["wrinkle_geometry"]
+    lam = summary["laminate"]
+    ea = summary["engineering_analysis"]
+    dr = summary["disposition_recommendation"]
 
     lines: list[str] = []
-    lines.append("# Nonconformance Report (NCR)")
+    lines.append("# Wrinkle Analysis Validation Summary")
     lines.append("")
-    lines.append(f"**NCR No.:** {_fmt(h['ncr_number'])}  ")
+    lines.append(f"_{summary['intended_use']}_")
+    lines.append("")
     lines.append(f"**Date:** {_fmt(h['date'])}  ")
-    lines.append(f"**Originator:** {_fmt(h['originator'])}  ")
-    lines.append(f"**Program:** {_fmt(h['program'])}")
+    lines.append(f"**Reference:** {_fmt(h['reference'])}  ")
+    lines.append(f"**Prepared by:** {_fmt(h['prepared_by'])}  ")
+    lines.append(f"**WrinkleFE version:** {_fmt(h['tool_version'])}")
     lines.append("")
-    lines.append("## 1. Part Identification")
-    lines.append("")
-    lines.append(f"- **Part number:** {_fmt(h['part_number'])}")
-    lines.append(f"- **Part name:** {_fmt(h['part_name'])}")
-    lines.append(f"- **Serial / lot:** {_fmt(h['serial_or_lot'])}")
-    lines.append(f"- **Work order:** {_fmt(h['work_order'])}")
-    lines.append(
-        f"- **Quantity affected:** {_fmt(h['quantity_affected'])}"
-    )
-    lines.append("")
-    lines.append("## 2. Nonconformance")
-    lines.append("")
-    lines.append(f"- **Defect type:** {_fmt(nc['defect_type'])}")
-    lines.append(f"- **Location on part:** {_fmt(nc['defect_location'])}")
-    lines.append(
-        f"- **Detection method:** {_fmt(nc['detection_method'])}"
-    )
-    lines.append(
-        f"- **Violated requirement:** {_fmt(nc['violated_requirement'])}"
-    )
-    lines.append("")
-    lines.append("**As-found wrinkle geometry**")
+    lines.append("## 1. As-analyzed wrinkle geometry")
     lines.append("")
     lines.append(f"- Amplitude: {_fmt(geo['amplitude_mm'])} mm")
     lines.append(f"- Wavelength: {_fmt(geo['wavelength_mm'])} mm")
@@ -725,7 +698,7 @@ def render_ncr_markdown(ncr: dict) -> str:
     lines.append(f"- Morphology: {_fmt(geo['morphology'])}")
     lines.append(f"- Loading condition: {_fmt(geo['loading_condition'])}")
     lines.append("")
-    lines.append("**Affected laminate**")
+    lines.append("## 2. Affected laminate")
     lines.append("")
     lines.append(f"- Material: {_fmt(lam['material'])}")
     lines.append(
@@ -734,9 +707,7 @@ def render_ncr_markdown(ncr: dict) -> str:
     )
     lines.append(f"- Layup (deg): {_fmt(lam['layup_deg'])}")
     lines.append("")
-    lines.append(f"**Originator remarks:** {_fmt(nc['originator_remarks'])}")
-    lines.append("")
-    lines.append("## 3. Engineering Analysis (WrinkleFE)")
+    lines.append("## 3. Engineering analysis (WrinkleFE)")
     lines.append("")
     lines.append(
         f"- Analytical knockdown: **{_fmt(ea['analytical_knockdown'])}** "
@@ -776,12 +747,12 @@ def render_ncr_markdown(ncr: dict) -> str:
             f"ply: {_fmt(fe_block['critical_ply'])})"
         )
     lines.append("")
-    lines.append("## 4. Criteria Cited")
+    lines.append("## 4. Criteria cited")
     lines.append("")
-    for c in ncr["criteria_cited"]:
+    for c in summary["criteria_cited"]:
         lines.append(f"- {c}")
     lines.append("")
-    lines.append("## 5. Recommended Disposition (NON-BINDING)")
+    lines.append("## 5. Recommended disposition (NON-BINDING)")
     lines.append("")
     lines.append(f"- **Severity:** {_fmt(dr['severity'])}")
     lines.append(f"- **Recommended path:** {_fmt(dr['recommended_path'])}")
@@ -793,46 +764,233 @@ def render_ncr_markdown(ncr: dict) -> str:
     lines.append("")
     lines.append(f"> {dr['note']}")
     lines.append("")
-    lines.append("## 6. MRB Disposition (to be completed by the Board)")
+    lines.append("## 6. Notes")
     lines.append("")
-    lines.append("- Final disposition: ___________________________________")
-    lines.append("- MRB rationale: ______________________________________")
-    lines.append("")
-    lines.append("| Role | Name | Signature | Date |")
-    lines.append("| --- | --- | --- | --- |")
-    for ap in ncr["mrb_disposition"]["approvals"]:
-        lines.append(f"| {ap['role']} | | | |")
+    lines.append(_fmt(summary["notes"]))
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append(f"_{ncr['disclaimer']}_")
+    lines.append(f"_{summary['disclaimer']}_")
     lines.append("")
     return "\n".join(lines)
 
 
-def export_ncr(
-    ncr: dict,
+# A4 portrait page geometry (inches) and 1-inch margins.
+_PDF_PAGE_W = 8.27
+_PDF_PAGE_H = 11.69
+_PDF_MARGIN = 0.9
+# Per-line style: fontsize (pt), bold, italic, x-indent (in), gap-before (in).
+_PDF_STYLES = {
+    "title": (17.0, True, False, 0.0, 0.0),
+    "h2": (12.5, True, False, 0.0, 0.22),
+    "subhead": (10.0, True, False, 0.0, 0.10),
+    "bullet": (9.5, False, False, 0.18, 0.0),
+    "quote": (9.5, False, True, 0.22, 0.06),
+    "table": (8.5, False, False, 0.10, 0.0),
+    "rule": (9.5, False, False, 0.0, 0.06),
+    "normal": (9.5, False, False, 0.0, 0.0),
+    "disclaimer": (8.0, False, True, 0.0, 0.10),
+}
+
+
+def _classify_md_line(line: str) -> tuple[str, str]:
+    """Map one Markdown line to a (style-kind, plain-text) pair."""
+    raw = line.rstrip()
+    stripped = raw.strip()
+    if stripped == "":
+        return "blank", ""
+    if stripped.startswith("# "):
+        return "title", stripped[2:].strip()
+    if stripped.startswith("## "):
+        return "h2", stripped[3:].strip()
+    if stripped.startswith(("---", "***", "___")) and set(
+        stripped
+    ) <= {"-", "*", "_"}:
+        return "rule", ""
+    if stripped.startswith(">"):
+        return "quote", _strip_md_inline(stripped[1:].strip())
+    if stripped.startswith("|"):
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        non_empty = [c for c in cells if c]
+        if non_empty and all(set(c) <= {"-", ":"} for c in non_empty):
+            return "rule", ""
+        widths = (26, 16, 16, 12)
+        out = []
+        for i, c in enumerate(cells):
+            w = widths[i] if i < len(widths) else 14
+            out.append(c.ljust(w))
+        return "table", " ".join(out).rstrip()
+    if stripped.startswith("- "):
+        return "bullet", _strip_md_inline(stripped[2:].strip())
+    if (
+        stripped.startswith("_")
+        and stripped.endswith("_")
+        and len(stripped) > 2
+    ):
+        return "disclaimer", _strip_md_inline(stripped)
+    if (
+        stripped.startswith("**")
+        and stripped.endswith("**")
+        and "**" not in stripped[2:-2]
+    ):
+        return "subhead", _strip_md_inline(stripped)
+    return "normal", _strip_md_inline(stripped)
+
+
+def _strip_md_inline(text: str) -> str:
+    """Drop inline Markdown emphasis markers for flat PDF text."""
+    return (
+        text.replace("**", "")
+        .replace("`", "")
+        .replace("__", "")
+        .strip("_")
+    )
+
+
+def render_summary_pdf(summary: dict) -> bytes:
+    """Render a validation summary as a paginated PDF.
+
+    Uses Matplotlib's PDF backend (already a project dependency, headless-
+    safe) so no extra packages are required. The structured Markdown form
+    is laid out in a monospaced font with automatic word-wrap and
+    pagination.
+
+    Parameters
+    ----------
+    summary : dict
+        A report produced by :func:`build_analysis_summary`.
+
+    Returns
+    -------
+    bytes
+        The PDF document.
+    """
+    import io as _io
+    import textwrap
+
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
+
+    lines = render_summary_markdown(summary).split("\n")
+    usable_w = _PDF_PAGE_W - 2 * _PDF_MARGIN
+    usable_h = _PDF_PAGE_H - 2 * _PDF_MARGIN
+
+    # Pre-compute wrapped, styled physical lines: (kind, text, fs, bold,
+    # italic, indent_in, gap_in, line_h_in).
+    items: list[tuple] = []
+    for line in lines:
+        kind, text = _classify_md_line(line)
+        if kind == "blank":
+            items.append(("blank", "", 9.5, False, False, 0.0, 0.0, 0.11))
+            continue
+        fs, bold, italic, indent, gap = _PDF_STYLES[kind]
+        line_h = fs / 72.0 * 1.55
+        if kind == "rule":
+            items.append(
+                ("rule", "", fs, False, False, 0.0, gap, line_h)
+            )
+            continue
+        char_w = fs * 0.60 / 72.0  # monospace advance, inches
+        max_chars = max(8, int((usable_w - indent) / char_w))
+        if kind == "table":
+            wrapped = [text]  # keep table rows intact (monospaced)
+        else:
+            wrapped = textwrap.wrap(
+                text, width=max_chars, break_long_words=True
+            ) or [""]
+        for j, seg in enumerate(wrapped):
+            items.append(
+                (
+                    kind,
+                    seg,
+                    fs,
+                    bold,
+                    italic,
+                    indent,
+                    gap if j == 0 else 0.0,
+                    line_h,
+                )
+            )
+
+    buf = _io.BytesIO()
+    fig: Optional[Any] = None
+    cursor = 0.0  # inches consumed from the top of the usable area
+
+    def _new_page(pdf: Any) -> Any:
+        f = Figure(figsize=(_PDF_PAGE_W, _PDF_PAGE_H))
+        return f
+
+    with PdfPages(buf) as pdf:
+        fig = _new_page(pdf)
+        for kind, text, fs, bold, italic, indent, gap, line_h in items:
+            need = gap + line_h
+            if cursor + need > usable_h:
+                pdf.savefig(fig)
+                fig = _new_page(pdf)
+                cursor = 0.0
+            cursor += gap
+            y = 1.0 - (_PDF_MARGIN + cursor + line_h * 0.5) / _PDF_PAGE_H
+            if kind == "rule":
+                xa = _PDF_MARGIN / _PDF_PAGE_W
+                xb = (_PDF_PAGE_W - _PDF_MARGIN) / _PDF_PAGE_W
+                fig.add_artist(
+                    Line2D(
+                        [xa, xb],
+                        [y, y],
+                        transform=fig.transFigure,
+                        color="0.4",
+                        linewidth=0.6,
+                    )
+                )
+            elif text:
+                x = (_PDF_MARGIN + indent) / _PDF_PAGE_W
+                fig.text(
+                    x,
+                    y,
+                    text,
+                    fontsize=fs,
+                    fontweight="bold" if bold else "normal",
+                    fontstyle="italic" if italic else "normal",
+                    family="monospace",
+                    va="center",
+                    ha="left",
+                )
+            cursor += line_h
+        pdf.savefig(fig)
+
+    return buf.getvalue()
+
+
+def export_summary(
+    summary: dict,
     filepath: Union[str, Path],
     *,
     fmt: str = "md",
 ) -> None:
-    """Write an NCR (from :func:`build_ncr`) to disk.
+    """Write a validation summary (from :func:`build_analysis_summary`).
 
     Parameters
     ----------
-    ncr : dict
-        The structured NCR.
+    summary : dict
+        The structured validation summary.
     filepath : str or Path
         Output path.
-    fmt : {'md', 'json'}
+    fmt : {'md', 'json', 'pdf'}
         ``'md'`` writes the rendered Markdown form (default); ``'json'``
-        writes the structured report.
+        writes the structured report; ``'pdf'`` writes a paginated PDF.
     """
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "json":
-        filepath.write_text(json.dumps(ncr, indent=2), encoding="utf-8")
+        filepath.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     elif fmt == "md":
-        filepath.write_text(render_ncr_markdown(ncr), encoding="utf-8")
+        filepath.write_text(
+            render_summary_markdown(summary), encoding="utf-8"
+        )
+    elif fmt == "pdf":
+        filepath.write_bytes(render_summary_pdf(summary))
     else:
-        raise ValueError(f"Unsupported fmt {fmt!r}; use 'md' or 'json'.")
+        raise ValueError(
+            f"Unsupported fmt {fmt!r}; use 'md', 'json', or 'pdf'."
+        )
