@@ -96,10 +96,52 @@ wrinkle defects.* AIP Advances 15, 065118. DOI 10.1063/5.0276297.
   would yield only a figure-derived, non-pristine apparent KD biased to the
   initial-damage region — below the database data-quality bar.
 
+## Evaluated — deferred (pending model capability)
+
+### Li, Li, Ge & Liang (2025)
+
+*Experimental Investigation on the Effect of Multi-Wrinkle Fiber Defects
+on the Compressive Testing of Unidirectional Composites.* Polymer
+Composites 46(16):15176–15187. DOI 10.1002/pc.30121. **Distinct** from
+Li et al. (2026), *Compos. A* 205:109719 already in the database
+(different journal, year, and specimens; same material system).
+
+- **Evaluated**: 2026-05-18
+- **Decision**: *Qualifies* methodologically (meets every inclusion
+  criterion: material with Xc `AC318_S6C10`, UD `[0]₁₄` ply 0.44 mm,
+  wrinkle geometry, compression, measured strength with a pristine
+  baseline). **Inclusion deferred** pending a model capability tracked by
+  [issue #161](https://github.com/ranipdx-glitch/wrinkleFE/issues/161).
+- **Dataset** (pristine plate 335.52 MPa; A = peak-to-peak amplitude;
+  θ_max = arctan(2π·(A/2)/λ)):
+
+  | Case | A (mm) | λ (mm) | α_max | σ (MPa) | KD meas | KD analytical | FE max FI |
+  |------|--------|--------|-------|---------|---------|---------------|-----------|
+  | S-M-1 | 1.5 | 26.0 | 10° | 298.81 | 0.891 | 0.839 | 0.396 |
+  | S-M-2 | 1.5 | 12.9 | 20° | 211.10 | 0.629 | 0.782 | 0.767 |
+  | S-M-3 | 1.5 |  8.1 | 30° | 158.41 | 0.472 | 0.744 | 1.058 |
+  | S-M-4 | 1.0 |  8.6 | 20° | 316.34 | 0.943 | 0.855 | 0.765 |
+  | S-M-5 | 0.5 |  4.3 | 20° | 335.63 | 1.000 | 0.923 | 0.777 |
+  | S-A-2 | 1.5 | 12.9 | 20° | 329.29 | 0.981 | 0.782 | 0.767 |
+
+  (S-A-2 is S-M-2 geometry at a near-surface interface.)
+- **Finding (model-wide structural limitation)**: the diagnostic trio
+  S-M-2 / S-M-4 / S-M-5 has an *identical* peak angle (20°) with amplitude
+  1.5 / 1.0 / 0.5 mm; measured strength spans 0.63 → 1.00 (~60%), yet the
+  FE LaRC05 max FI is 0.767 / 0.765 / 0.777 (≤1.5% spread) and FE modulus
+  retention is 0.945 for all three. The amplitude-at-constant-angle effect
+  is captured by **neither** the analytical Budiansky–Fleck path **nor**
+  the FE LaRC05 path — both reduce the wrinkle to its peak misalignment
+  angle. Capturing it needs geometrically nonlinear progressive-damage FE
+  (issue #161). S-A-2 additionally exposes a missing through-thickness
+  wrinkle-position parameter (out of scope; excluded on future inclusion).
+- **Related**: the `graded` compression through-thickness decay has a
+  separate real bug (`decay_floor` inert in compression, decay scale
+  hard-wired to amplitude A). A "mirror the tension path" fix was
+  prototyped and **reverted** (commit `00584b4`) pending a reproducible
+  harness for *all* existing datasets; it corrects the angle response but
+  does not address the amplitude gap above.
+
 ## Identified — pending evaluation
 
-- Li, Y., Li, X., Ge, J. & Liang, J. (2025). *Experimental Investigation on
-  the Effect of Multi-Wrinkle Fiber Defects on the Compressive Testing of
-  Unidirectional Composites.* Polymer Composites (Wiley). **Distinct** from
-  Li et al. (2026), *Compos. A* 205:109719 already in the database
-  (different journal, year, and specimens). Not yet evaluated.
+- _None currently._
