@@ -135,13 +135,13 @@ def _profile_proportional_kd(
     wavelength: float,
     width: float,
     domain_length: float,
-    ply_thickness: float,
     n_plies: int,
     gamma_Y: float,
     theta_max: float,
     *,
     morphology_factor: float = 1.0,
     through_thickness_decay: bool = True,
+    decay_floor: float = 0.0,
 ) -> float:
     """Budiansky-Fleck knockdown averaged over the wrinkle profile.
 
@@ -158,7 +158,16 @@ def _profile_proportional_kd(
     with:
         |dz_w/dx|  = slope of the GaussianSinusoidal wrinkle profile
         M_f        = morphology factor (accounts for dual-wrinkle interaction)
-        Phi(z_p)   = exp(-(z_p - T/2)^2 / A^2)   (through-thickness decay)
+        Phi(z_p)   = decay_floor + (1 - decay_floor) * raw_p,
+                     raw_p = max(0, 1 - |p - p_mid| / p_mid)
+
+    The through-thickness term is a linear ply-index decay from 1.0 at the
+    midplane to ``decay_floor`` at the surface plies.  This is the same
+    grading used by the tension graded path, so the two loading modes treat
+    an embedded (graded) wrinkle consistently.  ``decay_floor`` is the
+    fraction of the wrinkle angle retained at the surface plies and is set
+    from the embedded-strip through-thickness reach (0 = waviness fully
+    decays to flat at the surfaces, 1 = no decay).
 
     When *through_thickness_decay* is False, Phi(z_p) = 1 for all plies
     (all plies see the same longitudinal profile).  This is appropriate
@@ -175,8 +184,6 @@ def _profile_proportional_kd(
         Gaussian envelope half-width w [mm].
     domain_length : float
         Specimen / domain length L_s [mm].
-    ply_thickness : float
-        Ply thickness [mm].
     n_plies : int
         Total number of plies.
     gamma_Y : float
@@ -188,17 +195,19 @@ def _profile_proportional_kd(
         for dual-wrinkle interaction (convex < 1.0, concave > 1.0,
         stack = 1.0, graded = 1.0).  Default 1.0.
     through_thickness_decay : bool
-        If True (default), apply Gaussian through-thickness decay centred
-        at the midplane with scale = amplitude.  If False, all plies see
-        the full wrinkle angle profile (Phi = 1).
+        If True (default), apply the linear ply-index through-thickness
+        decay (1.0 at the midplane to ``decay_floor`` at the surfaces).
+        If False, all plies see the full wrinkle angle profile (Phi = 1).
+    decay_floor : float
+        Fraction of the wrinkle angle retained at the surface plies in the
+        graded through-thickness decay (0 = full decay to flat, 1 = no
+        decay).  Clamped by the caller to [0, 1].  Default 0.0.
 
     Returns
     -------
     float
         Profile-averaged BF knockdown factor (0, 1].
     """
-    T = n_plies * ply_thickness
-    z_mid = T / 2.0
     L_s = domain_length
 
     # Longitudinal profile: compute |dz/dx| at each x-point
@@ -216,12 +225,16 @@ def _profile_proportional_kd(
     )
     theta_x = np.abs(np.arctan(dz_dx)) * morphology_factor  # M_f-scaled angle
 
-    # Average over plies and x-positions
+    # Average over plies and x-positions.  The through-thickness term is a
+    # linear ply-index decay from 1.0 at the midplane to decay_floor at the
+    # surface plies — identical to the tension graded path so both loading
+    # modes treat an embedded (graded) wrinkle consistently.
     kd_sum = 0.0
+    p_mid = (n_plies - 1) / 2.0
     for p in range(n_plies):
-        z_p = (p + 0.5) * ply_thickness
         if through_thickness_decay:
-            phi_p = np.exp(-((z_p - z_mid) ** 2) / (amplitude ** 2))
+            raw_p = max(0.0, 1.0 - abs(p - p_mid) / p_mid) if p_mid > 0 else 1.0
+            phi_p = decay_floor + (1.0 - decay_floor) * raw_p
         else:
             phi_p = 1.0
         theta_xz = theta_x * phi_p  # local angle at (x, z_p)
@@ -1014,12 +1027,12 @@ class WrinkleAnalysis:
                 wavelength=cfg.wavelength,
                 width=cfg.width,
                 domain_length=cfg.domain_length,
-                ply_thickness=cfg.ply_thickness,
                 n_plies=n_plies,
                 gamma_Y=gamma_Y_eff,
                 theta_max=theta_max,
                 morphology_factor=1.0,
                 through_thickness_decay=True,
+                decay_floor=cfg.decay_floor,
             )
             kd_compression = f_0 * kd_profile + (1.0 - f_0)
 
