@@ -127,14 +127,22 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   (S-A-2 is S-M-2 geometry at a near-surface interface.)
 - **Finding (model-wide structural limitation)**: the diagnostic trio
   S-M-2 / S-M-4 / S-M-5 has an *identical* peak angle (20°) with amplitude
-  1.5 / 1.0 / 0.5 mm; measured strength spans 0.63 → 1.00 (~60%), yet the
-  FE LaRC05 max FI is 0.767 / 0.765 / 0.777 (≤1.5% spread) and FE modulus
-  retention is 0.945 for all three. The amplitude-at-constant-angle effect
-  is captured by **neither** the analytical Budiansky–Fleck path **nor**
-  the FE LaRC05 path — both reduce the wrinkle to its peak misalignment
-  angle. Capturing it needs geometrically nonlinear progressive-damage FE
-  (issue #161). S-A-2 additionally exposes a missing through-thickness
-  wrinkle-position parameter (out of scope; excluded on future inclusion).
+  1.5 / 1.0 / 0.5 mm and a measured strength span of 0.63 → 1.00 (~60%).
+  On a proper **strength** basis — LaRC05 max-FI scales ~linearly with
+  load (k ≈ 0.82–0.91), load scaled to FI = 1, σ_f = E_eff·ε_f, referenced
+  to the near-pristine wrinkle S-M-5 — the FE strength knockdown for the
+  trio is 1.000 / 1.000 / 1.000 (the FE does not reach first-ply failure
+  for ≤20° wrinkles at all, regardless of amplitude). The
+  amplitude-at-constant-angle effect is captured by **neither** the
+  analytical Budiansky–Fleck path **nor** the FE LaRC05 strength path —
+  both reduce the wrinkle to its peak misalignment angle, and the FE
+  strength response is in fact flatter than the analytical one (S-M-2 FE
+  strength error ≈ 59%). (Underlying FE LaRC05 max-FI at ε = −0.01:
+  0.767 / 0.765 / 0.777, ≤1.5% spread; modulus retention 0.945 for all
+  three — both confirm the same flat behaviour.) Capturing the effect
+  needs geometrically nonlinear progressive-damage FE (issue #161). S-A-2
+  additionally exposes a missing through-thickness wrinkle-position
+  parameter (out of scope; excluded on future inclusion).
 - **Related**: the `graded` compression through-thickness decay has a
   separate real bug (`decay_floor` inert in compression, decay scale
   hard-wired to amplitude A). A "mirror the tension path" fix was
