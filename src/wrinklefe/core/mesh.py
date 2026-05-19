@@ -85,6 +85,13 @@ class MeshData:
         Number of elements in y.
     nz : int
         Number of elements in z (= ``n_plies * nz_per_ply``).
+    laminate : Laminate, optional
+        The :class:`~wrinklefe.core.laminate.Laminate` the mesh was
+        generated from.  Attached by :meth:`WrinkleMesh.generate` so
+        downstream consumers (e.g. boundary-condition helpers that need
+        the bending-stiffness matrix ``D``) can recover it without a
+        separate plumbing path.  Defaults to ``None`` for hand-built
+        mesh fixtures that have no associated laminate.
     """
 
     nodes: np.ndarray
@@ -95,6 +102,7 @@ class MeshData:
     nx: int
     ny: int
     nz: int
+    laminate: Laminate | None = None
 
     # ---- derived quantities ------------------------------------------------
 
@@ -609,6 +617,7 @@ class WrinkleMesh:
             nx=self.nx,
             ny=self.ny,
             nz=self.nz,
+            laminate=self.laminate,
         )
 
         # Run basic quality checks
