@@ -330,12 +330,14 @@ class TestPureMx:
         assert len(disp) == len(xmax)
         assert all(b.dofs == [0] for b in disp)
 
-    def test_linear_through_thickness_profile(self, bending_mesh):
-        """ux(z) = kappa_x * (z - z_mid) * Lx with the *current* contract
-        kappa_x = Mx / 1.0 (see #149).  Midplane node ux == 0; top &
-        bottom fibers equal and opposite."""
+    def test_linear_through_thickness_profile(self, bending_mesh,
+                                              two_ply_laminate):
+        """ux(z) = kappa_x * (z - z_mid) * Lx with the physically-correct
+        CLT contract kappa_x = Mx / D11 (see #149).  Midplane node ux == 0;
+        top & bottom fibers equal and opposite."""
         Lx, Ly, Lz = bending_mesh.domain_size
         Mx = 2.0
+        D11 = float(two_ply_laminate.D[0, 0])
         bcs = BoundaryHandler.load_state_to_bcs(LoadState(Mx=Mx), bending_mesh)
         disp = {int(b.node_ids[0]): b.value
                 for b in bcs if b.bc_type == "displacement"}
@@ -344,7 +346,7 @@ class TestPureMx:
         z_mid = 0.5 * (z.min() + z.max())
         for nid in xmax:
             zz = float(bending_mesh.nodes[nid, 2])
-            assert disp[nid] == pytest.approx(Mx * (zz - z_mid) * Lx)
+            assert disp[nid] == pytest.approx((Mx / D11) * (zz - z_mid) * Lx)
         # Midplane node (z == z_mid) has zero prescribed displacement.
         mid = [nid for nid in xmax
                if abs(float(bending_mesh.nodes[nid, 2]) - z_mid) < 1e-9]
@@ -356,16 +358,9 @@ class TestPureMx:
         bot = min(xmax, key=lambda n: bending_mesh.nodes[n, 2])
         assert disp[top] == pytest.approx(-disp[bot])
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Bug #149: kappa_x uses hard-coded 1.0 divisor, not D11. "
-               "Pins the physically-correct contract; flips green when "
-               "boundary.py is fixed.",
-    )
     def test_curvature_should_scale_with_D11(self, bending_mesh,
                                              two_ply_laminate):
-        """Physically kappa_x should be Mx / D11.  Currently it is Mx / 1.0,
-        so the top-fiber displacement is D11x too large."""
+        """Physically kappa_x must be Mx / D11 (fix for #149)."""
         Lx, Ly, Lz = bending_mesh.domain_size
         Mx = 2.0
         D11 = float(two_ply_laminate.D[0, 0])

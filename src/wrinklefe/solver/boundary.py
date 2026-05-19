@@ -597,14 +597,22 @@ class BoundaryHandler:
             z_coords = mesh.nodes[xmax_nodes, 2]
             z_mid = 0.5 * (z_coords.min() + z_coords.max())
 
-            # Estimate curvature: kappa_x = Mx / D11
-            # This is approximate; the user may need to refine.
-            # For now, apply linear displacement: ux(z) = kappa * (z - z_mid) * Lx
-            # We use a reference curvature scaled so the displacement is
-            # proportional to Mx.
-            # A more rigorous approach would use ABD inverse, but we keep it
-            # simple here.
-            kappa_x = load.Mx / 1.0  # user should normalise Mx appropriately
+            # Curvature from the laminate bending stiffness: kappa_x = Mx / D11
+            # (CLT moment-curvature relation, decoupled D-matrix form).
+            # Apply linear displacement: ux(z) = kappa_x * (z - z_mid) * Lx.
+            if mesh.laminate is None:
+                raise ValueError(
+                    "Cannot map Mx to a curvature boundary condition: the "
+                    "mesh has no attached laminate.  Use WrinkleMesh.generate() "
+                    "or attach a Laminate to MeshData.laminate."
+                )
+            D11 = float(mesh.laminate.D[0, 0])
+            if D11 == 0.0:
+                raise ValueError(
+                    "Laminate bending stiffness D11 is zero; cannot map Mx "
+                    "to a curvature boundary condition."
+                )
+            kappa_x = load.Mx / D11
 
             # Apply prescribed displacements on x_max, varying linearly with z
             if abs(load.Nx) == 0:
@@ -634,7 +642,20 @@ class BoundaryHandler:
             z_coords = mesh.nodes[ymax_nodes, 2]
             z_mid = 0.5 * (z_coords.min() + z_coords.max())
 
-            kappa_y = load.My / 1.0
+            # Curvature from the laminate bending stiffness: kappa_y = My / D22.
+            if mesh.laminate is None:
+                raise ValueError(
+                    "Cannot map My to a curvature boundary condition: the "
+                    "mesh has no attached laminate.  Use WrinkleMesh.generate() "
+                    "or attach a Laminate to MeshData.laminate."
+                )
+            D22 = float(mesh.laminate.D[1, 1])
+            if D22 == 0.0:
+                raise ValueError(
+                    "Laminate bending stiffness D22 is zero; cannot map My "
+                    "to a curvature boundary condition."
+                )
+            kappa_y = load.My / D22
 
             if abs(load.Ny) == 0 and abs(load.Nx) == 0:
                 bcs.append(BoundaryCondition(
