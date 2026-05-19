@@ -226,6 +226,9 @@ class FailureEvaluator:
         ply_fi: dict[str, np.ndarray] = {
             c.name: np.zeros(n_plies) for c in self.criteria
         }
+        ply_rf: dict[str, np.ndarray] = {
+            c.name: np.full(n_plies, np.inf) for c in self.criteria
+        }
         ply_modes: dict[str, list[str]] = {
             c.name: [""] * n_plies for c in self.criteria
         }
@@ -247,6 +250,7 @@ class FailureEvaluator:
             for criterion in self.criteria:
                 result = criterion.evaluate(stress_6, material)
                 ply_fi[criterion.name][k] = result.index
+                ply_rf[criterion.name][k] = result.reserve_factor
                 ply_modes[criterion.name][k] = result.mode
 
         # Build FPF and LPF for each criterion
@@ -256,12 +260,17 @@ class FailureEvaluator:
         for criterion in self.criteria:
             name = criterion.name
             fi_array = ply_fi[name]
+            rf_array = ply_rf[name]
             modes = ply_modes[name]
 
-            # FPF: ply with the maximum FI (first to fail under load scaling)
-            fpf_ply = int(np.argmax(fi_array))
+            # FPF: the first ply to fail under proportional load scaling is
+            # the one with the smallest reserve factor (load factor to FI=1).
+            # For criteria linear in load scale this is equivalent to argmax FI,
+            # but for nonlinear criteria (e.g. Tsai-Wu, which is a quadratic
+            # polynomial in load scale) it can differ.
+            fpf_ply = int(np.argmin(rf_array))
             fpf_fi = float(fi_array[fpf_ply])
-            fpf_lf = 1.0 / fpf_fi if fpf_fi > 0.0 else float("inf")
+            fpf_lf = float(rf_array[fpf_ply])
 
             fpf[name] = {
                 "fi": fpf_fi,
@@ -275,7 +284,7 @@ class FailureEvaluator:
             # degradation.  Here we report the same ply as the most critical.)
             lpf_ply = int(np.argmax(fi_array))
             lpf_fi = float(fi_array[lpf_ply])
-            lpf_lf = 1.0 / lpf_fi if lpf_fi > 0.0 else float("inf")
+            lpf_lf = float(rf_array[lpf_ply])
 
             lpf[name] = {
                 "fi": lpf_fi,
@@ -468,9 +477,14 @@ class FailureEvaluator:
 
             for criterion in self.criteria:
                 name = criterion.name
-                fi_max = float(report.ply_failure_indices[name].max())
-                # Strength ratio = 1 / FI  (scale at which failure occurs)
-                sr = 1.0 / fi_max if fi_max > 0.0 else 1.0e12
+                # Strength ratio = the smallest per-ply load scale R that
+                # drives any ply to its failure surface. For criteria linear
+                # in load scale this equals 1/FI_max; for nonlinear criteria
+                # (e.g. Tsai-Wu, quadratic in R) it does not. The FPF
+                # load_factor already encodes the correct quadratic root.
+                sr = float(report.fpf[name]["load_factor"])
+                if not np.isfinite(sr):
+                    sr = 1.0e12
 
                 envelopes[name][i, 0] = sr * np.cos(theta)
                 envelopes[name][i, 1] = sr * np.sin(theta)
