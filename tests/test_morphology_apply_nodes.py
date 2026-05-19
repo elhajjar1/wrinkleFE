@@ -529,3 +529,100 @@ def test_partial_ply_ids_decay_stays_synced():
     npt.assert_allclose(
         decay_from_disp, decay_from_angle, rtol=1e-12, atol=1e-14
     )
+
+
+# ----------------------------------------------------------------------
+# Issues #17 / #18: BC vanishes at outer surfaces AND displacement and
+# fibre-angle fields share the same default-mode decay.
+# ----------------------------------------------------------------------
+
+class TestIssue17_18DefaultDecayBC:
+    """Regression tests pinning the contract from issues #17 and #18.
+
+    Issue #17: in default decay mode the through-thickness displacement
+    must vanish at BOTH outer surfaces (``p == 0`` and ``p == n_plies-1``)
+    and be unity at the interface plies (``p == k`` and ``p == k+1``).
+
+    Issue #18: ``apply_to_nodes`` and ``fiber_angles_at_nodes`` must apply
+    the SAME decay function in default mode -- so a ply whose geometric
+    displacement is zero must also see zero misalignment-angle decay.
+    """
+
+    @pytest.mark.parametrize("k", [1, 2, 3, 5, 8])
+    @pytest.mark.parametrize("n_plies", [4, 8, 12])
+    def test_outer_surfaces_zero_decay(self, k, n_plies):
+        """#17: bottom (p=0) and top (p=n-1) outer surfaces -> decay=0."""
+        if k >= n_plies - 1:
+            pytest.skip(f"k={k} invalid for n_plies={n_plies}")
+        prof = GaussianSinusoidal(
+            amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
+        )
+        cfg = _single_config(prof, ply_interface=k)
+        # Crest -> dz at any ply == amplitude * decay.
+        nodes, ply = _strip(np.array([0.0]), n_plies=n_plies)
+        out = cfg.apply_to_nodes(nodes, ply, n_plies=n_plies)
+        dz = (out - nodes)[:, 2]
+        # The two surfaces are explicitly zero.
+        if k > 0:
+            npt.assert_allclose(dz[ply == 0], 0.0, atol=1e-15)
+        if k + 1 < n_plies - 1:
+            npt.assert_allclose(dz[ply == n_plies - 1], 0.0, atol=1e-15)
+
+    @pytest.mark.parametrize("k", [1, 2, 3, 5])
+    @pytest.mark.parametrize("n_plies", [4, 8, 12])
+    def test_interface_plies_unit_decay(self, k, n_plies):
+        """#17: interface plies (p=k and p=k+1) carry the full profile."""
+        if k >= n_plies - 1:
+            pytest.skip(f"k={k} invalid for n_plies={n_plies}")
+        prof = GaussianSinusoidal(
+            amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
+        )
+        cfg = _single_config(prof, ply_interface=k)
+        nodes, ply = _strip(np.array([0.0]), n_plies=n_plies)
+        out = cfg.apply_to_nodes(nodes, ply, n_plies=n_plies)
+        dz = (out - nodes)[:, 2]
+        amp = prof.amplitude
+        npt.assert_allclose(dz[ply == k][0], amp, rtol=1e-12)
+        npt.assert_allclose(dz[ply == k + 1][0], amp, rtol=1e-12)
+
+    @pytest.mark.parametrize("k", [1, 2, 3, 5])
+    @pytest.mark.parametrize("n_plies", [4, 8, 12])
+    def test_displacement_and_angle_share_decay_default_mode(
+        self, k, n_plies
+    ):
+        """#18: at every ply, decay extracted from the displacement field
+        must equal decay extracted from the fibre-angle field. In
+        particular: the outer-surface plies that get zero displacement
+        must also get zero angle (no inflated misalignment downstream)."""
+        if k >= n_plies - 1:
+            pytest.skip(f"k={k} invalid for n_plies={n_plies}")
+        prof = GaussianSinusoidal(
+            amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
+        )
+        cfg = _single_config(prof, ply_interface=k)
+        # Pick a non-symmetric x where both profile value and slope are
+        # non-zero so we can divide cleanly.
+        x = 2.5
+        prof_val = prof.displacement(np.array([x]))[0]
+        ang_base = np.arctan(np.abs(prof.slope(np.array([x]))[0]))
+
+        nodes, ply = _strip(np.array([x]), n_plies=n_plies)
+        dz = (cfg.apply_to_nodes(nodes, ply, n_plies=n_plies) - nodes)[:, 2]
+        ang = cfg.fiber_angles_at_nodes(nodes, ply, n_plies=n_plies)
+
+        decay_from_disp = dz / prof_val
+        decay_from_angle = ang / ang_base
+        npt.assert_allclose(
+            decay_from_disp,
+            decay_from_angle,
+            rtol=1e-12,
+            atol=1e-14,
+        )
+        # Surface plies (when not degenerate) must be exactly zero in BOTH
+        # fields -- this is what #18 was about.
+        if k > 0:
+            assert dz[ply == 0][0] == 0.0
+            assert ang[ply == 0][0] == 0.0
+        if k + 1 < n_plies - 1:
+            assert dz[ply == n_plies - 1][0] == 0.0
+            assert ang[ply == n_plies - 1][0] == 0.0
