@@ -1270,6 +1270,25 @@ with tab_results:
                     horizontal=True,
                     key="viz_view_mode",
                 )
+                y_centers = fe["element_centers"][:, 1]
+                y_unique = np.unique(y_centers)
+
+                def _y_station_slider() -> float | None:
+                    """Render the shared keyed y-station slider.
+
+                    Uses a stable ``key`` so the chosen station is
+                    preserved across view-mode switches. Returns
+                    ``None`` if the mesh has no y-variation to scrub.
+                    """
+                    if y_unique.size <= 1:
+                        return None
+                    return st.select_slider(
+                        "y-station [mm]",
+                        options=[float(y) for y in y_unique],
+                        value=float(y_unique[len(y_unique) // 2]),
+                        key="viz_y_station",
+                    )
+
                 if view_mode == "Stress contour":
                     comp = st.selectbox(
                         "Stress component (Voigt)",
@@ -1284,6 +1303,24 @@ with tab_results:
                         component_label=comp[1],
                     )
                     st.plotly_chart(fig_3d, width="stretch")
+
+                    st.markdown("**y-slice scrubber**")
+                    y_station = _y_station_slider()
+                    if y_station is not None:
+                        slice_comp = st.selectbox(
+                            "Slice stress component",
+                            STRESS_COMPONENTS,
+                            index=2,
+                            format_func=lambda t: t[1],
+                            key="viz_slice_component",
+                        )
+                        fig_slice = streamlit_viz.y_slice_figure(
+                            fe["element_centers"], fe["elements"], fe["nodes"],
+                            fe["stress_per_elem"], slice_comp[0], y_station,
+                            component_label=slice_comp[1],
+                        )
+                        if fig_slice is not None:
+                            st.plotly_chart(fig_slice, width="stretch")
                 elif view_mode == "Deformed mesh":
                     scale = st.slider(
                         "Deformation exaggeration",
@@ -1300,6 +1337,10 @@ with tab_results:
                         scale=scale,
                     )
                     st.plotly_chart(fig_3d, width="stretch")
+                    # No y-slice for the deformed-mesh view: a stress
+                    # component picker would be confusing here and a
+                    # displacement-magnitude slice helper does not
+                    # exist. See issue #77.
                 else:
                     fi_dict = fe.get("fi_per_gauss", {})
                     fi_keys = list(fi_dict.keys())
@@ -1321,30 +1362,16 @@ with tab_results:
                         )
                         st.plotly_chart(fig_3d, width="stretch")
 
-                st.markdown("**y-slice scrubber**")
-                y_centers = fe["element_centers"][:, 1]
-                y_unique = np.unique(y_centers)
-                if y_unique.size > 1:
-                    y_station = st.select_slider(
-                        "y-station [mm]",
-                        options=[float(y) for y in y_unique],
-                        value=float(y_unique[len(y_unique) // 2]),
-                        key="viz_y_station",
-                    )
-                    slice_comp = st.selectbox(
-                        "Slice stress component",
-                        STRESS_COMPONENTS,
-                        index=2,
-                        format_func=lambda t: t[1],
-                        key="viz_slice_component",
-                    )
-                    fig_slice = streamlit_viz.y_slice_figure(
-                        fe["element_centers"], fe["elements"], fe["nodes"],
-                        fe["stress_per_elem"], slice_comp[0], y_station,
-                        component_label=slice_comp[1],
-                    )
-                    if fig_slice is not None:
-                        st.plotly_chart(fig_slice, width="stretch")
+                        st.markdown("**y-slice scrubber**")
+                        y_station = _y_station_slider()
+                        if y_station is not None:
+                            fig_slice = streamlit_viz.fi_y_slice_figure(
+                                fe["element_centers"], fe["elements"],
+                                fe["nodes"], fi_dict[crit_for_3d], y_station,
+                                criterion=crit_for_3d,
+                            )
+                            if fig_slice is not None:
+                                st.plotly_chart(fig_slice, width="stretch")
 
             with st.expander("Mesh statistics"):
                 st.write(
