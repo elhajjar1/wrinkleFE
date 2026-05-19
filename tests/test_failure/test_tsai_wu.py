@@ -119,3 +119,54 @@ class TestTsaiWuMixed:
         result = criterion.evaluate(stress, material)
         R = result.reserve_factor
         assert R**2 * Q + R * L == pytest.approx(1.0, abs=1e-10)
+
+    def test_reserve_factor_asymmetric_material(self, criterion):
+        """Asymmetric material (Xt != Xc, Yt != Yc): R must satisfy the
+        quadratic R^2 Q + R L = 1, and must NOT equal the naive 1/FI."""
+        mat = OrthotropicMaterial(
+            Xt=1500.0, Xc=1200.0,
+            Yt=50.0, Yc=200.0,
+            Zt=50.0, Zc=200.0,
+            S12=80.0, S13=80.0, S23=60.0,
+        )
+        s1, s2, t12 = 0.35 * mat.Xt, 0.25 * mat.Yt, 0.15 * mat.S12
+        stress = np.array([s1, s2, 0.0, 0.0, 0.0, t12])
+
+        F1 = 1.0 / mat.Xt - 1.0 / mat.Xc
+        F2 = 1.0 / mat.Yt - 1.0 / mat.Yc
+        F11 = 1.0 / (mat.Xt * mat.Xc)
+        F22 = 1.0 / (mat.Yt * mat.Yc)
+        F66 = 1.0 / mat.S12 ** 2
+        F12 = -0.5 * np.sqrt(F11 * F22)
+
+        L = F1 * s1 + F2 * s2
+        Q = F11 * s1**2 + F22 * s2**2 + 2.0 * F12 * s1 * s2 + F66 * t12**2
+
+        result = criterion.evaluate(stress, mat)
+        R = result.reserve_factor
+
+        # The polynomial identity that defines R.
+        assert R**2 * Q + R * L == pytest.approx(1.0, abs=1e-10)
+
+        # And L must be meaningfully nonzero so this test would expose a
+        # 1/FI bug -- i.e. the correct R must differ from 1/FI.
+        assert abs(L) > 1e-6
+        naive_rf = 1.0 / result.index
+        assert abs(R - naive_rf) > 1e-3 * R
+
+    def test_reserve_factor_symmetric_strengths_equals_one_over_sqrt_fi(self):
+        """When Xt == Xc, Yt == Yc, etc., F1 = F2 = F3 = 0, so L = 0 and the
+        polynomial reduces to R^2 Q = 1, giving R = 1/sqrt(FI) (NOT 1/FI)."""
+        mat = OrthotropicMaterial(
+            Xt=1500.0, Xc=1500.0,
+            Yt=100.0, Yc=100.0,
+            Zt=100.0, Zc=100.0,
+            S12=80.0, S13=80.0, S23=60.0,
+        )
+        criterion = TsaiWuCriterion(f12_star=-0.5)
+        stress = np.array([
+            0.4 * mat.Xt, 0.3 * mat.Yt, 0.0, 0.0, 0.0, 0.2 * mat.S12,
+        ])
+        result = criterion.evaluate(stress, mat)
+        expected_R = 1.0 / np.sqrt(result.index)
+        assert result.reserve_factor == pytest.approx(expected_R, rel=1e-12)
