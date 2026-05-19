@@ -53,7 +53,7 @@ class TestPlyDiscount:
         assert_allclose(degraded.nu13, x850_material.nu13 * 0.01, rtol=1e-10)
 
     def test_matrix_failure_degrades_E2(self, x850_material):
-        """Matrix failure should degrade E2, G12, G23, nu23."""
+        """Matrix failure should degrade E2, E3, G12, G23, nu23."""
         model = PlyDiscount(residual_factor=0.01)
         failure = _make_failure(1.2, "matrix_tension")
         degraded = model.degrade(x850_material, failure)
