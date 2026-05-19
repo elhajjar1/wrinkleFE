@@ -70,6 +70,14 @@ MORPHOLOGY_LABELS: dict[str, str] = {
 }
 """Display labels for morphology types with phase offset notation."""
 
+ACCENT_GRAY: str = "#333333"
+"""Neutral dark gray accent color for non-morphology emphasis elements.
+
+Used for overall/aggregate series in plots where a morphology color would
+be misleading (e.g. the ``Overall`` bar in a Jensen-gap bar chart that sits
+alongside per-morphology bars).
+"""
+
 
 # ======================================================================
 # Standard figure sizes
