@@ -276,3 +276,75 @@ def y_slice_figure(
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig
+
+
+def fi_y_slice_figure(
+    element_centers: np.ndarray,
+    elements: np.ndarray,
+    nodes: np.ndarray,
+    fi_per_gauss: np.ndarray,
+    y_station: float,
+    *,
+    criterion: str = "FI",
+) -> go.Figure | None:
+    """Filter elements at the given y-station and render a 2D scatter in
+    the (x, z) plane coloured by the per-element max failure index for
+    the given criterion.
+
+    Mirrors :func:`y_slice_figure` but uses a sequential (Reds) colour
+    scale starting at 0 since FI is non-negative.
+    """
+    yc = element_centers[:, 1]
+    unique_y = np.unique(yc)
+    if unique_y.size == 0:
+        return None
+    nearest_y = unique_y[np.argmin(np.abs(unique_y - y_station))]
+    mask = yc == nearest_y
+    if not mask.any():
+        return None
+
+    xs = element_centers[mask, 0]
+    zs = element_centers[mask, 2]
+    fi_max_per_elem = np.asarray(fi_per_gauss).max(axis=1)
+    vals = fi_max_per_elem[mask]
+    vmax = float(np.nanmax(vals)) if vals.size else 1.0
+    if not np.isfinite(vmax) or vmax <= 0.0:
+        vmax = 1.0
+
+    elem_node_xyz = nodes[elements[mask]]
+    dx = float(np.ptp(elem_node_xyz[:, :, 0], axis=1).mean()) if mask.sum() else 1.0
+    dz = float(np.ptp(elem_node_xyz[:, :, 2], axis=1).mean()) if mask.sum() else 1.0
+
+    fig = go.Figure(
+        go.Scatter(
+            x=xs,
+            y=zs,
+            mode="markers",
+            marker=dict(
+                size=14,
+                color=vals,
+                colorscale="Reds",
+                cmin=0.0,
+                cmax=vmax,
+                symbol="square",
+                line=dict(width=0),
+                colorbar=dict(title=f"FI ({criterion})"),
+            ),
+            hovertemplate=(
+                f"x = %{{x:.2f}} mm<br>z = %{{y:.3f}} mm"
+                f"<br>FI ({criterion}) = %{{marker.color:.3f}}<extra></extra>"
+            ),
+        )
+    )
+    fig.update_layout(
+        title=(
+            f"FI ({criterion}) at y ≈ {nearest_y:.2f} mm  ·  "
+            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm"
+        ),
+        xaxis_title="x [mm]",
+        yaxis_title="z [mm]",
+        height=360,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
+    return fig
