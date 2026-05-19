@@ -16,7 +16,7 @@ Degradation Rules
 Properties degraded depend on the failure mode:
 
 - **Fibre failure** (tension or compression): E1, nu12, nu13
-- **Matrix failure** (tension or compression): E2, G12, G23, nu23
+- **Matrix failure** (tension or compression): E2, E3, G12, G23, nu23
 - **Shear failure**: G12, G13, or G23 (depending on plane)
 - **Through-thickness failure**: E3, G13, G23
 
