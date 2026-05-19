@@ -127,16 +127,43 @@ wrinklefe --help
 
 ## Validation
 
-Validated against 31 experimental data points from three independent datasets:
+### What the in-repo tests check
 
-| Dataset | Loading | Cases | Pass | MAE |
-|---------|---------|-------|------|-----|
-| Elhajjar (2025) | Compression | 13 | 11/13 | 9.9% |
-| Elhajjar (2025) | Tension | 7 | 7/7 | 6.2% |
-| Mukhopadhyay (2015) | Compression | 3 | 3/3 | 17.4% |
-| Mukhopadhyay (2015) | Tension | 3 | 3/3 | 12.1% |
-| Li et al. (2026) | Compression | 5 | 4/5 | 8.6% |
-| **Total** | | **31** | **28/31** | **9.5%** |
+The integration tests under `tests/test_integration/` exercise the full
+`WrinkleAnalysis` pipeline and assert physical-sanity properties of the
+analytical knockdown rather than reproducing absolute experimental
+strengths:
+
+- `test_elhajjar_validation.py` (10 tests): zero-amplitude returns
+  knockdown ≈ 1, knockdown decreases monotonically with amplitude,
+  morphology ordering convex > stack > concave in compression, knockdown
+  stays in `(0, 1]`, and strength equals `Xc * knockdown`.
+- `test_tension_validation.py` (13 tests): tension pipeline completes,
+  uses `Xt` (not `Xc`), three-mechanism (`kd_fiber`, `kd_matrix`,
+  `kd_oop`) decomposition is populated with the controlling mode, and
+  tension knockdown is no more severe than compression for the same
+  defect.
+
+These act as regression guards on the analytical model. They are not a
+quantitative validation against experimental data: this repository does
+not currently ship the Elhajjar (2025), Mukhopadhyay (2015), or Li et
+al. (2026) experimental data points, nor a script that regenerates
+case-by-case error statistics. (Tracking issue: #22.)
+
+### Quantitative validation against experiment
+
+Comparison of the analytical predictions against published experimental
+data is documented in the accompanying paper:
+
+- Elhajjar, R. (2025). *Fat-tailed failure strength distributions and
+  manufacturing defects in advanced composites.* Scientific Reports,
+  15:25977. https://doi.org/10.1038/s41598-025-25977-3
+
+Additional datasets referenced by the model calibration (Mukhopadhyay
+et al., 2015; Li et al., 2026) are cited in [References](#references)
+below. Reproducing case-level pass/fail tables from this repository
+alone is not currently possible — the raw data and regeneration script
+are not included.
 
 ## How It Works
 
