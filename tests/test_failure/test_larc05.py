@@ -308,3 +308,94 @@ class TestLaRC05MonotonicityAndReserve:
                 assert result.reserve_factor == pytest.approx(
                     1.0 / result.index, rel=1e-12
                 )
+
+
+# ======================================================================
+# Context override must not mutate criterion state (issue #192)
+# ======================================================================
+
+class TestLaRC05PlyThicknessOverrideIsLocal:
+    """Pin the fix for #192: ``context['ply_thickness']`` must be treated
+    as a local effective value.  It must not be written onto the criterion
+    instance, otherwise the override silently leaks into subsequent calls
+    that omit the override -- a call-order-dependent bug that also makes
+    a single ``LaRC05Criterion`` instance unsafe to share across threads
+    or across an ``evaluate_field`` sweep over a thick/thin ply mix.
+    """
+
+    def test_override_does_not_mutate_instance(self, criterion, material):
+        original = criterion.ply_thickness
+        stress = np.array([0.0, 0.5 * material.Yt, 0.0, 0.0, 0.0, 0.0])
+        criterion.evaluate(stress, material, {"ply_thickness": 0.30})
+        assert criterion.ply_thickness == original
+
+    def test_override_then_no_context_matches_isolated_calls(
+        self, criterion, material
+    ):
+        """A call with an override followed by a call without context must
+        return the same FI as if each were called on a fresh criterion.
+        Before the fix the second call inherited 0.30 mm via mutated
+        ``self.ply_thickness``, so its in-situ strengths (and therefore
+        the matrix FI) silently shifted."""
+        stress = np.array([0.0, 0.5 * material.Yt, 0.0, 0.0, 0.0, 0.0])
+
+        # Reference values from *isolated* (fresh-instance) calls.
+        fi_with_override_ref = LaRC05Criterion().evaluate(
+            stress, material, {"ply_thickness": 0.30}
+        ).index
+        fi_default_ref = LaRC05Criterion().evaluate(stress, material).index
+
+        # Interleaved on a single shared instance.
+        fi_with_override = criterion.evaluate(
+            stress, material, {"ply_thickness": 0.30}
+        ).index
+        fi_default = criterion.evaluate(stress, material).index
+
+        assert fi_with_override == pytest.approx(
+            fi_with_override_ref, rel=1e-12
+        )
+        assert fi_default == pytest.approx(fi_default_ref, rel=1e-12)
+
+    def test_override_does_not_corrupt_in_situ_branch_for_thick_ply(
+        self, criterion, material
+    ):
+        """A thick-ply override (>= 2*t_ref) toggles the in-situ branch.
+        Before the fix, calling with the thick override would leave
+        ``self.ply_thickness`` thick, so a subsequent thin-ply call would
+        misread the ``is_thin`` flag and skip the in-situ correction.
+        """
+        # 2 * t_ref triggers the thick-ply (no-correction) branch.
+        t_thick = 2.0 * criterion.t_ref + 0.05
+        stress = np.array([0.0, material.Yt, 0.0, 0.0, 0.0, 0.0])
+
+        # Thick override -> uses raw Yt -> FI = 1.0 at sigma_22 = Yt.
+        fi_thick = criterion.evaluate(
+            stress, material, {"ply_thickness": t_thick}
+        ).index
+        assert fi_thick == pytest.approx(1.0, rel=1e-6)
+
+        # Same criterion, no override -> default (thin) in-situ branch
+        # must still apply -> FI strictly below 1.0 at sigma_22 = Yt.
+        fi_default = criterion.evaluate(stress, material).index
+        assert fi_default < 1.0
+
+    def test_in_situ_strengths_accepts_thickness_parameter(
+        self, criterion, material
+    ):
+        """The in-situ strengths must be derivable from an explicit
+        effective-thickness argument, not only from instance state."""
+        # Passing the instance value explicitly must reproduce the
+        # default-argument result.
+        Yt_default, S12_default = criterion._in_situ_strengths(material)
+        Yt_param, S12_param = criterion._in_situ_strengths(
+            material, criterion.ply_thickness
+        )
+        assert Yt_param == pytest.approx(Yt_default, rel=1e-12)
+        assert S12_param == pytest.approx(S12_default, rel=1e-12)
+
+        # Passing a thick override must switch off the thin-ply
+        # correction (Yt_is collapses back to raw Yt).
+        Yt_thick, _ = criterion._in_situ_strengths(
+            material, 2.0 * criterion.t_ref + 0.05
+        )
+        assert Yt_thick == pytest.approx(material.Yt, rel=1e-12)
