@@ -313,10 +313,16 @@ class AnalysisConfig:
     angles : list[float] or None
         Ply angles in degrees.  ``None`` uses a quasi-isotropic
         ``[0/45/-45/90]_3s`` layup (24 plies).
-    interface_1 : int
-        Ply interface for the first wrinkle.  Default 11.
-    interface_2 : int
-        Ply interface for the second wrinkle.  Default 12.
+    interface_1 : int or None
+        Ply interface for the first wrinkle.  ``None`` (default) resolves
+        to the midplane, ``(n_plies // 2) - 1``, so the wrinkle sits just
+        below the midplane regardless of layup length.  For the default
+        24-ply layup this is 11.
+    interface_2 : int or None
+        Ply interface for the second wrinkle.  ``None`` (default) resolves
+        to the midplane, ``n_plies // 2``, so the wrinkle sits just above
+        the midplane regardless of layup length.  For the default 24-ply
+        layup this is 12.
     nx : int
         Mesh divisions in x.  Default 12.
     ny : int
@@ -371,8 +377,12 @@ class AnalysisConfig:
     ply_thickness: float = 0.183  # mm (1 ply thickness for CYCOM X850/T800)
 
     # Wrinkle placement
-    interface_1: int = 11
-    interface_2: int = 12
+    # None → midplane (resolved in __post_init__ once `angles` is known),
+    # so the defaults track the layup length instead of being pinned to
+    # the 24-ply quasi-isotropic default.  Explicit ints are validated
+    # against the layup as before.
+    interface_1: Optional[int] = None
+    interface_2: Optional[int] = None
 
     # Mesh
     nx: int = 12
@@ -409,6 +419,16 @@ class AnalysisConfig:
             # Quasi-isotropic [0/45/-45/90]_3s → 24 plies
             base = [0, 45, -45, 90]
             self.angles = (base * 3) + list(reversed(base * 3))
+
+        # Interface defaults: straddle the midplane of the resolved layup
+        # so users who override `angles` with a shorter stack don't trip
+        # the validator below.  For the default 24-ply layup this still
+        # gives (11, 12), matching the previous hard-coded defaults.
+        n_plies = len(self.angles)
+        if self.interface_1 is None:
+            self.interface_1 = (n_plies // 2) - 1
+        if self.interface_2 is None:
+            self.interface_2 = n_plies // 2
 
         self._validate()
 
