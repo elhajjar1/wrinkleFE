@@ -500,10 +500,26 @@ class WrinkleConfiguration:
         The decay is 1.0 at the wrinkle interface plies (``p == k`` and
         ``p == k + 1``), 0.0 at the laminate outer surfaces (``p == 0``
         and ``p == n_plies - 1``), and interpolates linearly in between.
+        Specifically:
 
-        Degenerate cases where the wrinkle interface coincides with an
-        outer surface (``k == 0`` or ``k + 1 == n_plies - 1``) collapse
-        to: 1.0 only on the interface ply, 0.0 elsewhere.
+        - For ``p <= k``: ``decay = p / k`` (so ``p=0 -> 0``, ``p=k -> 1``).
+        - For ``p > k``:  ``decay = (n_plies - 1 - p) / ((n_plies - 1) - (k + 1))``
+          (so ``p=k+1 -> 1``, ``p=n_plies-1 -> 0``).
+
+        Both call sites (:meth:`apply_to_nodes` and
+        :meth:`fiber_angles_at_nodes`) MUST use this helper so the
+        displacement field and the local fibre-angle field share one
+        through-thickness profile (issues #17, #18).
+
+        Degenerate edge cases:
+
+        - If ``n_plies <= 1`` the helper returns 1.0 (single-ply laminate).
+        - If ``k == 0`` (wrinkle at the bottom outer surface) the ``p <= k``
+          branch collapses to ``1.0 at p=0``; the ``p > k`` side uses the
+          normal top ramp ``(n_plies - 1 - p) / ((n_plies - 1) - 1)``.
+        - If ``k + 1 == n_plies - 1`` (wrinkle at the top outer surface)
+          the ``p > k`` branch collapses to ``1.0 at p=k+1``; the ``p <= k``
+          side uses the normal bottom ramp ``p / k``.
         """
         if n_plies <= 1:
             return 1.0
