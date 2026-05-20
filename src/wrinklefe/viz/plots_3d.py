@@ -61,14 +61,27 @@ if TYPE_CHECKING:
 
 # Each hex8 element has 6 faces, each defined by 4 node local indices.
 # Node ordering: bottom CCW (0,1,2,3), top CCW (4,5,6,7).
-_HEX_FACES = [
-    [0, 1, 2, 3],  # bottom (-z)
-    [4, 5, 6, 7],  # top (+z)
-    [0, 1, 5, 4],  # front (-y)
-    [2, 3, 7, 6],  # back (+y)
-    [0, 3, 7, 4],  # left (-x)
-    [1, 2, 6, 5],  # right (+x)
-]
+#
+# Face index convention used throughout this module (must stay aligned
+# with ``_HEX_FACE_AXIS`` and ``_HEX_FACE_SIDE`` below):
+#   0: -z (bottom), 1: +z (top), 2: -y (front), 3: +y (back),
+#   4: -x (left),   5: +x (right)
+_HEX_FACES = np.array(
+    [
+        [0, 1, 2, 3],  # 0: bottom (-z)
+        [4, 5, 6, 7],  # 1: top (+z)
+        [0, 1, 5, 4],  # 2: front (-y)
+        [2, 3, 7, 6],  # 3: back (+y)
+        [0, 3, 7, 4],  # 4: left (-x)
+        [1, 2, 6, 5],  # 5: right (+x)
+    ],
+    dtype=np.int64,
+)
+
+# For each face index above: which structured-grid axis it lies on
+# (0 = i / x, 1 = j / y, 2 = k / z) and which side ("min" = -, "max" = +).
+_HEX_FACE_AXIS = np.array([2, 2, 1, 1, 0, 0], dtype=np.int64)
+_HEX_FACE_SIDE = np.array([0, 1, 0, 1, 0, 1], dtype=np.int64)  # 0 = min, 1 = max
 
 
 # ======================================================================
@@ -100,36 +113,160 @@ def _sample_elements(mesh: "MeshData", max_elements: int = 2000) -> np.ndarray:
     return np.arange(0, n_elem, step)
 
 
-def _collect_faces(
+def _is_full_structured_set(mesh: "MeshData", elem_indices: np.ndarray) -> bool:
+    """Return True if ``elem_indices`` covers the full structured mesh.
+
+    The fast structured-mesh boundary-culling shortcut is only valid when
+    we are rendering every element in the natural ``(i, j, k)`` order; any
+    sampling / cropping creates "holes" that the structured rule cannot
+    detect, so the caller must fall back to the general algorithm.
+    """
+    nx = getattr(mesh, "nx", None)
+    ny = getattr(mesh, "ny", None)
+    nz = getattr(mesh, "nz", None)
+    if nx is None or ny is None or nz is None:
+        return False
+    expected = int(nx) * int(ny) * int(nz)
+    if expected != mesh.n_elements:
+        return False
+    if elem_indices.size != expected:
+        return False
+    # _create_hex_connectivity ravels (k, j, i) so flat index 0..N-1 is the
+    # natural order; we accept the trivial arange(N) covering the full mesh.
+    if elem_indices[0] != 0 or elem_indices[-1] != expected - 1:
+        return False
+    # Cheap monotonicity check (avoid full equality on large arrays).
+    return bool(np.array_equal(elem_indices, np.arange(expected)))
+
+
+def _structured_boundary_mask(mesh: "MeshData") -> np.ndarray:
+    """Boolean mask over ``(n_elements, 6)`` marking boundary faces.
+
+    Uses the structured-grid rule: face ``f`` of element ``(i, j, k)`` is
+    on the domain boundary iff its grid index along the face's axis is
+    ``0`` (for ``-`` faces) or ``n_axis - 1`` (for ``+`` faces).
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(n_elements, 6)`` boolean array.
+    """
+    nx, ny, nz = int(mesh.nx), int(mesh.ny), int(mesh.nz)
+    # Element flat index = k*(ny*nx) + j*nx + i  (see _create_hex_connectivity)
+    flat = np.arange(nx * ny * nz, dtype=np.int64)
+    ii = flat % nx
+    jj = (flat // nx) % ny
+    kk = flat // (nx * ny)
+
+    grid = np.stack([ii, jj, kk], axis=1)            # (N, 3)
+    axis_size = np.array([nx, ny, nz], dtype=np.int64)
+
+    # For each of the 6 faces, look up the element's index on that face's
+    # axis and compare against either 0 (min side) or n-1 (max side).
+    coord_on_axis = grid[:, _HEX_FACE_AXIS]           # (N, 6)
+    max_on_axis = axis_size[_HEX_FACE_AXIS] - 1       # (6,)
+    is_min_face = (_HEX_FACE_SIDE == 0)               # (6,) bool
+    boundary = np.where(
+        is_min_face[np.newaxis, :],
+        coord_on_axis == 0,
+        coord_on_axis == max_on_axis[np.newaxis, :],
+    )
+    return boundary
+
+
+def _general_boundary_mask(
+    mesh: "MeshData", elem_indices: np.ndarray
+) -> np.ndarray:
+    """Boolean mask over ``(len(elem_indices), 6)`` for arbitrary subsets.
+
+    A face is on the boundary iff its sorted node-id tuple appears in the
+    subset exactly once.  This handles sampled / cropped / cutaway meshes
+    where the structured shortcut would be incorrect.
+    """
+    if elem_indices.size == 0:
+        return np.zeros((0, 6), dtype=bool)
+
+    # (n_sub, 6, 4) node ids per face for each selected element.
+    conn = mesh.elements[elem_indices]                # (n_sub, 8)
+    face_nodes = conn[:, _HEX_FACES]                  # (n_sub, 6, 4)
+
+    # Sort node ids within each face so shared faces hash identically.
+    face_keys = np.sort(face_nodes, axis=2)           # (n_sub, 6, 4)
+    flat_keys = face_keys.reshape(-1, 4)              # (n_sub*6, 4)
+
+    # Identify unique faces and how many elements claim each one.
+    _, inverse, counts = np.unique(
+        flat_keys, axis=0, return_inverse=True, return_counts=True
+    )
+    boundary_flat = counts[inverse] == 1
+    return boundary_flat.reshape(elem_indices.size, 6)
+
+
+def _gather_boundary_faces(
     mesh: "MeshData",
     elem_indices: np.ndarray,
-    nodes: Optional[np.ndarray] = None,
-) -> list[np.ndarray]:
-    """Collect face vertex arrays for a set of elements.
+    nodes: np.ndarray,
+    elem_scalar: Optional[np.ndarray] = None,
+) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    """Return boundary-face vertices (and optional per-face scalars).
+
+    Combines structured-mesh culling (when the full mesh is selected) with
+    a general face-counting fallback, and vectorizes the face-vertex
+    gather so we never iterate Python-side over elements.
 
     Parameters
     ----------
     mesh : MeshData
         The finite element mesh.
     elem_indices : np.ndarray
-        Element indices to include.
-    nodes : np.ndarray, optional
-        Node coordinates to use. If ``None``, uses ``mesh.nodes``.
+        Element indices to include (output of :func:`_sample_elements`).
+    nodes : np.ndarray
+        Node coordinates of shape ``(n_nodes, 3)`` — typically the
+        (possibly deformed) coordinates used for rendering.
+    elem_scalar : np.ndarray, optional
+        Shape ``(n_elements,)`` per-element scalar (e.g. mean stress).
+        If given, the returned scalar array is per-boundary-face,
+        broadcasting the element value onto all of its boundary faces.
 
     Returns
     -------
-    list of np.ndarray
-        Each entry is shape ``(4, 3)`` -- the four vertices of a face.
+    face_verts : np.ndarray
+        Shape ``(n_boundary_faces, 4, 3)``.
+    face_scalar : np.ndarray or None
+        Shape ``(n_boundary_faces,)`` if ``elem_scalar`` was provided.
     """
-    if nodes is None:
-        nodes = mesh.nodes
-    faces = []
-    for eid in elem_indices:
-        conn = mesh.elements[eid]
-        for face_local in _HEX_FACES:
-            verts = nodes[conn[face_local]]  # (4, 3)
-            faces.append(verts)
-    return faces
+    if elem_indices.size == 0:
+        return np.empty((0, 4, 3), dtype=nodes.dtype), (
+            None if elem_scalar is None else np.empty((0,), dtype=float)
+        )
+
+    if _is_full_structured_set(mesh, elem_indices):
+        mask = _structured_boundary_mask(mesh)        # (n_elem, 6)
+        # Sub-selection follows elem_indices (which equals arange(N)).
+        sub_conn = mesh.elements                      # (n_elem, 8)
+    else:
+        mask = _general_boundary_mask(mesh, elem_indices)
+        sub_conn = mesh.elements[elem_indices]        # (n_sub, 8)
+
+    # Vectorized vertex gather: (n_sub, 6, 4) node ids -> (n_sub, 6, 4, 3) coords
+    face_nodes = sub_conn[:, _HEX_FACES]              # (n_sub, 6, 4)
+    face_verts_all = nodes[face_nodes]                # (n_sub, 6, 4, 3)
+
+    face_verts = face_verts_all[mask]                 # (n_bnd, 4, 3)
+
+    face_scalar: Optional[np.ndarray] = None
+    if elem_scalar is not None:
+        if _is_full_structured_set(mesh, elem_indices):
+            elem_vals = elem_scalar
+        else:
+            elem_vals = elem_scalar[elem_indices]
+        # Broadcast each element's value over its 6 faces, then mask.
+        scalar_per_face = np.broadcast_to(
+            elem_vals[:, np.newaxis], (elem_vals.shape[0], 6)
+        )
+        face_scalar = scalar_per_face[mask].astype(float, copy=False)
+
+    return face_verts, face_scalar
 
 
 # ======================================================================
@@ -173,11 +310,12 @@ def plot_mesh_3d(
         return ax
 
     elem_idx = _sample_elements(mesh, max_elements)
-    faces = _collect_faces(mesh, elem_idx)
+    # Cull interior (shared) faces and assemble vertex array vectorized.
+    face_verts, _ = _gather_boundary_faces(mesh, elem_idx, mesh.nodes)
 
     edge_color = "0.3" if show_edges else "none"
     poly = Poly3DCollection(
-        faces,
+        face_verts,
         facecolors=(0.7, 0.85, 1.0, face_alpha),
         edgecolors=edge_color,
         linewidths=0.2,
@@ -255,18 +393,22 @@ def plot_displacement_3d(
 
     elem_idx = _sample_elements(mesh, max_elements)
 
-    # Compute face colors from average node values
-    face_verts = []
-    face_values = []
-    for eid in elem_idx:
-        conn = mesh.elements[eid]
-        for face_local in _HEX_FACES:
-            face_nodes = conn[face_local]
-            verts = deformed_nodes[face_nodes]
-            face_verts.append(verts)
-            face_values.append(np.mean(node_scalar[face_nodes]))
+    # Cull interior faces and gather boundary-face vertices vectorized.
+    face_verts, _ = _gather_boundary_faces(mesh, elem_idx, deformed_nodes)
 
-    face_values = np.array(face_values)
+    # For the per-face scalar we average the node scalar over the 4 face
+    # nodes.  Reconstruct the same boundary mask used inside
+    # ``_gather_boundary_faces`` and apply it to the (n_sub, 6) array of
+    # mean-node-scalar values.
+    if _is_full_structured_set(mesh, elem_idx):
+        _mask = _structured_boundary_mask(mesh)
+        _sub_conn = mesh.elements
+    else:
+        _mask = _general_boundary_mask(mesh, elem_idx)
+        _sub_conn = mesh.elements[elem_idx]
+    _face_node_ids = _sub_conn[:, _HEX_FACES]            # (n_sub, 6, 4)
+    _face_mean = node_scalar[_face_node_ids].mean(axis=2)  # (n_sub, 6)
+    face_values = _face_mean[_mask].astype(float, copy=False)
     vmin = face_values.min()
     vmax = face_values.max()
     if abs(vmax - vmin) < 1e-15:
@@ -380,18 +522,14 @@ def plot_stress_contour_3d(
 
     elem_idx = _sample_elements(mesh, max_elements)
 
-    face_verts = []
-    face_values = []
-    for eid in elem_idx:
-        conn = mesh.elements[eid]
-        s_val = elem_stress[eid]
-        for face_local in _HEX_FACES:
-            face_nodes = conn[face_local]
-            verts = deformed_nodes[face_nodes]
-            face_verts.append(verts)
-            face_values.append(s_val)
-
-    face_values = np.array(face_values)
+    # Cull interior (shared) faces and broadcast each element's stress onto
+    # its surviving boundary faces in a single vectorized pass.
+    face_verts, face_values = _gather_boundary_faces(
+        mesh, elem_idx, deformed_nodes, elem_scalar=elem_stress
+    )
+    # ``_gather_boundary_faces`` returns ``None`` only when no elem_scalar was
+    # supplied; here we always supplied one.
+    assert face_values is not None
     vmin = face_values.min()
     vmax = face_values.max()
     if abs(vmax - vmin) < 1e-15:
@@ -505,17 +643,20 @@ def plot_buckling_mode(
 
     elem_idx = _sample_elements(mesh, max_elements)
 
-    face_verts = []
-    face_values = []
-    for eid in elem_idx:
-        conn = mesh.elements[eid]
-        for face_local in _HEX_FACES:
-            face_nodes = conn[face_local]
-            verts = deformed_nodes[face_nodes]
-            face_verts.append(verts)
-            face_values.append(np.mean(uz[face_nodes]))
+    # Cull interior faces and gather boundary-face vertices vectorized.
+    face_verts, _ = _gather_boundary_faces(mesh, elem_idx, deformed_nodes)
 
-    face_values = np.array(face_values)
+    # Per-face scalar = average of uz at the 4 face nodes, computed on the
+    # same (n_sub, 6) lattice and then masked down to boundary faces.
+    if _is_full_structured_set(mesh, elem_idx):
+        _mask = _structured_boundary_mask(mesh)
+        _sub_conn = mesh.elements
+    else:
+        _mask = _general_boundary_mask(mesh, elem_idx)
+        _sub_conn = mesh.elements[elem_idx]
+    _face_node_ids = _sub_conn[:, _HEX_FACES]
+    _face_mean = uz[_face_node_ids].mean(axis=2)
+    face_values = _face_mean[_mask].astype(float, copy=False)
     vmin = face_values.min()
     vmax = face_values.max()
     if abs(vmax - vmin) < 1e-15:
