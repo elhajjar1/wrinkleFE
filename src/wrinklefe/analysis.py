@@ -313,10 +313,17 @@ class AnalysisConfig:
     angles : list[float] or None
         Ply angles in degrees.  ``None`` uses a quasi-isotropic
         ``[0/45/-45/90]_3s`` layup (24 plies).
-    interface_1 : int
-        Ply interface for the first wrinkle.  Default 11.
-    interface_2 : int
-        Ply interface for the second wrinkle.  Default 12.
+    interface_1 : int or None
+        Ply interface for the first wrinkle.  ``None`` (default) auto-
+        derives an interior interface from the resolved layup so small
+        laminates (< 13 plies) work out of the box: ``interface_1 =
+        max(0, n_plies // 2 - 1)``.  For the default 24-ply layup this
+        resolves to ``11`` (backwards-compatible).
+    interface_2 : int or None
+        Ply interface for the second wrinkle.  ``None`` (default) auto-
+        derives ``interface_2 = min(n_plies - 1, n_plies // 2)``.  For
+        the default 24-ply layup this resolves to ``12``
+        (backwards-compatible).
     nx : int
         Mesh divisions in x.  Default 12.
     ny : int
@@ -370,9 +377,12 @@ class AnalysisConfig:
     # Ply thickness
     ply_thickness: float = 0.183  # mm (1 ply thickness for CYCOM X850/T800)
 
-    # Wrinkle placement
-    interface_1: int = 11
-    interface_2: int = 12
+    # Wrinkle placement. ``None`` triggers auto-derivation in
+    # ``__post_init__`` from ``len(angles)`` so small laminates work out
+    # of the box (issues #154/#156). For the default 24-ply layup the
+    # auto-derived pair is (11, 12), preserving backwards compatibility.
+    interface_1: Optional[int] = None
+    interface_2: Optional[int] = None
 
     # Mesh
     nx: int = 12
@@ -409,6 +419,21 @@ class AnalysisConfig:
             # Quasi-isotropic [0/45/-45/90]_3s → 24 plies
             base = [0, 45, -45, 90]
             self.angles = (base * 3) + list(reversed(base * 3))
+
+        # Auto-derive interior interface indices when the user did not
+        # specify them. The two interfaces sit symmetrically about the
+        # mid-thickness, so for the default 24-ply layup this resolves
+        # to (11, 12) — i.e. backwards-compatible with the previous
+        # hard-coded dataclass defaults. For small layups (< 13 plies)
+        # it picks valid in-range indices instead of crashing in
+        # ``_validate`` (issues #154 / #156).
+        n_plies = len(self.angles) if self.angles is not None else 0
+        if n_plies > 0:
+            mid = n_plies // 2
+            if self.interface_1 is None:
+                self.interface_1 = max(0, mid - 1)
+            if self.interface_2 is None:
+                self.interface_2 = min(n_plies - 1, mid)
 
         self._validate()
 
