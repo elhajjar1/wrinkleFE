@@ -52,6 +52,15 @@ pytest
 
 To add a new material to the built-in library, add an entry in `src/wrinklefe/core/material.py` in the `_load_builtins()` method. Include all elastic constants, strength allowables, and a literature reference.
 
+For one-off or ad-hoc materials you do not need to modify source — turn on
+**Expert mode** in the Streamlit app and pick **Custom…** from the
+**Material** selectbox. The inline editor exposes E1/E2/E3, G12/G13/G23,
+ν12/ν13/ν23 and the Xt/Xc/Yt/Yc/Zt/Zc/S12/S13/S23 allowables, seeded from
+IM7/8552. Custom materials are scoped to the current Streamlit session and
+do not persist; use the source-level workflow above for anything you want
+to keep. See [`DEPLOYMENT_STREAMLIT.md`](DEPLOYMENT_STREAMLIT.md) for a
+full feature tour.
+
 ## Questions
 
 For questions about the science or implementation, open a GitHub issue with the "question" label.
