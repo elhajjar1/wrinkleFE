@@ -136,12 +136,25 @@ class LaRC05Criterion(FailureCriterion):
     # ------------------------------------------------------------------
 
     def _in_situ_strengths(
-        self, material: OrthotropicMaterial
+        self,
+        material: OrthotropicMaterial,
+        ply_thickness: Optional[float] = None,
     ) -> tuple[float, float]:
         """Compute in-situ transverse tensile and shear strengths.
 
         Uses fracture-toughness-based corrections when GIc/GIIc are
         available; falls back to simplified 1.12√2 factors otherwise.
+
+        Parameters
+        ----------
+        material : OrthotropicMaterial
+            Material with elastic and fracture-toughness properties.
+        ply_thickness : float, optional
+            Effective ply thickness (mm) to use for the in-situ
+            correction.  If ``None`` (the default), falls back to the
+            instance attribute ``self.ply_thickness``.  Passing this
+            explicitly lets a per-element override be threaded through
+            ``evaluate`` without mutating instance state (see #192).
 
         Returns
         -------
@@ -150,7 +163,8 @@ class LaRC05Criterion(FailureCriterion):
         S12_is : float
             In-situ in-plane shear strength (MPa).
         """
-        is_thin = self.ply_thickness < 2.0 * self.t_ref
+        t = self.ply_thickness if ply_thickness is None else ply_thickness
+        is_thin = t < 2.0 * self.t_ref
 
         if material.GIc is not None and material.GIIc is not None and is_thin:
             # Fracture-toughness-based (Camanho et al. 2006)
@@ -159,7 +173,6 @@ class LaRC05Criterion(FailureCriterion):
             Lambda_22 = 2.0 * (1.0 / material.E2 - nu21 ** 2 / material.E1)
             Lambda_44 = 1.0 / material.G12
 
-            t = self.ply_thickness
             Yt_is = np.sqrt(8.0 * material.GIc / (np.pi * t * Lambda_22))
             S12_is = np.sqrt(8.0 * material.GIIc / (np.pi * t * Lambda_44))
 
@@ -437,15 +450,18 @@ class LaRC05Criterion(FailureCriterion):
         stress_local = np.asarray(stress_local, dtype=np.float64)
         s1 = stress_local[0]
 
-        # Extract context
+        # Extract context.  Treat the ply-thickness override as a local
+        # value so concurrent / interleaved evaluate() calls do not
+        # corrupt the instance state (see #192).
         phi_0 = 0.0
+        t_eff = self.ply_thickness
         if context is not None:
             phi_0 = context.get("misalignment_angle", 0.0)
             t_override = context.get("ply_thickness", None)
             if t_override is not None:
-                self.ply_thickness = t_override
+                t_eff = t_override
 
-        Yt_is, S12_is = self._in_situ_strengths(material)
+        Yt_is, S12_is = self._in_situ_strengths(material, t_eff)
 
         # --- Fibre failure ---
         if s1 >= 0:
