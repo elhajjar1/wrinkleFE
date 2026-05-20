@@ -851,7 +851,6 @@ if run_clicked or _demo_pending:
                 # Never let progress reporting break the analysis.
                 pass
 
-        global _PROGRESS_CALLBACK
         _PROGRESS_CALLBACK = _progress_cb
         try:
             results = run_analysis_cached(cfg_payload)
