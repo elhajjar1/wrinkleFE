@@ -30,6 +30,10 @@ dependencies = [
     "pyvista>=0.42",
 ]
 
+# Note: wrinklefe is Streamlit-first / CLI-only and has no desktop GUI code.
+# pyvistaqt and PyQt6 are intentionally NOT listed (including not in any extra)
+# so plain `pip install wrinklefe` produces a headless-safe environment. See
+# requirements.txt for the rationale.
 [project.optional-dependencies]
 export = ["meshio>=5.3"]
 dev = [
