@@ -36,25 +36,52 @@ HEX_FACES: np.ndarray = np.array(
 def boundary_faces(elements: np.ndarray) -> np.ndarray:
     """Boundary faces of a hex mesh, with parent element id.
 
+    A face is on the boundary iff its sorted node-id tuple appears
+    exactly once across the mesh — i.e. it is not shared with a
+    neighbouring element. Implemented vectorized with NumPy: no Python
+    loops over elements, which keeps the cost dominated by a single
+    ``np.unique`` over ``6 * n_elements`` rows.
+
+    Parameters
+    ----------
+    elements : np.ndarray
+        Shape ``(n_elements, 8)`` hex8 connectivity.
+
     Returns
     -------
-    (n_boundary_faces, 5) array. Columns 0-3 are global node indices in
-    the element's local face ordering; column 4 is the parent element id.
+    np.ndarray
+        ``(n_boundary_faces, 5)`` array.  Columns 0-3 are global node
+        indices in the element's local face ordering (so quad winding
+        is preserved for downstream triangulation); column 4 is the
+        parent element id.
     """
-    face_owners: dict[tuple[int, ...], list[tuple[int, int]]] = {}
-    for ei in range(elements.shape[0]):
-        conn = elements[ei]
-        for fi, face in enumerate(HEX_FACES):
-            key = tuple(sorted(int(v) for v in conn[face]))
-            face_owners.setdefault(key, []).append((ei, fi))
+    elements = np.asarray(elements, dtype=np.int64)
+    n_elem = elements.shape[0]
+    if n_elem == 0:
+        return np.empty((0, 5), dtype=np.int64)
 
-    out: list[list[int]] = []
-    for owners in face_owners.values():
-        if len(owners) == 1:
-            ei, fi = owners[0]
-            face = HEX_FACES[fi]
-            out.append([int(elements[ei][n]) for n in face] + [ei])
-    return np.asarray(out, dtype=np.int64)
+    # (n_elem, 6, 4) global node ids per face in local winding order.
+    face_nodes = elements[:, HEX_FACES]
+    # Sort along the 4-node axis so shared faces hash identically
+    # regardless of the two parent elements' local winding.
+    face_keys = np.sort(face_nodes, axis=2).reshape(-1, 4)
+
+    # np.unique on axis=0 sorts rows lexicographically; counts==1 picks
+    # out the unshared (boundary) faces.
+    _, inverse, counts = np.unique(
+        face_keys, axis=0, return_inverse=True, return_counts=True
+    )
+    boundary_flat = counts[inverse] == 1            # (n_elem*6,)
+
+    # Parent element id for each flat face row.
+    elem_ids = np.repeat(np.arange(n_elem, dtype=np.int64), HEX_FACES.shape[0])
+
+    # Keep the original (non-sorted) winding for the boundary faces.
+    flat_nodes = face_nodes.reshape(-1, 4)
+    out = np.empty((int(boundary_flat.sum()), 5), dtype=np.int64)
+    out[:, :4] = flat_nodes[boundary_flat]
+    out[:, 4] = elem_ids[boundary_flat]
+    return out
 
 
 def quads_to_triangles(quad_faces: np.ndarray) -> np.ndarray:
@@ -106,13 +133,26 @@ def mesh3d_figure(
     bf = boundary_faces(elements)
     tri = quads_to_triangles(bf)
 
+    # Trim the vertex payload so Plotly receives ONLY nodes that the
+    # boundary triangles reference; on a structured hex brick this is
+    # O(surface) instead of O(volume).  Re-index the triangle node ids
+    # to point into the compact vertex array.
+    if tri.shape[0] > 0:
+        kept_nodes, remap = np.unique(tri[:, :3].ravel(), return_inverse=True)
+        verts = np.asarray(vertices)[kept_nodes]
+        tri_ijk = remap.reshape(-1, 3).astype(np.int64, copy=False)
+    else:
+        kept_nodes = np.empty(0, dtype=np.int64)
+        verts = np.asarray(vertices)[:0]
+        tri_ijk = np.empty((0, 3), dtype=np.int64)
+
     kwargs: dict = dict(
-        x=vertices[:, 0],
-        y=vertices[:, 1],
-        z=vertices[:, 2],
-        i=tri[:, 0],
-        j=tri[:, 1],
-        k=tri[:, 2],
+        x=verts[:, 0],
+        y=verts[:, 1],
+        z=verts[:, 2],
+        i=tri_ijk[:, 0],
+        j=tri_ijk[:, 1],
+        k=tri_ijk[:, 2],
         flatshading=True,
     )
     if cell_scalar is not None:
@@ -129,8 +169,10 @@ def mesh3d_figure(
             if vmax > 0:
                 kwargs.update(cmin=-vmax, cmax=vmax)
     elif vertex_scalar is not None:
+        # Slice the per-node scalar to match the trimmed vertex array.
+        vs = np.asarray(vertex_scalar)
         kwargs.update(
-            intensity=np.asarray(vertex_scalar),
+            intensity=vs[kept_nodes] if kept_nodes.size else vs[:0],
             intensitymode="vertex",
             colorscale=colorscale,
             colorbar=dict(title=colorbar_title, len=0.7),
