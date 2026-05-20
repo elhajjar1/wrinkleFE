@@ -67,7 +67,6 @@ st.caption(
 
 LIB = MaterialLibrary()
 MATERIAL_NAMES = sorted(LIB.list_names())
-MATERIAL_NAMES = sorted(LIB.list_names())
 MORPHOLOGIES = ["stack", "convex", "concave", "uniform", "graded"]
 
 CUSTOM_MATERIAL_LABEL = "Custom…"

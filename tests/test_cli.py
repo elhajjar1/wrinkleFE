@@ -399,6 +399,63 @@ def test_analyze_invalid_layup_exits_nonzero_with_message(capsys):
     assert "layup" in err.lower()
 
 
+# --------------------------------------------------------------------------- #
+# issues #154 / #156: small layups + explicit --interface-1/--interface-2
+# --------------------------------------------------------------------------- #
+
+
+def test_analyze_small_layup_no_interface_flags_succeeds():
+    """Issue #154: ``analyze --layup '[0/±45/90]s'`` (8 plies) must no
+    longer crash. With auto-derivation in ``AnalysisConfig`` the CLI now
+    runs successfully without the user having to supply interface flags.
+    """
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze",
+            "--layup", "[0/±45/90]s",
+            "--analytical-only",
+        ])
+
+    cfg = captured["config"]
+    # 8-ply layup auto-derives to (3, 4) and both must satisfy the
+    # validator (which previously rejected the hard-coded 11/12).
+    assert len(cfg.angles) == 8
+    assert cfg.interface_1 == 3
+    assert cfg.interface_2 == 4
+
+
+def test_analyze_interface_flags_override_auto_derivation():
+    """Issue #154: ``--interface-1`` / ``--interface-2`` flags exist on
+    ``analyze`` and override the auto-derived defaults."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze",
+            "--layup", "[0/90]_4",
+            "--interface-1", "2",
+            "--interface-2", "3",
+            "--analytical-only",
+        ])
+
+    cfg = captured["config"]
+    assert cfg.interface_1 == 2
+    assert cfg.interface_2 == 3
+
+
+def test_analyze_24_ply_default_interfaces_unchanged():
+    """The canonical 24-ply default layup still resolves to (11, 12) —
+    backwards-compat with the pre-#154 hard-coded dataclass defaults."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main(["analyze", "--analytical-only"])
+
+    cfg = captured["config"]
+    assert len(cfg.angles) == 24
+    assert cfg.interface_1 == 11
+    assert cfg.interface_2 == 12
+
+
 def test_sweep_accepts_graded_morphology():
     """sweep --morphology graded must be accepted (was argparse-rejected)."""
     captured: dict = {}

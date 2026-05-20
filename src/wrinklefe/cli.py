@@ -97,6 +97,22 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_analyze.add_argument(
+        "--interface-1", type=int, default=None, dest="interface_1",
+        help=(
+            "Zero-based ply interface index for the first wrinkle. "
+            "Must satisfy 0 <= index < n_plies. When omitted, auto-"
+            "derived from the layup (mid-thickness interior interface)."
+        ),
+    )
+    p_analyze.add_argument(
+        "--interface-2", type=int, default=None, dest="interface_2",
+        help=(
+            "Zero-based ply interface index for the second wrinkle. "
+            "Must satisfy 0 <= index < n_plies. When omitted, auto-"
+            "derived from the layup (mid-thickness interior interface)."
+        ),
+    )
+    p_analyze.add_argument(
         "--nx", type=int, default=12,
         help="Mesh divisions in x (default: 12)",
     )
@@ -306,6 +322,8 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         loading=args.loading,
         material=material,
         angles=angles,
+        interface_1=args.interface_1,
+        interface_2=args.interface_2,
         nx=args.nx,
         ny=args.ny,
         applied_strain=args.strain,

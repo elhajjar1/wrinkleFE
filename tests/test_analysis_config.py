@@ -163,3 +163,66 @@ def test_explicit_phase_does_not_require_dual_wrinkle_name():
     AnalysisConfig(phase=1.0, morphology="uniform")
     with pytest.raises(ValueError, match=r"morphology must be one of"):
         AnalysisConfig(phase=1.0, morphology="bogus")
+
+
+# ----------------------------------------------------------------------
+# Auto-derived interface indices (issues #154 / #156)
+# ----------------------------------------------------------------------
+
+def test_default_interfaces_24_ply_unchanged():
+    """Default 24-ply layup must still resolve to (11, 12).
+
+    Backwards-compat guard: the auto-derivation formula was chosen so
+    that the previous hard-coded ``interface_1=11, interface_2=12``
+    defaults are preserved exactly for the canonical 24-ply layup.
+    """
+    cfg = AnalysisConfig(angles=[0] * 24)
+    assert cfg.interface_1 == 11
+    assert cfg.interface_2 == 12
+
+
+def test_default_interfaces_default_layup_unchanged():
+    """Default (None) layup also resolves to (11, 12) — same 24-ply
+    canonical quasi-isotropic stack as before."""
+    cfg = AnalysisConfig()
+    assert cfg.interface_1 == 11
+    assert cfg.interface_2 == 12
+
+
+@pytest.mark.parametrize(
+    "n_plies, expected_i1, expected_i2",
+    [
+        (2, 0, 1),
+        (4, 1, 2),
+        (6, 2, 3),
+        (8, 3, 4),
+        (24, 11, 12),
+    ],
+)
+def test_default_interfaces_small_layups(n_plies, expected_i1, expected_i2):
+    """Small layups (< 13 plies) used to crash on the old hard-coded
+    defaults (11, 12); auto-derivation must now produce in-range
+    interior interfaces for every realistic layup size."""
+    cfg = AnalysisConfig(angles=[0] * n_plies)
+    assert cfg.interface_1 == expected_i1
+    assert cfg.interface_2 == expected_i2
+    # And they must satisfy the same validator that used to reject them.
+    assert 0 <= cfg.interface_1 < n_plies
+    assert 0 <= cfg.interface_2 < n_plies
+
+
+def test_explicit_interfaces_still_validated():
+    """Passing an explicit out-of-range interface still raises
+    ValueError — the validator's behaviour for explicit values is
+    unchanged by the auto-derivation."""
+    with pytest.raises(ValueError, match=r"interface_1 must be in \[0, 8\)"):
+        AnalysisConfig(angles=[0] * 8, interface_1=20)
+    with pytest.raises(ValueError, match=r"interface_2 must be in \[0, 8\)"):
+        AnalysisConfig(angles=[0] * 8, interface_2=8)
+
+
+def test_explicit_interfaces_preserved_when_in_range():
+    """An explicit, in-range interface is preserved verbatim."""
+    cfg = AnalysisConfig(angles=[0] * 8, interface_1=2, interface_2=5)
+    assert cfg.interface_1 == 2
+    assert cfg.interface_2 == 5
