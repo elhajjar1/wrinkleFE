@@ -102,10 +102,37 @@ class TestTsaiHillMixed:
         result = criterion.evaluate(stress, material)
         assert result.index == pytest.approx(expected, rel=1e-10)
 
-    def test_reserve_factor_is_inverse_of_index(self, criterion, material):
+    def test_reserve_factor_is_inverse_sqrt_of_index(self, criterion, material):
+        """Tsai-Hill index is quadratic in stress, so RF = 1/sqrt(FI).
+
+        With sigma_11 = Xt/2, FI = 0.25 and the correct strength ratio
+        (load multiplier to failure) is 2.0.
+        """
         stress = np.array([0.5 * material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0])
         result = criterion.evaluate(stress, material)
-        assert result.reserve_factor == pytest.approx(1.0 / result.index, rel=1e-12)
+        assert result.index == pytest.approx(0.25, rel=1e-12)
+        assert result.reserve_factor == pytest.approx(2.0, rel=1e-12)
+        assert result.reserve_factor == pytest.approx(
+            1.0 / np.sqrt(result.index), rel=1e-12
+        )
+
+    def test_reserve_factor_unity_at_failure_surface(self, criterion, material):
+        """At sigma_11 = Xt the stress state is on the failure surface:
+        FI = 1 and RF = 1."""
+        stress = np.array([material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0])
+        result = criterion.evaluate(stress, material)
+        assert result.index == pytest.approx(1.0, rel=1e-12)
+        assert result.reserve_factor == pytest.approx(1.0, rel=1e-12)
+
+    def test_reserve_factor_scales_linearly_with_load(self, criterion, material):
+        """For any quadratic FI(R) = R^2 * FI(1), RF(R) = RF(1)/R."""
+        base_stress = np.array(
+            [0.3 * material.Xt, 0.2 * material.Yt, 0.0, 0.0, 0.0, 0.1 * material.S12]
+        )
+        scale = 3.0
+        rf_base = criterion.evaluate(base_stress, material).reserve_factor
+        rf_scaled = criterion.evaluate(scale * base_stress, material).reserve_factor
+        assert rf_scaled == pytest.approx(rf_base / scale, rel=1e-12)
 
     def test_criterion_name(self, criterion, material):
         result = criterion.evaluate(np.zeros(6), material)

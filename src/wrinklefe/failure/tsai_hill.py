@@ -112,7 +112,11 @@ class TsaiHillCriterion(FailureCriterion):
         }
         mode = max(mode_terms, key=mode_terms.get)
 
-        rf = 1.0 / fi if fi > 0 else float("inf")
+        # ``fi`` is the quadratic Tsai-Hill invariant (FI=1 at failure, paper
+        # convention).  Every contributing term is purely quadratic in stress,
+        # so under proportional load scaling R the index scales as R^2 * FI(1).
+        # The linear-in-load strength ratio is therefore 1/sqrt(FI), not 1/FI.
+        rf = 1.0 / np.sqrt(fi) if fi > 0 else float("inf")
 
         return FailureResult(
             index=float(fi),
