@@ -50,7 +50,29 @@ Run the test suite:
 pytest
 ```
 
-## Quick Start (Python API)
+## Quick Start
+
+### Streamlit web app
+
+The fastest path is the hosted Streamlit instance — no install, no Python
+required: **<https://wrinklefe.streamlit.app/>**. Pick a material from the
+sidebar (or **Custom…** to enter your own elastic constants and strength
+allowables), enter a layup in contracted notation (e.g. `[0/45/-45/90]_3s`),
+set the wrinkle geometry, and click **Run analysis**. The app ships with
+per-morphology schematic cartoons, a live wrinkle preview, and the same
+analytical + FE pipeline as the Python API. See
+[`DEPLOYMENT_STREAMLIT.md`](DEPLOYMENT_STREAMLIT.md) for the full feature
+tour and instructions for self-hosting.
+
+To run the app locally:
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+streamlit run app.py
+```
+
+### Python API
 
 ```python
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
@@ -164,6 +186,53 @@ et al., 2015; Li et al., 2026) are cited in [References](#references)
 below. Reproducing case-level pass/fail tables from this repository
 alone is not currently possible — the raw data and regeneration script
 are not included.
+
+## Supported morphologies
+
+WrinkleFE ships five wrinkle morphologies (defined in
+`src/wrinklefe/core/morphology.py`). The first three are *dual-wrinkle*
+modes distinguished by the phase offset φ between two adjacent wrinkle
+centrelines; the last two are *single-wrinkle* modes that vary the
+through-thickness amplitude.
+
+- **`stack`** (φ = 0) — peaks aligned. Morphology factor `M_f = 1.0`,
+  used as the baseline.
+- **`convex`** (φ = +π/2) — interface bulges outward. `M_f < 1`; the
+  *least* damaging mode in compression.
+- **`concave`** (φ = −π/2) — interface pinches inward. `M_f > 1`; the
+  *most* damaging mode in compression.
+- **`uniform`** — single wrinkle at full amplitude on every ply through
+  the thickness.
+- **`graded`** — single wrinkle whose amplitude decays from the wrinkle
+  core toward the surfaces, controlled by `decay_floor` (0 = full
+  decay to zero at the surface, 1 = uniform).
+
+## Supported failure criteria
+
+The criteria below live in `src/wrinklefe/failure/` and can be selected
+through `FailureEvaluator` or used independently:
+
+- **LaRC04/05** (`larc05.py`) — Pinho/Camanho 3-D criterion with
+  fibre-kinking under compression, in-situ matrix strengths, and a
+  fracture-plane search. Default for the FE solve.
+- **Tsai-Wu** (`tsai_wu.py`) — 3-D tensor-polynomial criterion with a
+  configurable interaction coefficient.
+- **Tsai-Hill** (`tsai_hill.py`) — 3-D extension of the classical
+  quadratic Tsai-Hill index.
+- **Hashin** (`hashin.py`) — 3-D Hashin criterion with separate
+  fibre-tension/-compression and matrix-tension/-compression modes.
+- **Puck** (`puck.py`) — action-plane (Mode A/B/C) inter-fibre-failure
+  criterion with simplified fibre failure.
+- **Maximum Stress** (`max_stress.py`) and **Maximum Strain**
+  (`max_strain.py`) — non-interactive checks against the principal
+  material-frame allowables.
+- **Budiansky-Fleck kink-band** (`kinkband.py`) — analytical compression
+  knockdown with an optional interlaminar damage coupling
+  (`InterlaminarDamage`); this is the model exposed in the
+  `analytical_knockdown` field of `AnalysisResults`.
+- **Progressive damage** (`progressive.py`) — `PlyDiscount` and
+  `ContinuumDamage` post-failure stiffness reduction models that wrap
+  any of the criteria above.
 
 ## How It Works
 

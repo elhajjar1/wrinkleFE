@@ -108,3 +108,71 @@ Implications for WrinkleFE:
 - Add Streamlit secrets via the Manage panel if the app needs API keys later.
 - Configure a custom domain in Streamlit Cloud's settings.
 - Add CI to run `streamlit run --headless` smoke tests on every PR.
+
+## App features
+
+Once the app is running, the sidebar offers three features worth calling out
+that aren't exposed through the Python API. All three live in `app.py` and
+are available in both the hosted Streamlit instance and a local
+`streamlit run app.py`.
+
+### Morphology schematics
+
+When **Expert mode** is on, the **Morphology** selectbox is followed by a
+live cartoon (rendered by `_morphology_schematic()` in `app.py`) that
+matches the active choice — stack / convex / concave / uniform / graded.
+A `?` popover next to the selector also lists thumbnails of all five so you
+can compare them at a glance without changing the selection. For the
+`graded` mode an additional **Decay floor** slider appears (0 = full decay
+to zero at the surface, 1 = uniform).
+
+Below the morphology cartoon, a separate **wrinkle preview** plot tracks the
+current `amplitude` (`A`), `wavelength` (`λ`), envelope `width` (`w`) and
+`decay_floor` in real time, so you can see the through-thickness profile
+update as you drag the sidebar sliders — no analysis run needed.
+
+### Layup notation (contracted)
+
+The **Layup** textarea accepts either a contracted laminate string or an
+explicit comma/semicolon/newline-separated list of ply angles in degrees.
+Quoting the in-app help text (`app.py:417-436`):
+
+> Accepts contracted notation like `[0/45/-45/90]_3s` or an explicit
+> comma-separated list of angles in degrees.
+
+Modifiers (also from the in-app help):
+
+- `±θ` expands to `θ, -θ` (two plies)
+- `θ_n` repeats a single ply *n* times (e.g. `0_4` → four 0° plies)
+- `_n` after the bracket repeats the whole sublaminate *n* times
+- Trailing `s` mirrors the stack to enforce symmetry
+
+| Contracted input    | Expanded plies                                    | Count |
+|---------------------|---------------------------------------------------|-------|
+| `[0/45/-45/90]_3s`  | `0/45/-45/90` repeated 3× then mirrored (default) | 24    |
+| `[0/±45/90]s`       | `0, 45, -45, 90` mirrored                         | 8     |
+| `[0_2/90]_2`        | `0, 0, 90` repeated twice                         | 6     |
+| `[±30]_2`           | `30, -30` repeated twice                          | 4     |
+
+The default layup is `[0/45/-45/90]_3s` — the 24-ply quasi-isotropic stack.
+Both the contracted and explicit forms can be edited freely in the textarea
+and validated immediately by the plies-count preview below it.
+
+### Custom-material editor
+
+In **Expert mode** the **Material** selectbox gains a `Custom…` entry at
+the bottom. Selecting it opens an inline expander seeded from IM7/8552
+with editable fields for:
+
+- *Elastic constants*: `E1`, `E2`, `E3`, `G12`, `G13`, `G23`, `ν12`,
+  `ν13`, `ν23`
+- *Strength allowables*: `Xt`, `Xc`, `Yt`, `Yc`, `Zt`, `Zc`, `S12`,
+  `S13`, `S23`
+
+Override only the values you care about — every other field
+(hygrothermal coefficients, `γ_Y`, LaRC fracture-toughness parameters) is
+inherited from the seed material. The custom material is named via a
+free-text **Material name** field and used for the current run only;
+**custom materials do not persist across sessions** (the app's filesystem
+is ephemeral on Streamlit Cloud and the session state resets on reload).
+For permanent additions to the library see [CONTRIBUTING.md](CONTRIBUTING.md).
