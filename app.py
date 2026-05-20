@@ -933,28 +933,29 @@ with tab_configure:
     )
 
     if morphology == "graded":
-        try:
-            _angles_preview = parse_layup(layup_str)
-            _n_plies = len(_angles_preview)
-        except Exception:
-            _n_plies = 24
         with st.expander("Through-thickness amplitude profile", expanded=False):
-            ply_idx = np.arange(_n_plies)
-            p_mid = (_n_plies - 1) / 2.0
-            raw = np.maximum(0.0, 1.0 - np.abs(ply_idx - p_mid) / max(p_mid, 1e-9))
-            decay = decay_floor + (1.0 - decay_floor) * raw
-            fig_d, ax_d = plt.subplots(figsize=(4, 3))
-            ax_d.barh(ply_idx, decay, color="#9467bd")
-            ax_d.set_xlabel("Amplitude fraction")
-            ax_d.set_ylabel("Ply index")
-            ax_d.set_xlim(0, 1.05)
-            ax_d.invert_yaxis()
-            fig_d.tight_layout()
-            st.pyplot(fig_d, clear_figure=True)
-            st.caption(
-                f"Decay floor = {decay_floor:.2f}; surface plies retain "
-                f"{decay_floor*100:.0f}% of the wrinkle-core amplitude."
-            )
+            try:
+                _angles_preview = parse_layup(layup_str)
+            except ValueError as e:
+                st.warning(f"Could not parse layup: {e}")
+            else:
+                _n_plies = len(_angles_preview)
+                ply_idx = np.arange(_n_plies)
+                p_mid = (_n_plies - 1) / 2.0
+                raw = np.maximum(0.0, 1.0 - np.abs(ply_idx - p_mid) / max(p_mid, 1e-9))
+                decay = decay_floor + (1.0 - decay_floor) * raw
+                fig_d, ax_d = plt.subplots(figsize=(4, 3))
+                ax_d.barh(ply_idx, decay, color="#9467bd")
+                ax_d.set_xlabel("Amplitude fraction")
+                ax_d.set_ylabel("Ply index")
+                ax_d.set_xlim(0, 1.05)
+                ax_d.invert_yaxis()
+                fig_d.tight_layout()
+                st.pyplot(fig_d, clear_figure=True)
+                st.caption(
+                    f"Decay floor = {decay_floor:.2f}; surface plies retain "
+                    f"{decay_floor*100:.0f}% of the wrinkle-core amplitude."
+                )
 
     with st.expander("Layup stack visualizer", expanded=False):
         try:
