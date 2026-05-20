@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, fields, replace
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -724,7 +724,11 @@ class WrinkleAnalysis:
     # Main entry point
     # ------------------------------------------------------------------
 
-    def run(self, analytical_only: Optional[bool] = None) -> AnalysisResults:
+    def run(
+        self,
+        analytical_only: Optional[bool] = None,
+        progress_callback: Optional[Callable[[str, float], None]] = None,
+    ) -> AnalysisResults:
         """Execute the complete analysis pipeline.
 
         Parameters
@@ -734,6 +738,14 @@ class WrinkleAnalysis:
             solve, failure evaluation, retention factors) and return only
             the analytical predictions.  If None (default), the
             ``AnalysisConfig.analytical_only`` field is used.
+        progress_callback : callable, optional
+            Optional progress reporter invoked at each phase boundary as
+            ``progress_callback(label, fraction)`` where ``label`` is a
+            short human-readable phase name and ``fraction`` is the
+            cumulative completion in ``[0, 1]``.  Defaults to ``None``
+            (no reporting), so non-Streamlit callers (CLI, tests) are
+            unaffected.  The callback always fires at least once with
+            ``fraction == 1.0`` on successful completion.
 
         Steps
         -----
@@ -755,6 +767,23 @@ class WrinkleAnalysis:
         if analytical_only is None:
             analytical_only = cfg.analytical_only
         results = AnalysisResults(config=cfg)
+
+        # Phase weights (sum to 1.0 on the full FE path).  The FE solve
+        # dominates wall-clock for typical mesh densities, so it gets the
+        # largest slice.  In analytical-only mode the analytical step is
+        # rescaled to 1.0 below.
+        #
+        #   build mesh / wrinkle geom : 0.05
+        #   analytical predictions    : 0.05
+        #   FE assembly (mesh build)  : 0.15
+        #   FE solve                  : 0.50
+        #   failure evaluation        : 0.15  (stress recovery + criteria)
+        #   retention factors         : 0.10
+        def _report(label: str, fraction: float) -> None:
+            if progress_callback is not None:
+                progress_callback(label, max(0.0, min(1.0, float(fraction))))
+
+        _report("Building laminate", 0.0)
 
         # 1. Build laminate
         laminate = self._build_laminate()
@@ -789,12 +818,17 @@ class WrinkleAnalysis:
             )
         results.wrinkle_config = wrinkle_config
 
+        _report("Computing analytical predictions", 0.05)
+
         # 3. Analytical predictions
         self._compute_analytical(results, wrinkle_config)
 
         # In analytical-only mode, skip mesh, solve, failure, and retention.
         if analytical_only:
+            _report("Analytical predictions complete", 1.0)
             return results
+
+        _report("Assembling FE mesh", 0.10)
 
         # 4. Generate mesh
         mesh_gen = WrinkleMesh(
@@ -812,6 +846,8 @@ class WrinkleAnalysis:
         # 4b. Mesh-based max fiber angle (accounts for decay mode)
         results.mesh_max_angle_rad = float(np.max(mesh.fiber_angles)) if mesh.fiber_angles.size > 0 else 0.0
 
+        _report("Solving FE system", 0.25)
+
         # 5. Static FE solve
         solver = StaticSolver(mesh, laminate)
         bcs = BoundaryHandler.compression_bcs(
@@ -822,11 +858,17 @@ class WrinkleAnalysis:
         )
         results.field_results = field_results
 
+        _report("Evaluating failure criteria", 0.75)
+
         # 6. Failure evaluation on FE field
         self._evaluate_failure(results, laminate, field_results, mesh)
 
+        _report("Computing retention factors", 0.90)
+
         # 6b. Retention factor (baseline pristine comparison)
         self._compute_retention_factors(results, laminate)
+
+        _report("Analysis complete", 1.0)
 
         return results
 
