@@ -32,7 +32,7 @@ References
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -165,11 +165,35 @@ class WrinkleConfiguration:
         at the surface plies. ``0.0`` means full decay to zero amplitude
         at the surfaces (pure graded); ``1.0`` means no decay (equivalent
         to uniform). Values outside ``[0, 1]`` are clamped. Default 0.0.
+    amplitude_profile : {"constant", "gaussian", "linear"}, optional
+        Spatially varying in-plane amplitude modulation applied on top of
+        the wrinkle's own longitudinal envelope. ``"constant"`` (default)
+        preserves the legacy behaviour -- the amplitude *A* set on the
+        wrinkle profile is used uniformly across the in-plane domain.
+        ``"gaussian"`` multiplies *A* by ``exp(-(s/d)**2)`` where *s* is the
+        coordinate (relative to the wrinkle centre) along the chosen axis
+        and *d* is the decay length. ``"linear"`` multiplies *A* by
+        ``max(0, 1 - |s|/d)`` (clipped at zero).
+    amplitude_profile_decay_length : float, optional
+        Length scale *d* (mm) controlling the Gaussian sigma or the
+        linear-decay extent. When ``None`` (default) the helper falls back
+        to the wrinkle profile's own ``width``, which is the natural choice
+        because users typically want the amplitude to taper on the same
+        length scale as the envelope. Must be positive when provided.
+    amplitude_profile_axis : {"x", "y"}, optional
+        In-plane axis along which the amplitude modulation runs. Default
+        ``"x"``. NOTE: the existing longitudinal envelope (e.g. the
+        Gaussian in :class:`GaussianSinusoidal`) already runs on *x*, so
+        choosing ``amplitude_profile_axis="x"`` with ``"gaussian"`` will
+        effectively square the Gaussian on *x*; this is a degenerate but
+        allowed configuration -- pick ``"y"`` (transverse axis) to obtain
+        an independent in-plane tapering of *A*.
 
     Raises
     ------
     ValueError
-        If the wrinkle list is empty.
+        If the wrinkle list is empty, the amplitude profile name is
+        unknown, or the decay length is non-positive.
 
     Examples
     --------
@@ -191,11 +215,17 @@ class WrinkleConfiguration:
     - Elhajjar (2025), Scientific Reports 15:25977, Eq. 7-12.
     """
 
+    _VALID_AMPLITUDE_PROFILES = ("constant", "gaussian", "linear")
+    _VALID_AMPLITUDE_PROFILE_AXES = ("x", "y")
+
     def __init__(
         self,
         wrinkles: list[WrinklePlacement],
         decay_mode: str = "default",
         decay_floor: float = 0.0,
+        amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
+        amplitude_profile_decay_length: Optional[float] = None,
+        amplitude_profile_axis: Literal["x", "y"] = "x",
     ) -> None:
         if not wrinkles:
             raise ValueError("At least one WrinklePlacement is required.")
@@ -213,6 +243,34 @@ class WrinkleConfiguration:
         # Physically: surface plies retain some waviness even far from
         # the wrinkle core. Interpolates between graded (0) and uniform (1).
         self.decay_floor: float = max(0.0, min(1.0, decay_floor))
+
+        # Spatially varying in-plane amplitude profile (issue #3). This is
+        # a SEPARATE multiplicative modulation applied on top of the
+        # wrinkle's own longitudinal envelope -- it lets a single wrinkle
+        # be modelled with a tapered or localised amplitude.
+        if amplitude_profile not in self._VALID_AMPLITUDE_PROFILES:
+            raise ValueError(
+                f"Unknown amplitude_profile '{amplitude_profile}'. "
+                f"Choose from: {list(self._VALID_AMPLITUDE_PROFILES)}"
+            )
+        if amplitude_profile_axis not in self._VALID_AMPLITUDE_PROFILE_AXES:
+            raise ValueError(
+                f"Unknown amplitude_profile_axis '{amplitude_profile_axis}'. "
+                f"Choose from: {list(self._VALID_AMPLITUDE_PROFILE_AXES)}"
+            )
+        if (
+            amplitude_profile_decay_length is not None
+            and amplitude_profile_decay_length <= 0.0
+        ):
+            raise ValueError(
+                "amplitude_profile_decay_length must be positive, "
+                f"got {amplitude_profile_decay_length}"
+            )
+        self.amplitude_profile: str = amplitude_profile
+        self.amplitude_profile_decay_length: Optional[float] = (
+            amplitude_profile_decay_length
+        )
+        self.amplitude_profile_axis: str = amplitude_profile_axis
 
     # ------------------------------------------------------------------
     # Phase & Morphology (static methods)
@@ -493,6 +551,86 @@ class WrinkleConfiguration:
     # Mesh deformation
     # ------------------------------------------------------------------
 
+    def _amplitude_scale(
+        self,
+        wrinkle: WrinklePlacement,
+        x: float,
+        y: float,
+    ) -> float:
+        """In-plane scale factor for the spatially varying amplitude profile.
+
+        Returns a dimensionless multiplicative factor in ``[0, 1]`` that
+        modulates the wrinkle's *A* in addition to the wrinkle's own
+        longitudinal envelope. The factor depends on the coordinate
+        *s* (along the chosen axis) relative to the wrinkle centre:
+
+        - ``"constant"`` (default) -> ``1.0`` (legacy behaviour).
+        - ``"gaussian"`` -> ``exp(-(s / d) ** 2)``.
+        - ``"linear"`` -> ``max(0, 1 - |s| / d)`` (clipped at zero).
+
+        The decay length *d* defaults to the wrinkle profile's own
+        ``width`` when :attr:`amplitude_profile_decay_length` is ``None``.
+
+        Parameters
+        ----------
+        wrinkle : WrinklePlacement
+            The wrinkle whose centre defines *s = coord - centre*. For
+            the x-axis the centre is ``profile.center + delta_x`` (so the
+            phase-offset shift is respected). For the y-axis the centre is
+            ``span_y / 2`` for a :class:`WrinkleSurface3D` (matching the
+            transverse modes' convention) and ``0.0`` for a plain 1-D
+            profile (which has no y-extent of its own).
+        x, y : float
+            World-frame coordinates of the node.
+
+        Returns
+        -------
+        float
+            Multiplicative scale factor applied on top of the wrinkle's
+            own profile.displacement / profile.slope output. Both
+            :meth:`apply_to_nodes` and :meth:`fiber_angles_at_nodes`
+            call this helper so the displacement and angle fields stay
+            mutually consistent (#18 invariant).
+
+        Notes
+        -----
+        The new modulation stacks multiplicatively with the wrinkle's
+        own longitudinal envelope. Choosing ``amplitude_profile_axis="x"``
+        with ``"gaussian"`` therefore squares the Gaussian along *x* (the
+        existing envelope plus this new one) -- a degenerate but allowed
+        configuration. Pick the transverse axis (``"y"``) to get a
+        decoupled tapering of *A*.
+        """
+        if self.amplitude_profile == "constant":
+            return 1.0
+
+        profile = wrinkle.profile
+        # Resolve the per-wrinkle base profile and centre.
+        if isinstance(profile, WrinkleSurface3D):
+            base_profile = profile.profile
+            y_center = profile.span_y / 2.0
+        else:
+            base_profile = profile
+            y_center = 0.0
+
+        # Longitudinal centre in the world frame includes the phase shift.
+        delta_x = wrinkle.phase_offset * base_profile.wavelength / (2.0 * np.pi)
+        x_center = base_profile.center + delta_x
+
+        if self.amplitude_profile_axis == "x":
+            s = x - x_center
+        else:  # "y" -- validated in __init__
+            s = y - y_center
+
+        d = self.amplitude_profile_decay_length
+        if d is None:
+            d = base_profile.width
+
+        if self.amplitude_profile == "gaussian":
+            return float(np.exp(-((s / d) ** 2)))
+        # "linear" -- validated in __init__
+        return float(max(0.0, 1.0 - abs(s) / d))
+
     @staticmethod
     def _ply_decay(p: int, k: int, n_plies: int) -> float:
         """Through-thickness linear decay factor for the default mode.
@@ -605,7 +743,13 @@ class WrinkleConfiguration:
                         np.atleast_1d(x_shifted), np.atleast_1d(y)
                     )[0])
                 else:
+                    y = nodes[node_idx, 1]
                     dz = float(profile.displacement(np.atleast_1d(x_shifted))[0])
+
+                # In-plane spatially varying amplitude modulation (#3).
+                # This is a SEPARATE multiplicative scale on top of the
+                # wrinkle's own longitudinal envelope.
+                dz *= self._amplitude_scale(wrinkle, x, y)
 
                 # Through-thickness decay
                 if self.decay_mode == "uniform":
@@ -700,6 +844,7 @@ class WrinkleConfiguration:
 
             for node_idx in range(n_nodes):
                 x = nodes[node_idx, 0]
+                y = nodes[node_idx, 1] if nodes.shape[1] >= 2 else 0.0
                 p = int(ply_ids[node_idx])
 
                 # Shift x by phase offset before evaluating slope
@@ -707,6 +852,11 @@ class WrinkleConfiguration:
 
                 # Get the slope dz/dx at the shifted x position
                 slope = profile.slope(x_shifted)
+
+                # In-plane spatially varying amplitude modulation (#3).
+                # Mirrors the scale applied in apply_to_nodes so the
+                # displacement and angle fields stay consistent (#18).
+                amp_scale = self._amplitude_scale(wrinkle, x, y)
 
                 # Through-thickness decay for angle
                 if self.decay_mode == "uniform":
@@ -722,6 +872,10 @@ class WrinkleConfiguration:
                     # Default: same through-thickness decay as the
                     # displacement field (see apply_to_nodes).
                     decay = self._ply_decay(p, k, n_plies)
+
+                # Combine through-thickness decay with in-plane
+                # amplitude-profile scale.
+                decay = decay * amp_scale
 
                 # Angle from slope, scaled by decay
                 angle = np.arctan(np.abs(slope)) * decay
