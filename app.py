@@ -240,44 +240,77 @@ def _hero_schematic() -> bytes:
     return buf.getvalue()
 
 
-@st.cache_data(show_spinner=False)
-def _morphology_schematic(morphology: str) -> bytes:
-    """Render a small cartoon schematic of a morphology as PNG bytes.
+def _morphology_schematic(
+    morphology: str,
+    *,
+    amplitude: float,
+    wavelength: float,
+    width: float,
+    decay_floor: float = 0.0,
+) -> bytes:
+    """Render a cartoon schematic of a morphology as PNG bytes.
 
-    Used inside the in-sidebar help popover so users can see at a glance
-    what each morphology looks like before selecting one.
+    Driven by the user's actual wrinkle geometry — the same
+    ``z(x) = A · exp(-(x/w)²) · cos(2πx/λ)`` profile shown on the
+    Geometry tab — so the schematic visibly tracks the Amplitude /
+    Wavelength / Envelope-width sliders. The Y axis is exaggerated
+    relative to the physical aspect ratio so the wave stays visible at
+    typical input values, but the visible amplitude and cycle count
+    still scale with the sliders within a readable clamp range.
+
+    Caching is intentionally not used: the function is cheap (a small
+    matplotlib figure) and the kwargs change on nearly every rerun, so
+    a cache hit is unlikely and a stale cached PNG would defeat the
+    whole point of tying the cartoon to live values.
     """
-    fig, ax = plt.subplots(figsize=(2.6, 1.6), dpi=110)
-    x = np.linspace(-1.0, 1.0, 400)
-    env = np.exp(-(x ** 2) / 0.32 ** 2)
-    carrier = np.cos(2 * np.pi * x / 0.55)
-    amp = 0.18
-    blue, red = "#1f77b4", "#d62728"
+    lam = max(float(wavelength), 1e-6)
+    w = max(float(width), 1e-6)
 
+    fig, ax = plt.subplots(figsize=(2.6, 1.6), dpi=110)
+
+    # Canvas x ∈ [-1, 1] maps to a window where the gaussian envelope has
+    # decayed to ~0.10 either side of the wrinkle centre.
+    x_canvas = np.linspace(-1.0, 1.0, 400)
+    env = np.exp(-((1.5 * x_canvas) ** 2))
+
+    # Number of carrier cycles across the window scales with w/λ.
+    # Bounds widened (was 0.4..10.0) so envelope-width changes across
+    # the full slider range (w ∈ [5, 50] mm vs λ ∈ [4, 200] mm) remain
+    # visible without saturating against the clamp.
+    cycles_in_window = float(np.clip(3.0 * w / lam, 0.3, 20.0))
+    phase = 2.0 * np.pi * (cycles_in_window / 2.0) * x_canvas
+
+    # Visual amplitude tracks the physical aspect ratio A/λ (∝ peak
+    # fibre slope) so peakier inputs look peakier. Bounds widened (was
+    # 0.04..0.28) so the cartoon visibly responds across the full
+    # Amplitude slider range (0.05..3.0 mm) instead of saturating
+    # almost immediately.
+    visual_amp = float(np.clip(8.0 * float(amplitude) / lam, 0.02, 0.6))
+
+    z = visual_amp * env * np.cos(phase)
+    z_plus = visual_amp * env * np.cos(phase + np.pi / 2)
+    z_minus = visual_amp * env * np.cos(phase - np.pi / 2)
+
+    blue, red = "#1f77b4", "#d62728"
     if morphology == "stack":
-        z = amp * env * carrier
-        ax.plot(x, z + 0.34, color=blue, lw=2.2)
-        ax.plot(x, z - 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z + 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z - 0.34, color=blue, lw=2.2)
     elif morphology == "convex":
-        z1 = amp * env * carrier
-        z2 = amp * env * np.cos(2 * np.pi * x / 0.55 + np.pi / 2)
-        ax.plot(x, z1 + 0.34, color=blue, lw=2.2)
-        ax.plot(x, z2 - 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z + 0.34, color=blue, lw=2.2)
+        ax.plot(x_canvas, z_plus - 0.34, color=blue, lw=2.2)
     elif morphology == "concave":
-        z1 = amp * env * carrier
-        z2 = amp * env * np.cos(2 * np.pi * x / 0.55 - np.pi / 2)
-        ax.plot(x, z1 + 0.34, color=red, lw=2.2)
-        ax.plot(x, z2 - 0.34, color=red, lw=2.2)
+        ax.plot(x_canvas, z + 0.34, color=red, lw=2.2)
+        ax.plot(x_canvas, z_minus - 0.34, color=red, lw=2.2)
     elif morphology == "uniform":
-        z = 0.14 * env * carrier
+        thin = 0.75 * z
         for offset in np.linspace(-0.55, 0.55, 7):
-            ax.plot(x, z + offset, color=blue, lw=1.4)
+            ax.plot(x_canvas, thin + offset, color=blue, lw=1.4)
     elif morphology == "graded":
         offsets = np.linspace(-0.55, 0.55, 7)
         for offset in offsets:
-            decay = 1.0 - abs(offset) / 0.55  # 1 at core, 0 at surfaces
-            z = 0.18 * decay * env * carrier
-            ax.plot(x, z + offset, color=blue, lw=1.4)
+            raw = 1.0 - abs(offset) / 0.55  # 1 at core, 0 at surfaces
+            decay = decay_floor + (1.0 - decay_floor) * raw
+            ax.plot(x_canvas, decay * z + offset, color=blue, lw=1.4)
 
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-0.85, 0.85)
@@ -509,9 +542,23 @@ with st.sidebar:
                 help="Minimum amplitude fraction at the outer surfaces.",
             )
 
+        # Thread the live Amplitude/Wavelength/Envelope-width/Decay-floor
+        # values through so the cartoon tracks the sliders. The function
+        # is uncached, so each rerun produces a fresh PNG matching the
+        # current geometry.
         st.image(
-            _morphology_schematic(morphology),
-            caption=f"{morphology.capitalize()} morphology",
+            _morphology_schematic(
+                morphology,
+                amplitude=amplitude,
+                wavelength=wavelength,
+                width=width,
+                decay_floor=decay_floor,
+            ),
+            caption=(
+                f"{morphology.capitalize()} morphology · "
+                f"A = {amplitude:g} mm, λ = {wavelength:g} mm, "
+                f"w = {width:g} mm"
+            ),
             width="stretch",
         )
     else:
