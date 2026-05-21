@@ -85,12 +85,13 @@ result = WrinkleAnalysis(config).run()
 print(result.summary())
 ```
 
-`amplitude` (`A`) is the peak displacement of the wrinkled mid-surface
-from the flat reference (crest height, **not** peak-to-peak). For a
-measured wrinkle (e.g. from a cross-section micrograph or CT slice),
-`A = (z_max − z_min) / 2`. The peak fibre misalignment angle scales as
-`θ_max ≈ arctan(2πA/λ)`, which drives the Budiansky-Fleck compressive
-knockdown.
+`amplitude` (`A`) is the **half-amplitude** [mm]: the peak displacement
+of the wrinkled mid-surface from the flat (unwrinkled) reference plane,
+so `z(x) = A·cos(2πx/λ)` (modulated by the envelope) and the
+peak-to-trough height is `2A`. For a measured wrinkle (e.g. from a
+cross-section micrograph or CT slice), `A = (z_max − z_min) / 2`. The
+peak fibre misalignment angle scales as `θ_max ≈ arctan(2πA/λ)`, which
+drives the Budiansky-Fleck compressive knockdown.
 
 ### Wrinkle geometry parameters
 
@@ -104,7 +105,7 @@ direction; out-of-plane displacement `z(x)` is measured from the flat
 
 | Parameter | Symbol | Definition | Units |
 |-----------|--------|------------|-------|
-| `amplitude` | A | Peak crest height from the flat mid-surface to the wrinkle crest (peak-to-midplane, **not** peak-to-peak; `A = (z_max − z_min)/2` for a measured wrinkle). Must be ≥ 0. | mm |
+| `amplitude` | A | Half-amplitude: peak displacement of the wrinkled mid-surface from the flat reference, with `z(x) = A·cos(2πx/λ)` (modulated by the envelope) and peak-to-trough height `2A`. For a measured wrinkle, `A = (z_max − z_min)/2`. Must be ≥ 0. | mm |
 | `wavelength` | λ | Period of the `cos(2πx/λ)` carrier along the longitudinal x-direction (crest-to-crest distance). Must be > 0. Wavenumber `k = 2π/λ`. | mm |
 | `width` | w | Longitudinal envelope decay length about the centre. Exact meaning is profile-dependent: Gaussian length scale `exp(−(x−x₀)²/w²)`, tapered flat-top extent (`\|x−x₀\| < w/2`), or triangular half-base (`\|x−x₀\| < w`). Must be > 0. | mm |
 | `center` | x₀ | Longitudinal position of the wrinkle crest / envelope peak, in the global x coordinate. Default 0.0. | mm |

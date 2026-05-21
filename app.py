@@ -486,9 +486,11 @@ with st.sidebar:
         value=DEFAULT_AMPLITUDE, step=0.01,
         key="sb_amplitude",
         help=(
-            "Peak displacement of the wrinkled mid-surface from the flat "
-            "reference (crest height, NOT peak-to-peak). Measure as "
-            "A = (z_max − z_min) / 2 from a cross-section micrograph."
+            "Half-amplitude A [mm]: peak displacement of the wrinkled "
+            "mid-surface from the flat reference, so "
+            "z(x) = A·cos(2π x / λ) and the peak-to-trough height is 2A. "
+            "Measure from a cross-section micrograph as "
+            "A = (z_max − z_min) / 2."
         ),
     )
     wavelength = st.number_input(
