@@ -44,6 +44,10 @@ from wrinklefe.io.export import (
     render_summary_markdown,
     render_summary_pdf,
 )
+from wrinklefe.viz.style import (
+    MORPHOLOGY_COLORS,
+    TENSION_MECHANISM_COLORS,
+)
 
 import streamlit_viz
 
@@ -170,6 +174,10 @@ def _hero_schematic() -> bytes:
     band_h = 0.10
     band_gap = 0.02
     pitch = band_h + band_gap
+    # Stylised cartoon hexes (Tailwind-style navy/slate + warning red). Kept
+    # as literals on purpose — this hero-strip schematic is a decorative
+    # marketing illustration, not a data plot, so it does not pull from the
+    # ``wrinklefe.viz.style`` palettes.
     ply_colors = [
         "#1e3a8a", "#cbd5e0", "#1e3a8a", "#cbd5e0",
         "#1e3a8a", "#cbd5e0", "#1e3a8a",
@@ -290,6 +298,9 @@ def _morphology_schematic(
     z_plus = visual_amp * env * np.cos(phase + np.pi / 2)
     z_minus = visual_amp * env * np.cos(phase - np.pi / 2)
 
+    # Stylised cartoon hexes — this is a decorative line drawing of the
+    # morphology, not a data plot, so it intentionally uses literal blue /
+    # red instead of pulling from ``wrinklefe.viz.style.MORPHOLOGY_COLORS``.
     blue, red = "#1f77b4", "#d62728"
     if morphology == "stack":
         ax.plot(x_canvas, z + 0.34, color=blue, lw=2.2)
@@ -994,13 +1005,13 @@ with tab_configure:
         2, 1, figsize=(8, 4.6), sharex=True,
         gridspec_kw={"height_ratios": [1.4, 1.0]},
     )
-    ax_z.plot(x, z, color="#1f77b4", linewidth=1.5)
+    ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
     ax_z.axhline(0.0, color="grey", linewidth=0.5)
     ax_z.set_ylabel("z(x) [mm]")
     ax_z.set_title(r"$z(x) = A \cdot \exp(-x^2 / w^2) \cdot \cos(2\pi x / \lambda)$")
     ax_z.grid(alpha=0.3)
 
-    ax_theta.plot(x, theta_deg, color="#d62728", linewidth=1.2)
+    ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
     theta_max_deg = np.degrees(profile.max_angle())
     ax_theta.axhline(theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
     ax_theta.axhline(-theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
@@ -1028,7 +1039,7 @@ with tab_configure:
                 raw = np.maximum(0.0, 1.0 - np.abs(ply_idx - p_mid) / max(p_mid, 1e-9))
                 decay = decay_floor + (1.0 - decay_floor) * raw
                 fig_d, ax_d = plt.subplots(figsize=(4, 3))
-                ax_d.barh(ply_idx, decay, color="#9467bd")
+                ax_d.barh(ply_idx, decay, color=MORPHOLOGY_COLORS["anti-stack"])
                 ax_d.set_xlabel("Amplitude fraction")
                 ax_d.set_ylabel("Ply index")
                 ax_d.set_xlim(0, 1.05)
@@ -1219,10 +1230,14 @@ with tab_results:
                             if isinstance(tm.get(k), (int, float))]
                 if bar_keys:
                     fig_tm, ax_tm = plt.subplots(figsize=(5, 2.6))
+                    _tm_labels = [k.replace("kd_", "") for k in bar_keys]
                     ax_tm.bar(
-                        [k.replace("kd_", "") for k in bar_keys],
+                        _tm_labels,
                         [tm[k] for k in bar_keys],
-                        color=["#1f77b4", "#ff7f0e", "#2ca02c"],
+                        color=[
+                            TENSION_MECHANISM_COLORS.get(label, "gray")
+                            for label in _tm_labels
+                        ],
                     )
                     ax_tm.set_ylabel("Knockdown contribution")
                     ax_tm.set_ylim(0, max(1.05, max(tm[k] for k in bar_keys) * 1.1))
@@ -1280,7 +1295,7 @@ with tab_results:
                     figsize=(7, max(1.6, 0.55 * len(crits) + 1.0))
                 )
                 y = np.arange(len(crits))
-                ax_ret.barh(y, ret_vals, color="#2ca02c",
+                ax_ret.barh(y, ret_vals, color=MORPHOLOGY_COLORS["convex"],
                             label="Retention (wrinkled / pristine)")
                 ax_ret.axvline(1.0, color="grey", linestyle="--", linewidth=0.8)
                 ax_ret.set_yticks(y)
@@ -1310,20 +1325,45 @@ with tab_results:
                     else next(iter(pf))
                 )
                 fi_arr = np.asarray(pf[crit_for_plot], dtype=float)
+                _critical_ply = fe.get("critical_ply")
                 colours = [
-                    "#d62728" if i == fe.get("critical_ply") else "#1f77b4"
+                    MORPHOLOGY_COLORS["concave"] if i == _critical_ply
+                    else MORPHOLOGY_COLORS["stack"]
+                    for i in range(len(fi_arr))
+                ]
+                # Extra non-colour cue for deuteranopia: outline the critical
+                # ply in black and thicken its edge so it remains visually
+                # distinct without relying on the red/blue contrast alone.
+                edge_colors = [
+                    "black" if i == _critical_ply else "none"
+                    for i in range(len(fi_arr))
+                ]
+                edge_widths = [
+                    1.6 if i == _critical_ply else 0.0
                     for i in range(len(fi_arr))
                 ]
                 fig_fi, ax_fi = plt.subplots(figsize=(7, 3))
-                ax_fi.bar(range(len(fi_arr)), fi_arr, color=colours)
+                _bars = ax_fi.bar(
+                    range(len(fi_arr)), fi_arr,
+                    color=colours,
+                    edgecolor=edge_colors,
+                    linewidth=edge_widths,
+                )
+                # Hatch the critical ply individually — matplotlib's bar
+                # hatch kwarg only accepts a single value, so apply per-bar.
+                if _critical_ply is not None and 0 <= _critical_ply < len(_bars):
+                    _bars[_critical_ply].set_hatch("//")
                 ax_fi.axhline(1.0, color="grey", linestyle="--", linewidth=0.6)
                 ax_fi.set_xlabel("Ply index")
                 ax_fi.set_ylabel(f"FI ({crit_for_plot})")
                 fig_fi.tight_layout()
                 st.pyplot(fig_fi, clear_figure=True)
                 st.caption(
-                    "Critical ply highlighted in red. FI ≥ 1 indicates "
-                    "failure of that ply under the applied strain."
+                    "Critical ply highlighted in red, with a hatched fill "
+                    "and black outline so it remains identifiable in "
+                    "grayscale or for colour-vision deficiencies. "
+                    "FI ≥ 1 indicates failure of that ply under the "
+                    "applied strain."
                 )
 
             crit = fe.get("critical_criterion")

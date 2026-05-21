@@ -18,6 +18,7 @@ plots_3d
 
 # -- Style configuration and helpers --
 from wrinklefe.viz.style import (
+    ACCENT_GRAY,
     FIGSIZE_DOUBLE_COLUMN,
     FIGSIZE_DOUBLE_WIDE,
     FIGSIZE_SINGLE_COLUMN,
@@ -26,6 +27,7 @@ from wrinklefe.viz.style import (
     MORPHOLOGY_LABELS,
     MORPHOLOGY_LINESTYLES,
     MORPHOLOGY_MARKERS,
+    TENSION_MECHANISM_COLORS,
     colorbar_setup,
     ensure_axes,
     figure_context,
@@ -60,10 +62,12 @@ from wrinklefe.viz.plots_3d import (
 __all__ = [
     # Style
     "set_publication_style",
+    "ACCENT_GRAY",
     "MORPHOLOGY_COLORS",
     "MORPHOLOGY_MARKERS",
     "MORPHOLOGY_LINESTYLES",
     "MORPHOLOGY_LABELS",
+    "TENSION_MECHANISM_COLORS",
     "FIGSIZE_SINGLE_COLUMN",
     "FIGSIZE_DOUBLE_COLUMN",
     "FIGSIZE_SINGLE_TALL",

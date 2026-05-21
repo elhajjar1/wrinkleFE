@@ -15,6 +15,8 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from wrinklefe.viz.style import MORPHOLOGY_COLORS
+
 
 # Local node indices for the 6 faces of a hex element following the
 # CGNS / VTK_HEXAHEDRON convention used by wrinklefe.core.mesh:
@@ -179,7 +181,7 @@ def mesh3d_figure(
             showscale=True,
         )
     else:
-        kwargs.update(color="#9ec5fe", showscale=False)
+        kwargs.update(color=MORPHOLOGY_COLORS["stack"], showscale=False)
 
     fig = go.Figure(go.Mesh3d(**kwargs))
     fig.update_layout(
