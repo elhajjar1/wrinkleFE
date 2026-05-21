@@ -31,6 +31,7 @@ from wrinklefe.viz.style import (
     figure_context,
     get_morphology_style,
     save_figure,
+    set_axes_equal_aspect,
     set_publication_style,
 )
 
@@ -72,6 +73,7 @@ __all__ = [
     "save_figure",
     "figure_context",
     "get_morphology_style",
+    "set_axes_equal_aspect",
     # 2D plots
     "plot_wrinkle_profile",
     "plot_dual_wrinkle_profiles",

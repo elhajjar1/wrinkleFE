@@ -250,6 +250,40 @@ def ensure_axes(
     return fig.add_subplot(111)
 
 
+def set_axes_equal_aspect(
+    ax: Axes,
+    mins: "np.ndarray",
+    maxs: "np.ndarray",
+) -> None:
+    """Set a 3D axes box aspect to match physical data extents.
+
+    Matplotlib's default 3D layout stretches the data to fill a roughly
+    cubical viewport, which visually distorts thin / tall objects (e.g.
+    a wrinkled laminate that is ~24 mm x ~12 mm x ~1-2 mm). Calling
+    :meth:`~mpl_toolkits.mplot3d.axes3d.Axes3D.set_box_aspect` with the
+    per-axis extents preserves the true x:y:z ratio, matching the Plotly
+    ``aspectmode="data"`` behaviour used elsewhere.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        A 3D axes (``projection='3d'``). Available in matplotlib >= 3.3.
+    mins, maxs : numpy.ndarray
+        Length-3 arrays of the per-axis minimum and maximum coordinates
+        of the data (typically ``nodes.min(axis=0)`` / ``nodes.max(axis=0)``).
+
+    Notes
+    -----
+    Any zero-extent axis is replaced with ``1.0`` to avoid a degenerate
+    box-aspect that would otherwise cause ``set_box_aspect`` to fail.
+    """
+    extents = np.asarray(maxs, dtype=float) - np.asarray(mins, dtype=float)
+    # Guard against zero (or negative due to numerical noise) extents that
+    # would make set_box_aspect crash.
+    safe = np.where(extents > 0, extents, 1.0)
+    ax.set_box_aspect(tuple(safe))
+
+
 def save_figure(
     ax_or_fig: Union[Axes, Figure],
     path: Union[str, "os.PathLike[str]"],
