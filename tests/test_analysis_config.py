@@ -3,11 +3,11 @@
 Verifies the fix for issues #39 / #29: ``AnalysisConfig.__post_init__``
 previously performed zero validation, so physically invalid inputs
 (negative amplitude, non-positive wavelength/width, unknown morphology,
-non-positive ``mc_samples``, etc.) were silently accepted and surfaced
-only as obscure tracebacks deep in the solver/mesh path.  Construction
-must now fail fast with a clear :class:`ValueError` naming the field and
-the offending value, while every valid configuration (including boundary
-values) still constructs unchanged.
+etc.) were silently accepted and surfaced only as obscure tracebacks
+deep in the solver/mesh path.  Construction must now fail fast with a
+clear :class:`ValueError` naming the field and the offending value,
+while every valid configuration (including boundary values) still
+constructs unchanged.
 """
 
 from __future__ import annotations
@@ -48,8 +48,6 @@ def test_fully_specified_valid_config_constructs():
         nz_per_ply=1,
         domain_width=10.0,
         applied_strain=-0.005,
-        run_montecarlo=True,
-        mc_samples=100,
     )
     assert cfg.morphology == "concave"
 
@@ -92,8 +90,7 @@ def test_boundary_valid_values_accepted():
     AnalysisConfig(decay_floor=0.0)
     AnalysisConfig(decay_floor=1.0)
     # Smallest valid structural integers / counts.
-    AnalysisConfig(nx=1, ny=1, nz_per_ply=1, n_buckling_modes=1,
-                   mc_samples=1)
+    AnalysisConfig(nx=1, ny=1, nz_per_ply=1)
     # interface indices at the inclusive lower / exclusive upper bound.
     AnalysisConfig(angles=[0, 90, 0, 90], interface_1=0, interface_2=3)
     # explicit numeric phase must not require a dual-wrinkle name and
@@ -138,21 +135,11 @@ def test_boundary_valid_values_accepted():
         ({"nx": 0}, r"nx must be >= 1.*got 0"),
         ({"ny": 0}, r"ny must be >= 1.*got 0"),
         ({"nz_per_ply": -2}, r"nz_per_ply must be >= 1.*got -2"),
-        ({"n_buckling_modes": 0}, r"n_buckling_modes must be >= 1.*got 0"),
-        ({"mc_samples": 0}, r"mc_samples must be >= 1.*got 0"),
-        ({"mc_samples": -10}, r"mc_samples must be >= 1.*got -10"),
     ],
 )
 def test_invalid_config_raises_value_error(kwargs, match):
     with pytest.raises(ValueError, match=match):
         AnalysisConfig(**kwargs)
-
-
-def test_negative_mc_samples_rejected_even_when_montecarlo_off():
-    """A clearly-invalid mc_samples (<= 0) is rejected regardless of
-    whether Monte Carlo will actually run (matches the issue ask)."""
-    with pytest.raises(ValueError, match=r"mc_samples must be >= 1"):
-        AnalysisConfig(run_montecarlo=False, mc_samples=0)
 
 
 def test_explicit_phase_does_not_require_dual_wrinkle_name():

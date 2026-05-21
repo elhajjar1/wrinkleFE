@@ -339,16 +339,6 @@ class AnalysisConfig:
         Default ``-0.01`` (1 % compression).
     solver : str
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
-    run_buckling : bool
-        Whether to perform buckling analysis.  Default ``False``.
-    n_buckling_modes : int
-        Number of buckling modes to extract.  Default 5.
-    run_montecarlo : bool
-        Whether to perform Monte Carlo analysis.  Default ``False``.
-    mc_samples : int
-        Number of Monte Carlo samples.  Default 5000.
-    mc_seed : int or None
-        Random seed for Monte Carlo reproducibility.  Default 42.
     verbose : bool
         Print progress information.  Default ``False``.
     """
@@ -396,13 +386,6 @@ class AnalysisConfig:
 
     # Solver
     solver: str = "direct"
-
-    # Optional analyses
-    run_buckling: bool = False
-    n_buckling_modes: int = 5
-    run_montecarlo: bool = False
-    mc_samples: int = 5000
-    mc_seed: Optional[int] = 42
 
     # Analytical-only mode (skip FE assembly)
     analytical_only: bool = False
@@ -562,35 +545,6 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.solver must be one of "
                 f"{list(valid_solvers)}, got {self.solver!r}"
-            )
-
-        # --- Optional analyses ---------------------------------------
-        if not isinstance(self.n_buckling_modes, int) or isinstance(
-            self.n_buckling_modes, bool
-        ):
-            raise ValueError(
-                f"AnalysisConfig.n_buckling_modes must be an int, "
-                f"got {self.n_buckling_modes!r}"
-            )
-        if self.n_buckling_modes < 1:
-            raise ValueError(
-                f"AnalysisConfig.n_buckling_modes must be >= 1, "
-                f"got {self.n_buckling_modes}"
-            )
-        # mc_samples must be a usable sample count.  Both issues ask for
-        # mc_samples >= 1; reject <= 0 unconditionally (a clearly-invalid
-        # value) and require a valid int whenever Monte Carlo will run.
-        if not isinstance(self.mc_samples, int) or isinstance(
-            self.mc_samples, bool
-        ):
-            raise ValueError(
-                f"AnalysisConfig.mc_samples must be an int, "
-                f"got {self.mc_samples!r}"
-            )
-        if self.mc_samples < 1:
-            raise ValueError(
-                f"AnalysisConfig.mc_samples must be >= 1, "
-                f"got {self.mc_samples}"
             )
 
 
@@ -780,8 +734,6 @@ class WrinkleAnalysis:
         4. Generate mesh with wrinkle deformation.
         5. Run static FE analysis.
         6. Evaluate failure criteria on the FE stress field.
-        7. (Optional) Run buckling analysis.
-        8. (Optional) Run Monte Carlo + Jensen gap analysis.
 
         Returns
         -------
