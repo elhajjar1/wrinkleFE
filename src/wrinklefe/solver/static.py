@@ -93,6 +93,7 @@ class StaticSolver:
         boundary_conditions: list[BoundaryCondition],
         solver: str = "direct",
         verbose: bool = False,
+        keep_stiffness: bool = False,
     ) -> FieldResults:
         """Solve the static problem.
 
@@ -113,6 +114,14 @@ class StaticSolver:
             ILU preconditioner. Default is ``'direct'``.
         verbose : bool, optional
             Print progress information. Default is ``False``.
+        keep_stiffness : bool, optional
+            If True, retain a copy of the unmodified (pre-penalty) global
+            stiffness matrix on ``self._K`` after solve. Default is False,
+            which avoids the memory cost of holding a full sparse matrix
+            copy on every solver instance (relevant for parametric sweeps
+            and analyses that keep multiple solvers alive). Enable only
+            when callers need post-solve access to K (e.g., to compute
+            reaction forces without re-assembly).
 
         Returns
         -------
@@ -133,7 +142,9 @@ class StaticSolver:
             print("Assembling global stiffness matrix...")
         with _suppress_assembly_warnings():
             K = self.assembler.assemble_stiffness(verbose=verbose)
-        self._K = K.copy()  # Store unmodified K for reaction forces
+        # Opt-in retention of the unmodified K (see ``keep_stiffness``).
+        # Default: do not store a copy to avoid doubling peak FE memory.
+        self._K = K.copy() if keep_stiffness else None
 
         if verbose:
             t1 = time.perf_counter()

@@ -1085,7 +1085,8 @@ class TestFieldResults:
         # Solve a small compression problem to get a real K, u, and BC set.
         solver = StaticSolver(bar_mesh, single_ply_iso_laminate)
         bcs = BoundaryHandler.compression_bcs(bar_mesh, applied_strain=-0.005)
-        results = solver.solve(bcs, solver="direct")
+        # Opt in to keeping K so we can verify reaction_forces below.
+        results = solver.solve(bcs, solver="direct", keep_stiffness=True)
 
         # Reach into the solver's stored K and constrained DOFs map.
         K = solver._K
@@ -1272,3 +1273,56 @@ class TestCGSolverScipyRtolKwarg:
 
         assert info == 0
         np.testing.assert_allclose(u, np.ones(n), atol=1e-8)
+
+
+# ======================================================================
+# Regression tests for issue #189: opt-in retention of stiffness matrix
+# ======================================================================
+
+class TestKeepStiffnessKwarg:
+    """Issue #189: ``StaticSolver.solve`` must not retain a copy of K
+    by default, since nothing in the codebase reads ``solver._K`` and
+    holding it doubles peak FE memory in sweeps.
+    """
+
+    def test_default_does_not_retain_stiffness(
+        self, bar_mesh, single_ply_iso_laminate
+    ):
+        """Default solve() leaves solver._K as None (no copy retained)."""
+        solver = StaticSolver(bar_mesh, single_ply_iso_laminate)
+        bcs = BoundaryHandler.compression_bcs(bar_mesh, applied_strain=-0.005)
+        solver.solve(bcs, solver="direct")
+
+        # _K should not be retained by default.
+        assert getattr(solver, "_K", None) is None
+
+        # And the solver's dict footprint should be far smaller than K
+        # itself (a rough but cheap proxy for "no sparse matrix kept").
+        # We compare against the assembled K's nnz-based memory footprint.
+        K = solver.assembler.assemble_stiffness()
+        k_bytes = K.data.nbytes + K.indices.nbytes + K.indptr.nbytes
+        dict_bytes = sys_getsizeof(solver.__dict__)
+        assert dict_bytes < k_bytes, (
+            f"solver.__dict__ ({dict_bytes} B) should be well below the "
+            f"size of K ({k_bytes} B) when _K is not retained."
+        )
+
+    def test_keep_stiffness_true_retains_copy(
+        self, bar_mesh, single_ply_iso_laminate
+    ):
+        """With keep_stiffness=True, solver._K matches assembled K's nnz."""
+        solver = StaticSolver(bar_mesh, single_ply_iso_laminate)
+        bcs = BoundaryHandler.compression_bcs(bar_mesh, applied_strain=-0.005)
+        solver.solve(bcs, solver="direct", keep_stiffness=True)
+
+        assert solver._K is not None
+        # The retained matrix should match the freshly assembled K's nnz.
+        K_ref = solver.assembler.assemble_stiffness()
+        assert solver._K.nnz == K_ref.nnz
+        assert solver._K.shape == K_ref.shape
+
+
+def sys_getsizeof(obj):
+    """Module-local alias so the test reads top-down without an import."""
+    import sys
+    return sys.getsizeof(obj)
