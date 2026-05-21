@@ -82,49 +82,10 @@ def test_analyze_default_runs_full_fe_solve():
         cli_main(["analyze"])
 
     cfg = captured["config"]
-    assert cfg.run_buckling is False
-    assert cfg.run_montecarlo is False
     # The CLI used to hard-code analytical_only=True. Default is now
     # full FE.
     assert captured["analytical_only"] is False
     assert cfg.analytical_only is False
-
-
-def test_analyze_buckling_flag_propagates():
-    """--buckling must set run_buckling and force a full FE solve."""
-    captured, patcher = _stub_analysis_run()
-    with patcher:
-        cli_main(["analyze", "--buckling"])
-
-    cfg = captured["config"]
-    assert cfg.run_buckling is True
-    assert cfg.run_montecarlo is False
-    assert captured["analytical_only"] is False
-    assert cfg.analytical_only is False
-
-
-def test_analyze_montecarlo_flag_propagates():
-    """--montecarlo must set run_montecarlo + mc_samples and run full FE."""
-    captured, patcher = _stub_analysis_run()
-    with patcher:
-        cli_main(["analyze", "--montecarlo", "--mc-samples", "37"])
-
-    cfg = captured["config"]
-    assert cfg.run_buckling is False
-    assert cfg.run_montecarlo is True
-    assert cfg.mc_samples == 37
-    assert captured["analytical_only"] is False
-
-
-def test_analyze_buckling_and_montecarlo_together():
-    captured, patcher = _stub_analysis_run()
-    with patcher:
-        cli_main(["analyze", "--buckling", "--montecarlo"])
-
-    cfg = captured["config"]
-    assert cfg.run_buckling is True
-    assert cfg.run_montecarlo is True
-    assert captured["analytical_only"] is False
 
 
 def test_analyze_analytical_only_flag_skips_fe():
@@ -133,8 +94,6 @@ def test_analyze_analytical_only_flag_skips_fe():
         cli_main(["analyze", "--analytical-only"])
 
     cfg = captured["config"]
-    assert cfg.run_buckling is False
-    assert cfg.run_montecarlo is False
     assert captured["analytical_only"] is True
     assert cfg.analytical_only is True
 
@@ -153,17 +112,6 @@ def test_analyze_fe_flag_runs_full_fe():
         cli_main(["analyze", "--fe"])
 
     assert captured["analytical_only"] is False
-
-
-def test_analyze_analytical_only_with_buckling_errors(capsys):
-    """--analytical-only conflicts with --buckling and must exit 2."""
-    captured, patcher = _stub_analysis_run()
-    with patcher, pytest.raises(SystemExit) as exc_info:
-        cli_main(["analyze", "--analytical-only", "--buckling"])
-
-    assert exc_info.value.code == 2
-    err = capsys.readouterr().err
-    assert "analytical-only" in err.lower()
 
 
 def test_analyze_passes_solver_and_mesh_options():

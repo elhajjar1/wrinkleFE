@@ -5,7 +5,9 @@ caused ``wrinklefe analyze``/``compare``/``sweep`` to crash with cascading
 ``TypeError``/``AttributeError`` errors.  The fixes were:
 
 * #7: ``AnalysisConfig`` accepts ``run_buckling``, ``run_montecarlo``,
-  and ``mc_samples`` (the docstring already documented them).
+  and ``mc_samples`` (the docstring already documented them).  Those
+  fields were later removed entirely as dead code in issue #186; the
+  test below now pins the *removal*.
 * #8: ``WrinkleAnalysis.run`` accepts ``analytical_only=True`` and
   short-circuits past the FE assembly / static solve / failure /
   retention steps.
@@ -21,6 +23,7 @@ would have caught each crash; broader plumbing behaviour is covered in
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from wrinklefe.analysis import (
     AnalysisConfig,
@@ -30,21 +33,23 @@ from wrinklefe.analysis import (
 
 
 # --------------------------------------------------------------------------- #
-# Issue #7: AnalysisConfig accepts run_buckling / run_montecarlo / mc_samples
+# Issue #186 supersedes #7: the run_buckling / run_montecarlo / mc_samples
+# fields were silent no-ops and have been removed from ``AnalysisConfig``.
 # --------------------------------------------------------------------------- #
 
 
-def test_issue_7_analysis_config_accepts_buckling_and_mc_kwargs():
-    """Issue #7: constructing AnalysisConfig with the kwargs the CLI
-    forwards must not raise ``TypeError``."""
-    cfg = AnalysisConfig(
-        run_buckling=True,
-        run_montecarlo=True,
-        mc_samples=50,
-    )
-    assert cfg.run_buckling is True
-    assert cfg.run_montecarlo is True
-    assert cfg.mc_samples == 50
+@pytest.mark.parametrize(
+    "kwarg",
+    ["run_buckling", "run_montecarlo", "mc_samples", "n_buckling_modes",
+     "mc_seed"],
+)
+def test_issue_186_dead_buckling_mc_fields_removed(kwarg):
+    """Issue #186: the never-wired buckling/Monte Carlo fields were
+    removed from ``AnalysisConfig`` (the docstring promised behaviour
+    that ``run()`` never delivered).  Passing them must now raise
+    ``TypeError`` rather than silently succeed."""
+    with pytest.raises(TypeError):
+        AnalysisConfig(**{kwarg: 1})
 
 
 # --------------------------------------------------------------------------- #
