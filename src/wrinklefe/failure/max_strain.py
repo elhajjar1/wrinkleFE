@@ -169,3 +169,82 @@ class MaxStrainCriterion(FailureCriterion):
             reserve_factor=rf,
             criterion_name=self.name,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation
+    # ------------------------------------------------------------------
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Max-Strain evaluation across an array of stress states.
+
+        Computes the same failure index and dominant mode as :meth:`evaluate`
+        for ``N`` stress vectors at once using NumPy broadcasting.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with elastic and strength properties (shared by all N).
+        contexts : list, optional
+            Ignored — Max-Strain has no context dependence.
+
+        Returns
+        -------
+        indices : np.ndarray
+            Shape ``(N,)`` failure indices.
+        modes : np.ndarray
+            Shape ``(N,)`` dominant-mode string labels.
+        reserve_factors : np.ndarray
+            Shape ``(N,)`` reserve factors (``1/FI``; ``inf`` where FI == 0).
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+
+        n = s.shape[0]
+
+        # Uncoupled engineering strains (matches scalar evaluate exactly).
+        eps11 = s[:, 0] / material.E1
+        eps22 = s[:, 1] / material.E2
+        eps33 = s[:, 2] / material.E3
+        g23 = s[:, 3] / material.G23
+        g13 = s[:, 4] / material.G13
+        g12 = s[:, 5] / material.G12
+
+        # Ultimate strain magnitudes (scalars)
+        eps1t = material.Xt / material.E1
+        eps1c = material.Xc / material.E1
+        eps2t = material.Yt / material.E2
+        eps2c = material.Yc / material.E2
+        eps3t = material.Zt / material.E3
+        eps3c = material.Zc / material.E3
+        gamma23_ult = material.S23 / material.G23
+        gamma13_ult = material.S13 / material.G13
+        gamma12_ult = material.S12 / material.G12
+
+        ratios = np.zeros((9, n), dtype=np.float64)
+        ratios[0] = np.where(eps11 >= 0,  eps11 / eps1t,  0.0)   # fiber_tension
+        ratios[1] = np.where(eps11 <  0, -eps11 / eps1c,  0.0)   # fiber_compression
+        ratios[2] = np.where(eps22 >= 0,  eps22 / eps2t,  0.0)   # matrix_transverse_tension
+        ratios[3] = np.where(eps22 <  0, -eps22 / eps2c,  0.0)   # matrix_transverse_compression
+        ratios[4] = np.where(eps33 >= 0,  eps33 / eps3t,  0.0)   # matrix_thickness_tension
+        ratios[5] = np.where(eps33 <  0, -eps33 / eps3c,  0.0)   # matrix_thickness_compression
+        ratios[6] = np.abs(g23) / gamma23_ult                    # shear_23
+        ratios[7] = np.abs(g13) / gamma13_ult                    # shear_13
+        ratios[8] = np.abs(g12) / gamma12_ult                    # shear_12
+
+        idx = np.argmax(ratios, axis=0)
+        fi = ratios[idx, np.arange(n)]
+        labels = np.asarray(self._MODE_LABELS, dtype="U32")
+        modes = labels[idx]
+
+        rf = np.where(fi > 0, 1.0 / np.where(fi > 0, fi, 1.0), np.inf)
+        return fi, modes, rf

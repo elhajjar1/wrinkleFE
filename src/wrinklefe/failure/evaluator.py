@@ -378,22 +378,53 @@ class FailureEvaluator:
             for c in self.criteria
         }
         mode_fields: dict[str, np.ndarray] = {
-            c.name: np.empty((n_elements, n_gauss), dtype="U20")
+            c.name: np.empty((n_elements, n_gauss), dtype="U32")
             for c in self.criteria
         }
 
-        for e in range(n_elements):
-            mat = materials[ply_ids[e]]
-            # Build context for physics-based criteria (LaRC05)
-            ctx = None
+        # Group elements by ply (material) id so each criterion can be
+        # evaluated with a single vectorised call per (criterion, material)
+        # pair.  This routes through ``FailureCriterion.evaluate_field``,
+        # which scalar criteria implement as a Python loop and vectorised
+        # criteria (max_stress, max_strain, hashin, tsai_wu, tsai_hill)
+        # implement with NumPy broadcasting.
+        unique_ply_ids = np.unique(ply_ids)
+
+        for pid in unique_ply_ids:
+            mat = materials[int(pid)]
+            elem_mask = ply_ids == pid
+            n_e_group = int(elem_mask.sum())
+            if n_e_group == 0:
+                continue
+
+            # Slice stress for this material group and flatten over
+            # (elements_in_group, gauss) -> (n_e_group * n_gauss, 6)
+            group_stress = stress_local_field[elem_mask]  # (n_e_g, n_gauss, 6)
+            stress_flat = group_stress.reshape(n_e_group * n_gauss, 6)
+
+            # Per-point contexts: misalignment angle is per-element, so
+            # repeat each element's value n_gauss times to align with the
+            # flattened (element, gauss) ordering.
             if fiber_angles is not None:
-                ctx = {"misalignment_angle": float(fiber_angles[e])}
-            for g in range(n_gauss):
-                stress = stress_local_field[e, g, :]
-                for criterion in self.criteria:
-                    result = criterion.evaluate(stress, mat, ctx)
-                    fi_fields[criterion.name][e, g] = result.index
-                    mode_fields[criterion.name][e, g] = result.mode
+                angles_group = np.asarray(fiber_angles, dtype=np.float64)[elem_mask]
+                # Repeat each element's angle across its Gauss points
+                angles_flat = np.repeat(angles_group, n_gauss)
+                contexts: list | None = [
+                    {"misalignment_angle": float(a)} for a in angles_flat
+                ]
+            else:
+                contexts = None
+
+            for criterion in self.criteria:
+                indices, modes, _rf = criterion.evaluate_field(
+                    stress_flat, mat, contexts
+                )
+                fi_fields[criterion.name][elem_mask] = indices.reshape(
+                    n_e_group, n_gauss
+                )
+                mode_fields[criterion.name][elem_mask] = modes.reshape(
+                    n_e_group, n_gauss
+                )
 
         return fi_fields, mode_fields
 
