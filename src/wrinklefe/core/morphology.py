@@ -676,6 +676,92 @@ class WrinkleConfiguration:
                 return 1.0 if p == k + 1 else 0.0
             return (n_plies - 1 - p) / denom
 
+    def _amplitude_scale_vec(
+        self,
+        wrinkle: WrinklePlacement,
+        x: np.ndarray,
+        y: np.ndarray,
+    ) -> np.ndarray:
+        """Vectorised counterpart of :meth:`_amplitude_scale`.
+
+        Returns a float array with the same shape as ``x`` / ``y``
+        containing the in-plane amplitude-profile scale factor at every
+        node. Mirrors the scalar implementation exactly so the legacy
+        and vectorised mesh-deformation paths stay numerically identical.
+        """
+        if self.amplitude_profile == "constant":
+            return np.ones_like(x, dtype=np.float64)
+
+        profile = wrinkle.profile
+        if isinstance(profile, WrinkleSurface3D):
+            base_profile = profile.profile
+            y_center = profile.span_y / 2.0
+        else:
+            base_profile = profile
+            y_center = 0.0
+
+        delta_x = wrinkle.phase_offset * base_profile.wavelength / (2.0 * np.pi)
+        x_center = base_profile.center + delta_x
+
+        if self.amplitude_profile_axis == "x":
+            s = x - x_center
+        else:  # "y"
+            s = y - y_center
+
+        d = self.amplitude_profile_decay_length
+        if d is None:
+            d = base_profile.width
+
+        if self.amplitude_profile == "gaussian":
+            return np.exp(-((s / d) ** 2))
+        # "linear"
+        return np.maximum(0.0, 1.0 - np.abs(s) / d)
+
+    def _through_thickness_decay(
+        self,
+        ply_ids: np.ndarray,
+        k: int,
+        n_plies: int,
+    ) -> np.ndarray:
+        """Vectorised through-thickness decay for every node in ``ply_ids``.
+
+        Implements the same branching logic as :meth:`_ply_decay` plus
+        the ``"uniform"`` and ``"graded"`` decay modes used inside
+        :meth:`apply_to_nodes` / :meth:`fiber_angles_at_nodes`, returning
+        a ``(N,)`` float array.
+        """
+        p = np.asarray(ply_ids, dtype=np.int64)
+
+        if self.decay_mode == "uniform":
+            return np.ones(p.shape, dtype=np.float64)
+
+        if self.decay_mode == "graded":
+            if n_plies <= 1:
+                return np.ones(p.shape, dtype=np.float64)
+            p_mid = (n_plies - 1) / 2.0
+            raw = 1.0 - np.abs(p - p_mid) / p_mid  # 1 at mid, 0 at surface
+            decay = self.decay_floor + (1.0 - self.decay_floor) * raw
+            return np.maximum(0.0, decay)
+
+        # Default per-ply linear decay shared with ``_ply_decay``.
+        if n_plies <= 1:
+            return np.ones(p.shape, dtype=np.float64)
+
+        # Bottom side: p <= k  -> p / k    (or {1 if p==k else 0} when k<=0)
+        if k <= 0:
+            bottom = np.where(p == k, 1.0, 0.0)
+        else:
+            bottom = p / float(k)
+
+        # Top side: p > k  -> (n_plies-1-p) / ((n_plies-1)-(k+1))
+        denom = (n_plies - 1) - (k + 1)
+        if denom <= 0:
+            top = np.where(p == k + 1, 1.0, 0.0)
+        else:
+            top = (n_plies - 1 - p) / float(denom)
+
+        return np.where(p <= k, bottom, top).astype(np.float64, copy=False)
+
     def apply_to_nodes(
         self,
         nodes: np.ndarray,
@@ -718,59 +804,40 @@ class WrinkleConfiguration:
         (p = 0 and p = n_plies - 1), with linear interpolation in
         between. Degenerate cases (wrinkle interface coincident with an
         outer surface) collapse to 1.0 on the interface ply only.
+
+        The implementation is fully vectorised over nodes (issue #185):
+        each wrinkle contributes a single NumPy expression over the
+        whole node array rather than a Python ``for`` loop. Profile
+        ``displacement`` methods already accept ``ndarray`` input, so
+        broadcasting carries the work down to C-level loops.
         """
         deformed = nodes.copy()
+        x = nodes[:, 0]
+        # ``y`` is always present in the (N, 3) node array; fall back to
+        # zeros only if the user passes a thinner array.
+        y = nodes[:, 1] if nodes.shape[1] >= 2 else np.zeros(len(nodes))
 
         for wrinkle in self.wrinkles:
             k = wrinkle.ply_interface
             profile = wrinkle.profile
 
-            # Convert phase offset to geometric longitudinal shift
             # φ = 2π·Δx/λ  →  Δx = φ·λ/(2π)
-            delta_x = wrinkle.phase_offset * profile.wavelength / (2.0 * np.pi)
+            if isinstance(profile, WrinkleSurface3D):
+                wavelength = profile.profile.wavelength
+            else:
+                wavelength = profile.wavelength
+            delta_x = wrinkle.phase_offset * wavelength / (2.0 * np.pi)
+            x_shifted = x - delta_x
 
-            for node_idx in range(len(nodes)):
-                x = nodes[node_idx, 0]
-                p = int(ply_ids[node_idx])
+            if isinstance(profile, WrinkleSurface3D):
+                dz = profile.displacement(x_shifted, y)
+            else:
+                dz = profile.displacement(x_shifted)
 
-                # Shift x-coordinate by phase offset before profile evaluation
-                x_shifted = x - delta_x
+            dz = dz * self._amplitude_scale_vec(wrinkle, x, y)
+            dz = dz * self._through_thickness_decay(ply_ids, k, n_plies)
 
-                # Compute wrinkle displacement at shifted x-location
-                if isinstance(profile, WrinkleSurface3D):
-                    y = nodes[node_idx, 1]
-                    dz = float(profile.displacement(
-                        np.atleast_1d(x_shifted), np.atleast_1d(y)
-                    )[0])
-                else:
-                    y = nodes[node_idx, 1]
-                    dz = float(profile.displacement(np.atleast_1d(x_shifted))[0])
-
-                # In-plane spatially varying amplitude modulation (#3).
-                # This is a SEPARATE multiplicative scale on top of the
-                # wrinkle's own longitudinal envelope.
-                dz *= self._amplitude_scale(wrinkle, x, y)
-
-                # Through-thickness decay
-                if self.decay_mode == "uniform":
-                    # Full amplitude at all plies
-                    decay = 1.0
-                elif self.decay_mode == "graded":
-                    # Linear decay from max at midplane to decay_floor at surfaces
-                    p_mid = (n_plies - 1) / 2.0
-                    if n_plies > 1:
-                        raw = 1.0 - abs(p - p_mid) / p_mid  # 1.0 at mid, 0.0 at surface
-                        decay = self.decay_floor + (1.0 - self.decay_floor) * raw
-                    else:
-                        decay = 1.0
-                    decay = max(0.0, decay)
-                else:
-                    # Default: zero at outer surfaces, unit at the
-                    # interface plies (p = k and p = k + 1), linear in
-                    # between. Shared with fiber_angles_at_nodes.
-                    decay = self._ply_decay(p, k, n_plies)
-
-                deformed[node_idx, 2] += dz * decay
+            deformed[:, 2] += dz
 
         return deformed
 
@@ -835,53 +902,25 @@ class WrinkleConfiguration:
             n_plies = int(ply_ids.max()) + 1 if len(ply_ids) > 0 else 1
         angle_sq = np.zeros(n_nodes, dtype=np.float64)
 
+        x = nodes[:, 0]
+        y = nodes[:, 1] if nodes.shape[1] >= 2 else np.zeros(n_nodes)
+
         for wrinkle in self.wrinkles:
             profile = wrinkle.profile
             k = wrinkle.ply_interface
 
             # Convert phase offset to geometric longitudinal shift
             delta_x = wrinkle.phase_offset * profile.wavelength / (2.0 * np.pi)
+            x_shifted = x - delta_x
 
-            for node_idx in range(n_nodes):
-                x = nodes[node_idx, 0]
-                y = nodes[node_idx, 1] if nodes.shape[1] >= 2 else 0.0
-                p = int(ply_ids[node_idx])
+            # 1-D profile slope is broadcast over all nodes in C.
+            slope = profile.slope(x_shifted)
 
-                # Shift x by phase offset before evaluating slope
-                x_shifted = x - delta_x
+            amp_scale = self._amplitude_scale_vec(wrinkle, x, y)
+            decay = self._through_thickness_decay(ply_ids, k, n_plies) * amp_scale
 
-                # Get the slope dz/dx at the shifted x position
-                slope = profile.slope(x_shifted)
-
-                # In-plane spatially varying amplitude modulation (#3).
-                # Mirrors the scale applied in apply_to_nodes so the
-                # displacement and angle fields stay consistent (#18).
-                amp_scale = self._amplitude_scale(wrinkle, x, y)
-
-                # Through-thickness decay for angle
-                if self.decay_mode == "uniform":
-                    decay = 1.0
-                elif self.decay_mode == "graded":
-                    p_mid = (n_plies - 1) / 2.0
-                    if n_plies > 1:
-                        raw = max(0.0, 1.0 - abs(p - p_mid) / p_mid)
-                        decay = self.decay_floor + (1.0 - self.decay_floor) * raw
-                    else:
-                        decay = 1.0
-                else:
-                    # Default: same through-thickness decay as the
-                    # displacement field (see apply_to_nodes).
-                    decay = self._ply_decay(p, k, n_plies)
-
-                # Combine through-thickness decay with in-plane
-                # amplitude-profile scale.
-                decay = decay * amp_scale
-
-                # Angle from slope, scaled by decay
-                angle = np.arctan(np.abs(slope)) * decay
-
-                # Accumulate as sum of squares for RSS combination
-                angle_sq[node_idx] += angle ** 2
+            angle = np.arctan(np.abs(slope)) * decay
+            angle_sq += angle * angle
 
         return np.sqrt(angle_sq)
 
