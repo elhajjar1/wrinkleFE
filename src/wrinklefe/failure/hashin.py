@@ -147,25 +147,43 @@ class HashinCriterion(FailureCriterion):
 
         # ---------------------------------------------------------------
         # 4. Matrix Compression  (sigma_22 + sigma_33 < 0)
-        #    FI_mc^2 = [(Yc/(2*S23))^2 - 1] * (s22+s33)/Yc
-        #            + (s22+s33)^2 / (4*S23^2)
-        #            + (tau_23^2 - s22*s33) / S23^2
-        #            + (tau_12^2 + tau_13^2) / S12^2
+        #    FI_mc^2 = [(Yc/(2*S23))^2 - 1] * (s22+s33)/Yc        (linear in stress)
+        #            + (s22+s33)^2 / (4*S23^2)                    (quadratic)
+        #            + (tau_23^2 - s22*s33) / S23^2               (quadratic)
+        #            + (tau_12^2 + tau_13^2) / S12^2              (quadratic)
+        #
+        # Note: the first term is *linear* in the stress, while the others
+        # are *quadratic*.  Under proportional load scaling by R, the
+        # polynomial FI_mc^2(R) = A*R^2 + B*R mixes orders, so
+        # RF = 1/FI_mc would underestimate the true strength ratio.
+        # Instead, we solve A*R_f^2 + B*R_f = 1 for the positive root.
         # ---------------------------------------------------------------
         if sig_t < 0:
-            fi_mc_sq = (
-                ((material.Yc / (2 * material.S23)) ** 2 - 1)
-                * sig_t / material.Yc
-                + sig_t ** 2 / (4 * material.S23 ** 2)
+            # Quadratic coefficient A: pure stress^2 terms
+            A_mc = (
+                sig_t ** 2 / (4 * material.S23 ** 2)
                 + (s[3] ** 2 - s[1] * s[2]) / material.S23 ** 2
                 + (s[5] ** 2 + s[4] ** 2) / material.S12 ** 2
             )
+            # Linear coefficient B: linear-in-stress term
+            B_mc = ((material.Yc / (2 * material.S23)) ** 2 - 1) * sig_t / material.Yc
+
+            fi_mc_sq = A_mc + B_mc
             fi_mc = np.sqrt(max(fi_mc_sq, 0.0))
+
+            # Closed-form reserve factor: positive root of A*R^2 + B*R - 1 = 0
+            rf_mc = _quadratic_reserve_factor(A_mc, B_mc)
         else:
             fi_mc = 0.0
+            rf_mc = float("inf")
 
         # ---------------------------------------------------------------
-        # Determine dominant failure mode
+        # Determine dominant failure mode (by FI value, as before).
+        # Per-mode reserve factors:
+        #   - fiber_tension, fiber_compression, matrix_tension are pure
+        #     quadratics in the stress, so RF = 1/sqrt(FI^2) = 1/FI.
+        #   - matrix_compression has a mixed linear+quadratic FI^2, so RF
+        #     comes from the quadratic root above.
         # ---------------------------------------------------------------
         modes = {
             "fiber_tension": fi_ft,
@@ -176,9 +194,62 @@ class HashinCriterion(FailureCriterion):
         dominant = max(modes, key=modes.get)
         fi_max = modes[dominant]
 
+        if fi_max <= 0:
+            reserve_factor = float("inf")
+        elif dominant == "matrix_compression":
+            reserve_factor = rf_mc
+        else:
+            reserve_factor = 1.0 / fi_max
+
         return FailureResult(
             index=fi_max,
             mode=dominant,
-            reserve_factor=1.0 / fi_max if fi_max > 0 else float("inf"),
+            reserve_factor=reserve_factor,
             criterion_name=self.name,
         )
+
+
+def _quadratic_reserve_factor(A: float, B: float) -> float:
+    """Smallest positive root of ``A*R^2 + B*R - 1 = 0``.
+
+    Used by the Hashin matrix-compression branch, where the failure
+    polynomial mixes linear and quadratic terms in the applied load.
+
+    Parameters
+    ----------
+    A : float
+        Coefficient of ``R^2`` (sum of squared-stress / squared-strength
+        terms).  Always non-negative for the matrix-compression branch.
+    B : float
+        Coefficient of ``R`` (the linear ``((Yc/(2 S23))^2 - 1) * sig_t / Yc``
+        term).  Can have either sign depending on stress and material.
+
+    Returns
+    -------
+    float
+        Smallest positive ``R`` satisfying ``A*R^2 + B*R = 1``.
+        Returns ``float('inf')`` if no positive root exists (a fully
+        zero/degenerate state).
+    """
+    # Degenerate: no quadratic content (pure linear term).  A*R^2 + B*R = 1
+    # becomes B*R = 1 => R = 1/B (only positive when B > 0).
+    if A <= 0.0:
+        if B > 0.0:
+            return 1.0 / B
+        return float("inf")
+
+    disc = B * B + 4.0 * A
+    if disc < 0.0:
+        # Should not happen with A > 0, but guard against fp noise.
+        return float("inf")
+    sqrt_disc = np.sqrt(disc)
+
+    # Roots of A*R^2 + B*R - 1 = 0
+    r_plus = (-B + sqrt_disc) / (2.0 * A)
+    r_minus = (-B - sqrt_disc) / (2.0 * A)
+
+    # Pick smallest positive root; else +inf
+    candidates = [r for r in (r_plus, r_minus) if r > 0.0]
+    if not candidates:
+        return float("inf")
+    return min(candidates)
