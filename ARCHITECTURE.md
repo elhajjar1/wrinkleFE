@@ -59,7 +59,7 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 
 | Module | Description |
 |--------|-------------|
-| `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (4 built-in presets) |
+| `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (9 built-in presets) |
 | `core/laminate.py` | `Laminate`, `Ply`, `LoadState`; Classical Lamination Theory ABD matrices |
 | `core/wrinkle.py` | `GaussianSinusoidal` wrinkle profile: z(x) = A exp(-x^2/w^2) cos(2pi x/lam) |
 | `core/morphology.py` | `WrinkleConfiguration`, `MorphologyFactor`, `MORPHOLOGY_PHASES`; phase-to-Mf mapping |
@@ -79,6 +79,9 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `viz/plots_3d.py` | 3D PyVista plots (mesh, damage contours) |
 | `viz/style.py` | Publication styling constants and helpers |
 | `sweep/parametric_sweep.py` | Parametric sweep over amplitude/wavelength/morphology; CSV output |
+| `analysis.py` | Top-level orchestrator: `WrinkleAnalysis`, `AnalysisConfig`, `compare_morphologies`, `parametric_sweep` |
+| `cli.py` | Entry point referenced by `[project.scripts]` (the `wrinklefe` command) |
+| `io/export.py` | meshio-backed mesh/field export, gated by the `export` extra |
 
 ## Confinement Model
 
