@@ -789,6 +789,12 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             "stress_per_elem": stress_per_elem,
             "element_centers": element_centers,
             "fi_per_gauss": fi_per_gauss,
+            # Precomputed boundary-face triangulation cached once per
+            # solve so slider re-renders skip the boundary cull. See
+            # issue #198.
+            "mesh3d_geometry": streamlit_viz.compute_mesh3d_geometry(
+                elements_arr
+            ),
         }
 
     return {
@@ -1425,6 +1431,7 @@ with tab_results:
                         fe["nodes"], fe["elements"], fe["stress_per_elem"],
                         component_index=comp[0],
                         component_label=comp[1],
+                        precomputed_geometry=fe.get("mesh3d_geometry"),
                     )
                     st.plotly_chart(fig_3d, width="stretch")
 
@@ -1459,6 +1466,7 @@ with tab_results:
                     fig_3d = streamlit_viz.deformed_mesh_figure(
                         fe["nodes"], fe["elements"], fe["displacement"],
                         scale=scale,
+                        precomputed_geometry=fe.get("mesh3d_geometry"),
                     )
                     st.plotly_chart(fig_3d, width="stretch")
                     # No y-slice for the deformed-mesh view: a stress
@@ -1483,6 +1491,7 @@ with tab_results:
                         fig_3d = streamlit_viz.fi_3d_figure(
                             fe["nodes"], fe["elements"],
                             fi_dict[crit_for_3d], crit_for_3d,
+                            precomputed_geometry=fe.get("mesh3d_geometry"),
                         )
                         st.plotly_chart(fig_3d, width="stretch")
 

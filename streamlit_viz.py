@@ -114,6 +114,40 @@ def _scene_layout() -> dict:
     )
 
 
+def compute_mesh3d_geometry(elements: np.ndarray) -> dict:
+    """Precompute the connectivity-derived geometry used by Mesh3d plots.
+
+    The expensive parts of building a Plotly Mesh3d for a hex mesh
+    (``boundary_faces`` + ``quads_to_triangles`` + the boundary-node
+    ``np.unique`` remap) depend only on the connectivity, not on the
+    nodal coordinates.  Streamlit slider re-renders keep ``elements``
+    constant between solves, so the FE app can call this once after
+    each solve and pass the result back into :func:`mesh3d_figure` via
+    ``precomputed_geometry=`` to skip the boundary cull on every redraw.
+
+    Returns a dict with:
+
+    - ``tri``: ``(n_tri, 4)`` array of [na, nb, nc, parent_elem_id]
+      from :func:`quads_to_triangles`. Owners (column 3) drive per-cell
+      intensity broadcasting.
+    - ``kept_nodes``: ``(n_kept,)`` unique global node ids referenced by
+      the boundary triangles, in ascending order.  Used to slice the
+      ``vertices`` / ``vertex_scalar`` arrays down to the surface.
+    - ``tri_ijk``: ``(n_tri, 3)`` triangle node indices remapped into
+      the compact ``kept_nodes`` index space — the i/j/k Plotly Mesh3d
+      expects.
+    """
+    bf = boundary_faces(elements)
+    tri = quads_to_triangles(bf)
+    if tri.shape[0] > 0:
+        kept_nodes, remap = np.unique(tri[:, :3].ravel(), return_inverse=True)
+        tri_ijk = remap.reshape(-1, 3).astype(np.int64, copy=False)
+    else:
+        kept_nodes = np.empty(0, dtype=np.int64)
+        tri_ijk = np.empty((0, 3), dtype=np.int64)
+    return {"tri": tri, "kept_nodes": kept_nodes, "tri_ijk": tri_ijk}
+
+
 def mesh3d_figure(
     vertices: np.ndarray,
     elements: np.ndarray,
@@ -125,28 +159,35 @@ def mesh3d_figure(
     title: str = "",
     symmetric: bool = False,
     height: int = 480,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """Render the boundary surface of a hex mesh as a Plotly Mesh3d.
 
     Pass ``cell_scalar`` (one value per element) for FE field data like
     sigma_33 or max FI; pass ``vertex_scalar`` (one value per node) for
     per-node fields like displacement magnitude.
-    """
-    bf = boundary_faces(elements)
-    tri = quads_to_triangles(bf)
 
-    # Trim the vertex payload so Plotly receives ONLY nodes that the
-    # boundary triangles reference; on a structured hex brick this is
-    # O(surface) instead of O(volume).  Re-index the triangle node ids
-    # to point into the compact vertex array.
-    if tri.shape[0] > 0:
-        kept_nodes, remap = np.unique(tri[:, :3].ravel(), return_inverse=True)
+    ``precomputed_geometry`` is the dict returned by
+    :func:`compute_mesh3d_geometry`.  When provided, the (expensive)
+    boundary cull + triangulation are skipped — this is the hot path for
+    Streamlit slider re-renders where ``elements`` is unchanged between
+    calls.  When ``None`` (default), the geometry is computed inline,
+    preserving the original single-argument API.
+    """
+    if precomputed_geometry is None:
+        precomputed_geometry = compute_mesh3d_geometry(elements)
+    tri = precomputed_geometry["tri"]
+    kept_nodes = precomputed_geometry["kept_nodes"]
+    tri_ijk = precomputed_geometry["tri_ijk"]
+
+    # Slice the vertex payload to the surface nodes.  ``vertices`` can
+    # change every call (e.g. deformed-mesh view re-applies the scaled
+    # displacement) so this lookup stays per-call even when the
+    # connectivity-derived geometry is cached.
+    if kept_nodes.size:
         verts = np.asarray(vertices)[kept_nodes]
-        tri_ijk = remap.reshape(-1, 3).astype(np.int64, copy=False)
     else:
-        kept_nodes = np.empty(0, dtype=np.int64)
         verts = np.asarray(vertices)[:0]
-        tri_ijk = np.empty((0, 3), dtype=np.int64)
 
     kwargs: dict = dict(
         x=verts[:, 0],
@@ -201,6 +242,7 @@ def stress_contour_figure(
     *,
     component_label: str = "σ₃₃",
     title: str | None = None,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """3D surface mesh coloured by a single Voigt stress component."""
     scalar = stress_per_elem[:, component_index]
@@ -212,6 +254,7 @@ def stress_contour_figure(
         colorbar_title=f"{component_label} [MPa]",
         title=title or f"{component_label} surface contour",
         symmetric=True,
+        precomputed_geometry=precomputed_geometry,
     )
 
 
@@ -221,6 +264,7 @@ def deformed_mesh_figure(
     displacement: np.ndarray,
     *,
     scale: float = 10.0,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """3D deformed mesh coloured by displacement magnitude."""
     deformed = nodes + scale * displacement
@@ -232,6 +276,7 @@ def deformed_mesh_figure(
         colorscale="Viridis",
         colorbar_title="|u| [mm]",
         title=f"Deformed mesh (×{scale:g} exaggeration)",
+        precomputed_geometry=precomputed_geometry,
     )
 
 
@@ -240,6 +285,8 @@ def fi_3d_figure(
     elements: np.ndarray,
     fi_per_gauss: np.ndarray,
     criterion: str,
+    *,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """3D surface mesh coloured by per-element max failure index."""
     fi_max = np.asarray(fi_per_gauss).max(axis=1)
@@ -250,6 +297,7 @@ def fi_3d_figure(
         colorscale="Reds",
         colorbar_title=f"FI ({criterion})",
         title=f"Failure index — {criterion}",
+        precomputed_geometry=precomputed_geometry,
     )
 
 

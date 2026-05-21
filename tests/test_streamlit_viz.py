@@ -257,3 +257,106 @@ def test_fi_3d_figure_smoke():
     fi = np.random.RandomState(0).rand(elems.shape[0], 8)
     fig = sv.fi_3d_figure(nodes, elems, fi, criterion="MaxStress")
     assert fig is not None
+
+
+# ---------------------------------------------------------------------------
+# precomputed_geometry cache (issue #198)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_mesh3d_geometry_shape_invariants():
+    """The connectivity-derived geometry has the shapes the figure
+    helpers expect: ``tri`` is (n_tri, 4), ``tri_ijk`` is (n_tri, 3),
+    and ``kept_nodes`` indexes into the full node array."""
+    nodes, elems = _structured_hex_mesh(3, 3, 3)
+    geom = sv.compute_mesh3d_geometry(elems)
+    assert geom["tri"].shape[1] == 4
+    assert geom["tri_ijk"].shape == (geom["tri"].shape[0], 3)
+    # tri_ijk indices must address the kept-nodes axis.
+    assert geom["tri_ijk"].max() < geom["kept_nodes"].size
+    # kept_nodes references real global node ids.
+    assert geom["kept_nodes"].max() < nodes.shape[0]
+
+
+def test_mesh3d_figure_precomputed_matches_uncached():
+    """Passing ``precomputed_geometry=`` must produce a figure
+    bit-identical to the uncached call."""
+    nodes, elems = _structured_hex_mesh(4, 3, 3)
+    cell_scalar = np.arange(elems.shape[0], dtype=float)
+
+    fig_a = sv.mesh3d_figure(nodes, elems, cell_scalar=cell_scalar)
+    geom = sv.compute_mesh3d_geometry(elems)
+    fig_b = sv.mesh3d_figure(
+        nodes, elems, cell_scalar=cell_scalar, precomputed_geometry=geom
+    )
+
+    for attr in ("x", "y", "z", "i", "j", "k", "intensity"):
+        a = np.asarray(getattr(fig_a.data[0], attr))
+        b = np.asarray(getattr(fig_b.data[0], attr))
+        assert a.shape == b.shape, f"{attr} shape mismatch"
+        assert np.array_equal(a, b), f"{attr} values differ"
+
+
+def test_mesh3d_figure_precomputed_skips_boundary_faces(monkeypatch):
+    """When ``precomputed_geometry`` is supplied, the expensive
+    ``boundary_faces`` + ``quads_to_triangles`` calls must NOT run —
+    the whole point of the cache."""
+    nodes, elems = _structured_hex_mesh(4, 3, 3)
+    geom = sv.compute_mesh3d_geometry(elems)
+
+    bf_calls = {"n": 0}
+    qt_calls = {"n": 0}
+
+    real_bf = sv.boundary_faces
+    real_qt = sv.quads_to_triangles
+
+    def _counted_bf(e):
+        bf_calls["n"] += 1
+        return real_bf(e)
+
+    def _counted_qt(q):
+        qt_calls["n"] += 1
+        return real_qt(q)
+
+    monkeypatch.setattr(sv, "boundary_faces", _counted_bf)
+    monkeypatch.setattr(sv, "quads_to_triangles", _counted_qt)
+
+    sv.mesh3d_figure(
+        nodes, elems,
+        cell_scalar=np.arange(elems.shape[0], dtype=float),
+        precomputed_geometry=geom,
+    )
+    assert bf_calls["n"] == 0, "boundary_faces ran despite cache hit"
+    assert qt_calls["n"] == 0, "quads_to_triangles ran despite cache hit"
+
+    # Sanity check: without the cache, both helpers DO run.
+    sv.mesh3d_figure(nodes, elems)
+    assert bf_calls["n"] == 1
+    assert qt_calls["n"] == 1
+
+
+def test_precomputed_geometry_threaded_through_wrappers():
+    """The 3 high-level figure helpers must forward
+    ``precomputed_geometry`` down to ``mesh3d_figure``; otherwise the
+    app.py call sites silently pay the boundary-cull cost on every
+    slider move."""
+    nodes, elems = _structured_hex_mesh(3, 3, 3)
+    geom = sv.compute_mesh3d_geometry(elems)
+    stress = np.zeros((elems.shape[0], 6))
+    stress[:, 2] = np.linspace(-100.0, 100.0, elems.shape[0])
+    disp = np.zeros_like(nodes)
+    fi = np.random.RandomState(0).rand(elems.shape[0], 8)
+
+    # Each wrapper accepts the kwarg (it would raise TypeError if not).
+    f1 = sv.stress_contour_figure(
+        nodes, elems, stress, component_index=2, precomputed_geometry=geom,
+    )
+    f2 = sv.deformed_mesh_figure(
+        nodes, elems, disp, scale=10.0, precomputed_geometry=geom,
+    )
+    f3 = sv.fi_3d_figure(
+        nodes, elems, fi, criterion="MaxStress", precomputed_geometry=geom,
+    )
+    for fig in (f1, f2, f3):
+        assert fig is not None
+        assert len(fig.data) == 1
