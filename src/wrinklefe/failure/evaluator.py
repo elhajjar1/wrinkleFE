@@ -25,12 +25,38 @@ References
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Mapping, Sequence, Union
 
 import numpy as np
 
 from wrinklefe.failure.base import FailureCriterion, FailureResult
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+
+
+# Type alias for per-ply context input.  Either a sequence indexable by
+# integer ply index, or a mapping from ply index to a context dict.
+PlyContexts = Union[Sequence[Union[dict, None]], Mapping[int, Union[dict, None]], None]
+
+
+def _ply_context(ply_contexts: PlyContexts, k: int) -> dict | None:
+    """Resolve the context dict for ply *k* from a sequence or mapping.
+
+    Returns ``None`` if no context is provided for ply *k*.  Supports
+    list/tuple/ndarray (indexed positionally) and dict (keyed by ply index).
+    """
+    if ply_contexts is None:
+        return None
+    if isinstance(ply_contexts, Mapping):
+        return ply_contexts.get(k, None)
+    # Sequence-like (list, tuple, ndarray of dicts).  Be tolerant of
+    # short sequences by returning None when k is out of range.
+    try:
+        if k < 0 or k >= len(ply_contexts):
+            return None
+        return ply_contexts[k]
+    except TypeError:
+        return None
 
 
 @dataclass
@@ -154,6 +180,7 @@ class FailureEvaluator:
         self,
         stress_local: np.ndarray,
         material: OrthotropicMaterial,
+        context: dict | None = None,
     ) -> dict[str, FailureResult]:
         """Evaluate all criteria at a single material point.
 
@@ -164,6 +191,12 @@ class FailureEvaluator:
             ``[sigma_11, sigma_22, sigma_33, tau_23, tau_13, tau_12]``.
         material : OrthotropicMaterial
             Material with strength allowables.
+        context : dict, optional
+            Element-level data forwarded to each criterion.  See
+            :meth:`wrinklefe.failure.base.FailureCriterion.evaluate` for the
+            supported keys (e.g. ``'misalignment_angle'``,
+            ``'ply_thickness'``).  Defaults to ``None`` for backwards
+            compatibility.
 
         Returns
         -------
@@ -178,7 +211,7 @@ class FailureEvaluator:
 
         results: dict[str, FailureResult] = {}
         for criterion in self.criteria:
-            result = criterion.evaluate(stress_local, material, None)
+            result = criterion.evaluate(stress_local, material, context)
             results[criterion.name] = result
         return results
 
@@ -190,6 +223,7 @@ class FailureEvaluator:
         self,
         laminate: Laminate,
         load: LoadState,
+        ply_contexts: PlyContexts = None,
     ) -> LaminateFailureReport:
         """Evaluate failure for each ply in the laminate under given load.
 
@@ -197,7 +231,8 @@ class FailureEvaluator:
 
         1. Computes the local stress state using CLT via
            :meth:`~wrinklefe.core.laminate.Laminate.ply_stresses_local`.
-        2. Evaluates all criteria at that stress state.
+        2. Evaluates all criteria at that stress state, forwarding the
+           ply-specific context dict from *ply_contexts* (if provided).
         3. Tracks the first-ply failure (ply with the minimum load factor
            that would cause FI >= 1) and last-ply failure (ply with the
            maximum failure index).
@@ -214,11 +249,32 @@ class FailureEvaluator:
         load : LoadState
             Applied load state (force/moment resultants and environmental
             loads).
+        ply_contexts : sequence or mapping of dict, optional
+            Per-ply context forwarded to ``criterion.evaluate(..., context)``.
+            Either a sequence indexable by integer ply index (e.g. a
+            ``list`` of length ``n_plies``) or a ``dict`` keyed by ply
+            index.  Use this to flow wrinkle-driven
+            ``misalignment_angle`` (and other element-level data such as
+            ``ply_thickness``) into physics-based criteria like LaRC05.
+            Missing entries default to ``None``.  Defaults to ``None`` for
+            backwards compatibility, in which case the no-wrinkle case is
+            evaluated.
 
         Returns
         -------
         LaminateFailureReport
             Complete failure report for the laminate.
+
+        Examples
+        --------
+        Pass per-ply misalignment angles from a wrinkle geometry model:
+
+        >>> ply_contexts = [
+        ...     {"misalignment_angle": phi_k} for phi_k in misalignments
+        ... ]
+        >>> report = evaluator.evaluate_laminate(
+        ...     laminate, load, ply_contexts=ply_contexts
+        ... )
         """
         n_plies = laminate.n_plies
 
@@ -246,9 +302,10 @@ class FailureEvaluator:
             stress_6[5] = stress_2d[2]  # tau_12
 
             material = laminate.plies[k].material
+            ctx = _ply_context(ply_contexts, k)
 
             for criterion in self.criteria:
-                result = criterion.evaluate(stress_6, material)
+                result = criterion.evaluate(stress_6, material, ctx)
                 ply_fi[criterion.name][k] = result.index
                 ply_rf[criterion.name][k] = result.reserve_factor
                 ply_modes[criterion.name][k] = result.mode
@@ -406,6 +463,7 @@ class FailureEvaluator:
         laminate: Laminate,
         load_type: str = "Nx-Ny",
         n_points: int = 360,
+        ply_contexts: PlyContexts = None,
     ) -> dict[str, np.ndarray]:
         """Compute failure envelope in 2D load space.
 
@@ -430,6 +488,12 @@ class FailureEvaluator:
             Default is ``"Nx-Ny"``.
         n_points : int, optional
             Number of points around the envelope.  Default is 360.
+        ply_contexts : sequence or mapping of dict, optional
+            Per-ply context forwarded to
+            :meth:`evaluate_laminate` at every angular sample.  Use this
+            to include wrinkle-driven ``misalignment_angle`` (or other
+            element-level data) in every point of the envelope.
+            Defaults to ``None`` (no per-ply context).
 
         Returns
         -------
@@ -473,7 +537,7 @@ class FailureEvaluator:
             load = LoadState.from_vector(load_vec)
 
             # Evaluate laminate at unit load
-            report = self.evaluate_laminate(laminate, load)
+            report = self.evaluate_laminate(laminate, load, ply_contexts=ply_contexts)
 
             for criterion in self.criteria:
                 name = criterion.name
@@ -503,6 +567,19 @@ class FailureEvaluator:
         :class:`~wrinklefe.failure.larc05.LaRC05Criterion`, which is the
         primary failure criterion for wrinkle analysis as it accounts for
         fibre kinking via misalignment-frame stress rotation.
+
+        To drive the LaRC05 fibre-kinking model with wrinkle-derived
+        misalignment angles, pass per-ply context dicts to
+        :meth:`evaluate_laminate` (or :meth:`strength_ratio_envelope`) via
+        the ``ply_contexts`` argument, for example::
+
+            ply_contexts = [
+                {"misalignment_angle": phi_k} for phi_k in misalignments
+            ]
+            report = evaluator.evaluate_laminate(lam, load, ply_contexts=ply_contexts)
+
+        Without ``ply_contexts``, LaRC05 evaluates with ``phi_0 = 0``, i.e.
+        the no-wrinkle case.
 
         Returns
         -------
