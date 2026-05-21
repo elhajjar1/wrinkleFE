@@ -517,19 +517,29 @@ class TestBoundaryHandler:
             assert np.isclose(F[3 * nid], per_node)
 
     def test_apply_penalty(self, small_mesh, single_ply_laminate):
-        """Penalty method modifies diagonal and force vector."""
+        """Penalty method modifies diagonal and force vector.
+
+        With the textbook scaling alpha = 1e8 * max(|diag(K)|, 1.0),
+        constrained-DOF diagonals should be at least 1e8 * max(diag),
+        which for a non-trivial stiffness matrix is several orders of
+        magnitude above the largest unconstrained diagonal entry.
+        """
         assembler = GlobalAssembler(small_mesh, single_ply_laminate)
         K = assembler.assemble_stiffness()
         F = np.zeros(small_mesh.n_dof)
         handler = BoundaryHandler(small_mesh)
 
+        diag_max_orig = float(np.abs(K.diagonal()).max())
+        expected_alpha = 1.0e8 * max(diag_max_orig, 1.0)
+
         constrained = {0: 0.0, 3: -0.01}
         K_mod, F_mod = handler.apply_penalty(K, F, constrained)
 
-        # Diagonal entries should be very large for constrained DOFs
+        # Diagonal entries should be at least the penalty alpha above
+        # their original value.
         K_dense = K_mod.toarray()
-        assert K_dense[0, 0] > 1e15
-        assert K_dense[3, 3] > 1e15
+        assert K_dense[0, 0] >= expected_alpha
+        assert K_dense[3, 3] >= expected_alpha
         # F should be modified for non-zero prescribed displacement
         assert np.isclose(F_mod[0], 0.0, atol=1e-5)
         assert F_mod[3] < 0  # negative prescribed displacement
@@ -573,6 +583,100 @@ class TestBoundaryHandler:
         # Sanity: input F must not be mutated in place
         assert F[3] == original_force_dof3
         assert F[0] == original_force_dof0
+
+    def test_penalty_helper_and_handler_match(
+        self, small_mesh, single_ply_laminate
+    ):
+        """Regression test for issue #188.
+
+        ``StaticSolver._apply_penalty_bcs`` and
+        ``BoundaryHandler.apply_penalty`` must produce identical
+        displacements when fed the same K, F, and constrained DOFs.
+        Historically they used different scalings (1e8 * max(diag) vs
+        a fixed 1e20), which gave silently different results once the
+        condition number drifted past ~1e16.
+        """
+        from scipy.sparse.linalg import spsolve
+        from wrinklefe.solver.boundary import (
+            _PENALTY_SCALE,
+            apply_penalty_bcs,
+        )
+
+        assembler = GlobalAssembler(small_mesh, single_ply_laminate)
+        K = assembler.assemble_stiffness()
+        handler = BoundaryHandler(small_mesh)
+        bcs = BoundaryHandler.compression_bcs(small_mesh, applied_strain=-0.001)
+        constrained = handler.get_constrained_dofs(bcs)
+        F = handler.get_force_dofs(bcs)
+
+        # Path A: BoundaryHandler.apply_penalty (default scaling).
+        K_a, F_a = handler.apply_penalty(K, F, constrained)
+        u_a = spsolve(K_a, F_a)
+
+        # Path B: module-level helper with in_place=True (the path used
+        # by StaticSolver.solve).  Feed it a fresh copy of K/F.
+        K_in = K.copy()
+        F_in = F.copy()
+        K_b, F_b = apply_penalty_bcs(
+            K_in, F_in, constrained, in_place=True,
+        )
+        u_b = spsolve(K_b, F_b)
+
+        # Both paths must yield bit-near-identical displacements.
+        assert u_a.shape == u_b.shape
+        assert np.allclose(u_a, u_b, rtol=1e-12, atol=1e-14)
+
+        # And StaticSolver.solve() (which routes through the helper)
+        # must agree with the handler path within float tolerance.
+        solver = StaticSolver(small_mesh, single_ply_laminate)
+        results = solver.solve(bcs)
+        u_solver = results.displacement.ravel()
+        # The solver constrains and solves the same system A; agreement
+        # should be tight (the only difference is post-processing).
+        assert np.allclose(u_solver, u_a, rtol=1e-10, atol=1e-12)
+
+        # Sanity: the computed alpha is within the textbook range,
+        # i.e. _PENALTY_SCALE * max(|diag(K)|) — not a fixed 1e20.
+        expected_alpha = _PENALTY_SCALE * max(
+            float(np.abs(K.diagonal()).max()), 1.0
+        )
+        K_dense = K_a.toarray()
+        first_dof = next(iter(constrained))
+        bumped = K_dense[first_dof, first_dof] - K.toarray()[first_dof, first_dof]
+        assert bumped == pytest.approx(expected_alpha, rel=1e-12)
+        # Hard upper bound: alpha must be well below the fixed 1e20
+        # legacy value so cond(K) stays safe.
+        assert expected_alpha < 1e18
+
+    def test_penalty_helper_no_lil_roundtrip(
+        self, small_mesh, single_ply_laminate
+    ):
+        """``apply_penalty_bcs`` returns CSC without an LIL detour.
+
+        Regression for issue #188: the legacy implementations converted
+        K to LIL purely to touch the diagonal, which is both slow and
+        unnecessary.  The helper uses ``sparse.diags`` instead.
+        """
+        from wrinklefe.solver.boundary import apply_penalty_bcs
+
+        assembler = GlobalAssembler(small_mesh, single_ply_laminate)
+        K = assembler.assemble_stiffness()
+        F = np.zeros(small_mesh.n_dof)
+        constrained = {0: 0.0, 5: 0.01}
+
+        K_out, F_out = apply_penalty_bcs(K, F, constrained)
+
+        # Output must be CSC (the format the downstream solver expects).
+        assert sparse.isspmatrix_csc(K_out)
+        # Off-diagonal sparsity must be unchanged: the only entries
+        # added by the helper sit on the diagonal at constrained DOFs.
+        K_diff = (K_out - K).tocoo()
+        nonzero_rows = K_diff.row[K_diff.data != 0]
+        nonzero_cols = K_diff.col[K_diff.data != 0]
+        assert np.array_equal(nonzero_rows, nonzero_cols), (
+            "Penalty contribution must be diagonal only."
+        )
+        assert set(int(r) for r in nonzero_rows) == set(constrained)
 
     def test_apply_elimination(self, small_mesh, single_ply_laminate):
         """Elimination method reduces the system size."""

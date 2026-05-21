@@ -363,54 +363,28 @@ class StaticSolver:
     ) -> tuple[sparse.csc_matrix, np.ndarray]:
         """Apply displacement boundary conditions via the penalty method.
 
-        For each constrained DOF *i* with prescribed value *u_i*:
-
-        .. math::
-
-            K_{ii} \\mathrel{+}= \\alpha, \\qquad F_i \\mathrel{+}= \\alpha \\, u_i
-
-        where ``alpha`` is a large penalty number (``1e8 * max(diag(K))``).
-
-        This preserves matrix symmetry and sparsity structure, which is
-        important for the CG iterative solver.
-
-        Parameters
-        ----------
-        K : scipy.sparse.csc_matrix
-            Global stiffness matrix (modified in place).
-        F : np.ndarray
-            Global force vector (modified in place).
-        constrained_dofs : dict[int, float]
-            Mapping from DOF index to prescribed displacement value.
-        verbose : bool
-            Print BC application info.
-
-        Returns
-        -------
-        K : scipy.sparse.csc_matrix
-            Modified stiffness matrix.
-        F : np.ndarray
-            Modified force vector.
+        Thin wrapper around
+        :func:`wrinklefe.solver.boundary.apply_penalty_bcs` that uses
+        ``in_place=True`` (this solver owns ``K`` and ``F`` exclusively
+        within :meth:`solve`).  See the helper docstring for the math
+        and the choice of penalty scaling.
         """
+        from wrinklefe.solver.boundary import apply_penalty_bcs, _PENALTY_SCALE
+
         if not constrained_dofs:
             return K, F
 
-        # Convert to LIL for efficient diagonal modification
-        K_lil = K.tolil()
-
-        # Penalty factor
-        diag_max = np.abs(K.diagonal()).max()
-        alpha = 1.0e8 * max(diag_max, 1.0)
-
-        for dof, u_val in constrained_dofs.items():
-            K_lil[dof, dof] += alpha
-            F[dof] += alpha * u_val
+        K_out, F_out = apply_penalty_bcs(
+            K, F, constrained_dofs, in_place=True,
+        )
 
         if verbose:
+            diag_max = float(np.abs(K.diagonal()).max())
+            alpha = _PENALTY_SCALE * max(diag_max, 1.0)
             print(f"  Applied {len(constrained_dofs)} displacement BCs "
                   f"(penalty alpha={alpha:.2e})")
 
-        return K_lil.tocsc(), F
+        return K_out, F_out
 
     def _load_state_to_bcs(self, load: LoadState) -> list:
         """Convert a CLT LoadState to 3-D boundary conditions.
