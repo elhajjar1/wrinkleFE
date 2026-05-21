@@ -54,8 +54,11 @@ class WrinkleProfile(ABC):
 
     - Profiles are *crest-referenced*: at ``x = center`` the cosine is at
       a maximum, so ``z(center) = amplitude`` (a positive +z crest).
-    - ``amplitude`` is the peak-to-midplane height, **not** peak-to-peak.
-      For a measured wrinkle, ``A = (z_max - z_min) / 2``.
+    - ``amplitude`` is the **half-amplitude** *A* (mm): the peak
+      displacement of the wrinkled mid-surface from the flat reference,
+      so ``z(x) = A * cos(2*pi*(x - x0) / lambda)`` (modulated by the
+      envelope) and the peak-to-trough height is ``2A``. For a measured
+      wrinkle, ``A = (z_max - z_min) / 2``.
     - The peak fibre misalignment angle scales as
       ``theta_max ~= arctan(2*pi*A/lambda)`` (exact for a pure cosine);
       this is dimensionless precisely because *A* and *lambda* share the
@@ -64,10 +67,13 @@ class WrinkleProfile(ABC):
     Parameters
     ----------
     amplitude : float
-        Peak out-of-plane crest height *A* (mm), measured from the flat
-        mid-surface to the wrinkle crest (peak-to-midplane, not
-        peak-to-peak).  Must be non-negative.  Larger *A* increases the
-        fibre misalignment angle and the strength knockdown.
+        Half-amplitude *A* (mm): peak displacement of the wrinkled
+        mid-surface from the flat reference, so
+        ``z(x) = A * cos(2*pi*(x - x0) / lambda)`` (modulated by the
+        envelope) and the peak-to-trough height is ``2A``. For a
+        measured wrinkle, ``A = (z_max - z_min) / 2``. Must be
+        non-negative. Larger *A* increases the fibre misalignment angle
+        and the strength knockdown.
     wavelength : float
         Sinusoidal wavelength *lambda* (mm) along the longitudinal
         *x*-direction: the period of the underlying ``cos(2*pi*x/lambda)``

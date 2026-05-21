@@ -60,7 +60,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument(
         "--amplitude", type=float, default=0.366,
-        help="Wrinkle amplitude A in mm (default: 0.366)",
+        help=(
+            "Wrinkle half-amplitude A in mm: peak displacement of the "
+            "wrinkled mid-surface from the flat reference, so "
+            "z(x) = A*cos(2*pi*x/lambda) and the peak-to-trough height "
+            "is 2A (default: 0.366)"
+        ),
     )
     p_analyze.add_argument(
         "--wavelength", type=float, default=16.0,
@@ -161,7 +166,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_compare.add_argument(
         "--amplitude", type=float, default=0.366,
-        help="Wrinkle amplitude A in mm (default: 0.366)",
+        help=(
+            "Wrinkle half-amplitude A in mm: peak displacement of the "
+            "wrinkled mid-surface from the flat reference, so "
+            "z(x) = A*cos(2*pi*x/lambda) and the peak-to-trough height "
+            "is 2A (default: 0.366)"
+        ),
     )
     p_compare.add_argument(
         "--wavelength", type=float, default=16.0,

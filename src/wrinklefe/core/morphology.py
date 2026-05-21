@@ -195,6 +195,16 @@ class WrinkleConfiguration:
         If the wrinkle list is empty, the amplitude profile name is
         unknown, or the decay length is non-positive.
 
+    Notes
+    -----
+    The wrinkle ``amplitude`` carried by each placement's
+    :class:`~wrinklefe.core.wrinkle.WrinkleProfile` is the
+    **half-amplitude** *A* (mm): the peak displacement of the wrinkled
+    mid-surface from the flat reference, so
+    ``z(x) = A * cos(2*pi*(x - x0) / lambda)`` (modulated by the
+    envelope) and the peak-to-trough height is ``2A``. For a measured
+    wrinkle, ``A = (z_max - z_min) / 2``.
+
     Examples
     --------
     Create a dual-wrinkle concave configuration::
