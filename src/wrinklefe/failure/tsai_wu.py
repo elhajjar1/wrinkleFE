@@ -251,3 +251,133 @@ class TsaiWuCriterion(FailureCriterion):
             reserve_factor=reserve_factor,
             criterion_name=self.name,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation
+    # ------------------------------------------------------------------
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Tsai-Wu evaluation across an array of stress states.
+
+        Identical maths to :meth:`evaluate` but computed on ``N`` points at
+        once with NumPy broadcasting.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with strength allowables (shared by all N points).
+        contexts : list, optional
+            Ignored — Tsai-Wu has no context dependence.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray, np.ndarray, np.ndarray
+            Each of shape ``(N,)``.  ``reserve_factors`` is the positive root
+            of ``R^2 Q + R L = 1`` (the strength ratio).
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+
+        s11, s22, s33 = s[:, 0], s[:, 1], s[:, 2]
+        t23, t13, t12 = s[:, 3], s[:, 4], s[:, 5]
+
+        Xt, Xc = material.Xt, material.Xc
+        Yt, Yc = material.Yt, material.Yc
+        Zt, Zc = material.Zt, material.Zc
+        S12, S13, S23 = material.S12, material.S13, material.S23
+
+        F1 = 1.0 / Xt - 1.0 / Xc
+        F2 = 1.0 / Yt - 1.0 / Yc
+        F3 = 1.0 / Zt - 1.0 / Zc
+        F11 = 1.0 / (Xt * Xc)
+        F22 = 1.0 / (Yt * Yc)
+        F33 = 1.0 / (Zt * Zc)
+        F44 = 1.0 / S23 ** 2
+        F55 = 1.0 / S13 ** 2
+        F66 = 1.0 / S12 ** 2
+        F12 = self.f12_star * np.sqrt(F11 * F22)
+        F13 = self.f12_star * np.sqrt(F11 * F33)
+        F23 = self.f12_star * np.sqrt(F22 * F33)
+
+        L = F1 * s11 + F2 * s22 + F3 * s33
+        Q = (
+            F11 * s11 ** 2
+            + F22 * s22 ** 2
+            + F33 * s33 ** 2
+            + 2.0 * F12 * s11 * s22
+            + 2.0 * F13 * s11 * s33
+            + 2.0 * F23 * s22 * s33
+            + F44 * t23 ** 2
+            + F55 * t13 ** 2
+            + F66 * t12 ** 2
+        )
+        fi = L + Q
+
+        # --- Reserve factor: smallest positive R with R^2 Q + R L = 1 ---
+        # Three branches, matching the scalar evaluate path.
+        rf = np.full_like(fi, np.inf)
+
+        # Q > 0: closed surface, take r_plus = (-L + sqrt(L^2 + 4Q)) / (2Q).
+        qp = Q > 0.0
+        if np.any(qp):
+            Lp = L[qp]
+            Qp = Q[qp]
+            disc = Lp * Lp + 4.0 * Qp
+            sqrt_disc = np.sqrt(np.maximum(disc, 0.0))
+            r_plus = (-Lp + sqrt_disc) / (2.0 * Qp)
+            rf_qp = np.where(r_plus > 0.0, r_plus, np.inf)
+            rf[qp] = rf_qp
+
+        # Q == 0, L > 0  =>  R = 1/L
+        qz = (Q == 0.0) & (L > 0.0)
+        if np.any(qz):
+            rf[qz] = 1.0 / L[qz]
+
+        # Q < 0: unusual open surface; take smallest positive root if any.
+        qn = Q < 0.0
+        if np.any(qn):
+            Ln = L[qn]
+            Qn = Q[qn]
+            disc = Ln * Ln + 4.0 * Qn
+            valid = disc >= 0.0
+            if np.any(valid):
+                Lv = Ln[valid]
+                Qv = Qn[valid]
+                sqrt_disc = np.sqrt(disc[valid])
+                r1 = (-Lv + sqrt_disc) / (2.0 * Qv)
+                r2 = (-Lv - sqrt_disc) / (2.0 * Qv)
+                pos1 = np.where(r1 > 0.0, r1, np.inf)
+                pos2 = np.where(r2 > 0.0, r2, np.inf)
+                rf_qn = np.minimum(pos1, pos2)
+                # rf_qn already +inf where no positive root.
+                # Write back to rf via composed mask.
+                qn_idx = np.where(qn)[0][valid]
+                rf[qn_idx] = rf_qn
+
+        # --- Approximate mode identification ---
+        fiber_contrib = np.abs(F1 * s11) + F11 * s11 ** 2
+        matrix_contrib = np.abs(F2 * s22) + F22 * s22 ** 2
+        shear_contrib = F66 * t12 ** 2
+
+        modes = np.empty(s.shape[0], dtype="U32")
+        is_fiber = (fiber_contrib >= matrix_contrib) & (fiber_contrib >= shear_contrib)
+        is_matrix = (~is_fiber) & (matrix_contrib >= shear_contrib)
+        is_shear = ~(is_fiber | is_matrix)
+
+        modes[is_fiber & (s11 >= 0)] = "fiber_tension"
+        modes[is_fiber & (s11 < 0)] = "fiber_compression"
+        modes[is_matrix & (s22 >= 0)] = "matrix_tension"
+        modes[is_matrix & (s22 < 0)] = "matrix_compression"
+        modes[is_shear] = "shear"
+
+        return fi, modes, rf

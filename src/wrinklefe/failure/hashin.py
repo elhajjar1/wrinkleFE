@@ -208,6 +208,149 @@ class HashinCriterion(FailureCriterion):
             criterion_name=self.name,
         )
 
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation
+    # ------------------------------------------------------------------
+
+    _HASHIN_MODE_LABELS = np.array(
+        ["fiber_tension", "fiber_compression",
+         "matrix_tension", "matrix_compression"],
+        dtype="U32",
+    )
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Hashin 3D evaluation across an array of stress states.
+
+        Identical maths to :meth:`evaluate` but computed on ``N`` points at
+        once with NumPy broadcasting.  See the module docstring for the
+        per-mode failure surfaces.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with strength allowables (shared by all N points).
+        contexts : list, optional
+            Ignored — Hashin has no context dependence.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray, np.ndarray, np.ndarray
+            Each of shape ``(N,)``.  ``reserve_factors`` uses the closed-form
+            quadratic root for the matrix-compression branch (see
+            :func:`_quadratic_reserve_factor`).
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+
+        s11, s22, s33 = s[:, 0], s[:, 1], s[:, 2]
+        t23, t13, t12 = s[:, 3], s[:, 4], s[:, 5]
+
+        Xt, Xc = material.Xt, material.Xc
+        Yt, Yc = material.Yt, material.Yc
+        S12, S23 = material.S12, material.S23
+
+        # --- Fibre tension (active when s11 >= 0) ---
+        ft_sq = (s11 / Xt) ** 2 + (t12 ** 2 + t13 ** 2) / S12 ** 2
+        fi_ft = np.where(s11 >= 0, np.sqrt(np.maximum(ft_sq, 0.0)), 0.0)
+
+        # --- Fibre compression (active when s11 < 0) ---
+        fi_fc = np.where(s11 < 0, -s11 / Xc, 0.0)
+
+        # --- Matrix branches (depend on sign of s22 + s33) ---
+        sig_t = s22 + s33
+        shear_term_23 = (t23 ** 2 - s22 * s33) / S23 ** 2
+        shear_term_12 = (t12 ** 2 + t13 ** 2) / S12 ** 2
+
+        # Matrix tension (sig_t >= 0)
+        mt_sq = (sig_t / Yt) ** 2 + shear_term_23 + shear_term_12
+        fi_mt = np.where(sig_t >= 0, np.sqrt(np.maximum(mt_sq, 0.0)), 0.0)
+
+        # Matrix compression (sig_t < 0)
+        A_mc = (
+            sig_t ** 2 / (4.0 * S23 ** 2)
+            + shear_term_23
+            + shear_term_12
+        )
+        B_mc = ((Yc / (2.0 * S23)) ** 2 - 1.0) * sig_t / Yc
+        mc_sq = A_mc + B_mc
+        fi_mc = np.where(sig_t < 0, np.sqrt(np.maximum(mc_sq, 0.0)), 0.0)
+
+        # --- Stack and pick dominant mode by FI value ---
+        all_fi = np.vstack([fi_ft, fi_fc, fi_mt, fi_mc])  # (4, N)
+        idx = np.argmax(all_fi, axis=0)
+        fi_max = all_fi[idx, np.arange(s.shape[0])]
+        modes = self._HASHIN_MODE_LABELS[idx]
+
+        # --- Reserve factor ---
+        # For ft/fc/mt branches the FI is a pure quadratic in load, so
+        # RF = 1/FI.  For mc, solve A*R^2 + B*R = 1 elementwise.
+        rf = np.full_like(fi_max, np.inf)
+
+        # mc branch via vectorised quadratic roots, then mask in
+        rf_mc = _quadratic_reserve_factor_vec(A_mc, B_mc)
+
+        # Default: 1/FI; override for the mc-dominant points.
+        nonzero = fi_max > 0
+        rf[nonzero] = 1.0 / fi_max[nonzero]
+        mc_dominant = (idx == 3) & nonzero
+        rf[mc_dominant] = rf_mc[mc_dominant]
+
+        return fi_max, modes, rf
+
+
+def _quadratic_reserve_factor_vec(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    """Vectorised version of :func:`_quadratic_reserve_factor`.
+
+    Smallest positive root of ``A*R^2 + B*R - 1 = 0`` for each elementwise
+    pair ``(A[i], B[i])``.  Returns ``inf`` where no positive root exists or
+    where ``A == 0`` and ``B <= 0`` (degenerate).
+
+    Parameters
+    ----------
+    A, B : np.ndarray
+        Same-shape arrays of polynomial coefficients.
+
+    Returns
+    -------
+    np.ndarray
+        Same shape as inputs; smallest positive root of ``A*R^2 + B*R = 1``.
+    """
+    A = np.asarray(A, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    rf = np.full(A.shape, np.inf, dtype=np.float64)
+
+    # Quadratic branch: A > 0.  Smallest positive root of A*R^2 + B*R - 1 = 0
+    # is r_plus = (-B + sqrt(B^2 + 4A)) / (2A) (which is always >= 0 because
+    # sqrt(B^2 + 4A) >= |B|).
+    quad = A > 0.0
+    if np.any(quad):
+        Aq = A[quad]
+        Bq = B[quad]
+        disc = Bq * Bq + 4.0 * Aq
+        # disc >= B^2 >= 0 for A > 0, so sqrt is safe.
+        sqrt_disc = np.sqrt(np.maximum(disc, 0.0))
+        r_plus = (-Bq + sqrt_disc) / (2.0 * Aq)
+        rf_quad = np.where(r_plus > 0.0, r_plus, np.inf)
+        rf[quad] = rf_quad
+
+    # Degenerate branch: A == 0, B > 0  =>  R = 1/B
+    lin = (A == 0.0) & (B > 0.0)
+    if np.any(lin):
+        rf[lin] = 1.0 / B[lin]
+
+    # All other cases (A < 0 or A == 0 & B <= 0): leave as inf.
+    return rf
+
 
 def _quadratic_reserve_factor(A: float, B: float) -> float:
     """Smallest positive root of ``A*R^2 + B*R - 1 = 0``.

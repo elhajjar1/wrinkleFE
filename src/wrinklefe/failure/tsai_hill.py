@@ -124,3 +124,93 @@ class TsaiHillCriterion(FailureCriterion):
             reserve_factor=rf,
             criterion_name=self.name,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation
+    # ------------------------------------------------------------------
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Tsai-Hill evaluation across an array of stress states.
+
+        Same maths as :meth:`evaluate` on ``N`` points at once via NumPy
+        broadcasting; sign-dependent strengths are selected with
+        :func:`numpy.where`.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` stress array.
+        material : OrthotropicMaterial
+            Material with strength allowables (shared across all N).
+        contexts : list, optional
+            Ignored — Tsai-Hill has no context dependence.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray, np.ndarray, np.ndarray
+            Each of shape ``(N,)``.  ``reserve_factors = 1/sqrt(FI)`` for the
+            purely quadratic Tsai-Hill index.
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+
+        s1 = s[:, 0]
+        s2 = s[:, 1]
+        s3 = s[:, 2]
+        t23 = s[:, 3]
+        t13 = s[:, 4]
+        t12 = s[:, 5]
+
+        X = np.where(s1 >= 0, material.Xt, material.Xc)
+        Y = np.where(s2 >= 0, material.Yt, material.Yc)
+        Z = np.where(s3 >= 0, material.Zt, material.Zc)
+
+        term_11 = (s1 / X) ** 2
+        term_22 = (s2 / Y) ** 2
+        term_33 = (s3 / Z) ** 2
+        term_s12 = (t12 / material.S12) ** 2
+        term_s13 = (t13 / material.S13) ** 2
+        term_s23 = (t23 / material.S23) ** 2
+
+        term_12 = -s1 * s2 / X ** 2
+        term_23 = -s2 * s3 / Y ** 2
+        term_13 = -s1 * s3 / X ** 2
+
+        fi = (term_11 + term_22 + term_33
+              + term_12 + term_23 + term_13
+              + term_s12 + term_s13 + term_s23)
+
+        # --- Dominant mode by largest positive (non-interaction) term ---
+        positive_terms = np.vstack([
+            term_11, term_22, term_33, term_s12, term_s13, term_s23
+        ])  # (6, N)
+        idx = np.argmax(positive_terms, axis=0)
+
+        # Build mode array.  Mode strings for normal terms depend on stress
+        # sign; shear modes are unconditional.
+        modes = np.empty(s.shape[0], dtype="U32")
+        is_11 = idx == 0
+        modes[is_11 & (s1 >= 0)] = "fiber_tension"
+        modes[is_11 & (s1 < 0)] = "fiber_compression"
+        is_22 = idx == 1
+        modes[is_22 & (s2 >= 0)] = "matrix_transverse_tension"
+        modes[is_22 & (s2 < 0)] = "matrix_transverse_compression"
+        is_33 = idx == 2
+        modes[is_33 & (s3 >= 0)] = "matrix_thickness_tension"
+        modes[is_33 & (s3 < 0)] = "matrix_thickness_compression"
+        modes[idx == 3] = "shear_12"
+        modes[idx == 4] = "shear_13"
+        modes[idx == 5] = "shear_23"
+
+        # --- Reserve factor = 1/sqrt(FI) ---
+        rf = np.where(fi > 0.0, 1.0 / np.sqrt(np.where(fi > 0.0, fi, 1.0)), np.inf)
+
+        return fi.astype(np.float64), modes, rf
