@@ -78,6 +78,21 @@ be misleading (e.g. the ``Overall`` bar in a Jensen-gap bar chart that sits
 alongside per-morphology bars).
 """
 
+TENSION_MECHANISM_COLORS: dict[str, str] = {
+    "fiber":  "#0072B2",  # Okabe-Ito blue
+    "matrix": "#D55E00",  # Okabe-Ito vermilion
+    "oop":    "#F0E442",  # Okabe-Ito yellow
+}
+"""Colour mapping for the three tension-mechanism knockdown components.
+
+Drawn from the Okabe-Ito palette, a well-established colourblind-safe set
+that retains good separation under deuteranopia / protanopia simulation
+(blue ~ dark, vermilion ~ mid, yellow ~ light, so the three bars also
+separate by luminance alone). Replaces the default ``tab10`` blue / orange
+/ green trio, in which orange and green become very close under
+deuteranopia.
+"""
+
 
 # ======================================================================
 # Standard figure sizes
