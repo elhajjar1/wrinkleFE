@@ -10,6 +10,9 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      # Note: Windows is intentionally not in the matrix. The desktop build
+      # pipeline (PyInstaller spec + build-windows.yml) was removed in #121;
+      # releases are now source-only (PyPI / source tarball). See issue #10.
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12"]
