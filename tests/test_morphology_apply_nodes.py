@@ -536,6 +536,24 @@ def test_partial_ply_ids_decay_stays_synced():
 # fibre-angle fields share the same default-mode decay.
 # ----------------------------------------------------------------------
 
+# Valid (k, n_plies) pairs for the parametrize below: ``k`` is a ply-
+# interface index and must satisfy ``k < n_plies - 1`` so that both
+# interface plies (k, k+1) exist and the upper outer surface (n_plies-1)
+# sits strictly above them. Filtering at collection time means the test
+# count reflects real coverage instead of being inflated by skipped
+# combinations (issue #205).
+_K_VALUES_OUTER = [1, 2, 3, 5, 8]
+_K_VALUES_INTERFACE = [1, 2, 3, 5]
+_N_PLIES_VALUES = [4, 8, 12]
+
+_VALID_K_N_OUTER = [
+    (k, n) for n in _N_PLIES_VALUES for k in _K_VALUES_OUTER if k < n - 1
+]
+_VALID_K_N_INTERFACE = [
+    (k, n) for n in _N_PLIES_VALUES for k in _K_VALUES_INTERFACE if k < n - 1
+]
+
+
 class TestIssue17_18DefaultDecayBC:
     """Regression tests pinning the contract from issues #17 and #18.
 
@@ -548,12 +566,9 @@ class TestIssue17_18DefaultDecayBC:
     displacement is zero must also see zero misalignment-angle decay.
     """
 
-    @pytest.mark.parametrize("k", [1, 2, 3, 5, 8])
-    @pytest.mark.parametrize("n_plies", [4, 8, 12])
+    @pytest.mark.parametrize("k,n_plies", _VALID_K_N_OUTER)
     def test_outer_surfaces_zero_decay(self, k, n_plies):
         """#17: bottom (p=0) and top (p=n-1) outer surfaces -> decay=0."""
-        if k >= n_plies - 1:
-            pytest.skip(f"k={k} invalid for n_plies={n_plies}")
         prof = GaussianSinusoidal(
             amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
         )
@@ -568,12 +583,9 @@ class TestIssue17_18DefaultDecayBC:
         if k + 1 < n_plies - 1:
             npt.assert_allclose(dz[ply == n_plies - 1], 0.0, atol=1e-15)
 
-    @pytest.mark.parametrize("k", [1, 2, 3, 5])
-    @pytest.mark.parametrize("n_plies", [4, 8, 12])
+    @pytest.mark.parametrize("k,n_plies", _VALID_K_N_INTERFACE)
     def test_interface_plies_unit_decay(self, k, n_plies):
         """#17: interface plies (p=k and p=k+1) carry the full profile."""
-        if k >= n_plies - 1:
-            pytest.skip(f"k={k} invalid for n_plies={n_plies}")
         prof = GaussianSinusoidal(
             amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
         )
@@ -585,8 +597,7 @@ class TestIssue17_18DefaultDecayBC:
         npt.assert_allclose(dz[ply == k][0], amp, rtol=1e-12)
         npt.assert_allclose(dz[ply == k + 1][0], amp, rtol=1e-12)
 
-    @pytest.mark.parametrize("k", [1, 2, 3, 5])
-    @pytest.mark.parametrize("n_plies", [4, 8, 12])
+    @pytest.mark.parametrize("k,n_plies", _VALID_K_N_INTERFACE)
     def test_displacement_and_angle_share_decay_default_mode(
         self, k, n_plies
     ):
@@ -594,8 +605,6 @@ class TestIssue17_18DefaultDecayBC:
         must equal decay extracted from the fibre-angle field. In
         particular: the outer-surface plies that get zero displacement
         must also get zero angle (no inflated misalignment downstream)."""
-        if k >= n_plies - 1:
-            pytest.skip(f"k={k} invalid for n_plies={n_plies}")
         prof = GaussianSinusoidal(
             amplitude=0.366, wavelength=16.0, width=12.0, center=0.0
         )

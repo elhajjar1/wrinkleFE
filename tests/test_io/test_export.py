@@ -36,7 +36,13 @@ from wrinklefe.io.export import (
 
 @pytest.fixture(scope="module")
 def analysis_result():
-    """Run a small WrinkleAnalysis once for the entire module."""
+    """Run a small WrinkleAnalysis once for the entire module.
+
+    The fixture runs the full FE pipeline (``analytical_only=False``) so a
+    mesh is always populated on the result. Tests in this module assume
+    ``result.mesh is not None`` -- the fixture asserts this so the export
+    tests below can use hard assertions instead of internal skips.
+    """
     mat = MaterialLibrary().get("IM7_8552")
     # NOTE: amplitude kept below the inversion threshold for this 1-element-
     # per-ply mesh; the original 0.366 mm value produced inverted hex
@@ -55,11 +61,19 @@ def analysis_result():
         domain_length=20.0,
         domain_width=8.0,
         applied_strain=-0.005,
+        analytical_only=False,
         verbose=False,
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return WrinkleAnalysis(cfg).run()
+        result = WrinkleAnalysis(cfg).run()
+    # Guard: fixture must produce an FE mesh; otherwise the export tests
+    # below would degenerate into trivially-passing checks. See issue #205.
+    assert result.mesh is not None, (
+        "analysis_result fixture must produce a mesh "
+        "(analytical_only=False); export tests depend on it."
+    )
+    return result
 
 
 # ======================================================================
@@ -114,15 +128,14 @@ class TestJSONExport:
         assert 0.0 < kd <= 1.0
 
     def test_mesh_summary_present(self, analysis_result, tmp_path):
-        """Mesh summary is present when mesh was generated."""
+        """Mesh summary is present (fixture is run with FE assembly on)."""
         out = tmp_path / "results.json"
         export_results_json(analysis_result, out)
         data = json.loads(out.read_text())
-        if analysis_result.mesh is not None:
-            assert "mesh" in data
-            mesh_data = data["mesh"]
-            assert mesh_data["n_nodes"] > 0
-            assert mesh_data["n_elements"] > 0
+        assert "mesh" in data
+        mesh_data = data["mesh"]
+        assert mesh_data["n_nodes"] > 0
+        assert mesh_data["n_elements"] > 0
 
     def test_roundtrip_values(self, analysis_result, tmp_path):
         """Export and reload: values match the original result."""
@@ -157,8 +170,6 @@ class TestAbaqusExport:
 
     def test_file_created(self, analysis_result, tmp_path):
         """Abaqus file is created."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "model.inp"
         laminate = analysis_result.laminate
         export_abaqus_inp(analysis_result.mesh, laminate, out)
@@ -166,8 +177,6 @@ class TestAbaqusExport:
 
     def test_has_heading(self, analysis_result, tmp_path):
         """File starts with *HEADING section."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "model.inp"
         export_abaqus_inp(analysis_result.mesh, analysis_result.laminate, out)
         content = out.read_text()
@@ -175,8 +184,6 @@ class TestAbaqusExport:
 
     def test_has_node_section(self, analysis_result, tmp_path):
         """File contains *NODE section with correct count."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "model.inp"
         export_abaqus_inp(analysis_result.mesh, analysis_result.laminate, out)
         content = out.read_text()
@@ -196,8 +203,6 @@ class TestAbaqusExport:
 
     def test_has_element_section(self, analysis_result, tmp_path):
         """File contains *ELEMENT sections."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "model.inp"
         export_abaqus_inp(analysis_result.mesh, analysis_result.laminate, out)
         content = out.read_text()
@@ -205,8 +210,6 @@ class TestAbaqusExport:
 
     def test_has_boundary_nsets(self, analysis_result, tmp_path):
         """File contains boundary node sets."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "model.inp"
         export_abaqus_inp(analysis_result.mesh, analysis_result.laminate, out)
         content = out.read_text()
@@ -215,8 +218,6 @@ class TestAbaqusExport:
 
     def test_node_ids_one_based(self, analysis_result, tmp_path):
         """Node IDs start at 1 (Abaqus convention)."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "model.inp"
         export_abaqus_inp(analysis_result.mesh, analysis_result.laminate, out)
         content = out.read_text()
@@ -240,16 +241,12 @@ class TestVTKExport:
 
     def test_file_created(self, analysis_result, tmp_path):
         """VTK file is created."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh.vtk"
         export_vtk(analysis_result.mesh, analysis_result.field_results, out)
         assert out.exists()
 
     def test_has_vtk_header(self, analysis_result, tmp_path):
         """File has proper VTK header."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh.vtk"
         export_vtk(analysis_result.mesh, analysis_result.field_results, out)
         content = out.read_text()
@@ -258,8 +255,6 @@ class TestVTKExport:
 
     def test_correct_point_count(self, analysis_result, tmp_path):
         """POINTS count matches mesh."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh.vtk"
         export_vtk(analysis_result.mesh, analysis_result.field_results, out)
         content = out.read_text()
@@ -268,8 +263,6 @@ class TestVTKExport:
 
     def test_correct_cell_count(self, analysis_result, tmp_path):
         """CELLS count matches mesh."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh.vtk"
         export_vtk(analysis_result.mesh, analysis_result.field_results, out)
         content = out.read_text()
@@ -278,8 +271,6 @@ class TestVTKExport:
 
     def test_has_fiber_angle_data(self, analysis_result, tmp_path):
         """File contains fiber_angle point data."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh.vtk"
         export_vtk(analysis_result.mesh, analysis_result.field_results, out)
         content = out.read_text()
@@ -287,8 +278,6 @@ class TestVTKExport:
 
     def test_has_ply_id_data(self, analysis_result, tmp_path):
         """File contains ply_id cell data."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh.vtk"
         export_vtk(analysis_result.mesh, analysis_result.field_results, out)
         content = out.read_text()
@@ -296,8 +285,6 @@ class TestVTKExport:
 
     def test_vtk_without_field_results(self, analysis_result, tmp_path):
         """VTK export works with field_results=None."""
-        if analysis_result.mesh is None:
-            pytest.skip("No mesh in result")
         out = tmp_path / "mesh_no_fields.vtk"
         export_vtk(analysis_result.mesh, None, out)
         content = out.read_text()
