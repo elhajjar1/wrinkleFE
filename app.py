@@ -764,6 +764,30 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             k: np.asarray(v, dtype=np.float64)
             for k, v in (result.failure_indices or {}).items()
         }
+        # Per-component global |max| stress, indexed by Voigt component.
+        # The y-slice scrubber uses these so the colorbar range matches
+        # the symmetric range the 3D contour computes. Without it the
+        # slice silently re-normalises per station and users mistakenly
+        # see the stress as uniform along y. See issue #200.
+        if stress_per_elem.size:
+            stress_vmax_per_comp = np.nanmax(
+                np.abs(stress_per_elem), axis=0
+            ).astype(float)
+        else:
+            stress_vmax_per_comp = np.zeros(
+                stress_per_elem.shape[1] if stress_per_elem.ndim == 2 else 6,
+                dtype=float,
+            )
+        # Per-criterion global max FI (FI is ≥ 0, so vmin = 0).
+        fi_vmax_per_crit: dict[str, float] = {}
+        for crit, arr in fi_per_gauss.items():
+            if arr.size:
+                vmax_c = float(np.nanmax(arr))
+                if not np.isfinite(vmax_c) or vmax_c <= 0.0:
+                    vmax_c = 1.0
+                fi_vmax_per_crit[crit] = vmax_c
+            else:
+                fi_vmax_per_crit[crit] = 1.0
         fe = {
             "modulus_retention": float(result.modulus_retention),
             "retention_factors": {
@@ -791,6 +815,10 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             "stress_per_elem": stress_per_elem,
             "element_centers": element_centers,
             "fi_per_gauss": fi_per_gauss,
+            # Precomputed global colorbar extrema for the y-slice
+            # scrubber.  See issue #200.
+            "stress_vmax_per_comp": stress_vmax_per_comp,
+            "fi_vmax_per_crit": fi_vmax_per_crit,
             # Precomputed boundary-face triangulation cached once per
             # solve so slider re-renders skip the boundary cull. See
             # issue #198.
@@ -1447,10 +1475,36 @@ with tab_results:
                             format_func=lambda t: t[1],
                             key="viz_slice_component",
                         )
+                        slice_range = st.radio(
+                            "Colorbar range",
+                            ["global (default)", "per-slice"],
+                            index=0,
+                            horizontal=True,
+                            key="viz_slice_range_mode",
+                            help=(
+                                "Default uses the global |max| of this "
+                                "stress component across the whole part, so "
+                                "the slice colorbar matches the 3D contour "
+                                "and you see real changes as you scrub y. "
+                                "'per-slice' renormalises to the visible "
+                                "station only — useful for inspecting one "
+                                "cold cross-section in detail. See #200."
+                            ),
+                        )
+                        vmax_global = float(
+                            fe["stress_vmax_per_comp"][slice_comp[0]]
+                        )
+                        if slice_range == "global (default)" and vmax_global > 0:
+                            slice_kwargs = dict(
+                                vmin=-vmax_global, vmax=vmax_global
+                            )
+                        else:
+                            slice_kwargs = {}
                         fig_slice = streamlit_viz.y_slice_figure(
                             fe["element_centers"], fe["elements"], fe["nodes"],
                             fe["stress_per_elem"], slice_comp[0], y_station,
                             component_label=slice_comp[1],
+                            **slice_kwargs,
                         )
                         if fig_slice is not None:
                             st.plotly_chart(fig_slice, width="stretch")
@@ -1500,10 +1554,41 @@ with tab_results:
                         st.markdown("**y-slice scrubber**")
                         y_station = _y_station_slider()
                         if y_station is not None:
+                            fi_slice_range = st.radio(
+                                "Colorbar range",
+                                ["global (default)", "per-slice"],
+                                index=0,
+                                horizontal=True,
+                                key="viz_fi_slice_range_mode",
+                                help=(
+                                    "Default uses the global max FI for "
+                                    "this criterion so the slice colorbar "
+                                    "matches the 3D contour and the "
+                                    "saturation tracks the real per-station "
+                                    "FI as you scrub y. 'per-slice' "
+                                    "renormalises to the visible station "
+                                    "only. See #200."
+                                ),
+                            )
+                            fi_vmax_global = float(
+                                fe.get("fi_vmax_per_crit", {}).get(
+                                    crit_for_3d, 0.0
+                                )
+                            )
+                            if (
+                                fi_slice_range == "global (default)"
+                                and fi_vmax_global > 0
+                            ):
+                                fi_slice_kwargs = dict(
+                                    vmin=0.0, vmax=fi_vmax_global
+                                )
+                            else:
+                                fi_slice_kwargs = {}
                             fig_slice = streamlit_viz.fi_y_slice_figure(
                                 fe["element_centers"], fe["elements"],
                                 fe["nodes"], fi_dict[crit_for_3d], y_station,
                                 criterion=crit_for_3d,
+                                **fi_slice_kwargs,
                             )
                             if fig_slice is not None:
                                 st.plotly_chart(fig_slice, width="stretch")
