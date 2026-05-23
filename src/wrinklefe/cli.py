@@ -69,11 +69,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument(
         "--wavelength", type=float, default=16.0,
-        help="Wrinkle wavelength in mm (default: 16.0)",
+        help=(
+            "Wrinkle wavelength lambda in mm: spatial period of the "
+            "cos(2*pi*(x - x0)/lambda) carrier (crest-to-crest "
+            "distance). Must be > 0 (default: 16.0)"
+        ),
     )
     p_analyze.add_argument(
         "--width", type=float, default=12.0,
-        help="Gaussian envelope half-width in mm (default: 12.0)",
+        help=(
+            "Wrinkle envelope decay length w in mm about the centre x0 "
+            "(Gaussian 1/e length in exp(-(x-x0)^2/w^2); also the "
+            "transverse y-extent in 3-D dual-wrinkle / graded modes). "
+            "Must be > 0 (default: 12.0)"
+        ),
     )
     p_analyze.add_argument(
         "--morphology", type=str, default="stack",
@@ -175,11 +184,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_compare.add_argument(
         "--wavelength", type=float, default=16.0,
-        help="Wrinkle wavelength in mm (default: 16.0)",
+        help=(
+            "Wrinkle wavelength lambda in mm: spatial period of the "
+            "cos(2*pi*(x - x0)/lambda) carrier (crest-to-crest "
+            "distance). Must be > 0 (default: 16.0)"
+        ),
     )
     p_compare.add_argument(
         "--width", type=float, default=12.0,
-        help="Gaussian envelope half-width in mm (default: 12.0)",
+        help=(
+            "Wrinkle envelope decay length w in mm about the centre x0 "
+            "(Gaussian 1/e length in exp(-(x-x0)^2/w^2); also the "
+            "transverse y-extent in 3-D dual-wrinkle / graded modes). "
+            "Must be > 0 (default: 12.0)"
+        ),
     )
     p_compare.add_argument(
         "--analytical-only", action=argparse.BooleanOptionalAction, default=True,

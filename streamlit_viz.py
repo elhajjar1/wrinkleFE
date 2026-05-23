@@ -310,6 +310,8 @@ def y_slice_figure(
     y_station: float,
     *,
     component_label: str = "σ₃₃",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> go.Figure | None:
     """Filter elements at the given y-station and render a 2D scatter
     in the (x, z) plane coloured by the chosen stress component.
@@ -317,6 +319,14 @@ def y_slice_figure(
     The 'slice' is the layer of elements whose y-row matches the station;
     we pick the elements whose centre-y is closest to the station to
     avoid empty slices on coarse meshes.
+
+    ``vmin`` / ``vmax`` override the colorbar range.  When both are
+    ``None`` (default), the range is computed from the slice's values
+    only — symmetric around zero — preserving the original behaviour
+    for any direct callers.  The Streamlit app passes the global stress
+    extrema so the slice colorbar matches the 3D contour above it and
+    users scrubbing through y-stations see real changes in saturation
+    rather than the colorbar silently re-normalising.  See issue #200.
     """
     yc = element_centers[:, 1]
     unique_y = np.unique(yc)
@@ -330,7 +340,23 @@ def y_slice_figure(
     xs = element_centers[mask, 0]
     zs = element_centers[mask, 2]
     vals = stress_per_elem[mask, component_index]
-    vmax = float(np.nanmax(np.abs(vals))) if vals.size else 1.0
+
+    # Resolve the colorbar range.  If the caller supplied either bound,
+    # use it; otherwise fall back to the per-slice symmetric range that
+    # the original implementation computed.
+    if vmin is None and vmax is None:
+        slice_vmax = float(np.nanmax(np.abs(vals))) if vals.size else 1.0
+        cmin, cmax = -slice_vmax, slice_vmax
+        title_suffix = ""
+    else:
+        if vmax is None:
+            vmax = float(np.nanmax(np.abs(vals))) if vals.size else 1.0
+        if vmin is None:
+            vmin = -float(vmax)
+        cmin, cmax = float(vmin), float(vmax)
+        title_suffix = (
+            f"  ·  {component_label} ∈ [{cmin:.1f}, {cmax:.1f}] (global)"
+        )
 
     # Approximate per-element x and z extents from the bounding box of
     # its 8 nodes so the rectangular markers tile cleanly.
@@ -347,8 +373,8 @@ def y_slice_figure(
                 size=14,
                 color=vals,
                 colorscale="RdBu_r",
-                cmin=-vmax,
-                cmax=vmax,
+                cmin=cmin,
+                cmax=cmax,
                 symbol="square",
                 line=dict(width=0),
                 colorbar=dict(title=f"{component_label} [MPa]"),
@@ -360,7 +386,10 @@ def y_slice_figure(
         )
     )
     fig.update_layout(
-        title=f"{component_label} at y ≈ {nearest_y:.2f} mm  ·  Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm",
+        title=(
+            f"{component_label} at y ≈ {nearest_y:.2f} mm  ·  "
+            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm{title_suffix}"
+        ),
         xaxis_title="x [mm]",
         yaxis_title="z [mm]",
         height=360,
@@ -378,6 +407,8 @@ def fi_y_slice_figure(
     y_station: float,
     *,
     criterion: str = "FI",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> go.Figure | None:
     """Filter elements at the given y-station and render a 2D scatter in
     the (x, z) plane coloured by the per-element max failure index for
@@ -385,6 +416,11 @@ def fi_y_slice_figure(
 
     Mirrors :func:`y_slice_figure` but uses a sequential (Reds) colour
     scale starting at 0 since FI is non-negative.
+
+    ``vmin`` / ``vmax`` override the colorbar range; defaults preserve
+    the original per-slice behaviour.  The Streamlit app passes the
+    global FI extrema so dragging the y-station scrubber shows real
+    changes in saturation.  See issue #200.
     """
     yc = element_centers[:, 1]
     unique_y = np.unique(yc)
@@ -399,9 +435,25 @@ def fi_y_slice_figure(
     zs = element_centers[mask, 2]
     fi_max_per_elem = np.asarray(fi_per_gauss).max(axis=1)
     vals = fi_max_per_elem[mask]
-    vmax = float(np.nanmax(vals)) if vals.size else 1.0
-    if not np.isfinite(vmax) or vmax <= 0.0:
-        vmax = 1.0
+
+    if vmin is None and vmax is None:
+        slice_vmax = float(np.nanmax(vals)) if vals.size else 1.0
+        if not np.isfinite(slice_vmax) or slice_vmax <= 0.0:
+            slice_vmax = 1.0
+        cmin, cmax = 0.0, slice_vmax
+        title_suffix = ""
+    else:
+        if vmax is None:
+            vmax = float(np.nanmax(vals)) if vals.size else 1.0
+        if vmin is None:
+            vmin = 0.0
+        cmax = float(vmax)
+        if not np.isfinite(cmax) or cmax <= 0.0:
+            cmax = 1.0
+        cmin = float(vmin)
+        title_suffix = (
+            f"  ·  FI ∈ [{cmin:.3f}, {cmax:.3f}] (global)"
+        )
 
     elem_node_xyz = nodes[elements[mask]]
     dx = float(np.ptp(elem_node_xyz[:, :, 0], axis=1).mean()) if mask.sum() else 1.0
@@ -416,8 +468,8 @@ def fi_y_slice_figure(
                 size=14,
                 color=vals,
                 colorscale="Reds",
-                cmin=0.0,
-                cmax=vmax,
+                cmin=cmin,
+                cmax=cmax,
                 symbol="square",
                 line=dict(width=0),
                 colorbar=dict(title=f"FI ({criterion})"),
@@ -431,7 +483,7 @@ def fi_y_slice_figure(
     fig.update_layout(
         title=(
             f"FI ({criterion}) at y ≈ {nearest_y:.2f} mm  ·  "
-            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm"
+            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm{title_suffix}"
         ),
         xaxis_title="x [mm]",
         yaxis_title="z [mm]",
