@@ -27,6 +27,9 @@ EXPECTED_DEFAULTS: dict[str, object] = {
     "width": 12.0,         # mm, envelope decay length w (> 0)
     "phase": None,         # rad, None -> derive from morphology
     "decay_floor": 0.0,    # dimensionless, in [0, 1]
+    "amplitude_profile": "constant",          # one of constant/gaussian/linear
+    "amplitude_profile_decay_length": None,    # mm, None -> wrinkle width
+    "amplitude_profile_axis": "x",             # one of x/y
 }
 
 

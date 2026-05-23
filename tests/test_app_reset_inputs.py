@@ -75,6 +75,24 @@ def test_defaults_include_ui_only_inputs(app_module):
     assert d["sb_strain_mag_pct"] == 1.0
 
 
+def test_defaults_include_amplitude_profile_controls(app_module):
+    """The amplitude-profile sidebar group (issue #182) must round-trip
+    through ``DEFAULTS`` so the Reset button can restore it."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    cfg = AnalysisConfig()
+    d = app_module.DEFAULTS
+    # Categorical defaults track the dataclass exactly.
+    assert d["sb_amplitude_profile"] == cfg.amplitude_profile
+    assert d["sb_amplitude_profile_axis"] == cfg.amplitude_profile_axis
+    # Numeric default is concrete (the dataclass default ``None`` falls
+    # back to the wrinkle width at apply-time, and Streamlit's
+    # ``number_input`` cannot represent ``None``). It must be a finite
+    # positive float so the widget renders.
+    decay = d["sb_amplitude_profile_decay_length"]
+    assert isinstance(decay, float) and decay > 0.0
+
+
 def test_reset_inputs_restores_every_default(app_module, monkeypatch):
     """``reset_inputs()`` must write every DEFAULTS entry into session_state."""
     fake_state: dict[str, object] = {

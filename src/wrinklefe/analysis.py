@@ -332,6 +332,28 @@ class AnalysisConfig:
         at the surfaces (pure graded); ``1.0`` means no decay
         (equivalent to ``uniform``).  Values outside ``[0, 1]`` are
         rejected by ``__post_init__``.
+    amplitude_profile : {"constant", "gaussian", "linear"}
+        Spatially varying in-plane amplitude modulation applied on top
+        of the wrinkle's own longitudinal envelope (see
+        :class:`~wrinklefe.core.morphology.WrinkleConfiguration`).
+        ``"constant"`` (default) preserves the legacy behaviour --
+        the wrinkle amplitude *A* is used uniformly across the in-plane
+        domain.  ``"gaussian"`` multiplies *A* by ``exp(-(s/d)**2)`` and
+        ``"linear"`` by ``max(0, 1 - |s|/d)`` (clipped), where *s* is
+        the in-plane coordinate (relative to the wrinkle centre) along
+        ``amplitude_profile_axis`` and *d* is
+        ``amplitude_profile_decay_length``.
+    amplitude_profile_decay_length : float or None
+        Length scale *d* (mm) controlling the Gaussian sigma or the
+        linear-decay extent.  ``None`` (default) falls back to the
+        wrinkle profile's own ``width``, so the amplitude tapers on the
+        same length scale as the envelope.  Must be positive when
+        provided.  Ignored when ``amplitude_profile == "constant"``.
+    amplitude_profile_axis : {"x", "y"}
+        In-plane axis along which the amplitude modulation runs.
+        Default ``"x"``.  Pick ``"y"`` (transverse axis) for an
+        independent in-plane tapering of *A* that does not stack with
+        the existing longitudinal envelope on *x*.
     loading : str
         Loading mode: ``'compression'`` or ``'tension'``.
         Default is ``'compression'``.
@@ -383,6 +405,13 @@ class AnalysisConfig:
     # analysed/swept. Ignored for single-wrinkle modes (uniform/graded).
     phase: Optional[float] = None
     decay_floor: float = 0.0  # graded mode: min amplitude fraction at surfaces (0–1)
+
+    # Spatially varying in-plane amplitude profile (#178 follow-up). Defaults
+    # mirror WrinkleConfiguration so the legacy "constant" behaviour is
+    # preserved when callers leave them unset.
+    amplitude_profile: str = "constant"
+    amplitude_profile_decay_length: Optional[float] = None
+    amplitude_profile_axis: str = "x"
 
     # Loading
     loading: str = "compression"
@@ -519,6 +548,37 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.decay_floor must be in [0, 1], "
                 f"got {self.decay_floor}"
+            )
+
+        # --- Amplitude profile (spatially varying A modulation) -------
+        valid_amplitude_profiles = ("constant", "gaussian", "linear")
+        if (
+            not isinstance(self.amplitude_profile, str)
+            or self.amplitude_profile.lower().strip() not in valid_amplitude_profiles
+        ):
+            raise ValueError(
+                f"AnalysisConfig.amplitude_profile must be one of "
+                f"{list(valid_amplitude_profiles)}, got {self.amplitude_profile!r}"
+            )
+        valid_amplitude_profile_axes = ("x", "y")
+        if (
+            not isinstance(self.amplitude_profile_axis, str)
+            or self.amplitude_profile_axis.lower().strip()
+            not in valid_amplitude_profile_axes
+        ):
+            raise ValueError(
+                f"AnalysisConfig.amplitude_profile_axis must be one of "
+                f"{list(valid_amplitude_profile_axes)}, "
+                f"got {self.amplitude_profile_axis!r}"
+            )
+        if self.amplitude_profile_decay_length is not None and not (
+            self.amplitude_profile_decay_length > 0.0
+            and math.isfinite(self.amplitude_profile_decay_length)
+        ):
+            raise ValueError(
+                f"AnalysisConfig.amplitude_profile_decay_length must be "
+                f"a finite positive float when set, "
+                f"got {self.amplitude_profile_decay_length}"
             )
 
         # --- Loading --------------------------------------------------
@@ -664,6 +724,9 @@ class AnalysisResults:
             f"    Amplitude:       {cfg.amplitude:.3f} mm",
             f"    Wavelength:      {cfg.wavelength:.1f} mm",
             f"    Width:           {cfg.width:.1f} mm",
+            f"    Amplitude profile: {cfg.amplitude_profile} "
+            f"(d={cfg.amplitude_profile_decay_length}, "
+            f"axis={cfg.amplitude_profile_axis})",
             f"    Loading:         {cfg.loading}",
             f"    Applied strain:  {cfg.applied_strain:.4f}",
             "",
@@ -811,6 +874,9 @@ class WrinkleAnalysis:
                 interface1=cfg.interface_1,
                 interface2=cfg.interface_2,
                 phase=float(cfg.phase),
+                amplitude_profile=cfg.amplitude_profile,
+                amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
+                amplitude_profile_axis=cfg.amplitude_profile_axis,
             )
             wrinkle_config.decay_floor = max(0.0, min(1.0, cfg.decay_floor))
         else:
@@ -819,6 +885,9 @@ class WrinkleAnalysis:
                 interface1=cfg.interface_1,
                 interface2=cfg.interface_2,
                 decay_floor=cfg.decay_floor,
+                amplitude_profile=cfg.amplitude_profile,
+                amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
+                amplitude_profile_axis=cfg.amplitude_profile_axis,
             )
         results.wrinkle_config = wrinkle_config
 

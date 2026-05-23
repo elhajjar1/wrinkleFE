@@ -123,6 +123,15 @@ DEFAULT_WAVELENGTH = _CFG_DEFAULTS.wavelength
 DEFAULT_WIDTH = _CFG_DEFAULTS.width
 DEFAULT_MORPHOLOGY = _CFG_DEFAULTS.morphology
 DEFAULT_DECAY_FLOOR = _CFG_DEFAULTS.decay_floor
+DEFAULT_AMPLITUDE_PROFILE = _CFG_DEFAULTS.amplitude_profile
+# The dataclass default for the decay length is ``None`` (falls back to the
+# wrinkle width at apply-time). Streamlit's ``number_input`` cannot store
+# ``None``, so the sidebar uses the wrinkle-width default as a concrete
+# starting value; the run handler still hands ``None`` to ``AnalysisConfig``
+# when the user kept the default profile ("constant"), preserving the
+# legacy back-compat behaviour.
+DEFAULT_AMPLITUDE_PROFILE_DECAY_LENGTH = _CFG_DEFAULTS.width
+DEFAULT_AMPLITUDE_PROFILE_AXIS = _CFG_DEFAULTS.amplitude_profile_axis
 DEFAULT_ANALYTICAL_ONLY = _CFG_DEFAULTS.analytical_only
 DEFAULT_NX = _CFG_DEFAULTS.nx
 DEFAULT_NY = _CFG_DEFAULTS.ny
@@ -142,6 +151,9 @@ DEFAULTS: dict[str, object] = {
     "sb_width": DEFAULT_WIDTH,
     "sb_morphology": DEFAULT_MORPHOLOGY,
     "sb_decay_floor": DEFAULT_DECAY_FLOOR,
+    "sb_amplitude_profile": DEFAULT_AMPLITUDE_PROFILE,
+    "sb_amplitude_profile_decay_length": DEFAULT_AMPLITUDE_PROFILE_DECAY_LENGTH,
+    "sb_amplitude_profile_axis": DEFAULT_AMPLITUDE_PROFILE_AXIS,
     "sb_loading": DEFAULT_LOADING,
     "sb_strain_mag_pct": DEFAULT_STRAIN_MAG_PCT,
     "sb_analytical_only": DEFAULT_ANALYTICAL_ONLY,
@@ -608,11 +620,72 @@ with st.sidebar:
             ),
             width="stretch",
         )
+
+        st.markdown("**Amplitude profile**")
+        amplitude_profile = st.selectbox(
+            "Profile shape",
+            ["constant", "gaussian", "linear"],
+            index=["constant", "gaussian", "linear"].index(
+                DEFAULT_AMPLITUDE_PROFILE
+            ),
+            key="sb_amplitude_profile",
+            help=(
+                "Spatially varying in-plane modulation of the wrinkle "
+                "amplitude A, applied on top of the wrinkle's own "
+                "longitudinal envelope. 'constant' (default) keeps the "
+                "legacy uniform A. 'gaussian' multiplies A by "
+                "exp(−(s/d)²); 'linear' multiplies A by max(0, 1 − |s|/d) "
+                "(clipped at zero). Here s is the coordinate from the "
+                "wrinkle centre along the chosen axis and d is the "
+                "decay length."
+            ),
+        )
+        _profile_active = amplitude_profile != "constant"
+        amplitude_profile_decay_length_ui = st.number_input(
+            "Decay length d [mm]",
+            min_value=0.0,
+            value=float(DEFAULT_AMPLITUDE_PROFILE_DECAY_LENGTH),
+            step=0.5,
+            disabled=not _profile_active,
+            key="sb_amplitude_profile_decay_length",
+            help=(
+                "Decay length d (mm): Gaussian sigma or linear-decay "
+                "extent. Must be > 0 when active. Ignored when "
+                "Profile shape = constant."
+            ),
+        )
+        amplitude_profile_axis = st.selectbox(
+            "Profile axis",
+            ["x", "y"],
+            index=["x", "y"].index(DEFAULT_AMPLITUDE_PROFILE_AXIS),
+            disabled=not _profile_active,
+            key="sb_amplitude_profile_axis",
+            help=(
+                "Axis along which the amplitude modulation runs. "
+                "Choose 'y' (transverse) for an independent in-plane "
+                "tapering of A that does not stack with the existing "
+                "longitudinal envelope on x."
+            ),
+        )
+        # Hand ``None`` to AnalysisConfig when the profile is constant
+        # (the kwarg is then ignored) or when the user left the UI value
+        # at the wrinkle-width default — both paths preserve the
+        # back-compat behaviour where the wrinkle's own ``width`` is the
+        # effective decay length.
+        if not _profile_active:
+            amplitude_profile_decay_length: Optional[float] = None
+        else:
+            amplitude_profile_decay_length = float(
+                amplitude_profile_decay_length_ui
+            )
     else:
         # Sensible defaults; the cartoon and morphology selector are exposed
         # in Expert mode for users who want to compare phase offsets.
         morphology = DEFAULT_MORPHOLOGY
         decay_floor = DEFAULT_DECAY_FLOOR
+        amplitude_profile = DEFAULT_AMPLITUDE_PROFILE
+        amplitude_profile_decay_length = None
+        amplitude_profile_axis = DEFAULT_AMPLITUDE_PROFILE_AXIS
 
     _loading_options = ["compression", "tension"]
     _loading_default_idx = (
@@ -764,6 +837,11 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         width=cfg_dict["width"],
         morphology=cfg_dict["morphology"],
         decay_floor=cfg_dict["decay_floor"],
+        amplitude_profile=cfg_dict.get("amplitude_profile", "constant"),
+        amplitude_profile_decay_length=cfg_dict.get(
+            "amplitude_profile_decay_length", None
+        ),
+        amplitude_profile_axis=cfg_dict.get("amplitude_profile_axis", "x"),
         loading=cfg_dict["loading"],
         material=material,
         angles=angles,
@@ -940,6 +1018,9 @@ if run_clicked or _demo_pending:
             "width": width,
             "morphology": morphology,
             "decay_floor": decay_floor,
+            "amplitude_profile": amplitude_profile,
+            "amplitude_profile_decay_length": amplitude_profile_decay_length,
+            "amplitude_profile_axis": amplitude_profile_axis,
             "loading": loading,
             "ply_thickness": ply_thickness,
             "angles_tuple": tuple(layup),
