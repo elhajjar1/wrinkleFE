@@ -191,22 +191,43 @@ are not included.
 ## Supported morphologies
 
 WrinkleFE ships five wrinkle morphologies (defined in
-`src/wrinklefe/core/morphology.py`). The first three are *dual-wrinkle*
-modes distinguished by the phase offset φ between two adjacent wrinkle
-centrelines; the last two are *single-wrinkle* modes that vary the
-through-thickness amplitude.
+`src/wrinklefe/core/morphology.py`). They differ along *two* independent
+axes: **how many wrinkles** are placed in the laminate and **how the
+amplitude varies through the thickness**. The first three names below
+are *dual-wrinkle* modes distinguished by the phase offset φ between
+two adjacent wrinkle centrelines (the through-thickness amplitude
+follows a linear taper from the wrinkle interface plies down to zero
+at the laminate outer surfaces). The last two are *single-wrinkle*
+modes that swap that taper for a different through-thickness profile.
 
-- **`stack`** (φ = 0) — peaks aligned. Morphology factor `M_f = 1.0`,
-  used as the baseline.
-- **`convex`** (φ = +π/2) — interface bulges outward. `M_f < 1`; the
-  *least* damaging mode in compression.
-- **`concave`** (φ = −π/2) — interface pinches inward. `M_f > 1`; the
-  *most* damaging mode in compression.
-- **`uniform`** — single wrinkle at full amplitude on every ply through
-  the thickness.
-- **`graded`** — single wrinkle whose amplitude decays from the wrinkle
-  core toward the surfaces, controlled by `decay_floor` (0 = full
-  decay to zero at the surface, 1 = uniform).
+| Morphology   | # wrinkles | Phase φ | Through-thickness amplitude            | M_f (compression) | When to use                                                                                                                                          |
+|--------------|------------|---------|-----------------------------------------|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `stack`      | 2          | 0       | Linear decay, 1 at interface → 0 at surfaces | 1.0 (baseline)    | Two aligned wrinkles, peaks-over-peaks. The dual-wrinkle reference case used to scale `convex` / `concave`.                                          |
+| `convex`     | 2          | +π/2    | Linear decay, 1 at interface → 0 at surfaces | < 1               | Two phase-shifted wrinkles whose interface bulges outward. *Least* damaging dual-wrinkle case in compression.                                       |
+| `concave`    | 2          | −π/2    | Linear decay, 1 at interface → 0 at surfaces | > 1               | Two phase-shifted wrinkles whose interface pinches inward. *Most* damaging dual-wrinkle case in compression — design-driving.                       |
+| `uniform`    | 1          | n/a     | Full amplitude on **every** ply (no decay)   | 1.0 (no pairing)  | A single through-thickness-wide wrinkle — every ply wavy with the same A. Conservative bound and sanity-check baseline.                              |
+| `graded`     | 1          | n/a     | Linear decay from mid-ply to surfaces, with floor `decay_floor` ∈ [0, 1] | 1.0 (no pairing) | An embedded wrinkle that fades toward the surface plies. `decay_floor=0` is pure graded; `decay_floor=1` collapses to `uniform`.                    |
+
+### `stack` vs `uniform` — what's the difference?
+
+These two get conflated because both have `M_f = 1.0`, but they model
+very different defects:
+
+- **`stack`** places **two** wrinkles at adjacent interfaces with
+  φ = 0 (aligned crests). Through the thickness the wrinkle decays
+  linearly from the interface plies to zero at the outer surfaces —
+  surface plies are flat.
+- **`uniform`** places a **single** wrinkle and disables the
+  through-thickness decay — every ply, including the outer surfaces,
+  is displaced by the full profile.
+
+For the same `amplitude` / `wavelength`, `apply_to_nodes` therefore
+produces *different* deformed meshes: `stack` has a wrinkle
+concentrated near the interface plies (and flat top/bottom plies),
+while `uniform` has a wrinkle of the same amplitude at every single
+ply. The `M_f = 1.0` coincidence is purely the analytical knockdown
+parameter — the FE geometry, the per-ply fibre-angle field, and the
+predicted ply-by-ply failure are not the same.
 
 ## Supported failure criteria
 

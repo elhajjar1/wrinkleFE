@@ -284,8 +284,28 @@ class AnalysisConfig:
     width : float
         Gaussian envelope half-width [mm].  Default 12.0.
     morphology : str
-        Morphology name: ``'stack'``, ``'convex'``, or ``'concave'``.
-        Default is ``'stack'``.
+        Morphology name. Five values are accepted; the first three are
+        *dual-wrinkle* modes distinguished by phase, the last two are
+        *single-wrinkle* modes distinguished by their through-thickness
+        amplitude profile:
+
+        - ``'stack'`` (default) — two aligned wrinkles, φ = 0. Linear
+          through-thickness decay from the interface plies to zero at
+          the outer surfaces. M_f = 1.0 (dual-wrinkle baseline).
+        - ``'convex'`` — two wrinkles, φ = +π/2 (interface bulges
+          outward). Same through-thickness decay. M_f < 1, least
+          damaging in compression.
+        - ``'concave'`` — two wrinkles, φ = −π/2 (interface pinches
+          inward). Same through-thickness decay. M_f > 1, most
+          damaging in compression.
+        - ``'uniform'`` — *one* wrinkle, full amplitude on every ply
+          (no through-thickness decay). M_f = 1.0 because there is no
+          pairwise interaction, but the deformed mesh and per-ply
+          fibre-angle field differ from ``'stack'``: every ply
+          (including the outer surfaces) carries the full profile.
+        - ``'graded'`` — one wrinkle, linear decay from mid-ply to the
+          surfaces with the ``decay_floor`` knob (0 = full decay to
+          zero, 1 = same as ``'uniform'``).
     phase : float or None
         Explicit dual-wrinkle phase offset phi [radians] between the two
         wrinkles.  When ``None`` (default), the phase is derived from
