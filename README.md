@@ -148,6 +148,34 @@ print(result.analytical_knockdown)
 wrinklefe --help
 ```
 
+### Exporting results to CSV / JSON
+
+Numeric outputs (load factor, per-ply failure index, knockdown factors,
+stress-field summary) can be written to a schema-versioned JSON or a
+Pandas-friendly per-ply CSV for downstream comparison and plotting in
+Excel, Pandas, or shared Jupyter notebooks:
+
+```python
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+from wrinklefe.io.results import export_results_csv, export_results_json
+
+result = WrinkleAnalysis(AnalysisConfig()).run()
+
+export_results_json(result, "results.json")  # schema-versioned JSON
+export_results_csv(result, "per_ply.csv")    # per-ply tabular CSV
+```
+
+The JSON output is deterministic (`sort_keys=True`), pins a top-level
+`schema_version` field, and reduces large numpy arrays (e.g.
+per-Gauss-point stress fields) to summary statistics so the file stays
+compact. The CSV is one row per ply with columns `ply_index,
+angle_deg, max_FI, min_RF, critical_mode, critical_criterion`, suitable
+for `pandas.read_csv` or `csv.DictReader`.
+
+The Streamlit web app exposes the same exports as **Download results as
+JSON** and **Download per-ply results as CSV** buttons on the Export
+tab.
+
 ## Validation
 
 ### What the in-repo tests check
