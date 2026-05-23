@@ -335,6 +335,151 @@ def test_mesh3d_figure_precomputed_skips_boundary_faces(monkeypatch):
     assert qt_calls["n"] == 1
 
 
+# ---------------------------------------------------------------------------
+# y-slice global colorbar range (issue #200)
+# ---------------------------------------------------------------------------
+
+
+def _structured_hex_mesh_with_centers(nx: int, ny: int, nz: int):
+    """Mesh + per-element centroids, used to build per-station stress fields."""
+    nodes, elems = _structured_hex_mesh(nx, ny, nz)
+    centers = nodes[elems].mean(axis=1)
+    return nodes, elems, centers
+
+
+def test_y_slice_figure_default_is_per_slice_back_compat():
+    """Calling y_slice_figure with no vmin/vmax preserves the original
+    per-slice symmetric range — important for back-compat with any
+    direct callers outside the Streamlit app."""
+    nodes, elems, centers = _structured_hex_mesh_with_centers(3, 3, 3)
+    stress = np.zeros((elems.shape[0], 6))
+    # Make σ₃₃ vary so the slice picks up a non-trivial range.
+    stress[:, 2] = np.linspace(-100.0, 100.0, elems.shape[0])
+    y_unique = np.unique(centers[:, 1])
+    y_station = float(y_unique[0])
+
+    fig = sv.y_slice_figure(
+        centers, elems, nodes, stress, component_index=2, y_station=y_station,
+    )
+    assert fig is not None
+    marker = fig.data[0].marker
+    # Symmetric around zero, computed from the slice's own values.
+    mask = centers[:, 1] == y_station
+    expected = float(np.nanmax(np.abs(stress[mask, 2])))
+    assert marker.cmin == pytest.approx(-expected)
+    assert marker.cmax == pytest.approx(expected)
+
+
+def test_y_slice_figure_global_vmax_matches_across_stations():
+    """The whole point of issue #200: two stations with very different
+    stress magnitudes must end up with the SAME colorbar range when the
+    caller passes a global vmax, so the user can compare them by eye."""
+    nodes, elems, centers = _structured_hex_mesh_with_centers(3, 3, 3)
+    stress = np.zeros((elems.shape[0], 6))
+    yc = centers[:, 1]
+    y_unique = np.unique(yc)
+    cold_y = float(y_unique[0])
+    hot_y = float(y_unique[-1])
+    # Build a stress field with a "hot" station and a "cold" station so
+    # per-slice normalisation WOULD give them different cmin/cmax — but
+    # the global override must wash that out.
+    stress[yc == cold_y, 2] = 10.0
+    stress[yc == hot_y, 2] = 500.0
+
+    global_vmax = float(np.nanmax(np.abs(stress[:, 2])))
+    assert global_vmax == pytest.approx(500.0)
+
+    fig_cold = sv.y_slice_figure(
+        centers, elems, nodes, stress,
+        component_index=2, y_station=cold_y,
+        vmin=-global_vmax, vmax=global_vmax,
+    )
+    fig_hot = sv.y_slice_figure(
+        centers, elems, nodes, stress,
+        component_index=2, y_station=hot_y,
+        vmin=-global_vmax, vmax=global_vmax,
+    )
+    assert fig_cold is not None and fig_hot is not None
+    m_cold, m_hot = fig_cold.data[0].marker, fig_hot.data[0].marker
+    assert m_cold.cmin == m_hot.cmin == pytest.approx(-global_vmax)
+    assert m_cold.cmax == m_hot.cmax == pytest.approx(global_vmax)
+    # And the title advertises the global range so the user knows.
+    assert "global" in fig_cold.layout.title.text
+    assert "global" in fig_hot.layout.title.text
+
+
+def test_y_slice_figure_global_vmax_matches_3d_contour():
+    """A saturated cell on the 3D contour must use the same cmin/cmax
+    as the same cell on the 2D slice; otherwise red on one plot means
+    a different stress than red on the other.  See issue #200."""
+    nodes, elems, centers = _structured_hex_mesh_with_centers(3, 3, 3)
+    stress = np.zeros((elems.shape[0], 6))
+    stress[:, 2] = np.linspace(-100.0, 100.0, elems.shape[0])
+
+    fig_3d = sv.stress_contour_figure(nodes, elems, stress, component_index=2)
+    mesh = fig_3d.data[0]
+    contour_cmin, contour_cmax = float(mesh.cmin), float(mesh.cmax)
+
+    y_station = float(np.unique(centers[:, 1])[len(np.unique(centers[:, 1])) // 2])
+    fig_slice = sv.y_slice_figure(
+        centers, elems, nodes, stress,
+        component_index=2, y_station=y_station,
+        vmin=contour_cmin, vmax=contour_cmax,
+    )
+    assert fig_slice is not None
+    marker = fig_slice.data[0].marker
+    assert marker.cmin == pytest.approx(contour_cmin)
+    assert marker.cmax == pytest.approx(contour_cmax)
+
+
+def test_fi_y_slice_figure_global_vmax_matches_across_stations():
+    """Same regression for the failure-index slice: per-station hot/cold
+    contrast must survive when the caller passes a global vmax."""
+    nodes, elems, centers = _structured_hex_mesh_with_centers(3, 3, 3)
+    yc = centers[:, 1]
+    y_unique = np.unique(yc)
+    cold_y = float(y_unique[0])
+    hot_y = float(y_unique[-1])
+    fi = np.zeros((elems.shape[0], 8))
+    fi[yc == cold_y, :] = 0.05
+    fi[yc == hot_y, :] = 1.5
+
+    global_vmax = float(np.nanmax(fi))
+    assert global_vmax == pytest.approx(1.5)
+
+    fig_cold = sv.fi_y_slice_figure(
+        centers, elems, nodes, fi, y_station=cold_y,
+        criterion="MaxStress", vmin=0.0, vmax=global_vmax,
+    )
+    fig_hot = sv.fi_y_slice_figure(
+        centers, elems, nodes, fi, y_station=hot_y,
+        criterion="MaxStress", vmin=0.0, vmax=global_vmax,
+    )
+    assert fig_cold is not None and fig_hot is not None
+    m_cold, m_hot = fig_cold.data[0].marker, fig_hot.data[0].marker
+    assert m_cold.cmin == m_hot.cmin == pytest.approx(0.0)
+    assert m_cold.cmax == m_hot.cmax == pytest.approx(global_vmax)
+    assert "global" in fig_cold.layout.title.text
+
+
+def test_fi_y_slice_figure_default_is_per_slice_back_compat():
+    """No-vmax call must keep the original per-slice [0, max(slice)]
+    range so any direct callers don't see a silent behaviour change."""
+    nodes, elems, centers = _structured_hex_mesh_with_centers(3, 3, 3)
+    fi = np.random.RandomState(0).rand(elems.shape[0], 8)
+    y_station = float(np.unique(centers[:, 1])[0])
+
+    fig = sv.fi_y_slice_figure(
+        centers, elems, nodes, fi, y_station=y_station, criterion="MaxStress",
+    )
+    assert fig is not None
+    marker = fig.data[0].marker
+    mask = centers[:, 1] == y_station
+    expected = float(np.nanmax(fi.max(axis=1)[mask]))
+    assert marker.cmin == pytest.approx(0.0)
+    assert marker.cmax == pytest.approx(expected)
+
+
 def test_precomputed_geometry_threaded_through_wrappers():
     """The 3 high-level figure helpers must forward
     ``precomputed_geometry`` down to ``mesh3d_figure``; otherwise the
