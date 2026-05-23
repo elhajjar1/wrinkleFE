@@ -142,10 +142,50 @@ result = WrinkleAnalysis(config).run()
 print(result.analytical_knockdown)
 ```
 
+### Batch parametric sweeps
+
+For exploring how the knockdown varies across a parameter range, use
+`WrinkleAnalysis.parametric_sweep` to sweep a single
+`AnalysisConfig` field (any numeric field — `amplitude`, `wavelength`,
+`width`, `phase`, `applied_strain`, ...):
+
+```python
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+
+base = AnalysisConfig(
+    amplitude=0.366, wavelength=16.0, width=12.0,
+    morphology="stack", loading="compression",
+)
+results = WrinkleAnalysis.parametric_sweep(
+    base, parameter="amplitude", values=[0.1, 0.2, 0.3, 0.4],
+    analytical_only=True,
+)
+for r in results:
+    print(f"A={r.config.amplitude:.3f}  KD={r.analytical_knockdown:.4f}")
+```
+
+For multi-parameter cross-product sweeps with JSON output and plots,
+use `wrinklefe.sweep.run_sweep`:
+
+```python
+import numpy as np
+from wrinklefe.sweep import run_sweep, save_sweep_results, plot_sweep_results
+
+sweep = run_sweep({
+    "amplitude":  np.linspace(0.183, 0.549, 3),
+    "wavelength": np.linspace(8.0, 24.0, 3),
+})
+save_sweep_results(sweep, "./sweep_output/")
+plot_sweep_results(sweep, "./sweep_output/")
+```
+
 ### Command line
 
 ```bash
 wrinklefe --help
+
+# Single-parameter sweep (analytical-only is the default, fast)
+wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 5
 ```
 
 ## Validation
