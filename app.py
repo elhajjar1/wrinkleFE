@@ -1160,7 +1160,7 @@ with tab_configure:
     ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
     ax_z.axhline(0.0, color="grey", linewidth=0.5)
     ax_z.set_ylabel("z(x) [mm]")
-    ax_z.set_title(r"$z(x) = A \cdot \exp(-x^2 / w^2) \cdot \cos(2\pi x / \lambda)$")
+    ax_z.set_title("z(x) = A · exp(−x²/w²) · cos(2π x/λ)")
     ax_z.grid(alpha=0.3)
 
     ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
