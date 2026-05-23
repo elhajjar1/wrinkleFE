@@ -280,20 +280,38 @@ class AnalysisConfig:
         the peak fibre angle scales nearly linearly with A and amplifies
         the Budiansky-Fleck compressive knockdown.
     wavelength : float
-        Wrinkle wavelength lambda [mm].  Default 16.0.
+        Spatial period of the cosine carrier *lambda* [mm]: the
+        crest-to-crest distance of the underlying
+        ``cos(2*pi*(x - x0) / lambda)`` carrier along the longitudinal
+        x-direction.  The wavenumber is ``k = 2*pi/lambda`` (1/mm).
+        Default 16.0.  Must be > 0.
     width : float
-        Gaussian envelope half-width [mm].  Default 12.0.
+        Longitudinal envelope decay length *w* [mm] about the wrinkle
+        centre ``x0``.  Exact meaning is profile-dependent: Gaussian
+        1/e length scale in ``exp(-(x - x0)**2 / w**2)``, tapered
+        flat-top extent (``|x - x0| < w/2``), or triangular half-base
+        (``|x - x0| < w``).  Also used as the transverse (y-direction)
+        extent of the wrinkle in the 3-D dual-wrinkle / graded mesh
+        deformation.  Default 12.0.  Must be > 0.
     morphology : str
-        Morphology name: ``'stack'``, ``'convex'``, or ``'concave'``.
-        Default is ``'stack'``.
+        Morphology name: ``'stack'``, ``'convex'``, ``'concave'``,
+        ``'uniform'``, or ``'graded'``.  Default is ``'stack'``.
     phase : float or None
         Explicit dual-wrinkle phase offset phi [radians] between the two
-        wrinkles.  When ``None`` (default), the phase is derived from
-        ``morphology`` via :data:`MORPHOLOGY_PHASES` (stack=0,
-        convex=+pi/2, concave=-pi/2).  When set to a float, it overrides
-        the named-morphology phase, allowing arbitrary dual-wrinkle phase
-        offsets to be analysed or swept (e.g. between 0 and pi).  Ignored
-        for single-wrinkle morphologies (``'uniform'``, ``'graded'``).
+        wrinkle centrelines.  When ``None`` (default), the phase is
+        derived from ``morphology`` via :data:`MORPHOLOGY_PHASES`
+        (stack=0, convex=+pi/2, concave=-pi/2).  When set to a float, it
+        overrides the named-morphology phase, allowing arbitrary
+        dual-wrinkle phase offsets to be analysed or swept (e.g.
+        between 0 and pi).  Ignored for single-wrinkle morphologies
+        (``'uniform'``, ``'graded'``).  Must be finite when set.
+    decay_floor : float
+        Graded morphology only (dimensionless, in ``[0, 1]``): minimum
+        fraction of the wrinkle amplitude retained at the laminate outer
+        surfaces.  ``0.0`` (default) means full decay to zero amplitude
+        at the surfaces (pure graded); ``1.0`` means no decay
+        (equivalent to ``uniform``).  Values outside ``[0, 1]`` are
+        rejected by ``__post_init__``.
     loading : str
         Loading mode: ``'compression'`` or ``'tension'``.
         Default is ``'compression'``.

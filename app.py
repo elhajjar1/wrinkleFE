@@ -514,8 +514,10 @@ with st.sidebar:
         value=DEFAULT_WAVELENGTH, step=0.5,
         key="sb_wavelength",
         help=(
-            "Spatial period of the cosine carrier. Larger λ at fixed A "
-            "lowers the peak fibre angle θ_max ≈ arctan(2πA/λ)."
+            "Wavelength λ [mm]: spatial period of the "
+            "cos(2π(x − x₀)/λ) carrier (crest-to-crest distance). "
+            "Must be > 0. Larger λ at fixed A lowers the peak fibre "
+            "angle θ_max ≈ arctan(2πA/λ)."
         ),
     )
     if expert_mode:
@@ -525,8 +527,11 @@ with st.sidebar:
             value=DEFAULT_WIDTH, step=0.5,
             key="sb_width",
             help=(
-                "Half-width of the Gaussian envelope multiplying the cosine. "
-                "Smaller w localises the wrinkle to a few wavelengths near x = 0."
+                "Envelope decay length w [mm] about the centre x₀: "
+                "Gaussian 1/e scale in exp(−(x−x₀)²/w²) (also the "
+                "transverse y-extent in 3-D dual-wrinkle / graded "
+                "modes). Smaller w localises the wrinkle to a few "
+                "wavelengths near x₀. Must be > 0."
             ),
         )
     else:
@@ -566,7 +571,14 @@ with st.sidebar:
             decay_floor = st.slider(
                 "Decay floor", 0.0, 1.0, DEFAULT_DECAY_FLOOR, 0.05,
                 key="sb_decay_floor",
-                help="Minimum amplitude fraction at the outer surfaces.",
+                help=(
+                    "Decay floor (dimensionless, [0, 1]): graded "
+                    "morphology only. Minimum fraction of the wrinkle "
+                    "amplitude retained at the laminate outer "
+                    "surfaces. 0 = full decay to zero amplitude at the "
+                    "surfaces (pure graded); 1 = no decay (equivalent "
+                    "to uniform)."
+                ),
             )
 
         # Thread the live Amplitude/Wavelength/Envelope-width/Decay-floor
