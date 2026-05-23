@@ -93,6 +93,41 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_analyze.add_argument(
+        "--amplitude-profile", type=str, default="constant",
+        choices=["constant", "gaussian", "linear"],
+        dest="amplitude_profile",
+        help=(
+            "Spatially varying in-plane modulation of the wrinkle "
+            "amplitude A, applied on top of the wrinkle's own "
+            "longitudinal envelope (default: constant). "
+            "'gaussian' multiplies A by exp(-(s/d)^2); 'linear' by "
+            "max(0, 1-|s|/d); 's' is the coordinate from the wrinkle "
+            "centre along --amplitude-profile-axis and 'd' is "
+            "--amplitude-profile-decay-length."
+        ),
+    )
+    p_analyze.add_argument(
+        "--amplitude-profile-decay-length", type=float, default=None,
+        dest="amplitude_profile_decay_length",
+        help=(
+            "Length scale d in mm controlling the Gaussian sigma / "
+            "linear-decay extent. Must be > 0 when set. Ignored when "
+            "--amplitude-profile=constant. Defaults to the wrinkle's "
+            "own envelope width."
+        ),
+    )
+    p_analyze.add_argument(
+        "--amplitude-profile-axis", type=str, default="x",
+        choices=["x", "y"],
+        dest="amplitude_profile_axis",
+        help=(
+            "In-plane axis along which the amplitude modulation runs "
+            "(default: x). Use 'y' for an independent transverse "
+            "tapering of A that does not stack with the existing "
+            "longitudinal envelope on x."
+        ),
+    )
+    p_analyze.add_argument(
         "--loading", type=str, default="compression",
         choices=["compression", "tension"],
         help="Loading mode (default: compression)",
@@ -200,6 +235,30 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_compare.add_argument(
+        "--amplitude-profile", type=str, default="constant",
+        choices=["constant", "gaussian", "linear"],
+        dest="amplitude_profile",
+        help=(
+            "Spatially varying in-plane amplitude modulation applied to "
+            "every morphology compared (default: constant). See "
+            "`wrinklefe analyze --help` for the full definition."
+        ),
+    )
+    p_compare.add_argument(
+        "--amplitude-profile-decay-length", type=float, default=None,
+        dest="amplitude_profile_decay_length",
+        help=(
+            "Decay length d in mm for --amplitude-profile. Must be > 0 "
+            "when set. Defaults to the wrinkle's own envelope width."
+        ),
+    )
+    p_compare.add_argument(
+        "--amplitude-profile-axis", type=str, default="x",
+        choices=["x", "y"],
+        dest="amplitude_profile_axis",
+        help="Axis for --amplitude-profile (default: x).",
+    )
+    p_compare.add_argument(
         "--analytical-only", action=argparse.BooleanOptionalAction, default=True,
         help=(
             "Run analytical predictions only and skip the FE solve "
@@ -243,6 +302,30 @@ def _build_parser() -> argparse.ArgumentParser:
             "Morphology for the sweep (default: stack). "
             f"One of: {', '.join(MORPHOLOGY_CHOICES)}."
         ),
+    )
+    p_sweep.add_argument(
+        "--amplitude-profile", type=str, default="constant",
+        choices=["constant", "gaussian", "linear"],
+        dest="amplitude_profile",
+        help=(
+            "Spatially varying in-plane amplitude modulation held "
+            "fixed across the sweep (default: constant). See "
+            "`wrinklefe analyze --help` for the full definition."
+        ),
+    )
+    p_sweep.add_argument(
+        "--amplitude-profile-decay-length", type=float, default=None,
+        dest="amplitude_profile_decay_length",
+        help=(
+            "Decay length d in mm for --amplitude-profile. Must be > 0 "
+            "when set. Defaults to the wrinkle's own envelope width."
+        ),
+    )
+    p_sweep.add_argument(
+        "--amplitude-profile-axis", type=str, default="x",
+        choices=["x", "y"],
+        dest="amplitude_profile_axis",
+        help="Axis for --amplitude-profile (default: x).",
     )
     p_sweep.add_argument(
         "--analytical-only", action=argparse.BooleanOptionalAction, default=True,
@@ -325,6 +408,9 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         wavelength=args.wavelength,
         width=args.width,
         morphology=args.morphology,
+        amplitude_profile=args.amplitude_profile,
+        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
+        amplitude_profile_axis=args.amplitude_profile_axis,
         loading=args.loading,
         material=material,
         angles=angles,
@@ -362,6 +448,9 @@ def _cmd_compare(args: argparse.Namespace) -> None:
         amplitude=args.amplitude,
         wavelength=args.wavelength,
         width=args.width,
+        amplitude_profile=args.amplitude_profile,
+        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
+        amplitude_profile_axis=args.amplitude_profile_axis,
         verbose=args.verbose,
     )
 
@@ -414,6 +503,9 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     config = AnalysisConfig(
         morphology=args.morphology,
+        amplitude_profile=args.amplitude_profile,
+        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
+        amplitude_profile_axis=args.amplitude_profile_axis,
         verbose=args.verbose,
     )
 

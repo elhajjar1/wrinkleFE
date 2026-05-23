@@ -213,3 +213,92 @@ def test_explicit_interfaces_preserved_when_in_range():
     cfg = AnalysisConfig(angles=[0] * 8, interface_1=2, interface_2=5)
     assert cfg.interface_1 == 2
     assert cfg.interface_2 == 5
+
+
+# ----------------------------------------------------------------------
+# Amplitude profile (issue #182 — surfacing #178 in the CLI/Streamlit)
+# ----------------------------------------------------------------------
+
+
+def test_amplitude_profile_defaults_match_wrinkle_configuration():
+    """``AnalysisConfig`` defaults for the spatially varying amplitude
+    profile must match the underlying
+    :class:`~wrinklefe.core.morphology.WrinkleConfiguration` defaults so
+    the CLI / Streamlit surfaces (#182) cannot drift from the engine."""
+    import inspect
+
+    from wrinklefe.core.morphology import WrinkleConfiguration
+
+    cfg = AnalysisConfig()
+    sig = inspect.signature(WrinkleConfiguration.__init__)
+    for name in (
+        "amplitude_profile",
+        "amplitude_profile_decay_length",
+        "amplitude_profile_axis",
+    ):
+        assert getattr(cfg, name) == sig.parameters[name].default, (
+            f"AnalysisConfig.{name} default drifted from "
+            f"WrinkleConfiguration.{name}: dataclass says "
+            f"{getattr(cfg, name)!r}, WrinkleConfiguration says "
+            f"{sig.parameters[name].default!r}"
+        )
+
+
+@pytest.mark.parametrize("profile", ["constant", "gaussian", "linear"])
+def test_amplitude_profile_accepts_every_valid_name(profile):
+    assert (
+        AnalysisConfig(amplitude_profile=profile).amplitude_profile == profile
+    )
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_amplitude_profile_axis_accepts_both_axes(axis):
+    assert (
+        AnalysisConfig(amplitude_profile_axis=axis).amplitude_profile_axis
+        == axis
+    )
+
+
+def test_amplitude_profile_decay_length_accepts_positive_and_none():
+    AnalysisConfig(amplitude_profile_decay_length=None)
+    AnalysisConfig(amplitude_profile_decay_length=4.0)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"amplitude_profile": "bogus"},
+         r"amplitude_profile must be one of"),
+        ({"amplitude_profile": 5},
+         r"amplitude_profile must be one of"),
+        ({"amplitude_profile_axis": "z"},
+         r"amplitude_profile_axis must be one of"),
+        ({"amplitude_profile_decay_length": 0.0},
+         r"amplitude_profile_decay_length must be a finite positive float"),
+        ({"amplitude_profile_decay_length": -1.0},
+         r"amplitude_profile_decay_length must be a finite positive float"),
+        ({"amplitude_profile_decay_length": float("inf")},
+         r"amplitude_profile_decay_length must be a finite positive float"),
+    ],
+)
+def test_invalid_amplitude_profile_raises_value_error(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        AnalysisConfig(**kwargs)
+
+
+def test_amplitude_profile_threaded_into_wrinkle_configuration():
+    """The fields must reach the underlying ``WrinkleConfiguration`` so the
+    CLI/Streamlit values actually affect the analysis."""
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    cfg = AnalysisConfig(
+        amplitude_profile="gaussian",
+        amplitude_profile_decay_length=5.0,
+        amplitude_profile_axis="y",
+        analytical_only=True,
+    )
+    result = WrinkleAnalysis(cfg).run(analytical_only=True)
+    wc = result.wrinkle_config
+    assert wc.amplitude_profile == "gaussian"
+    assert wc.amplitude_profile_decay_length == 5.0
+    assert wc.amplitude_profile_axis == "y"

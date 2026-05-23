@@ -964,6 +964,9 @@ class WrinkleConfiguration:
         interface1: int,
         interface2: int,
         phase: float = 0.0,
+        amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
+        amplitude_profile_decay_length: Optional[float] = None,
+        amplitude_profile_axis: Literal["x", "y"] = "x",
     ) -> WrinkleConfiguration:
         """Create a standard dual-wrinkle configuration.
 
@@ -985,6 +988,10 @@ class WrinkleConfiguration:
             - ``phase=0`` : Stack
             - ``phase=np.pi/2`` : Convex
             - ``phase=-np.pi/2`` : Concave
+        amplitude_profile, amplitude_profile_decay_length, amplitude_profile_axis
+            Forwarded verbatim to :class:`WrinkleConfiguration`. See the
+            class docstring for the full semantics; the defaults preserve
+            the legacy ``"constant"`` behaviour.
 
         Returns
         -------
@@ -1012,7 +1019,12 @@ class WrinkleConfiguration:
             ply_interface=interface2,
             phase_offset=phase,
         )
-        return cls([w1, w2])
+        return cls(
+            [w1, w2],
+            amplitude_profile=amplitude_profile,
+            amplitude_profile_decay_length=amplitude_profile_decay_length,
+            amplitude_profile_axis=amplitude_profile_axis,
+        )
 
     @classmethod
     def from_morphology_name(
@@ -1022,6 +1034,9 @@ class WrinkleConfiguration:
         interface1: int,
         interface2: int,
         decay_floor: float = 0.0,
+        amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
+        amplitude_profile_decay_length: Optional[float] = None,
+        amplitude_profile_axis: Literal["x", "y"] = "x",
     ) -> WrinkleConfiguration:
         """Create a dual-wrinkle configuration from a morphology name.
 
@@ -1069,7 +1084,14 @@ class WrinkleConfiguration:
                 ply_interface=mid_interface,
                 phase_offset=0.0,
             )
-            return cls([placement], decay_mode=key, decay_floor=decay_floor)
+            return cls(
+                [placement],
+                decay_mode=key,
+                decay_floor=decay_floor,
+                amplitude_profile=amplitude_profile,
+                amplitude_profile_decay_length=amplitude_profile_decay_length,
+                amplitude_profile_axis=amplitude_profile_axis,
+            )
 
         # Dual-wrinkle morphologies: phase-offset pair
         if key not in MORPHOLOGY_PHASES:
@@ -1079,7 +1101,15 @@ class WrinkleConfiguration:
                 f"Choose from: {all_names}"
             )
         phase = MORPHOLOGY_PHASES[key]
-        return cls.dual_wrinkle(profile, interface1, interface2, phase)
+        return cls.dual_wrinkle(
+            profile,
+            interface1,
+            interface2,
+            phase,
+            amplitude_profile=amplitude_profile,
+            amplitude_profile_decay_length=amplitude_profile_decay_length,
+            amplitude_profile_axis=amplitude_profile_axis,
+        )
 
     # ------------------------------------------------------------------
     # Representation
