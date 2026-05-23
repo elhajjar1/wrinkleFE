@@ -19,7 +19,7 @@ import sys
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import matplotlib
 
@@ -815,14 +815,6 @@ with st.sidebar:
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Module-level progress callback slot used to bridge the cached analysis
-# function (which can only accept hashable arguments) to the Streamlit
-# progress UI.  Set by the run handler before the cache miss path
-# executes, cleared afterwards.  Cache hits never invoke this — by
-# design, since cached results return instantly and there is nothing to
-# report progress on.
-_PROGRESS_CALLBACK: Optional[Callable[[str, float], None]] = None
-
 
 @st.cache_data(show_spinner=False)
 def run_analysis_cached(cfg_payload: tuple) -> dict:
@@ -854,7 +846,6 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
     )
     result = WrinkleAnalysis(cfg).run(
         analytical_only=cfg_dict["analytical_only"],
-        progress_callback=_PROGRESS_CALLBACK,
     )
 
     fe: dict | None = None
@@ -1044,23 +1035,13 @@ if run_clicked or _demo_pending:
                 "Use the **Stop** button in the top-right toolbar to "
                 "cancel a long FE solve."
             )
-        # Granular per-phase progress bar.  On a cache hit `run_analysis_cached`
-        # returns instantly without invoking the callback, so the bar simply
-        # stays at its initial value before the status flips to "complete".
-        # On a cache miss the callback fires at each phase boundary inside
-        # WrinkleAnalysis.run() (mesh build, analytical, FE assembly, FE
-        # solve, failure, retention) so the user sees which step the solver
-        # is on instead of an opaque spinner.
-        progress_bar = st.progress(0.0, text="Initializing…")
-
-        def _progress_cb(label: str, fraction: float) -> None:
-            try:
-                progress_bar.progress(fraction, text=label)
-            except Exception:
-                # Never let progress reporting break the analysis.
-                pass
-
-        _PROGRESS_CALLBACK = _progress_cb
+        # A streamlit progress widget can't be driven from inside the
+        # @st.cache_data-decorated solve (Streamlit refuses to record an
+        # element call against a layout block created outside the cached
+        # function — see issue #242). We keep a static progress bar for
+        # visual confirmation and let the status spinner + write lines
+        # carry the "something is happening" signal.
+        progress_bar = st.progress(0.1, text="Solving…")
         try:
             results = run_analysis_cached(cfg_payload)
         except ValueError as exc:
@@ -1089,9 +1070,6 @@ if run_clicked or _demo_pending:
             with st.expander("Traceback"):
                 st.exception(exc)
             st.stop()
-        finally:
-            _PROGRESS_CALLBACK = None
-        # Ensure the bar shows full completion even on cache hits.
         try:
             progress_bar.progress(1.0, text="Analysis complete")
         except Exception:
