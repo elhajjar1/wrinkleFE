@@ -633,3 +633,78 @@ class TestRenderAndExportSummary:
         )
         pdf = render_summary_pdf(s)
         assert pdf.startswith(b"%PDF")
+
+    def test_ncr_end_to_end_covers_issue_72_sections(self, tmp_path):
+        """End-to-end smoke for issue #72.
+
+        Drives a realistic NCR-attachment scenario through every public
+        entry point — ``build_analysis_summary`` -> ``render_summary_markdown``
+        / ``render_summary_pdf`` -> ``export_summary(fmt='pdf')`` — and
+        asserts on the rendered Markdown (which the PDF backend lays out
+        verbatim) that every section enumerated in the issue's acceptance
+        criteria is present: header, defect description, material/layup,
+        analysis results, recommended disposition. The PDF bytes are also
+        sanity-checked (valid magic, paginated, written to disk).
+        """
+        s = build_analysis_summary(
+            defect={
+                "amplitude_mm": 0.42,
+                "wavelength_mm": 22.5,
+                "width_mm": 35.0,
+                "morphology": "sinusoidal",
+                "loading": "compression",
+                "ply_thickness_mm": 0.13,
+                "n_plies": 8,
+                "layup": [0, 45, -45, 90, 90, -45, 45, 0],
+                "material_name": "IM7_8552",
+            },
+            engineering={
+                "analytical_knockdown": 0.72,
+                "analytical_strength_MPa": 1100.0,
+                "damage_index": 0.28,
+                "max_angle_deg": 8.2,
+                "effective_angle_deg": 4.5,
+                "morphology_factor": 0.85,
+                "fe": {
+                    "modulus_retention": 0.94,
+                    "retention_factors": {"hashin": 0.78, "puck": 0.81},
+                    "critical_criterion": "hashin",
+                    "critical_mode": "fiber_compression",
+                    "critical_ply": 2,
+                },
+            },
+            reference="NCR-2026-072",
+            prepared_by="E. Engineer",
+            notes="UT-detected; adjacent bays clear.",
+            tool_version="1.2.3",
+        )
+
+        md = render_summary_markdown(s)
+        # Header (issue #72, section 1): title, reference, prepared-by, version.
+        assert "Wrinkle Analysis Validation Summary" in md
+        assert "NCR-2026-072" in md
+        assert "E. Engineer" in md
+        assert "1.2.3" in md
+        # Defect description (section 2): amplitude, wavelength, morphology, loading.
+        assert "0.42" in md and "22.5" in md
+        assert "sinusoidal" in md
+        assert "compression" in md.lower()
+        # Material & layup (section 3): material name and expanded angle list.
+        assert "IM7_8552" in md
+        assert "45" in md and "-45" in md and "90" in md
+        # Analysis results (section 4): knockdown, FE retention, criterion.
+        assert "0.72" in md  # analytical knockdown
+        assert "0.94" in md  # modulus retention
+        assert "hashin" in md.lower()
+        # Recommended disposition (section 5) + non-binding language.
+        assert "Recommended disposition (NON-BINDING)" in md
+        assert "Material Review Board" in md
+
+        # PDF binary smoke: valid magic, paginates, written to disk via CLI path.
+        pdf_bytes = render_summary_pdf(s)
+        assert pdf_bytes.startswith(b"%PDF") and b"%%EOF" in pdf_bytes
+        assert pdf_bytes.count(b"/Type /Page") >= 1
+
+        out = tmp_path / "issue_72" / "ncr.pdf"
+        export_summary(s, out, fmt="pdf")
+        assert out.exists() and out.read_bytes().startswith(b"%PDF")
