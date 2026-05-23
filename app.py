@@ -1699,6 +1699,56 @@ with tab_export:
                 mime="text/csv",
             )
 
+        # Per-ply CSV — Pandas-friendly tabular dump matching the
+        # wrinklefe.io.results.export_results_csv schema (issue #2).
+        _angles_export = list(
+            dict(st.session_state["cfg_payload"])["angles_tuple"]
+        )
+        _per_ply_buf = io.StringIO()
+        _per_ply_writer = csv.writer(_per_ply_buf)
+        _per_ply_writer.writerow([
+            "ply_index", "angle_deg",
+            "max_FI", "min_RF", "critical_mode", "critical_criterion",
+        ])
+        _ply_fi = (fe or {}).get("ply_failure_indices") or {}
+        for _k, _ang in enumerate(_angles_export):
+            _row_fi = -float("inf")
+            _row_crit: Optional[str] = None
+            for _crit_name, _arr in _ply_fi.items():
+                if _k < len(_arr) and _arr[_k] > _row_fi:
+                    _row_fi = float(_arr[_k])
+                    _row_crit = _crit_name
+            if _row_crit is None or not np.isfinite(_row_fi):
+                _per_ply_writer.writerow([_k, _ang, "", "", "", ""])
+                continue
+            _row_rf = (1.0 / _row_fi) if _row_fi > 0 else ""
+            _mode = ""
+            if (
+                _row_crit
+                and fe
+                and fe.get("critical_criterion") == _row_crit
+                and fe.get("critical_ply") == _k
+            ):
+                _mode = fe.get("critical_mode") or ""
+            _per_ply_writer.writerow([
+                _k,
+                _ang,
+                f"{_row_fi:.10g}",
+                (f"{_row_rf:.10g}" if isinstance(_row_rf, float) else ""),
+                _mode,
+                _row_crit,
+            ])
+        st.download_button(
+            "Download per-ply results as CSV",
+            data=_per_ply_buf.getvalue().encode(),
+            file_name="wrinklefe_per_ply.csv",
+            mime="text/csv",
+            help=(
+                "Per-ply tabular summary (one row per ply). Schema matches "
+                "wrinklefe.io.results.export_results_csv."
+            ),
+        )
+
         st.caption(
             f"WrinkleFE {_wrinklefe_version} · "
             f"export timestamp {payload['meta']['timestamp_utc']}"
