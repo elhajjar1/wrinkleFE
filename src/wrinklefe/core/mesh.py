@@ -27,6 +27,7 @@ Elhajjar, R. (2025). Scientific Reports 15, 25977.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -620,12 +621,88 @@ class WrinkleMesh:
             laminate=self.laminate,
         )
 
-        # Run basic quality checks
-        mesh_warnings = mesh_data.validate()
+        # Run basic quality checks.  When the wrinkle field would shear
+        # hex8 elements into themselves (det(J) <= 0 at the centroid),
+        # ``validate()`` raises ``MeshValidationError``.  The raw message
+        # tells the user *what* went wrong but not *which knob to turn* —
+        # so for the wrinkle-driven path we re-raise with the actual
+        # geometry parameters and a small remediation table.  Issue #244.
+        try:
+            mesh_warnings = mesh_data.validate()
+        except MeshValidationError as err:
+            raise self._augment_inversion_error(err) from err
         for w in mesh_warnings:
             logger.warning(w)
 
         return mesh_data
+
+    def _augment_inversion_error(
+        self, err: "MeshValidationError"
+    ) -> "MeshValidationError":
+        """Attach wrinkle parameters and tuning suggestions to an inversion error.
+
+        Heuristic: each hex8 element shears in z by roughly
+        ``(2π A / λ) * (Lx / nx)`` near the wrinkle peak, while its
+        through-thickness extent is ``ply_thickness / nz_per_ply``.
+        When the shear approaches or exceeds the layer height the
+        Jacobian at the centroid flips sign and ``validate()`` rejects
+        the mesh.  The suggestions below propose values that bring the
+        ratio under ~0.7 by adjusting one knob at a time.
+        """
+        if self.wrinkle_config is None or not getattr(
+            self.wrinkle_config, "wrinkles", ()
+        ):
+            return err  # Flat mesh — nothing wrinkle-specific to add.
+
+        w0 = self.wrinkle_config.wrinkles[0]
+        profile = w0.profile
+        inner = getattr(profile, "profile", profile)  # unwrap WrinkleSurface3D
+        amplitude = float(getattr(inner, "amplitude", 0.0))
+        wavelength = float(getattr(inner, "wavelength", 0.0))
+        if amplitude <= 0.0 or wavelength <= 0.0:
+            return err
+
+        ply_thickness = float(self.laminate.plies[0].thickness)
+        Lx = float(self.Lx)
+        nx = int(self.nx)
+        nz_per_ply = int(self.nz_per_ply)
+
+        slope = 2.0 * math.pi * amplitude / wavelength
+        in_plane_edge = Lx / max(nx, 1)
+        z_layer = ply_thickness / max(nz_per_ply, 1)
+        shear_ratio = slope * in_plane_edge / z_layer if z_layer > 0 else float("inf")
+
+        # Solve shear_ratio < 0.7 for each knob in turn, holding the others fixed.
+        target = 0.7
+        nz_safe = max(
+            1,
+            int(math.floor(target * ply_thickness * nx / (slope * Lx))),
+        )
+        amp_safe = target * ply_thickness * nx / (2.0 * math.pi * nz_per_ply * Lx) * wavelength
+        lam_safe = 2.0 * math.pi * amplitude * Lx * nz_per_ply / (target * ply_thickness * nx)
+        nx_safe = int(math.ceil(slope * Lx * nz_per_ply / (target * ply_thickness)))
+
+        suggestions = (
+            f"  • nz_per_ply ≤ {nz_safe} (currently {nz_per_ply})\n"
+            f"  • amplitude ≤ {amp_safe:.3g} mm (currently {amplitude:.3g} mm)\n"
+            f"  • wavelength ≥ {lam_safe:.3g} mm (currently {wavelength:.3g} mm)\n"
+            f"  • nx ≥ {nx_safe} (currently {nx})"
+        )
+
+        new_msg = (
+            f"{err}\n"
+            f"Applied wrinkle: A={amplitude:.3g} mm, λ={wavelength:.3g} mm; "
+            f"mesh: nx={nx}, nz_per_ply={nz_per_ply}, "
+            f"ply_thickness={ply_thickness:.3g} mm, Lx={Lx:.3g} mm. "
+            f"Shear ratio ≈ {shear_ratio:.2f} (target < 0.7). "
+            f"Adjust any one of:\n{suggestions}"
+        )
+        new_err = MeshValidationError(new_msg)
+        # Preserve diagnostic attributes set by validate().
+        for attr in ("inverted_element_indices", "detJ"):
+            if hasattr(err, attr):
+                setattr(new_err, attr, getattr(err, attr))
+        return new_err
 
     # =======================================================================
     # Grid and connectivity helpers
