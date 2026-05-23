@@ -635,3 +635,121 @@ class TestIssue17_18DefaultDecayBC:
         if k + 1 < n_plies - 1:
             assert dz[ply == n_plies - 1][0] == 0.0
             assert ang[ply == n_plies - 1][0] == 0.0
+
+
+# ----------------------------------------------------------------------
+# Issue #159: pin the behavioural difference between ``stack`` and
+# ``uniform`` so they cannot be accidentally homogenised.
+# ----------------------------------------------------------------------
+
+class TestIssue159StackVsUniform:
+    """``stack`` and ``uniform`` both report M_f = 1.0, but they model
+    fundamentally different defects:
+
+    * ``stack``  — DUAL wrinkle (φ = 0, two adjacent interfaces),
+                   default through-thickness decay (linear taper from
+                   the interface plies to zero at the outer surfaces).
+    * ``uniform`` — SINGLE wrinkle, ``decay_mode="uniform"`` (every ply
+                    carries the full profile, including surfaces).
+
+    Both come from :meth:`WrinkleConfiguration.from_morphology_name`, so
+    a regression that conflated either choice (wrinkle count *or* decay
+    mode) would slip past the existing morphology tests. These checks
+    pin both axes simultaneously.
+    """
+
+    def _build_pair(self, profile, interface1=2, interface2=3, n_plies=6):
+        stack = WrinkleConfiguration.from_morphology_name(
+            "stack", profile, interface1=interface1, interface2=interface2
+        )
+        uniform = WrinkleConfiguration.from_morphology_name(
+            "uniform", profile, interface1=interface1, interface2=interface2
+        )
+        return stack, uniform
+
+    def test_wrinkle_count_differs(self, gaussian_wrinkle):
+        """The two morphologies must NOT have the same number of wrinkles."""
+        stack, uniform = self._build_pair(gaussian_wrinkle)
+        assert stack.n_wrinkles() == 2, "stack must be a dual-wrinkle preset"
+        assert uniform.n_wrinkles() == 1, "uniform must be a single-wrinkle preset"
+
+    def test_decay_mode_differs(self, gaussian_wrinkle):
+        """The two morphologies must NOT share the same through-thickness mode."""
+        stack, uniform = self._build_pair(gaussian_wrinkle)
+        # ``from_morphology_name`` defaults dual-wrinkle modes to the
+        # standard linear taper and explicitly tags ``uniform`` so the
+        # decay-mode label is the canonical regression check.
+        assert stack.decay_mode == "default"
+        assert uniform.decay_mode == "uniform"
+
+    def test_deformed_meshes_differ(self, gaussian_wrinkle):
+        """``apply_to_nodes`` outputs must differ on a multi-ply mesh."""
+        n_plies = 6
+        stack, uniform = self._build_pair(
+            gaussian_wrinkle, interface1=2, interface2=3, n_plies=n_plies
+        )
+        xs = np.linspace(-8.0, 8.0, 9)
+        nodes, ply = _strip(xs, n_plies=n_plies)
+
+        dz_stack = (stack.apply_to_nodes(nodes, ply, n_plies) - nodes)[:, 2]
+        dz_uniform = (uniform.apply_to_nodes(nodes, ply, n_plies) - nodes)[:, 2]
+
+        # Any reasonable mesh must register a non-trivial difference.
+        diff = np.abs(dz_stack - dz_uniform)
+        assert diff.max() > 1e-6, (
+            "stack and uniform produced identical mesh displacements -- "
+            "they should differ either in wrinkle count or decay mode."
+        )
+
+    def test_per_ply_decay_vectors_differ(self, gaussian_wrinkle):
+        """The through-thickness decay vector that scales each ply must
+        differ in *expected* ways: uniform = 1 on every ply (no decay);
+        stack tapers to 0 at the outer surfaces."""
+        n_plies = 6
+        k = 2  # stack picks (interface1+interface2)//2 == (2+3)//2 == 2
+        stack, uniform = self._build_pair(
+            gaussian_wrinkle, interface1=2, interface2=3, n_plies=n_plies
+        )
+        ply_ids = np.arange(n_plies, dtype=np.int64)
+
+        # ``stack`` is dual-wrinkle; query the decay for its first wrinkle
+        # which sits at interface ``k=2`` (matches uniform's mid_interface).
+        stack_decay = stack._through_thickness_decay(ply_ids, k, n_plies)
+        uniform_decay = uniform._through_thickness_decay(ply_ids, k, n_plies)
+
+        # Uniform: every ply carries the full profile.
+        npt.assert_allclose(uniform_decay, np.ones(n_plies), atol=1e-15)
+
+        # Stack (default linear taper): outer surfaces zero, interface
+        # plies (p == k, p == k + 1) unity.
+        assert stack_decay[0] == 0.0
+        assert stack_decay[n_plies - 1] == 0.0
+        npt.assert_allclose(stack_decay[k], 1.0, rtol=1e-12)
+        npt.assert_allclose(stack_decay[k + 1], 1.0, rtol=1e-12)
+
+        # And the vectors must NOT be elementwise equal.
+        assert not np.allclose(stack_decay, uniform_decay), (
+            "stack and uniform produced identical through-thickness decay "
+            "vectors -- a regression has homogenised the two morphologies."
+        )
+
+    def test_outer_surface_signature(self, gaussian_wrinkle):
+        """The cleanest physical fingerprint: in ``uniform`` the outer
+        surface plies see the full profile, in ``stack`` they see zero.
+        A regression that swapped decay modes would flip this."""
+        n_plies = 6
+        stack, uniform = self._build_pair(
+            gaussian_wrinkle, interface1=2, interface2=3, n_plies=n_plies
+        )
+        # Sample the crest (x == center == 0) so dz == amplitude * decay.
+        nodes, ply = _strip(np.array([0.0]), n_plies=n_plies)
+        dz_stack = (stack.apply_to_nodes(nodes, ply, n_plies) - nodes)[:, 2]
+        dz_uniform = (uniform.apply_to_nodes(nodes, ply, n_plies) - nodes)[:, 2]
+
+        amp = gaussian_wrinkle.amplitude
+        # Bottom outer surface (p == 0)
+        npt.assert_allclose(dz_stack[ply == 0][0], 0.0, atol=1e-15)
+        npt.assert_allclose(dz_uniform[ply == 0][0], amp, rtol=1e-12)
+        # Top outer surface (p == n_plies - 1)
+        npt.assert_allclose(dz_stack[ply == n_plies - 1][0], 0.0, atol=1e-15)
+        npt.assert_allclose(dz_uniform[ply == n_plies - 1][0], amp, rtol=1e-12)

@@ -142,6 +142,25 @@ class WrinkleConfiguration:
     - Mesh deformation fields for FE analysis
     - Local fiber angle distributions
 
+    A configuration is characterised by *two* independent choices: the
+    set of :class:`WrinklePlacement` instances (one or two wrinkles, each
+    at its own ply interface and phase) and the ``decay_mode`` /
+    ``decay_floor`` pair that shapes the through-thickness amplitude
+    envelope. The five named morphologies exposed via
+    :meth:`from_morphology_name` map onto these two axes as follows:
+
+    - ``"stack"``: dual-wrinkle, φ = 0, ``decay_mode="default"``
+      (linear taper from the interface plies to zero at the outer
+      surfaces). M_f = 1.0 dual-wrinkle baseline.
+    - ``"convex"``: dual-wrinkle, φ = +π/2, ``decay_mode="default"``.
+    - ``"concave"``: dual-wrinkle, φ = −π/2, ``decay_mode="default"``.
+    - ``"uniform"``: single wrinkle, ``decay_mode="uniform"`` (every
+      ply carries the full profile, *no* through-thickness decay).
+      Differs from ``"stack"`` in both the wrinkle count and the
+      through-thickness envelope even though both have M_f = 1.0.
+    - ``"graded"``: single wrinkle, ``decay_mode="graded"`` (linear
+      decay from mid-ply to surfaces, modulated by ``decay_floor``).
+
     The aggregate morphology factor for N wrinkles uses the geometric-mean
     normalisation from the N-wrinkle extension (Eq. 12)::
 
