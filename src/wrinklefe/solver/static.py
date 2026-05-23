@@ -93,6 +93,7 @@ class StaticSolver:
         boundary_conditions: list[BoundaryCondition],
         solver: str = "direct",
         verbose: bool = False,
+        keep_stiffness: bool = False,
     ) -> FieldResults:
         """Solve the static problem.
 
@@ -113,6 +114,14 @@ class StaticSolver:
             ILU preconditioner. Default is ``'direct'``.
         verbose : bool, optional
             Print progress information. Default is ``False``.
+        keep_stiffness : bool, optional
+            If True, retain a copy of the unmodified (pre-penalty) global
+            stiffness matrix on ``self._K`` after solve. Default is False,
+            which avoids the memory cost of holding a full sparse matrix
+            copy on every solver instance (relevant for parametric sweeps
+            and analyses that keep multiple solvers alive). Enable only
+            when callers need post-solve access to K (e.g., to compute
+            reaction forces without re-assembly).
 
         Returns
         -------
@@ -133,7 +142,9 @@ class StaticSolver:
             print("Assembling global stiffness matrix...")
         with _suppress_assembly_warnings():
             K = self.assembler.assemble_stiffness(verbose=verbose)
-        self._K = K.copy()  # Store unmodified K for reaction forces
+        # Opt-in retention of the unmodified K (see ``keep_stiffness``).
+        # Default: do not store a copy to avoid doubling peak FE memory.
+        self._K = K.copy() if keep_stiffness else None
 
         if verbose:
             t1 = time.perf_counter()
@@ -363,54 +374,28 @@ class StaticSolver:
     ) -> tuple[sparse.csc_matrix, np.ndarray]:
         """Apply displacement boundary conditions via the penalty method.
 
-        For each constrained DOF *i* with prescribed value *u_i*:
-
-        .. math::
-
-            K_{ii} \\mathrel{+}= \\alpha, \\qquad F_i \\mathrel{+}= \\alpha \\, u_i
-
-        where ``alpha`` is a large penalty number (``1e8 * max(diag(K))``).
-
-        This preserves matrix symmetry and sparsity structure, which is
-        important for the CG iterative solver.
-
-        Parameters
-        ----------
-        K : scipy.sparse.csc_matrix
-            Global stiffness matrix (modified in place).
-        F : np.ndarray
-            Global force vector (modified in place).
-        constrained_dofs : dict[int, float]
-            Mapping from DOF index to prescribed displacement value.
-        verbose : bool
-            Print BC application info.
-
-        Returns
-        -------
-        K : scipy.sparse.csc_matrix
-            Modified stiffness matrix.
-        F : np.ndarray
-            Modified force vector.
+        Thin wrapper around
+        :func:`wrinklefe.solver.boundary.apply_penalty_bcs` that uses
+        ``in_place=True`` (this solver owns ``K`` and ``F`` exclusively
+        within :meth:`solve`).  See the helper docstring for the math
+        and the choice of penalty scaling.
         """
+        from wrinklefe.solver.boundary import apply_penalty_bcs, _PENALTY_SCALE
+
         if not constrained_dofs:
             return K, F
 
-        # Convert to LIL for efficient diagonal modification
-        K_lil = K.tolil()
-
-        # Penalty factor
-        diag_max = np.abs(K.diagonal()).max()
-        alpha = 1.0e8 * max(diag_max, 1.0)
-
-        for dof, u_val in constrained_dofs.items():
-            K_lil[dof, dof] += alpha
-            F[dof] += alpha * u_val
+        K_out, F_out = apply_penalty_bcs(
+            K, F, constrained_dofs, in_place=True,
+        )
 
         if verbose:
+            diag_max = float(np.abs(K.diagonal()).max())
+            alpha = _PENALTY_SCALE * max(diag_max, 1.0)
             print(f"  Applied {len(constrained_dofs)} displacement BCs "
                   f"(penalty alpha={alpha:.2e})")
 
-        return K_lil.tocsc(), F
+        return K_out, F_out
 
     def _load_state_to_bcs(self, load: LoadState) -> list:
         """Convert a CLT LoadState to 3-D boundary conditions.
@@ -476,6 +461,52 @@ class StaticSolver:
     # Post-processing
     # ------------------------------------------------------------------
 
+    # Cached (gp_coords, N_gp, dN_dxi_gp) for the standard hex8 / 2x2x2
+    # quadrature.  Populated lazily by :meth:`_hex8_gauss_shape_functions`
+    # and reused across every solve because shape functions in natural
+    # coordinates are identical for every hex8 element (issue #187).
+    _hex8_gp_shape_cache: (
+        tuple[np.ndarray, np.ndarray, np.ndarray] | None
+    ) = None
+
+    @classmethod
+    def _hex8_gauss_shape_functions(
+        cls,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return cached 2x2x2 Gauss-point coords, shape functions, and derivatives.
+
+        Returns
+        -------
+        gp_coords : np.ndarray
+            Shape ``(n_gp, 3)`` natural coordinates of the Gauss points
+            (lexicographic order, matching ``Hex8Element._gauss_points``).
+        N_gp : np.ndarray
+            Shape ``(n_gp, 8)`` — row ``i`` holds the 8 trilinear shape
+            functions evaluated at Gauss point ``i``.  For a per-element
+            nodal field ``f`` (shape ``(8,)``), ``N_gp @ f`` returns the
+            interpolated value at each Gauss point in one matmul.
+        dN_dxi_gp : np.ndarray
+            Shape ``(n_gp, 3, 8)`` — natural-coordinate derivatives of the
+            8 shape functions at each Gauss point.  Constant across all
+            hex8 elements; used to build per-element Jacobians via a
+            single batched matmul.
+        """
+        if cls._hex8_gp_shape_cache is not None:
+            return cls._hex8_gp_shape_cache
+
+        from wrinklefe.elements.hex8 import Hex8Element
+        from wrinklefe.elements.gauss import gauss_points_hex
+
+        gp_coords, _ = gauss_points_hex(order=2)
+        n_gp = gp_coords.shape[0]
+        N_gp = np.empty((n_gp, 8))
+        dN_dxi_gp = np.empty((n_gp, 3, 8))
+        for i, (xi, eta, zeta) in enumerate(gp_coords):
+            N_gp[i] = Hex8Element.shape_functions(xi, eta, zeta)
+            dN_dxi_gp[i] = Hex8Element.shape_derivatives(xi, eta, zeta)
+        cls._hex8_gp_shape_cache = (gp_coords, N_gp, dN_dxi_gp)
+        return cls._hex8_gp_shape_cache
+
     def recover_element_results(
         self,
         displacement: np.ndarray,
@@ -489,6 +520,12 @@ class StaticSolver:
         2. Compute global-frame stress and strain at each Gauss point.
         3. Transform stress and strain to local material coordinates
            using the ply angle and wrinkle misalignment.
+
+        Quantities that are constant per element (``T_ply``, the element's
+        node ids and per-node wrinkle angles) are computed once outside
+        the Gauss loop, and all wrinkle angles at the 8 Gauss points are
+        obtained via a single ``N_gp @ fiber_angles_local`` matmul.  See
+        issue #187 for the performance motivation.
 
         Parameters
         ----------
@@ -508,54 +545,111 @@ class StaticSolver:
         strain_local : np.ndarray
             Shape ``(n_elements, n_gauss, 6)`` strain in local material coordinates.
         """
-        from wrinklefe.elements.hex8 import Hex8Element
+        from wrinklefe.core.transforms import rotate_stiffness_3d
 
         n_elem = self.mesh.n_elements
-        # Determine n_gauss from the first element
-        elem0 = self.assembler.create_element(0)
-        n_gp = len(elem0._gauss_weights)
+        # Shape functions and natural-coord derivatives at the 8 Gauss
+        # points are constant across all hex8 elements; build once and
+        # reuse (cached on the class).
+        _gp_coords, N_gp, dN_dxi_gp = self._hex8_gauss_shape_functions()
+        n_gp = N_gp.shape[0]
 
         stress_global = np.empty((n_elem, n_gp, 6))
         stress_local = np.empty((n_elem, n_gp, 6))
         strain_global = np.empty((n_elem, n_gp, 6))
         strain_local = np.empty((n_elem, n_gp, 6))
 
+        # Pre-fetch mesh arrays so attribute lookups don't happen in the
+        # hot loop.
+        mesh_elements = self.mesh.elements
+        mesh_nodes = self.mesh.nodes
+        mesh_fiber_angles = self.mesh.fiber_angles
+        mesh_ply_angles = self.mesh.ply_angles
+        mesh_ply_ids = self.mesh.ply_ids
+
+        # Material stiffness in the material frame — constant per ply.
+        plies = self.laminate.plies
+        material_C_by_ply: dict[int, np.ndarray] = {}
+
+        # Reusable scratch B-matrix template (zeros are stable between GPs
+        # at the slots we never touch; we overwrite the populated slots
+        # for every GP via vector assignment).
+        B_scratch = np.zeros((n_gp, 6, 24))
+
         for e in range(n_elem):
             if verbose and e % 1000 == 0:
                 print(f"  Post-processing element {e}/{n_elem} "
                       f"({100.0 * e / n_elem:.1f}%)")
 
-            # Extract element DOF values
-            dofs = self.assembler.element_dof_indices(e)
-            u_elem = displacement[dofs]
+            node_ids = mesh_elements[e]
+            node_coords = mesh_nodes[node_ids]  # (8, 3)
 
-            # Create element and compute stresses/strains at Gauss points
-            elem = self.assembler.create_element(e)
-            sig_g = elem.stress_at_gauss_points(u_elem)   # (n_gp, 6)
-            eps_g = elem.strain_at_gauss_points(u_elem)    # (n_gp, 6)
+            # Batched Jacobians across all 8 GPs in one matmul.
+            J_all = dN_dxi_gp @ node_coords  # (n_gp, 3, 3)
+            J_inv_all = np.linalg.inv(J_all)  # (n_gp, 3, 3)
+            dN_dx_all = J_inv_all @ dN_dxi_gp  # (n_gp, 3, 8) — physical-coord derivs
+
+            # Build the 6x24 strain-displacement matrix at every GP via
+            # vectorised slot assignment (matches Hex8Element.B_matrix).
+            B = B_scratch
+            # eps_11 = du/dx -> rows 0, cols 0,3,6,...,21
+            B[:, 0, 0::3] = dN_dx_all[:, 0, :]
+            # eps_22 = dv/dy -> rows 1, cols 1,4,...,22
+            B[:, 1, 1::3] = dN_dx_all[:, 1, :]
+            # eps_33 = dw/dz -> rows 2, cols 2,5,...,23
+            B[:, 2, 2::3] = dN_dx_all[:, 2, :]
+            # gamma_23 = dv/dz + dw/dy -> rows 3, cols (1,2,4,5,...)
+            B[:, 3, 1::3] = dN_dx_all[:, 2, :]
+            B[:, 3, 2::3] = dN_dx_all[:, 1, :]
+            # gamma_13 = du/dz + dw/dx -> rows 4
+            B[:, 4, 0::3] = dN_dx_all[:, 2, :]
+            B[:, 4, 2::3] = dN_dx_all[:, 0, :]
+            # gamma_12 = du/dy + dv/dx -> rows 5
+            B[:, 5, 0::3] = dN_dx_all[:, 1, :]
+            B[:, 5, 1::3] = dN_dx_all[:, 0, :]
+
+            # Element nodal displacements (24,) via flat node-id expansion.
+            u_elem = displacement[
+                (3 * node_ids[:, None] + np.arange(3)).ravel()
+            ]
+
+            # Strain at each GP — one batched matmul.
+            eps_g = B @ u_elem  # (n_gp, 6)
+
+            # Rotated stiffness per GP: ply rotation (about z) once per
+            # element, then wrinkle rotation (about y) per GP.
+            ply_idx = int(mesh_ply_ids[e])
+            if ply_idx not in material_C_by_ply:
+                material_C_by_ply[ply_idx] = plies[ply_idx].material.stiffness_matrix
+            C_material = material_C_by_ply[ply_idx]
+
+            ply_angle_rad = np.radians(float(mesh_ply_angles[e]))
+            if abs(ply_angle_rad) > 1.0e-15:
+                C_ply = rotate_stiffness_3d(C_material, ply_angle_rad, axis='z')
+            else:
+                C_ply = C_material
+
+            fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)
+            # One matmul gives the interpolated wrinkle angle at every GP.
+            wrinkle_angles_gp = N_gp @ fiber_angles_local  # (n_gp,)
+
+            T_ply = stress_transformation_3d(ply_angle_rad, axis='z')
+            sig_g = np.empty((n_gp, 6))
+            for g in range(n_gp):
+                phi = float(wrinkle_angles_gp[g])
+                if abs(phi) > 1.0e-15:
+                    C_bar = rotate_stiffness_3d(C_ply, phi, axis='y')
+                else:
+                    C_bar = C_ply
+                sig_g[g] = C_bar @ eps_g[g]
+
+                T_wrinkle = stress_transformation_3d(phi, axis='y')
+                T_total = T_wrinkle @ T_ply
+                stress_local[e, g] = T_total @ sig_g[g]
+                strain_local[e, g] = T_total @ eps_g[g]
 
             stress_global[e] = sig_g
             strain_global[e] = eps_g
-
-            # Transform to local material coordinates
-            # Combined rotation: first ply angle (z-axis), then wrinkle (y-axis)
-            ply_angle_rad = np.radians(float(self.mesh.ply_angles[e]))
-
-            for g in range(n_gp):
-                # Get wrinkle angle at this Gauss point by interpolation
-                xi, eta, zeta = elem._gauss_points[g]
-                N = Hex8Element.shape_functions(xi, eta, zeta)
-                node_ids = self.mesh.elements[e]
-                wrinkle_angle = float(N @ self.mesh.fiber_angles[node_ids])
-
-                # Build composite transformation: T_total = T_wrinkle @ T_ply
-                # Local stress = T_total @ global stress
-                T_ply = stress_transformation_3d(ply_angle_rad, axis='z')
-                T_wrinkle = stress_transformation_3d(wrinkle_angle, axis='y')
-                T_total = T_wrinkle @ T_ply
-
-                stress_local[e, g] = T_total @ sig_g[g]
-                strain_local[e, g] = T_total @ eps_g[g]
 
         if verbose:
             print(f"  Post-processing element {n_elem}/{n_elem} (100.0%) -- done.")

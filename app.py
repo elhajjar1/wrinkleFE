@@ -44,6 +44,10 @@ from wrinklefe.io.export import (
     render_summary_markdown,
     render_summary_pdf,
 )
+from wrinklefe.viz.style import (
+    MORPHOLOGY_COLORS,
+    TENSION_MECHANISM_COLORS,
+)
 
 import streamlit_viz
 
@@ -98,57 +102,72 @@ CUSTOM_MAT_STRENGTH_FIELDS = (
     ("S23", "S23 [MPa]", "%.1f"),
 )
 
+# UI-only defaults that have no direct counterpart on AnalysisConfig (the
+# layup is a string in the UI but a list of angles in the dataclass; expert
+# mode and the custom-material editor name are pure UI state; loading is
+# stored as ±applied_strain on the dataclass).
 DEFAULT_LAYUP = "[0/45/-45/90]_3s"
 DEFAULT_EXPERT_MODE = False
 DEFAULT_MATERIAL = "IM7_8552"
 DEFAULT_CUSTOM_NAME = "custom"
-DEFAULT_PLY_THICKNESS = 0.183
-DEFAULT_AMPLITUDE = 0.366
-DEFAULT_WAVELENGTH = 16.0
-DEFAULT_WIDTH = 12.0
-DEFAULT_MORPHOLOGY = "stack"
-DEFAULT_DECAY_FLOOR = 0.0
 DEFAULT_LOADING = "compression"
 DEFAULT_STRAIN_MAG_PCT = 1.0
-DEFAULT_ANALYTICAL_ONLY = False
-DEFAULT_NX = 12
-DEFAULT_NY = 6
-DEFAULT_NZ_PER_PLY = 1
 
-# Keys for sidebar input widgets. Used by the "Reset to defaults" button to
-# clear modified values from st.session_state so widgets fall back to their
-# default= argument on the next rerun.
-SIDEBAR_INPUT_KEYS = (
-    "expert_mode",
-    "sb_material",
-    "sb_custom_name",
-    "sb_ply_thickness",
-    "sb_layup",
-    "sb_amplitude",
-    "sb_wavelength",
-    "sb_width",
-    "sb_morphology",
-    "sb_decay_floor",
-    "sb_loading",
-    "sb_strain_mag_pct",
-    "sb_analytical_only",
-    "sb_nx",
-    "sb_ny",
-    "sb_nz_per_ply",
-)
+# Inputs whose defaults live on :class:`AnalysisConfig`. Pulling them from a
+# single freshly-constructed instance keeps the UI defaults from silently
+# drifting away from the dataclass.
+_CFG_DEFAULTS = AnalysisConfig()
+DEFAULT_PLY_THICKNESS = _CFG_DEFAULTS.ply_thickness
+DEFAULT_AMPLITUDE = _CFG_DEFAULTS.amplitude
+DEFAULT_WAVELENGTH = _CFG_DEFAULTS.wavelength
+DEFAULT_WIDTH = _CFG_DEFAULTS.width
+DEFAULT_MORPHOLOGY = _CFG_DEFAULTS.morphology
+DEFAULT_DECAY_FLOOR = _CFG_DEFAULTS.decay_floor
+DEFAULT_ANALYTICAL_ONLY = _CFG_DEFAULTS.analytical_only
+DEFAULT_NX = _CFG_DEFAULTS.nx
+DEFAULT_NY = _CFG_DEFAULTS.ny
+DEFAULT_NZ_PER_PLY = _CFG_DEFAULTS.nz_per_ply
+
+# Single source of truth used by the "Reset to defaults" button: maps each
+# sidebar widget ``key=`` argument to the value it should hold after a reset.
+# Keep this aligned with the ``key=`` strings on the widgets below.
+DEFAULTS: dict[str, object] = {
+    "expert_mode": DEFAULT_EXPERT_MODE,
+    "sb_material": DEFAULT_MATERIAL,
+    "sb_custom_name": DEFAULT_CUSTOM_NAME,
+    "sb_ply_thickness": DEFAULT_PLY_THICKNESS,
+    "sb_layup": DEFAULT_LAYUP,
+    "sb_amplitude": DEFAULT_AMPLITUDE,
+    "sb_wavelength": DEFAULT_WAVELENGTH,
+    "sb_width": DEFAULT_WIDTH,
+    "sb_morphology": DEFAULT_MORPHOLOGY,
+    "sb_decay_floor": DEFAULT_DECAY_FLOOR,
+    "sb_loading": DEFAULT_LOADING,
+    "sb_strain_mag_pct": DEFAULT_STRAIN_MAG_PCT,
+    "sb_analytical_only": DEFAULT_ANALYTICAL_ONLY,
+    "sb_nx": DEFAULT_NX,
+    "sb_ny": DEFAULT_NY,
+    "sb_nz_per_ply": DEFAULT_NZ_PER_PLY,
+}
 
 
-def _reset_sidebar_defaults() -> None:
-    """Clear sidebar input keys from session_state so widgets reload defaults.
+def reset_inputs() -> None:
+    """Restore every sidebar input widget to its default value.
 
-    Also clears the dynamic custom-material editor keys (``custom_*``), which
-    are seeded from the chosen material on each rerun.
+    Writes each :data:`DEFAULTS` entry into :data:`st.session_state` so the
+    widget picks up the default on the next rerun. Also clears the dynamic
+    custom-material editor keys (``custom_*``), which are seeded from the
+    chosen material on each rerun and would otherwise survive the reset.
     """
-    for k in SIDEBAR_INPUT_KEYS:
-        st.session_state.pop(k, None)
+    for k, v in DEFAULTS.items():
+        st.session_state[k] = v
     for k in list(st.session_state.keys()):
         if isinstance(k, str) and k.startswith("custom_"):
             st.session_state.pop(k, None)
+
+
+# Back-compat alias for older call sites.
+_reset_sidebar_defaults = reset_inputs
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +189,10 @@ def _hero_schematic() -> bytes:
     band_h = 0.10
     band_gap = 0.02
     pitch = band_h + band_gap
+    # Stylised cartoon hexes (Tailwind-style navy/slate + warning red). Kept
+    # as literals on purpose — this hero-strip schematic is a decorative
+    # marketing illustration, not a data plot, so it does not pull from the
+    # ``wrinklefe.viz.style`` palettes.
     ply_colors = [
         "#1e3a8a", "#cbd5e0", "#1e3a8a", "#cbd5e0",
         "#1e3a8a", "#cbd5e0", "#1e3a8a",
@@ -290,6 +313,9 @@ def _morphology_schematic(
     z_plus = visual_amp * env * np.cos(phase + np.pi / 2)
     z_minus = visual_amp * env * np.cos(phase - np.pi / 2)
 
+    # Stylised cartoon hexes — this is a decorative line drawing of the
+    # morphology, not a data plot, so it intentionally uses literal blue /
+    # red instead of pulling from ``wrinklefe.viz.style.MORPHOLOGY_COLORS``.
     blue, red = "#1f77b4", "#d62728"
     if morphology == "stack":
         ax.plot(x_canvas, z + 0.34, color=blue, lw=2.2)
@@ -475,9 +501,11 @@ with st.sidebar:
         value=DEFAULT_AMPLITUDE, step=0.01,
         key="sb_amplitude",
         help=(
-            "Peak displacement of the wrinkled mid-surface from the flat "
-            "reference (crest height, NOT peak-to-peak). Measure as "
-            "A = (z_max − z_min) / 2 from a cross-section micrograph."
+            "Half-amplitude A [mm]: peak displacement of the wrinkled "
+            "mid-surface from the flat reference, so "
+            "z(x) = A·cos(2π x / λ) and the peak-to-trough height is 2A. "
+            "Measure from a cross-section micrograph as "
+            "A = (z_max − z_min) / 2."
         ),
     )
     wavelength = st.number_input(
@@ -486,8 +514,10 @@ with st.sidebar:
         value=DEFAULT_WAVELENGTH, step=0.5,
         key="sb_wavelength",
         help=(
-            "Spatial period of the cosine carrier. Larger λ at fixed A "
-            "lowers the peak fibre angle θ_max ≈ arctan(2πA/λ)."
+            "Wavelength λ [mm]: spatial period of the "
+            "cos(2π(x − x₀)/λ) carrier (crest-to-crest distance). "
+            "Must be > 0. Larger λ at fixed A lowers the peak fibre "
+            "angle θ_max ≈ arctan(2πA/λ)."
         ),
     )
     if expert_mode:
@@ -497,8 +527,11 @@ with st.sidebar:
             value=DEFAULT_WIDTH, step=0.5,
             key="sb_width",
             help=(
-                "Half-width of the Gaussian envelope multiplying the cosine. "
-                "Smaller w localises the wrinkle to a few wavelengths near x = 0."
+                "Envelope decay length w [mm] about the centre x₀: "
+                "Gaussian 1/e scale in exp(−(x−x₀)²/w²) (also the "
+                "transverse y-extent in 3-D dual-wrinkle / graded "
+                "modes). Smaller w localises the wrinkle to a few "
+                "wavelengths near x₀. Must be > 0."
             ),
         )
     else:
@@ -519,18 +552,26 @@ with st.sidebar:
                 "Wrinkle shape pattern through the laminate thickness. The cartoon "
                 "below the dropdown shows the active choice; switch values to see "
                 "the others.\n\n"
-                "**Dual-wrinkle modes** — two adjacent wrinkles offset by phase φ "
-                "between their centrelines (Jin et al. 2026):\n"
-                "- *stack* (φ = 0): peaks aligned. M_f = 1.0 — baseline.\n"
+                "**Dual-wrinkle modes** — *two* wrinkles offset by phase φ "
+                "between their centrelines (Jin et al. 2026). Through-thickness "
+                "amplitude decays linearly from the interface plies to zero at "
+                "the outer surfaces:\n"
+                "- *stack* (φ = 0): peaks aligned. M_f = 1.0 — dual-wrinkle "
+                "baseline.\n"
                 "- *convex* (φ = π/2): interface bulges outward. M_f < 1 — "
                 "*least* damaging in compression.\n"
                 "- *concave* (φ = −π/2): interface pinches inward. M_f > 1 — "
                 "*most* damaging in compression.\n\n"
-                "**Single-wrinkle modes** — one wrinkle, varying through-thickness "
+                "**Single-wrinkle modes** — *one* wrinkle, varying through-thickness "
                 "amplitude:\n"
-                "- *uniform*: full amplitude on every ply.\n"
+                "- *uniform*: full amplitude on *every* ply (no decay). M_f = 1.0 "
+                "but unlike *stack* the outer-surface plies are also displaced.\n"
                 "- *graded*: linear decay from wrinkle core to surfaces, controlled "
-                "by the **Decay floor** slider (0 = full decay, 1 = uniform)."
+                "by the **Decay floor** slider (0 = full decay, 1 = uniform).\n\n"
+                "Note: *stack* and *uniform* both report M_f = 1.0 but produce "
+                "different deformed meshes — *stack* is two wrinkles with the "
+                "envelope fading at the outer surfaces; *uniform* is one wrinkle "
+                "applied to every ply."
             ),
         )
         decay_floor = DEFAULT_DECAY_FLOOR
@@ -538,7 +579,14 @@ with st.sidebar:
             decay_floor = st.slider(
                 "Decay floor", 0.0, 1.0, DEFAULT_DECAY_FLOOR, 0.05,
                 key="sb_decay_floor",
-                help="Minimum amplitude fraction at the outer surfaces.",
+                help=(
+                    "Decay floor (dimensionless, [0, 1]): graded "
+                    "morphology only. Minimum fraction of the wrinkle "
+                    "amplitude retained at the laminate outer "
+                    "surfaces. 0 = full decay to zero amplitude at the "
+                    "surfaces (pure graded); 1 = no decay (equivalent "
+                    "to uniform)."
+                ),
             )
 
         # Thread the live Amplitude/Wavelength/Envelope-width/Decay-floor
@@ -667,7 +715,7 @@ with st.sidebar:
         ),
     )
     if reset_clicked:
-        _reset_sidebar_defaults()
+        reset_inputs()
         st.rerun()
 
     with st.expander("What do these terms mean?", expanded=False):
@@ -751,6 +799,30 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             k: np.asarray(v, dtype=np.float64)
             for k, v in (result.failure_indices or {}).items()
         }
+        # Per-component global |max| stress, indexed by Voigt component.
+        # The y-slice scrubber uses these so the colorbar range matches
+        # the symmetric range the 3D contour computes. Without it the
+        # slice silently re-normalises per station and users mistakenly
+        # see the stress as uniform along y. See issue #200.
+        if stress_per_elem.size:
+            stress_vmax_per_comp = np.nanmax(
+                np.abs(stress_per_elem), axis=0
+            ).astype(float)
+        else:
+            stress_vmax_per_comp = np.zeros(
+                stress_per_elem.shape[1] if stress_per_elem.ndim == 2 else 6,
+                dtype=float,
+            )
+        # Per-criterion global max FI (FI is ≥ 0, so vmin = 0).
+        fi_vmax_per_crit: dict[str, float] = {}
+        for crit, arr in fi_per_gauss.items():
+            if arr.size:
+                vmax_c = float(np.nanmax(arr))
+                if not np.isfinite(vmax_c) or vmax_c <= 0.0:
+                    vmax_c = 1.0
+                fi_vmax_per_crit[crit] = vmax_c
+            else:
+                fi_vmax_per_crit[crit] = 1.0
         fe = {
             "modulus_retention": float(result.modulus_retention),
             "retention_factors": {
@@ -778,6 +850,16 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             "stress_per_elem": stress_per_elem,
             "element_centers": element_centers,
             "fi_per_gauss": fi_per_gauss,
+            # Precomputed global colorbar extrema for the y-slice
+            # scrubber.  See issue #200.
+            "stress_vmax_per_comp": stress_vmax_per_comp,
+            "fi_vmax_per_crit": fi_vmax_per_crit,
+            # Precomputed boundary-face triangulation cached once per
+            # solve so slider re-renders skip the boundary cull. See
+            # issue #198.
+            "mesh3d_geometry": streamlit_viz.compute_mesh3d_geometry(
+                elements_arr
+            ),
         }
 
     return {
@@ -994,13 +1076,13 @@ with tab_configure:
         2, 1, figsize=(8, 4.6), sharex=True,
         gridspec_kw={"height_ratios": [1.4, 1.0]},
     )
-    ax_z.plot(x, z, color="#1f77b4", linewidth=1.5)
+    ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
     ax_z.axhline(0.0, color="grey", linewidth=0.5)
     ax_z.set_ylabel("z(x) [mm]")
     ax_z.set_title(r"$z(x) = A \cdot \exp(-x^2 / w^2) \cdot \cos(2\pi x / \lambda)$")
     ax_z.grid(alpha=0.3)
 
-    ax_theta.plot(x, theta_deg, color="#d62728", linewidth=1.2)
+    ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
     theta_max_deg = np.degrees(profile.max_angle())
     ax_theta.axhline(theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
     ax_theta.axhline(-theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
@@ -1028,7 +1110,7 @@ with tab_configure:
                 raw = np.maximum(0.0, 1.0 - np.abs(ply_idx - p_mid) / max(p_mid, 1e-9))
                 decay = decay_floor + (1.0 - decay_floor) * raw
                 fig_d, ax_d = plt.subplots(figsize=(4, 3))
-                ax_d.barh(ply_idx, decay, color="#9467bd")
+                ax_d.barh(ply_idx, decay, color=MORPHOLOGY_COLORS["anti-stack"])
                 ax_d.set_xlabel("Amplitude fraction")
                 ax_d.set_ylabel("Ply index")
                 ax_d.set_xlim(0, 1.05)
@@ -1219,10 +1301,14 @@ with tab_results:
                             if isinstance(tm.get(k), (int, float))]
                 if bar_keys:
                     fig_tm, ax_tm = plt.subplots(figsize=(5, 2.6))
+                    _tm_labels = [k.replace("kd_", "") for k in bar_keys]
                     ax_tm.bar(
-                        [k.replace("kd_", "") for k in bar_keys],
+                        _tm_labels,
                         [tm[k] for k in bar_keys],
-                        color=["#1f77b4", "#ff7f0e", "#2ca02c"],
+                        color=[
+                            TENSION_MECHANISM_COLORS.get(label, "gray")
+                            for label in _tm_labels
+                        ],
                     )
                     ax_tm.set_ylabel("Knockdown contribution")
                     ax_tm.set_ylim(0, max(1.05, max(tm[k] for k in bar_keys) * 1.1))
@@ -1280,7 +1366,7 @@ with tab_results:
                     figsize=(7, max(1.6, 0.55 * len(crits) + 1.0))
                 )
                 y = np.arange(len(crits))
-                ax_ret.barh(y, ret_vals, color="#2ca02c",
+                ax_ret.barh(y, ret_vals, color=MORPHOLOGY_COLORS["convex"],
                             label="Retention (wrinkled / pristine)")
                 ax_ret.axvline(1.0, color="grey", linestyle="--", linewidth=0.8)
                 ax_ret.set_yticks(y)
@@ -1310,20 +1396,45 @@ with tab_results:
                     else next(iter(pf))
                 )
                 fi_arr = np.asarray(pf[crit_for_plot], dtype=float)
+                _critical_ply = fe.get("critical_ply")
                 colours = [
-                    "#d62728" if i == fe.get("critical_ply") else "#1f77b4"
+                    MORPHOLOGY_COLORS["concave"] if i == _critical_ply
+                    else MORPHOLOGY_COLORS["stack"]
+                    for i in range(len(fi_arr))
+                ]
+                # Extra non-colour cue for deuteranopia: outline the critical
+                # ply in black and thicken its edge so it remains visually
+                # distinct without relying on the red/blue contrast alone.
+                edge_colors = [
+                    "black" if i == _critical_ply else "none"
+                    for i in range(len(fi_arr))
+                ]
+                edge_widths = [
+                    1.6 if i == _critical_ply else 0.0
                     for i in range(len(fi_arr))
                 ]
                 fig_fi, ax_fi = plt.subplots(figsize=(7, 3))
-                ax_fi.bar(range(len(fi_arr)), fi_arr, color=colours)
+                _bars = ax_fi.bar(
+                    range(len(fi_arr)), fi_arr,
+                    color=colours,
+                    edgecolor=edge_colors,
+                    linewidth=edge_widths,
+                )
+                # Hatch the critical ply individually — matplotlib's bar
+                # hatch kwarg only accepts a single value, so apply per-bar.
+                if _critical_ply is not None and 0 <= _critical_ply < len(_bars):
+                    _bars[_critical_ply].set_hatch("//")
                 ax_fi.axhline(1.0, color="grey", linestyle="--", linewidth=0.6)
                 ax_fi.set_xlabel("Ply index")
                 ax_fi.set_ylabel(f"FI ({crit_for_plot})")
                 fig_fi.tight_layout()
                 st.pyplot(fig_fi, clear_figure=True)
                 st.caption(
-                    "Critical ply highlighted in red. FI ≥ 1 indicates "
-                    "failure of that ply under the applied strain."
+                    "Critical ply highlighted in red, with a hatched fill "
+                    "and black outline so it remains identifiable in "
+                    "grayscale or for colour-vision deficiencies. "
+                    "FI ≥ 1 indicates failure of that ply under the "
+                    "applied strain."
                 )
 
             crit = fe.get("critical_criterion")
@@ -1385,6 +1496,7 @@ with tab_results:
                         fe["nodes"], fe["elements"], fe["stress_per_elem"],
                         component_index=comp[0],
                         component_label=comp[1],
+                        precomputed_geometry=fe.get("mesh3d_geometry"),
                     )
                     st.plotly_chart(fig_3d, width="stretch")
 
@@ -1398,10 +1510,36 @@ with tab_results:
                             format_func=lambda t: t[1],
                             key="viz_slice_component",
                         )
+                        slice_range = st.radio(
+                            "Colorbar range",
+                            ["global (default)", "per-slice"],
+                            index=0,
+                            horizontal=True,
+                            key="viz_slice_range_mode",
+                            help=(
+                                "Default uses the global |max| of this "
+                                "stress component across the whole part, so "
+                                "the slice colorbar matches the 3D contour "
+                                "and you see real changes as you scrub y. "
+                                "'per-slice' renormalises to the visible "
+                                "station only — useful for inspecting one "
+                                "cold cross-section in detail. See #200."
+                            ),
+                        )
+                        vmax_global = float(
+                            fe["stress_vmax_per_comp"][slice_comp[0]]
+                        )
+                        if slice_range == "global (default)" and vmax_global > 0:
+                            slice_kwargs = dict(
+                                vmin=-vmax_global, vmax=vmax_global
+                            )
+                        else:
+                            slice_kwargs = {}
                         fig_slice = streamlit_viz.y_slice_figure(
                             fe["element_centers"], fe["elements"], fe["nodes"],
                             fe["stress_per_elem"], slice_comp[0], y_station,
                             component_label=slice_comp[1],
+                            **slice_kwargs,
                         )
                         if fig_slice is not None:
                             st.plotly_chart(fig_slice, width="stretch")
@@ -1419,6 +1557,7 @@ with tab_results:
                     fig_3d = streamlit_viz.deformed_mesh_figure(
                         fe["nodes"], fe["elements"], fe["displacement"],
                         scale=scale,
+                        precomputed_geometry=fe.get("mesh3d_geometry"),
                     )
                     st.plotly_chart(fig_3d, width="stretch")
                     # No y-slice for the deformed-mesh view: a stress
@@ -1443,16 +1582,48 @@ with tab_results:
                         fig_3d = streamlit_viz.fi_3d_figure(
                             fe["nodes"], fe["elements"],
                             fi_dict[crit_for_3d], crit_for_3d,
+                            precomputed_geometry=fe.get("mesh3d_geometry"),
                         )
                         st.plotly_chart(fig_3d, width="stretch")
 
                         st.markdown("**y-slice scrubber**")
                         y_station = _y_station_slider()
                         if y_station is not None:
+                            fi_slice_range = st.radio(
+                                "Colorbar range",
+                                ["global (default)", "per-slice"],
+                                index=0,
+                                horizontal=True,
+                                key="viz_fi_slice_range_mode",
+                                help=(
+                                    "Default uses the global max FI for "
+                                    "this criterion so the slice colorbar "
+                                    "matches the 3D contour and the "
+                                    "saturation tracks the real per-station "
+                                    "FI as you scrub y. 'per-slice' "
+                                    "renormalises to the visible station "
+                                    "only. See #200."
+                                ),
+                            )
+                            fi_vmax_global = float(
+                                fe.get("fi_vmax_per_crit", {}).get(
+                                    crit_for_3d, 0.0
+                                )
+                            )
+                            if (
+                                fi_slice_range == "global (default)"
+                                and fi_vmax_global > 0
+                            ):
+                                fi_slice_kwargs = dict(
+                                    vmin=0.0, vmax=fi_vmax_global
+                                )
+                            else:
+                                fi_slice_kwargs = {}
                             fig_slice = streamlit_viz.fi_y_slice_figure(
                                 fe["element_centers"], fe["elements"],
                                 fe["nodes"], fi_dict[crit_for_3d], y_station,
                                 criterion=crit_for_3d,
+                                **fi_slice_kwargs,
                             )
                             if fig_slice is not None:
                                 st.plotly_chart(fig_slice, width="stretch")
@@ -1535,6 +1706,56 @@ with tab_export:
                 file_name="wrinklefe_retention.csv",
                 mime="text/csv",
             )
+
+        # Per-ply CSV — Pandas-friendly tabular dump matching the
+        # wrinklefe.io.results.export_results_csv schema (issue #2).
+        _angles_export = list(
+            dict(st.session_state["cfg_payload"])["angles_tuple"]
+        )
+        _per_ply_buf = io.StringIO()
+        _per_ply_writer = csv.writer(_per_ply_buf)
+        _per_ply_writer.writerow([
+            "ply_index", "angle_deg",
+            "max_FI", "min_RF", "critical_mode", "critical_criterion",
+        ])
+        _ply_fi = (fe or {}).get("ply_failure_indices") or {}
+        for _k, _ang in enumerate(_angles_export):
+            _row_fi = -float("inf")
+            _row_crit: Optional[str] = None
+            for _crit_name, _arr in _ply_fi.items():
+                if _k < len(_arr) and _arr[_k] > _row_fi:
+                    _row_fi = float(_arr[_k])
+                    _row_crit = _crit_name
+            if _row_crit is None or not np.isfinite(_row_fi):
+                _per_ply_writer.writerow([_k, _ang, "", "", "", ""])
+                continue
+            _row_rf = (1.0 / _row_fi) if _row_fi > 0 else ""
+            _mode = ""
+            if (
+                _row_crit
+                and fe
+                and fe.get("critical_criterion") == _row_crit
+                and fe.get("critical_ply") == _k
+            ):
+                _mode = fe.get("critical_mode") or ""
+            _per_ply_writer.writerow([
+                _k,
+                _ang,
+                f"{_row_fi:.10g}",
+                (f"{_row_rf:.10g}" if isinstance(_row_rf, float) else ""),
+                _mode,
+                _row_crit,
+            ])
+        st.download_button(
+            "Download per-ply results as CSV",
+            data=_per_ply_buf.getvalue().encode(),
+            file_name="wrinklefe_per_ply.csv",
+            mime="text/csv",
+            help=(
+                "Per-ply tabular summary (one row per ply). Schema matches "
+                "wrinklefe.io.results.export_results_csv."
+            ),
+        )
 
         st.caption(
             f"WrinkleFE {_wrinklefe_version} · "

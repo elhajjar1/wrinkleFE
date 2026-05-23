@@ -85,12 +85,13 @@ result = WrinkleAnalysis(config).run()
 print(result.summary())
 ```
 
-`amplitude` (`A`) is the peak displacement of the wrinkled mid-surface
-from the flat reference (crest height, **not** peak-to-peak). For a
-measured wrinkle (e.g. from a cross-section micrograph or CT slice),
-`A = (z_max − z_min) / 2`. The peak fibre misalignment angle scales as
-`θ_max ≈ arctan(2πA/λ)`, which drives the Budiansky-Fleck compressive
-knockdown.
+`amplitude` (`A`) is the **half-amplitude** [mm]: the peak displacement
+of the wrinkled mid-surface from the flat (unwrinkled) reference plane,
+so `z(x) = A·cos(2πx/λ)` (modulated by the envelope) and the
+peak-to-trough height is `2A`. For a measured wrinkle (e.g. from a
+cross-section micrograph or CT slice), `A = (z_max − z_min) / 2`. The
+peak fibre misalignment angle scales as `θ_max ≈ arctan(2πA/λ)`, which
+drives the Budiansky-Fleck compressive knockdown.
 
 ### Wrinkle geometry parameters
 
@@ -102,14 +103,20 @@ The longitudinal coordinate `x` runs along the laminate in the fibre
 direction; out-of-plane displacement `z(x)` is measured from the flat
 (undeformed) mid-surface. Angles are in **radians**.
 
-| Parameter | Symbol | Definition | Units |
-|-----------|--------|------------|-------|
-| `amplitude` | A | Peak crest height from the flat mid-surface to the wrinkle crest (peak-to-midplane, **not** peak-to-peak; `A = (z_max − z_min)/2` for a measured wrinkle). Must be ≥ 0. | mm |
-| `wavelength` | λ | Period of the `cos(2πx/λ)` carrier along the longitudinal x-direction (crest-to-crest distance). Must be > 0. Wavenumber `k = 2π/λ`. | mm |
-| `width` | w | Longitudinal envelope decay length about the centre. Exact meaning is profile-dependent: Gaussian length scale `exp(−(x−x₀)²/w²)`, tapered flat-top extent (`\|x−x₀\| < w/2`), or triangular half-base (`\|x−x₀\| < w`). Must be > 0. | mm |
-| `center` | x₀ | Longitudinal position of the wrinkle crest / envelope peak, in the global x coordinate. Default 0.0. | mm |
-| `phase_offset` | φ | Phase of one wrinkle relative to a reference, mapping to a geometric offset `Δx = φλ/(2π)`. Stack φ=0, convex φ=+π/2, concave φ=−π/2. | rad |
-| `decay_floor` | — | Fraction of amplitude retained at the surface plies in `graded` mode (0 = full decay to zero, 1 = no decay). Clamped to [0, 1]. | dimensionless |
+This table is the canonical reference for every wrinkle-geometry
+parameter exposed by `AnalysisConfig`, the CLI, and the Streamlit UI.
+The `AnalysisConfig` docstrings, CLI `--help`, and Streamlit `help=`
+tooltips all mirror these definitions; the
+`tests/test_param_docs_match.py` regression test pins the defaults so
+the docs and the dataclass cannot drift.
+
+| Parameter | Units | Default | Definition | Constraint |
+|-----------|-------|---------|------------|------------|
+| `amplitude` (A) | mm | `0.366` | Half-amplitude: peak displacement of the wrinkled mid-surface from the flat reference, with `z(x) = A·cos(2π(x − x₀)/λ)` (modulated by the envelope) and peak-to-trough height `2A`. For a measured wrinkle, `A = (z_max − z_min)/2`. | ≥ 0 (`0` = flat / no wrinkle) |
+| `wavelength` (λ) | mm | `16.0` | Spatial period of the `cos(2π(x − x₀)/λ)` carrier along the longitudinal x-direction (crest-to-crest distance). Wavenumber `k = 2π/λ`. | > 0 |
+| `width` (w) | mm | `12.0` | Longitudinal envelope decay length about the centre `x₀`. Exact meaning is profile-dependent: Gaussian 1/e length scale in `exp(−(x−x₀)²/w²)`, tapered flat-top extent (`\|x−x₀\| < w/2`), or triangular half-base (`\|x−x₀\| < w`). Also used as the transverse (y-direction) extent of the wrinkle in 3-D dual-wrinkle / graded mesh deformation. | > 0 |
+| `phase` (φ) | rad | `None` | Explicit dual-wrinkle phase offset between the two wrinkle centrelines. `None` derives φ from `morphology` via `MORPHOLOGY_PHASES` (stack φ=0, convex φ=+π/2, concave φ=−π/2). A float overrides the named-morphology phase so arbitrary offsets can be swept (e.g. `0` to `π`). Ignored for single-wrinkle morphologies (`uniform`, `graded`). | finite when set |
+| `decay_floor` | dimensionless | `0.0` | Graded morphology only: minimum fraction of the wrinkle amplitude retained at the laminate outer surfaces. `0.0` = full decay to zero amplitude at the surfaces (pure graded); `1.0` = no decay (equivalent to `uniform`). | in `[0, 1]` |
 
 Peak fibre misalignment: `θ_max ≈ arctan(2πA/λ)` (exact for a pure
 cosine; dimensionless because A and λ share the mm length unit). See the
@@ -141,11 +148,79 @@ result = WrinkleAnalysis(config).run()
 print(result.analytical_knockdown)
 ```
 
+### Batch parametric sweeps
+
+For exploring how the knockdown varies across a parameter range, use
+`WrinkleAnalysis.parametric_sweep` to sweep a single
+`AnalysisConfig` field (any numeric field — `amplitude`, `wavelength`,
+`width`, `phase`, `applied_strain`, ...):
+
+```python
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+
+base = AnalysisConfig(
+    amplitude=0.366, wavelength=16.0, width=12.0,
+    morphology="stack", loading="compression",
+)
+results = WrinkleAnalysis.parametric_sweep(
+    base, parameter="amplitude", values=[0.1, 0.2, 0.3, 0.4],
+    analytical_only=True,
+)
+for r in results:
+    print(f"A={r.config.amplitude:.3f}  KD={r.analytical_knockdown:.4f}")
+```
+
+For multi-parameter cross-product sweeps with JSON output and plots,
+use `wrinklefe.sweep.run_sweep`:
+
+```python
+import numpy as np
+from wrinklefe.sweep import run_sweep, save_sweep_results, plot_sweep_results
+
+sweep = run_sweep({
+    "amplitude":  np.linspace(0.183, 0.549, 3),
+    "wavelength": np.linspace(8.0, 24.0, 3),
+})
+save_sweep_results(sweep, "./sweep_output/")
+plot_sweep_results(sweep, "./sweep_output/")
+```
+
 ### Command line
 
 ```bash
 wrinklefe --help
+
+# Single-parameter sweep (analytical-only is the default, fast)
+wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 5
 ```
+
+### Exporting results to CSV / JSON
+
+Numeric outputs (load factor, per-ply failure index, knockdown factors,
+stress-field summary) can be written to a schema-versioned JSON or a
+Pandas-friendly per-ply CSV for downstream comparison and plotting in
+Excel, Pandas, or shared Jupyter notebooks:
+
+```python
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+from wrinklefe.io.results import export_results_csv, export_results_json
+
+result = WrinkleAnalysis(AnalysisConfig()).run()
+
+export_results_json(result, "results.json")  # schema-versioned JSON
+export_results_csv(result, "per_ply.csv")    # per-ply tabular CSV
+```
+
+The JSON output is deterministic (`sort_keys=True`), pins a top-level
+`schema_version` field, and reduces large numpy arrays (e.g.
+per-Gauss-point stress fields) to summary statistics so the file stays
+compact. The CSV is one row per ply with columns `ply_index,
+angle_deg, max_FI, min_RF, critical_mode, critical_criterion`, suitable
+for `pandas.read_csv` or `csv.DictReader`.
+
+The Streamlit web app exposes the same exports as **Download results as
+JSON** and **Download per-ply results as CSV** buttons on the Export
+tab.
 
 ## Validation
 
@@ -190,22 +265,43 @@ are not included.
 ## Supported morphologies
 
 WrinkleFE ships five wrinkle morphologies (defined in
-`src/wrinklefe/core/morphology.py`). The first three are *dual-wrinkle*
-modes distinguished by the phase offset φ between two adjacent wrinkle
-centrelines; the last two are *single-wrinkle* modes that vary the
-through-thickness amplitude.
+`src/wrinklefe/core/morphology.py`). They differ along *two* independent
+axes: **how many wrinkles** are placed in the laminate and **how the
+amplitude varies through the thickness**. The first three names below
+are *dual-wrinkle* modes distinguished by the phase offset φ between
+two adjacent wrinkle centrelines (the through-thickness amplitude
+follows a linear taper from the wrinkle interface plies down to zero
+at the laminate outer surfaces). The last two are *single-wrinkle*
+modes that swap that taper for a different through-thickness profile.
 
-- **`stack`** (φ = 0) — peaks aligned. Morphology factor `M_f = 1.0`,
-  used as the baseline.
-- **`convex`** (φ = +π/2) — interface bulges outward. `M_f < 1`; the
-  *least* damaging mode in compression.
-- **`concave`** (φ = −π/2) — interface pinches inward. `M_f > 1`; the
-  *most* damaging mode in compression.
-- **`uniform`** — single wrinkle at full amplitude on every ply through
-  the thickness.
-- **`graded`** — single wrinkle whose amplitude decays from the wrinkle
-  core toward the surfaces, controlled by `decay_floor` (0 = full
-  decay to zero at the surface, 1 = uniform).
+| Morphology   | # wrinkles | Phase φ | Through-thickness amplitude            | M_f (compression) | When to use                                                                                                                                          |
+|--------------|------------|---------|-----------------------------------------|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `stack`      | 2          | 0       | Linear decay, 1 at interface → 0 at surfaces | 1.0 (baseline)    | Two aligned wrinkles, peaks-over-peaks. The dual-wrinkle reference case used to scale `convex` / `concave`.                                          |
+| `convex`     | 2          | +π/2    | Linear decay, 1 at interface → 0 at surfaces | < 1               | Two phase-shifted wrinkles whose interface bulges outward. *Least* damaging dual-wrinkle case in compression.                                       |
+| `concave`    | 2          | −π/2    | Linear decay, 1 at interface → 0 at surfaces | > 1               | Two phase-shifted wrinkles whose interface pinches inward. *Most* damaging dual-wrinkle case in compression — design-driving.                       |
+| `uniform`    | 1          | n/a     | Full amplitude on **every** ply (no decay)   | 1.0 (no pairing)  | A single through-thickness-wide wrinkle — every ply wavy with the same A. Conservative bound and sanity-check baseline.                              |
+| `graded`     | 1          | n/a     | Linear decay from mid-ply to surfaces, with floor `decay_floor` ∈ [0, 1] | 1.0 (no pairing) | An embedded wrinkle that fades toward the surface plies. `decay_floor=0` is pure graded; `decay_floor=1` collapses to `uniform`.                    |
+
+### `stack` vs `uniform` — what's the difference?
+
+These two get conflated because both have `M_f = 1.0`, but they model
+very different defects:
+
+- **`stack`** places **two** wrinkles at adjacent interfaces with
+  φ = 0 (aligned crests). Through the thickness the wrinkle decays
+  linearly from the interface plies to zero at the outer surfaces —
+  surface plies are flat.
+- **`uniform`** places a **single** wrinkle and disables the
+  through-thickness decay — every ply, including the outer surfaces,
+  is displaced by the full profile.
+
+For the same `amplitude` / `wavelength`, `apply_to_nodes` therefore
+produces *different* deformed meshes: `stack` has a wrinkle
+concentrated near the interface plies (and flat top/bottom plies),
+while `uniform` has a wrinkle of the same amplitude at every single
+ply. The `M_f = 1.0` coincidence is purely the analytical knockdown
+parameter — the FE geometry, the per-ply fibre-angle field, and the
+predicted ply-by-ply failure are not the same.
 
 ## Supported failure criteria
 

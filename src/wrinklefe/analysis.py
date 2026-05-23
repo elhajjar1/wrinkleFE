@@ -267,23 +267,12 @@ class AnalysisConfig:
     Parameters
     ----------
     amplitude : float
-        Wrinkle amplitude A [mm].  Default 0.366 (2 ply thicknesses).
-
-        Physical meaning: A is the peak out-of-plane displacement of the
+        Wrinkle half-amplitude *A* [mm]: the peak displacement of the
         wrinkled mid-surface from the flat (unwrinkled) reference plane,
-        measured normal to the laminate.  The mid-surface profile is
-        ``z(x) = A * exp(-(x-x0)^2 / w^2) * cos(2*pi*(x-x0)/lambda)``,
-        so the crest sits at +A, the trough at -A, and the peak-to-peak
-        amplitude is 2A.  A is **not** half-amplitude and **not**
-        peak-to-peak.
-
-        Measuring A in practice (e.g. from a polished cross-section
-        micrograph or a CT slice taken normal to the wrinkle axis):
-
-            A = (z_max - z_min) / 2
-
-        where ``z_max`` and ``z_min`` are the crest and trough of the
-        wrinkled mid-surface measured normal to the unwrinkled laminate.
+        so ``z(x) = A * cos(2*pi*(x - x0) / lambda)`` (modulated by the
+        envelope) and the peak-to-trough height is ``2A``. For a
+        measured wrinkle, ``A = (z_max - z_min) / 2``. Units: mm.
+        Default 0.366 (two ply thicknesses).
 
         Effect on knockdown: A enters the maximum fibre misalignment
         angle through the closed-form ``theta_max = arctan(2*pi*A /
@@ -291,20 +280,58 @@ class AnalysisConfig:
         the peak fibre angle scales nearly linearly with A and amplifies
         the Budiansky-Fleck compressive knockdown.
     wavelength : float
-        Wrinkle wavelength lambda [mm].  Default 16.0.
+        Spatial period of the cosine carrier *lambda* [mm]: the
+        crest-to-crest distance of the underlying
+        ``cos(2*pi*(x - x0) / lambda)`` carrier along the longitudinal
+        x-direction.  The wavenumber is ``k = 2*pi/lambda`` (1/mm).
+        Default 16.0.  Must be > 0.
     width : float
-        Gaussian envelope half-width [mm].  Default 12.0.
+        Longitudinal envelope decay length *w* [mm] about the wrinkle
+        centre ``x0``.  Exact meaning is profile-dependent: Gaussian
+        1/e length scale in ``exp(-(x - x0)**2 / w**2)``, tapered
+        flat-top extent (``|x - x0| < w/2``), or triangular half-base
+        (``|x - x0| < w``).  Also used as the transverse (y-direction)
+        extent of the wrinkle in the 3-D dual-wrinkle / graded mesh
+        deformation.  Default 12.0.  Must be > 0.
     morphology : str
-        Morphology name: ``'stack'``, ``'convex'``, or ``'concave'``.
-        Default is ``'stack'``.
+        Morphology name. Five values are accepted; the first three are
+        *dual-wrinkle* modes distinguished by phase, the last two are
+        *single-wrinkle* modes distinguished by their through-thickness
+        amplitude profile:
+
+        - ``'stack'`` (default) — two aligned wrinkles, φ = 0. Linear
+          through-thickness decay from the interface plies to zero at
+          the outer surfaces. M_f = 1.0 (dual-wrinkle baseline).
+        - ``'convex'`` — two wrinkles, φ = +π/2 (interface bulges
+          outward). Same through-thickness decay. M_f < 1, least
+          damaging in compression.
+        - ``'concave'`` — two wrinkles, φ = −π/2 (interface pinches
+          inward). Same through-thickness decay. M_f > 1, most
+          damaging in compression.
+        - ``'uniform'`` — *one* wrinkle, full amplitude on every ply
+          (no through-thickness decay). M_f = 1.0 because there is no
+          pairwise interaction, but the deformed mesh and per-ply
+          fibre-angle field differ from ``'stack'``: every ply
+          (including the outer surfaces) carries the full profile.
+        - ``'graded'`` — one wrinkle, linear decay from mid-ply to the
+          surfaces with the ``decay_floor`` knob (0 = full decay to
+          zero, 1 = same as ``'uniform'``).
     phase : float or None
         Explicit dual-wrinkle phase offset phi [radians] between the two
-        wrinkles.  When ``None`` (default), the phase is derived from
-        ``morphology`` via :data:`MORPHOLOGY_PHASES` (stack=0,
-        convex=+pi/2, concave=-pi/2).  When set to a float, it overrides
-        the named-morphology phase, allowing arbitrary dual-wrinkle phase
-        offsets to be analysed or swept (e.g. between 0 and pi).  Ignored
-        for single-wrinkle morphologies (``'uniform'``, ``'graded'``).
+        wrinkle centrelines.  When ``None`` (default), the phase is
+        derived from ``morphology`` via :data:`MORPHOLOGY_PHASES`
+        (stack=0, convex=+pi/2, concave=-pi/2).  When set to a float, it
+        overrides the named-morphology phase, allowing arbitrary
+        dual-wrinkle phase offsets to be analysed or swept (e.g.
+        between 0 and pi).  Ignored for single-wrinkle morphologies
+        (``'uniform'``, ``'graded'``).  Must be finite when set.
+    decay_floor : float
+        Graded morphology only (dimensionless, in ``[0, 1]``): minimum
+        fraction of the wrinkle amplitude retained at the laminate outer
+        surfaces.  ``0.0`` (default) means full decay to zero amplitude
+        at the surfaces (pure graded); ``1.0`` means no decay
+        (equivalent to ``uniform``).  Values outside ``[0, 1]`` are
+        rejected by ``__post_init__``.
     loading : str
         Loading mode: ``'compression'`` or ``'tension'``.
         Default is ``'compression'``.
@@ -339,16 +366,6 @@ class AnalysisConfig:
         Default ``-0.01`` (1 % compression).
     solver : str
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
-    run_buckling : bool
-        Whether to perform buckling analysis.  Default ``False``.
-    n_buckling_modes : int
-        Number of buckling modes to extract.  Default 5.
-    run_montecarlo : bool
-        Whether to perform Monte Carlo analysis.  Default ``False``.
-    mc_samples : int
-        Number of Monte Carlo samples.  Default 5000.
-    mc_seed : int or None
-        Random seed for Monte Carlo reproducibility.  Default 42.
     verbose : bool
         Print progress information.  Default ``False``.
     """
@@ -396,13 +413,6 @@ class AnalysisConfig:
 
     # Solver
     solver: str = "direct"
-
-    # Optional analyses
-    run_buckling: bool = False
-    n_buckling_modes: int = 5
-    run_montecarlo: bool = False
-    mc_samples: int = 5000
-    mc_seed: Optional[int] = 42
 
     # Analytical-only mode (skip FE assembly)
     analytical_only: bool = False
@@ -562,35 +572,6 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.solver must be one of "
                 f"{list(valid_solvers)}, got {self.solver!r}"
-            )
-
-        # --- Optional analyses ---------------------------------------
-        if not isinstance(self.n_buckling_modes, int) or isinstance(
-            self.n_buckling_modes, bool
-        ):
-            raise ValueError(
-                f"AnalysisConfig.n_buckling_modes must be an int, "
-                f"got {self.n_buckling_modes!r}"
-            )
-        if self.n_buckling_modes < 1:
-            raise ValueError(
-                f"AnalysisConfig.n_buckling_modes must be >= 1, "
-                f"got {self.n_buckling_modes}"
-            )
-        # mc_samples must be a usable sample count.  Both issues ask for
-        # mc_samples >= 1; reject <= 0 unconditionally (a clearly-invalid
-        # value) and require a valid int whenever Monte Carlo will run.
-        if not isinstance(self.mc_samples, int) or isinstance(
-            self.mc_samples, bool
-        ):
-            raise ValueError(
-                f"AnalysisConfig.mc_samples must be an int, "
-                f"got {self.mc_samples!r}"
-            )
-        if self.mc_samples < 1:
-            raise ValueError(
-                f"AnalysisConfig.mc_samples must be >= 1, "
-                f"got {self.mc_samples}"
             )
 
 
@@ -780,8 +761,6 @@ class WrinkleAnalysis:
         4. Generate mesh with wrinkle deformation.
         5. Run static FE analysis.
         6. Evaluate failure criteria on the FE stress field.
-        7. (Optional) Run buckling analysis.
-        8. (Optional) Run Monte Carlo + Jensen gap analysis.
 
         Returns
         -------

@@ -156,3 +156,84 @@ class MaxStressCriterion(FailureCriterion):
             reserve_factor=1.0 / fi_max if fi_max > 0 else float("inf"),
             criterion_name=self.name,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation
+    # ------------------------------------------------------------------
+
+    _MODE_LABELS_FIELD = np.array(
+        [
+            "fiber_tension",         # idx 0: sigma_11 >= 0
+            "fiber_compression",     # idx 1: sigma_11 <  0
+            "matrix_tension",        # idx 2: sigma_22 >= 0
+            "matrix_compression",    # idx 3: sigma_22 <  0
+            "through_thickness_tension",      # idx 4: sigma_33 >= 0
+            "through_thickness_compression",  # idx 5: sigma_33 <  0
+            "shear_23",                       # idx 6
+            "shear_13",                       # idx 7
+            "shear_12",                       # idx 8
+        ],
+        dtype="U32",
+    )
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Max-Stress evaluation across an array of stress states.
+
+        Computes the same failure index and dominant mode as :meth:`evaluate`
+        but for ``N`` stress vectors at once using NumPy broadcasting.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with strength allowables.  All N points share the
+            same material (callers group by ply id beforehand).
+        contexts : list, optional
+            Ignored — Max-Stress has no context dependence.
+
+        Returns
+        -------
+        indices : np.ndarray
+            Shape ``(N,)`` failure indices.
+        modes : np.ndarray
+            Shape ``(N,)`` dominant-mode string labels.
+        reserve_factors : np.ndarray
+            Shape ``(N,)`` reserve factors (``1/FI``; ``inf`` where FI == 0).
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+
+        s11, s22, s33 = s[:, 0], s[:, 1], s[:, 2]
+        t23, t13, t12 = s[:, 3], s[:, 4], s[:, 5]
+
+        # Stack the nine non-negative component ratios.  For sign-dependent
+        # normals, the inactive branch is left at zero so it never wins the
+        # argmax.
+        ratios = np.zeros((9, s.shape[0]), dtype=np.float64)
+        ratios[0] = np.where(s11 >= 0, s11 / material.Xt, 0.0)
+        ratios[1] = np.where(s11 < 0, -s11 / material.Xc, 0.0)
+        ratios[2] = np.where(s22 >= 0, s22 / material.Yt, 0.0)
+        ratios[3] = np.where(s22 < 0, -s22 / material.Yc, 0.0)
+        ratios[4] = np.where(s33 >= 0, s33 / material.Zt, 0.0)
+        ratios[5] = np.where(s33 < 0, -s33 / material.Zc, 0.0)
+        ratios[6] = np.abs(t23) / material.S23
+        ratios[7] = np.abs(t13) / material.S13
+        ratios[8] = np.abs(t12) / material.S12
+
+        idx = np.argmax(ratios, axis=0)
+        fi = ratios[idx, np.arange(s.shape[0])]
+        modes = self._MODE_LABELS_FIELD[idx]
+
+        with np.errstate(divide="ignore"):
+            rf = np.where(fi > 0, 1.0 / np.where(fi > 0, fi, 1.0), np.inf)
+
+        return fi, modes, rf

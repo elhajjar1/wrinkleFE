@@ -36,19 +36,27 @@ dependencies = [
 # requirements.txt for the rationale.
 [project.optional-dependencies]
 export = ["meshio>=5.3"]
+# Streamlit web app deps — keep versions in sync with requirements.txt.
+streamlit = [
+    "streamlit>=1.57",
+    "plotly>=6.7",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.1",
     "mypy>=1.5",
 ]
-all = ["wrinklefe[export,dev]"]
+all = ["wrinklefe[export,streamlit,dev]"]
 
 [project.scripts]
 wrinklefe = "wrinklefe.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+wrinklefe = ["py.typed"]
 
 [tool.ruff]
 line-length = 100

@@ -46,6 +46,7 @@ from wrinklefe.viz.style import (
     FIGSIZE_DOUBLE_COLUMN,
     colorbar_setup,
     ensure_axes,
+    set_axes_equal_aspect,
     set_publication_style,
 )
 
@@ -329,6 +330,7 @@ def plot_mesh_3d(
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
     ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
@@ -434,6 +436,7 @@ def plot_displacement_3d(
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
     ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
@@ -556,6 +559,7 @@ def plot_stress_contour_3d(
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
     ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
@@ -680,6 +684,7 @@ def plot_buckling_mode(
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
     ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)

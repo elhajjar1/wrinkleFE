@@ -30,6 +30,112 @@ from wrinklefe.core.laminate import LoadState
 
 
 # ======================================================================
+# Penalty method for displacement BCs
+# ======================================================================
+
+# Textbook penalty scaling (Bathe, Finite Element Procedures, sec. 4.2.2):
+# alpha = _PENALTY_SCALE * max(|diag(K)|).  For typical FE stiffness diagonals
+# (~1e3 - 1e6 N/mm), this puts alpha in the 1e11 - 1e14 range, which is
+# large enough to enforce u_i ~= u_prescribed to ~8 significant digits but
+# small enough to keep cond(K) well below the float64 limit (~1e16).  A
+# fixed mega-penalty like 1e20 silently destroys accuracy in the
+# unconstrained DOFs through ill-conditioning.
+_PENALTY_SCALE = 1.0e8
+
+
+def apply_penalty_bcs(
+    K: sparse.csc_matrix,
+    F: np.ndarray,
+    constrained_dofs: dict[int, float],
+    *,
+    in_place: bool = False,
+    penalty: float | None = None,
+) -> tuple[sparse.csc_matrix, np.ndarray]:
+    """Apply displacement boundary conditions via the penalty method.
+
+    For each constrained DOF *i* with prescribed value *u_i*:
+
+    .. math::
+
+        K_{ii} \\mathrel{+}= \\alpha, \\qquad F_i \\mathrel{+}= \\alpha \\, u_i
+
+    where the penalty factor scales with the problem,
+    :math:`\\alpha = \\text{scale} \\cdot \\max(|\\mathrm{diag}(K)|, 1)`,
+    with ``scale = _PENALTY_SCALE = 1e8`` (Bathe sec. 4.2.2).  This
+    preserves matrix symmetry and sparsity, and keeps cond(K) bounded.
+
+    Parameters
+    ----------
+    K : scipy.sparse.csc_matrix
+        Global stiffness matrix.
+    F : np.ndarray
+        Global force vector (length ``n_dof``).
+    constrained_dofs : dict[int, float]
+        Mapping ``{dof_index: prescribed_value}``.
+    in_place : bool, keyword-only, optional
+        If ``True``, mutate ``K`` and ``F`` in place (faster, no copy).
+        Default ``False``: both inputs are copied, so the caller's data
+        is preserved.  Pass ``in_place=True`` only when the caller owns
+        ``K`` and ``F`` exclusively (e.g. inside ``StaticSolver.solve``).
+    penalty : float or None, optional
+        Override the computed penalty value.  Normally ``None`` (the
+        default), in which case ``alpha`` is derived from
+        ``max(|diag(K)|)`` per the convention above.  Provided as an
+        escape hatch for legacy callers and tests; prefer the default.
+
+    Returns
+    -------
+    K_modified : scipy.sparse.csc_matrix
+        Stiffness matrix with diagonal augmented at constrained DOFs
+        (same object as input if ``in_place=True``, else a copy).
+    F_modified : np.ndarray
+        Force vector with penalty contribution added at constrained DOFs
+        (same object as input if ``in_place=True``, else a copy).
+
+    Notes
+    -----
+    Uses ``scipy.sparse.diags`` plus a sparse add to inject the diagonal
+    contribution — no LIL round-trip is needed.  This is both faster and
+    avoids changing the sparsity pattern outside the diagonal.
+    """
+    if not constrained_dofs:
+        if in_place:
+            return K, F
+        return K.copy(), F.copy()
+
+    if penalty is None:
+        diag_max = float(np.abs(K.diagonal()).max())
+        alpha = _PENALTY_SCALE * max(diag_max, 1.0)
+    else:
+        alpha = float(penalty)
+
+    n_dof = K.shape[0]
+    dofs = np.fromiter(constrained_dofs.keys(), dtype=np.intp,
+                        count=len(constrained_dofs))
+    vals = np.fromiter(constrained_dofs.values(), dtype=np.float64,
+                        count=len(constrained_dofs))
+
+    # Build a sparse diagonal contribution: alpha at each constrained DOF.
+    diag_data = np.zeros(n_dof, dtype=np.float64)
+    diag_data[dofs] = alpha
+    K_pen = sparse.diags(diag_data, 0, format="csc")
+
+    if in_place:
+        # K is csc; (csc + csc) -> csc, but it returns a new object.  We
+        # cannot truly modify K's data array in place without touching
+        # its sparsity pattern, so re-bind the local name and let the
+        # caller pick up the returned reference.
+        K_out = (K + K_pen).tocsc()
+        F[dofs] += alpha * vals
+        return K_out, F
+
+    K_out = (K + K_pen).tocsc()
+    F_out = F.copy()
+    F_out[dofs] += alpha * vals
+    return K_out, F_out
+
+
+# ======================================================================
 # Internal helpers
 # ======================================================================
 
@@ -362,52 +468,45 @@ class BoundaryHandler:
         K: sparse.csc_matrix,
         F: np.ndarray,
         constrained_dofs: dict[int, float],
-        penalty: float = 1e20,
+        penalty: float | None = None,
     ) -> tuple[sparse.csc_matrix, np.ndarray]:
         """Apply the penalty method for prescribed displacements.
+
+        Thin wrapper around :func:`apply_penalty_bcs` (module level) that
+        preserves the historical signature.  Always returns *copies* of
+        ``K`` and ``F`` (the input arrays are not mutated).
 
         For each constrained DOF *i* with prescribed value *v*:
 
         .. math::
             K_{ii} \\mathrel{+}= \\alpha, \\qquad F_i \\mathrel{+}= \\alpha \\, v
 
-        where alpha is the penalty parameter.  The large diagonal entry
-        forces the solution ``u_i`` to be approximately ``v``.  The force
-        contribution is accumulated so any previously applied force at
-        the same DOF is preserved.
-
-        The method converts ``K`` to LIL format for efficient element
-        access, modifies it, and converts back to CSC.
-
         Parameters
         ----------
         K : scipy.sparse.csc_matrix
             Global stiffness matrix (``n_dof x n_dof``).
         F : np.ndarray
-            Global force vector (``n_dof,``).
+            Global force vector (``n_dof,``).  Not mutated.
         constrained_dofs : dict[int, float]
             Mapping ``{dof_index: prescribed_value}`` from
             :meth:`get_constrained_dofs`.
-        penalty : float, optional
-            Penalty parameter.  Should be much larger than the largest
-            diagonal entry of K (typically 1e15 to 1e20).  Default is
-            ``1e20``.
+        penalty : float or None, optional
+            Override the penalty value.  ``None`` (the default) computes
+            ``alpha = _PENALTY_SCALE * max(|diag(K)|, 1.0)`` per Bathe
+            sec. 4.2.2 — the recommended setting; a fixed mega-penalty
+            (e.g. ``1e20``) pushes cond(K) past the float64 limit and
+            silently corrupts the unconstrained DOFs.
 
         Returns
         -------
         K_modified : scipy.sparse.csc_matrix
-            Modified stiffness matrix in CSC format.
+            Modified stiffness matrix in CSC format (copy).
         F_modified : np.ndarray
-            Modified force vector.
+            Modified force vector (copy).
         """
-        K_lil = K.tolil()
-        F_mod = F.copy()
-
-        for dof, val in constrained_dofs.items():
-            K_lil[dof, dof] += penalty
-            F_mod[dof] += penalty * val
-
-        return K_lil.tocsc(), F_mod
+        return apply_penalty_bcs(
+            K, F, constrained_dofs, in_place=False, penalty=penalty,
+        )
 
     # ------------------------------------------------------------------
     # Elimination method

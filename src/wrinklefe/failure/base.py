@@ -125,11 +125,16 @@ class FailureCriterion(ABC):
         stress_field: np.ndarray,
         material: OrthotropicMaterial,
         contexts: Optional[list] = None,
-    ) -> list[FailureResult]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Evaluate the failure criterion over an array of stress states.
 
-        This default implementation loops over rows of *stress_field*.
-        Subclasses may override with a vectorised version for performance.
+        This default implementation loops over rows of *stress_field*,
+        calling :meth:`evaluate` on each point.  Subclasses should override
+        with a vectorised NumPy implementation when the underlying maths is
+        elementwise — see e.g. :class:`MaxStressCriterion.evaluate_field`.
+        The :class:`~wrinklefe.failure.evaluator.FailureEvaluator` calls this
+        method once per (criterion, material) pair, so a vectorised override
+        eliminates the Python-level per-Gauss-point loop entirely.
 
         Parameters
         ----------
@@ -143,11 +148,24 @@ class FailureCriterion(ABC):
 
         Returns
         -------
-        list[FailureResult]
-            One :class:`FailureResult` per row of *stress_field*.
+        indices : np.ndarray
+            Shape ``(N,)`` array of failure index values, one per row.
+        modes : np.ndarray
+            Shape ``(N,)`` string array of dominant failure mode labels.
+        reserve_factors : np.ndarray
+            Shape ``(N,)`` array of reserve factors (1/FI for linear-in-load
+            criteria; the quadratic-root reserve factor for criteria whose
+            FI is nonlinear in the applied load).
         """
-        results: list[FailureResult] = []
-        for i in range(stress_field.shape[0]):
+        stress_field = np.asarray(stress_field, dtype=np.float64)
+        n = stress_field.shape[0]
+        indices = np.empty(n, dtype=np.float64)
+        modes = np.empty(n, dtype="U32")
+        reserve_factors = np.empty(n, dtype=np.float64)
+        for i in range(n):
             ctx = contexts[i] if contexts is not None else None
-            results.append(self.evaluate(stress_field[i], material, ctx))
-        return results
+            r = self.evaluate(stress_field[i], material, ctx)
+            indices[i] = r.index
+            modes[i] = r.mode
+            reserve_factors[i] = r.reserve_factor
+        return indices, modes, reserve_factors

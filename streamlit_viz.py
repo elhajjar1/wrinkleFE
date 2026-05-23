@@ -15,6 +15,8 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from wrinklefe.viz.style import MORPHOLOGY_COLORS
+
 
 # Local node indices for the 6 faces of a hex element following the
 # CGNS / VTK_HEXAHEDRON convention used by wrinklefe.core.mesh:
@@ -112,6 +114,40 @@ def _scene_layout() -> dict:
     )
 
 
+def compute_mesh3d_geometry(elements: np.ndarray) -> dict:
+    """Precompute the connectivity-derived geometry used by Mesh3d plots.
+
+    The expensive parts of building a Plotly Mesh3d for a hex mesh
+    (``boundary_faces`` + ``quads_to_triangles`` + the boundary-node
+    ``np.unique`` remap) depend only on the connectivity, not on the
+    nodal coordinates.  Streamlit slider re-renders keep ``elements``
+    constant between solves, so the FE app can call this once after
+    each solve and pass the result back into :func:`mesh3d_figure` via
+    ``precomputed_geometry=`` to skip the boundary cull on every redraw.
+
+    Returns a dict with:
+
+    - ``tri``: ``(n_tri, 4)`` array of [na, nb, nc, parent_elem_id]
+      from :func:`quads_to_triangles`. Owners (column 3) drive per-cell
+      intensity broadcasting.
+    - ``kept_nodes``: ``(n_kept,)`` unique global node ids referenced by
+      the boundary triangles, in ascending order.  Used to slice the
+      ``vertices`` / ``vertex_scalar`` arrays down to the surface.
+    - ``tri_ijk``: ``(n_tri, 3)`` triangle node indices remapped into
+      the compact ``kept_nodes`` index space — the i/j/k Plotly Mesh3d
+      expects.
+    """
+    bf = boundary_faces(elements)
+    tri = quads_to_triangles(bf)
+    if tri.shape[0] > 0:
+        kept_nodes, remap = np.unique(tri[:, :3].ravel(), return_inverse=True)
+        tri_ijk = remap.reshape(-1, 3).astype(np.int64, copy=False)
+    else:
+        kept_nodes = np.empty(0, dtype=np.int64)
+        tri_ijk = np.empty((0, 3), dtype=np.int64)
+    return {"tri": tri, "kept_nodes": kept_nodes, "tri_ijk": tri_ijk}
+
+
 def mesh3d_figure(
     vertices: np.ndarray,
     elements: np.ndarray,
@@ -123,28 +159,35 @@ def mesh3d_figure(
     title: str = "",
     symmetric: bool = False,
     height: int = 480,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """Render the boundary surface of a hex mesh as a Plotly Mesh3d.
 
     Pass ``cell_scalar`` (one value per element) for FE field data like
     sigma_33 or max FI; pass ``vertex_scalar`` (one value per node) for
     per-node fields like displacement magnitude.
-    """
-    bf = boundary_faces(elements)
-    tri = quads_to_triangles(bf)
 
-    # Trim the vertex payload so Plotly receives ONLY nodes that the
-    # boundary triangles reference; on a structured hex brick this is
-    # O(surface) instead of O(volume).  Re-index the triangle node ids
-    # to point into the compact vertex array.
-    if tri.shape[0] > 0:
-        kept_nodes, remap = np.unique(tri[:, :3].ravel(), return_inverse=True)
+    ``precomputed_geometry`` is the dict returned by
+    :func:`compute_mesh3d_geometry`.  When provided, the (expensive)
+    boundary cull + triangulation are skipped — this is the hot path for
+    Streamlit slider re-renders where ``elements`` is unchanged between
+    calls.  When ``None`` (default), the geometry is computed inline,
+    preserving the original single-argument API.
+    """
+    if precomputed_geometry is None:
+        precomputed_geometry = compute_mesh3d_geometry(elements)
+    tri = precomputed_geometry["tri"]
+    kept_nodes = precomputed_geometry["kept_nodes"]
+    tri_ijk = precomputed_geometry["tri_ijk"]
+
+    # Slice the vertex payload to the surface nodes.  ``vertices`` can
+    # change every call (e.g. deformed-mesh view re-applies the scaled
+    # displacement) so this lookup stays per-call even when the
+    # connectivity-derived geometry is cached.
+    if kept_nodes.size:
         verts = np.asarray(vertices)[kept_nodes]
-        tri_ijk = remap.reshape(-1, 3).astype(np.int64, copy=False)
     else:
-        kept_nodes = np.empty(0, dtype=np.int64)
         verts = np.asarray(vertices)[:0]
-        tri_ijk = np.empty((0, 3), dtype=np.int64)
 
     kwargs: dict = dict(
         x=verts[:, 0],
@@ -179,7 +222,7 @@ def mesh3d_figure(
             showscale=True,
         )
     else:
-        kwargs.update(color="#9ec5fe", showscale=False)
+        kwargs.update(color=MORPHOLOGY_COLORS["stack"], showscale=False)
 
     fig = go.Figure(go.Mesh3d(**kwargs))
     fig.update_layout(
@@ -199,6 +242,7 @@ def stress_contour_figure(
     *,
     component_label: str = "σ₃₃",
     title: str | None = None,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """3D surface mesh coloured by a single Voigt stress component."""
     scalar = stress_per_elem[:, component_index]
@@ -210,6 +254,7 @@ def stress_contour_figure(
         colorbar_title=f"{component_label} [MPa]",
         title=title or f"{component_label} surface contour",
         symmetric=True,
+        precomputed_geometry=precomputed_geometry,
     )
 
 
@@ -219,6 +264,7 @@ def deformed_mesh_figure(
     displacement: np.ndarray,
     *,
     scale: float = 10.0,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """3D deformed mesh coloured by displacement magnitude."""
     deformed = nodes + scale * displacement
@@ -230,6 +276,7 @@ def deformed_mesh_figure(
         colorscale="Viridis",
         colorbar_title="|u| [mm]",
         title=f"Deformed mesh (×{scale:g} exaggeration)",
+        precomputed_geometry=precomputed_geometry,
     )
 
 
@@ -238,6 +285,8 @@ def fi_3d_figure(
     elements: np.ndarray,
     fi_per_gauss: np.ndarray,
     criterion: str,
+    *,
+    precomputed_geometry: dict | None = None,
 ) -> go.Figure:
     """3D surface mesh coloured by per-element max failure index."""
     fi_max = np.asarray(fi_per_gauss).max(axis=1)
@@ -248,6 +297,7 @@ def fi_3d_figure(
         colorscale="Reds",
         colorbar_title=f"FI ({criterion})",
         title=f"Failure index — {criterion}",
+        precomputed_geometry=precomputed_geometry,
     )
 
 
@@ -260,6 +310,8 @@ def y_slice_figure(
     y_station: float,
     *,
     component_label: str = "σ₃₃",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> go.Figure | None:
     """Filter elements at the given y-station and render a 2D scatter
     in the (x, z) plane coloured by the chosen stress component.
@@ -267,6 +319,14 @@ def y_slice_figure(
     The 'slice' is the layer of elements whose y-row matches the station;
     we pick the elements whose centre-y is closest to the station to
     avoid empty slices on coarse meshes.
+
+    ``vmin`` / ``vmax`` override the colorbar range.  When both are
+    ``None`` (default), the range is computed from the slice's values
+    only — symmetric around zero — preserving the original behaviour
+    for any direct callers.  The Streamlit app passes the global stress
+    extrema so the slice colorbar matches the 3D contour above it and
+    users scrubbing through y-stations see real changes in saturation
+    rather than the colorbar silently re-normalising.  See issue #200.
     """
     yc = element_centers[:, 1]
     unique_y = np.unique(yc)
@@ -280,7 +340,23 @@ def y_slice_figure(
     xs = element_centers[mask, 0]
     zs = element_centers[mask, 2]
     vals = stress_per_elem[mask, component_index]
-    vmax = float(np.nanmax(np.abs(vals))) if vals.size else 1.0
+
+    # Resolve the colorbar range.  If the caller supplied either bound,
+    # use it; otherwise fall back to the per-slice symmetric range that
+    # the original implementation computed.
+    if vmin is None and vmax is None:
+        slice_vmax = float(np.nanmax(np.abs(vals))) if vals.size else 1.0
+        cmin, cmax = -slice_vmax, slice_vmax
+        title_suffix = ""
+    else:
+        if vmax is None:
+            vmax = float(np.nanmax(np.abs(vals))) if vals.size else 1.0
+        if vmin is None:
+            vmin = -float(vmax)
+        cmin, cmax = float(vmin), float(vmax)
+        title_suffix = (
+            f"  ·  {component_label} ∈ [{cmin:.1f}, {cmax:.1f}] (global)"
+        )
 
     # Approximate per-element x and z extents from the bounding box of
     # its 8 nodes so the rectangular markers tile cleanly.
@@ -297,8 +373,8 @@ def y_slice_figure(
                 size=14,
                 color=vals,
                 colorscale="RdBu_r",
-                cmin=-vmax,
-                cmax=vmax,
+                cmin=cmin,
+                cmax=cmax,
                 symbol="square",
                 line=dict(width=0),
                 colorbar=dict(title=f"{component_label} [MPa]"),
@@ -310,7 +386,10 @@ def y_slice_figure(
         )
     )
     fig.update_layout(
-        title=f"{component_label} at y ≈ {nearest_y:.2f} mm  ·  Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm",
+        title=(
+            f"{component_label} at y ≈ {nearest_y:.2f} mm  ·  "
+            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm{title_suffix}"
+        ),
         xaxis_title="x [mm]",
         yaxis_title="z [mm]",
         height=360,
@@ -328,6 +407,8 @@ def fi_y_slice_figure(
     y_station: float,
     *,
     criterion: str = "FI",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> go.Figure | None:
     """Filter elements at the given y-station and render a 2D scatter in
     the (x, z) plane coloured by the per-element max failure index for
@@ -335,6 +416,11 @@ def fi_y_slice_figure(
 
     Mirrors :func:`y_slice_figure` but uses a sequential (Reds) colour
     scale starting at 0 since FI is non-negative.
+
+    ``vmin`` / ``vmax`` override the colorbar range; defaults preserve
+    the original per-slice behaviour.  The Streamlit app passes the
+    global FI extrema so dragging the y-station scrubber shows real
+    changes in saturation.  See issue #200.
     """
     yc = element_centers[:, 1]
     unique_y = np.unique(yc)
@@ -349,9 +435,25 @@ def fi_y_slice_figure(
     zs = element_centers[mask, 2]
     fi_max_per_elem = np.asarray(fi_per_gauss).max(axis=1)
     vals = fi_max_per_elem[mask]
-    vmax = float(np.nanmax(vals)) if vals.size else 1.0
-    if not np.isfinite(vmax) or vmax <= 0.0:
-        vmax = 1.0
+
+    if vmin is None and vmax is None:
+        slice_vmax = float(np.nanmax(vals)) if vals.size else 1.0
+        if not np.isfinite(slice_vmax) or slice_vmax <= 0.0:
+            slice_vmax = 1.0
+        cmin, cmax = 0.0, slice_vmax
+        title_suffix = ""
+    else:
+        if vmax is None:
+            vmax = float(np.nanmax(vals)) if vals.size else 1.0
+        if vmin is None:
+            vmin = 0.0
+        cmax = float(vmax)
+        if not np.isfinite(cmax) or cmax <= 0.0:
+            cmax = 1.0
+        cmin = float(vmin)
+        title_suffix = (
+            f"  ·  FI ∈ [{cmin:.3f}, {cmax:.3f}] (global)"
+        )
 
     elem_node_xyz = nodes[elements[mask]]
     dx = float(np.ptp(elem_node_xyz[:, :, 0], axis=1).mean()) if mask.sum() else 1.0
@@ -366,8 +468,8 @@ def fi_y_slice_figure(
                 size=14,
                 color=vals,
                 colorscale="Reds",
-                cmin=0.0,
-                cmax=vmax,
+                cmin=cmin,
+                cmax=cmax,
                 symbol="square",
                 line=dict(width=0),
                 colorbar=dict(title=f"FI ({criterion})"),
@@ -381,7 +483,7 @@ def fi_y_slice_figure(
     fig.update_layout(
         title=(
             f"FI ({criterion}) at y ≈ {nearest_y:.2f} mm  ·  "
-            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm"
+            f"Δx≈{dx:.2f} mm  Δz≈{dz:.3f} mm{title_suffix}"
         ),
         xaxis_title="x [mm]",
         yaxis_title="z [mm]",

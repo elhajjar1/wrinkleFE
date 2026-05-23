@@ -147,25 +147,43 @@ class HashinCriterion(FailureCriterion):
 
         # ---------------------------------------------------------------
         # 4. Matrix Compression  (sigma_22 + sigma_33 < 0)
-        #    FI_mc^2 = [(Yc/(2*S23))^2 - 1] * (s22+s33)/Yc
-        #            + (s22+s33)^2 / (4*S23^2)
-        #            + (tau_23^2 - s22*s33) / S23^2
-        #            + (tau_12^2 + tau_13^2) / S12^2
+        #    FI_mc^2 = [(Yc/(2*S23))^2 - 1] * (s22+s33)/Yc        (linear in stress)
+        #            + (s22+s33)^2 / (4*S23^2)                    (quadratic)
+        #            + (tau_23^2 - s22*s33) / S23^2               (quadratic)
+        #            + (tau_12^2 + tau_13^2) / S12^2              (quadratic)
+        #
+        # Note: the first term is *linear* in the stress, while the others
+        # are *quadratic*.  Under proportional load scaling by R, the
+        # polynomial FI_mc^2(R) = A*R^2 + B*R mixes orders, so
+        # RF = 1/FI_mc would underestimate the true strength ratio.
+        # Instead, we solve A*R_f^2 + B*R_f = 1 for the positive root.
         # ---------------------------------------------------------------
         if sig_t < 0:
-            fi_mc_sq = (
-                ((material.Yc / (2 * material.S23)) ** 2 - 1)
-                * sig_t / material.Yc
-                + sig_t ** 2 / (4 * material.S23 ** 2)
+            # Quadratic coefficient A: pure stress^2 terms
+            A_mc = (
+                sig_t ** 2 / (4 * material.S23 ** 2)
                 + (s[3] ** 2 - s[1] * s[2]) / material.S23 ** 2
                 + (s[5] ** 2 + s[4] ** 2) / material.S12 ** 2
             )
+            # Linear coefficient B: linear-in-stress term
+            B_mc = ((material.Yc / (2 * material.S23)) ** 2 - 1) * sig_t / material.Yc
+
+            fi_mc_sq = A_mc + B_mc
             fi_mc = np.sqrt(max(fi_mc_sq, 0.0))
+
+            # Closed-form reserve factor: positive root of A*R^2 + B*R - 1 = 0
+            rf_mc = _quadratic_reserve_factor(A_mc, B_mc)
         else:
             fi_mc = 0.0
+            rf_mc = float("inf")
 
         # ---------------------------------------------------------------
-        # Determine dominant failure mode
+        # Determine dominant failure mode (by FI value, as before).
+        # Per-mode reserve factors:
+        #   - fiber_tension, fiber_compression, matrix_tension are pure
+        #     quadratics in the stress, so RF = 1/sqrt(FI^2) = 1/FI.
+        #   - matrix_compression has a mixed linear+quadratic FI^2, so RF
+        #     comes from the quadratic root above.
         # ---------------------------------------------------------------
         modes = {
             "fiber_tension": fi_ft,
@@ -176,9 +194,205 @@ class HashinCriterion(FailureCriterion):
         dominant = max(modes, key=modes.get)
         fi_max = modes[dominant]
 
+        if fi_max <= 0:
+            reserve_factor = float("inf")
+        elif dominant == "matrix_compression":
+            reserve_factor = rf_mc
+        else:
+            reserve_factor = 1.0 / fi_max
+
         return FailureResult(
             index=fi_max,
             mode=dominant,
-            reserve_factor=1.0 / fi_max if fi_max > 0 else float("inf"),
+            reserve_factor=reserve_factor,
             criterion_name=self.name,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation
+    # ------------------------------------------------------------------
+
+    _HASHIN_MODE_LABELS = np.array(
+        ["fiber_tension", "fiber_compression",
+         "matrix_tension", "matrix_compression"],
+        dtype="U32",
+    )
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Hashin 3D evaluation across an array of stress states.
+
+        Identical maths to :meth:`evaluate` but computed on ``N`` points at
+        once with NumPy broadcasting.  See the module docstring for the
+        per-mode failure surfaces.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with strength allowables (shared by all N points).
+        contexts : list, optional
+            Ignored — Hashin has no context dependence.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray, np.ndarray, np.ndarray
+            Each of shape ``(N,)``.  ``reserve_factors`` uses the closed-form
+            quadratic root for the matrix-compression branch (see
+            :func:`_quadratic_reserve_factor`).
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+
+        s11, s22, s33 = s[:, 0], s[:, 1], s[:, 2]
+        t23, t13, t12 = s[:, 3], s[:, 4], s[:, 5]
+
+        Xt, Xc = material.Xt, material.Xc
+        Yt, Yc = material.Yt, material.Yc
+        S12, S23 = material.S12, material.S23
+
+        # --- Fibre tension (active when s11 >= 0) ---
+        ft_sq = (s11 / Xt) ** 2 + (t12 ** 2 + t13 ** 2) / S12 ** 2
+        fi_ft = np.where(s11 >= 0, np.sqrt(np.maximum(ft_sq, 0.0)), 0.0)
+
+        # --- Fibre compression (active when s11 < 0) ---
+        fi_fc = np.where(s11 < 0, -s11 / Xc, 0.0)
+
+        # --- Matrix branches (depend on sign of s22 + s33) ---
+        sig_t = s22 + s33
+        shear_term_23 = (t23 ** 2 - s22 * s33) / S23 ** 2
+        shear_term_12 = (t12 ** 2 + t13 ** 2) / S12 ** 2
+
+        # Matrix tension (sig_t >= 0)
+        mt_sq = (sig_t / Yt) ** 2 + shear_term_23 + shear_term_12
+        fi_mt = np.where(sig_t >= 0, np.sqrt(np.maximum(mt_sq, 0.0)), 0.0)
+
+        # Matrix compression (sig_t < 0)
+        A_mc = (
+            sig_t ** 2 / (4.0 * S23 ** 2)
+            + shear_term_23
+            + shear_term_12
+        )
+        B_mc = ((Yc / (2.0 * S23)) ** 2 - 1.0) * sig_t / Yc
+        mc_sq = A_mc + B_mc
+        fi_mc = np.where(sig_t < 0, np.sqrt(np.maximum(mc_sq, 0.0)), 0.0)
+
+        # --- Stack and pick dominant mode by FI value ---
+        all_fi = np.vstack([fi_ft, fi_fc, fi_mt, fi_mc])  # (4, N)
+        idx = np.argmax(all_fi, axis=0)
+        fi_max = all_fi[idx, np.arange(s.shape[0])]
+        modes = self._HASHIN_MODE_LABELS[idx]
+
+        # --- Reserve factor ---
+        # For ft/fc/mt branches the FI is a pure quadratic in load, so
+        # RF = 1/FI.  For mc, solve A*R^2 + B*R = 1 elementwise.
+        rf = np.full_like(fi_max, np.inf)
+
+        # mc branch via vectorised quadratic roots, then mask in
+        rf_mc = _quadratic_reserve_factor_vec(A_mc, B_mc)
+
+        # Default: 1/FI; override for the mc-dominant points.
+        nonzero = fi_max > 0
+        rf[nonzero] = 1.0 / fi_max[nonzero]
+        mc_dominant = (idx == 3) & nonzero
+        rf[mc_dominant] = rf_mc[mc_dominant]
+
+        return fi_max, modes, rf
+
+
+def _quadratic_reserve_factor_vec(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    """Vectorised version of :func:`_quadratic_reserve_factor`.
+
+    Smallest positive root of ``A*R^2 + B*R - 1 = 0`` for each elementwise
+    pair ``(A[i], B[i])``.  Returns ``inf`` where no positive root exists or
+    where ``A == 0`` and ``B <= 0`` (degenerate).
+
+    Parameters
+    ----------
+    A, B : np.ndarray
+        Same-shape arrays of polynomial coefficients.
+
+    Returns
+    -------
+    np.ndarray
+        Same shape as inputs; smallest positive root of ``A*R^2 + B*R = 1``.
+    """
+    A = np.asarray(A, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    rf = np.full(A.shape, np.inf, dtype=np.float64)
+
+    # Quadratic branch: A > 0.  Smallest positive root of A*R^2 + B*R - 1 = 0
+    # is r_plus = (-B + sqrt(B^2 + 4A)) / (2A) (which is always >= 0 because
+    # sqrt(B^2 + 4A) >= |B|).
+    quad = A > 0.0
+    if np.any(quad):
+        Aq = A[quad]
+        Bq = B[quad]
+        disc = Bq * Bq + 4.0 * Aq
+        # disc >= B^2 >= 0 for A > 0, so sqrt is safe.
+        sqrt_disc = np.sqrt(np.maximum(disc, 0.0))
+        r_plus = (-Bq + sqrt_disc) / (2.0 * Aq)
+        rf_quad = np.where(r_plus > 0.0, r_plus, np.inf)
+        rf[quad] = rf_quad
+
+    # Degenerate branch: A == 0, B > 0  =>  R = 1/B
+    lin = (A == 0.0) & (B > 0.0)
+    if np.any(lin):
+        rf[lin] = 1.0 / B[lin]
+
+    # All other cases (A < 0 or A == 0 & B <= 0): leave as inf.
+    return rf
+
+
+def _quadratic_reserve_factor(A: float, B: float) -> float:
+    """Smallest positive root of ``A*R^2 + B*R - 1 = 0``.
+
+    Used by the Hashin matrix-compression branch, where the failure
+    polynomial mixes linear and quadratic terms in the applied load.
+
+    Parameters
+    ----------
+    A : float
+        Coefficient of ``R^2`` (sum of squared-stress / squared-strength
+        terms).  Always non-negative for the matrix-compression branch.
+    B : float
+        Coefficient of ``R`` (the linear ``((Yc/(2 S23))^2 - 1) * sig_t / Yc``
+        term).  Can have either sign depending on stress and material.
+
+    Returns
+    -------
+    float
+        Smallest positive ``R`` satisfying ``A*R^2 + B*R = 1``.
+        Returns ``float('inf')`` if no positive root exists (a fully
+        zero/degenerate state).
+    """
+    # Degenerate: no quadratic content (pure linear term).  A*R^2 + B*R = 1
+    # becomes B*R = 1 => R = 1/B (only positive when B > 0).
+    if A <= 0.0:
+        if B > 0.0:
+            return 1.0 / B
+        return float("inf")
+
+    disc = B * B + 4.0 * A
+    if disc < 0.0:
+        # Should not happen with A > 0, but guard against fp noise.
+        return float("inf")
+    sqrt_disc = np.sqrt(disc)
+
+    # Roots of A*R^2 + B*R - 1 = 0
+    r_plus = (-B + sqrt_disc) / (2.0 * A)
+    r_minus = (-B - sqrt_disc) / (2.0 * A)
+
+    # Pick smallest positive root; else +inf
+    candidates = [r for r in (r_plus, r_minus) if r > 0.0]
+    if not candidates:
+        return float("inf")
+    return min(candidates)

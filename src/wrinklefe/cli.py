@@ -60,15 +60,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument(
         "--amplitude", type=float, default=0.366,
-        help="Wrinkle amplitude A in mm (default: 0.366)",
+        help=(
+            "Wrinkle half-amplitude A in mm: peak displacement of the "
+            "wrinkled mid-surface from the flat reference, so "
+            "z(x) = A*cos(2*pi*x/lambda) and the peak-to-trough height "
+            "is 2A (default: 0.366)"
+        ),
     )
     p_analyze.add_argument(
         "--wavelength", type=float, default=16.0,
-        help="Wrinkle wavelength in mm (default: 16.0)",
+        help=(
+            "Wrinkle wavelength lambda in mm: spatial period of the "
+            "cos(2*pi*(x - x0)/lambda) carrier (crest-to-crest "
+            "distance). Must be > 0 (default: 16.0)"
+        ),
     )
     p_analyze.add_argument(
         "--width", type=float, default=12.0,
-        help="Gaussian envelope half-width in mm (default: 12.0)",
+        help=(
+            "Wrinkle envelope decay length w in mm about the centre x0 "
+            "(Gaussian 1/e length in exp(-(x-x0)^2/w^2); also the "
+            "transverse y-extent in 3-D dual-wrinkle / graded modes). "
+            "Must be > 0 (default: 12.0)"
+        ),
     )
     p_analyze.add_argument(
         "--morphology", type=str, default="stack",
@@ -130,30 +144,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Linear solver type (default: direct)",
     )
     p_analyze.add_argument(
-        "--buckling", action="store_true", default=False,
-        help="Run linear buckling analysis (implies full FE solve)",
-    )
-    p_analyze.add_argument(
-        "--montecarlo", action="store_true", default=False,
-        help="Run Monte Carlo simulation (implies full FE solve)",
-    )
-    p_analyze.add_argument(
-        "--mc-samples", type=int, default=5000,
-        help="Number of Monte Carlo samples (default: 5000)",
-    )
-    p_analyze.add_argument(
         "--fe", action=argparse.BooleanOptionalAction, default=None,
         help=(
             "Force a full FE solve (--fe) or skip it (--no-fe). "
-            "Default: FE on unless overridden. --buckling/--montecarlo "
-            "imply --fe."
+            "Default: FE on unless overridden."
         ),
     )
     p_analyze.add_argument(
         "--analytical-only", action="store_true", default=False,
         help=(
-            "Run analytical predictions only, skipping the FE solve, "
-            "buckling, and Monte Carlo branches."
+            "Run analytical predictions only, skipping the FE solve."
         ),
     )
     p_analyze.add_argument(
@@ -175,15 +175,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_compare.add_argument(
         "--amplitude", type=float, default=0.366,
-        help="Wrinkle amplitude A in mm (default: 0.366)",
+        help=(
+            "Wrinkle half-amplitude A in mm: peak displacement of the "
+            "wrinkled mid-surface from the flat reference, so "
+            "z(x) = A*cos(2*pi*x/lambda) and the peak-to-trough height "
+            "is 2A (default: 0.366)"
+        ),
     )
     p_compare.add_argument(
         "--wavelength", type=float, default=16.0,
-        help="Wrinkle wavelength in mm (default: 16.0)",
+        help=(
+            "Wrinkle wavelength lambda in mm: spatial period of the "
+            "cos(2*pi*(x - x0)/lambda) carrier (crest-to-crest "
+            "distance). Must be > 0 (default: 16.0)"
+        ),
     )
     p_compare.add_argument(
         "--width", type=float, default=12.0,
-        help="Gaussian envelope half-width in mm (default: 12.0)",
+        help=(
+            "Wrinkle envelope decay length w in mm about the centre x0 "
+            "(Gaussian 1/e length in exp(-(x-x0)^2/w^2); also the "
+            "transverse y-extent in 3-D dual-wrinkle / graded modes). "
+            "Must be > 0 (default: 12.0)"
+        ),
     )
     p_compare.add_argument(
         "--analytical-only", action=argparse.BooleanOptionalAction, default=True,
@@ -293,21 +307,13 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
-    #   1. --analytical-only       -> skip FE / buckling / MC
-    #   2. --buckling / --montecarlo / --fe -> full FE solve
-    #   3. --no-fe                 -> analytical-only
-    #   4. default                 -> full FE solve
+    #   1. --analytical-only -> skip FE
+    #   2. --fe              -> full FE solve
+    #   3. --no-fe           -> analytical-only
+    #   4. default           -> full FE solve
     if args.analytical_only:
-        if args.buckling or args.montecarlo:
-            print(
-                "error: --analytical-only is incompatible with "
-                "--buckling/--montecarlo (those flags require a full "
-                "FE solve).",
-                file=sys.stderr,
-            )
-            sys.exit(2)
         analytical_only = True
-    elif args.buckling or args.montecarlo or args.fe is True:
+    elif args.fe is True:
         analytical_only = False
     elif args.fe is False:
         analytical_only = True
@@ -328,9 +334,6 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         ny=args.ny,
         applied_strain=args.strain,
         solver=args.solver,
-        run_buckling=args.buckling,
-        run_montecarlo=args.montecarlo,
-        mc_samples=args.mc_samples,
         analytical_only=analytical_only,
         verbose=args.verbose,
     )
