@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -39,7 +43,24 @@ jobs:
           pip install -e ".[all,dev]"
 
       - name: Run tests
-        run: pytest --tb=short -q --cov=wrinklefe --cov-report=xml --cov-report=term
+        run: pytest --tb=long -v --cov=wrinklefe --cov-report=xml --cov-report=term 2>&1 | tee pytest-output.txt
+        shell: bash
+
+      - name: Post macOS failure as PR comment (debug)
+        if: failure() && matrix.os == 'macos-latest' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.readFileSync('pytest-output.txt', 'utf8');
+            const tail = log.split('\n').slice(-150).join('\n');
+            const body = `### macOS ${{ matrix.python-version }} CI failure log (last 150 lines)\n\n\`\`\`\n${tail}\n\`\`\``;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body,
+            });
 
       - name: Check import
         run: python -c "import wrinklefe; print(f'WrinkleFE {wrinklefe.__version__} imported successfully')"
