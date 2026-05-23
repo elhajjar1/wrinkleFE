@@ -39,7 +39,22 @@ jobs:
           pip install -e ".[all,dev]"
 
       - name: Run tests
-        run: pytest --tb=short -q --cov=wrinklefe --cov-report=xml --cov-report=term
+        run: pytest --tb=long -v --cov=wrinklefe --cov-report=xml --cov-report=term 2>&1 | tee pytest-output.txt
+
+      - name: Post macOS failure as PR comment (debug)
+        if: failure() && matrix.os == 'macos-latest' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### macOS ${{ matrix.python-version }} CI failure log (last 120 lines)"
+            echo
+            echo '```'
+            tail -120 pytest-output.txt
+            echo '```'
+          } > comment.md
+          gh pr comment "$PR_NUMBER" --body-file comment.md --repo "${{ github.repository }}"
 
       - name: Check import
         run: python -c "import wrinklefe; print(f'WrinkleFE {wrinklefe.__version__} imported successfully')"
