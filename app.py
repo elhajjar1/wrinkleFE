@@ -102,57 +102,72 @@ CUSTOM_MAT_STRENGTH_FIELDS = (
     ("S23", "S23 [MPa]", "%.1f"),
 )
 
+# UI-only defaults that have no direct counterpart on AnalysisConfig (the
+# layup is a string in the UI but a list of angles in the dataclass; expert
+# mode and the custom-material editor name are pure UI state; loading is
+# stored as ±applied_strain on the dataclass).
 DEFAULT_LAYUP = "[0/45/-45/90]_3s"
 DEFAULT_EXPERT_MODE = False
 DEFAULT_MATERIAL = "IM7_8552"
 DEFAULT_CUSTOM_NAME = "custom"
-DEFAULT_PLY_THICKNESS = 0.183
-DEFAULT_AMPLITUDE = 0.366
-DEFAULT_WAVELENGTH = 16.0
-DEFAULT_WIDTH = 12.0
-DEFAULT_MORPHOLOGY = "stack"
-DEFAULT_DECAY_FLOOR = 0.0
 DEFAULT_LOADING = "compression"
 DEFAULT_STRAIN_MAG_PCT = 1.0
-DEFAULT_ANALYTICAL_ONLY = False
-DEFAULT_NX = 12
-DEFAULT_NY = 6
-DEFAULT_NZ_PER_PLY = 1
 
-# Keys for sidebar input widgets. Used by the "Reset to defaults" button to
-# clear modified values from st.session_state so widgets fall back to their
-# default= argument on the next rerun.
-SIDEBAR_INPUT_KEYS = (
-    "expert_mode",
-    "sb_material",
-    "sb_custom_name",
-    "sb_ply_thickness",
-    "sb_layup",
-    "sb_amplitude",
-    "sb_wavelength",
-    "sb_width",
-    "sb_morphology",
-    "sb_decay_floor",
-    "sb_loading",
-    "sb_strain_mag_pct",
-    "sb_analytical_only",
-    "sb_nx",
-    "sb_ny",
-    "sb_nz_per_ply",
-)
+# Inputs whose defaults live on :class:`AnalysisConfig`. Pulling them from a
+# single freshly-constructed instance keeps the UI defaults from silently
+# drifting away from the dataclass.
+_CFG_DEFAULTS = AnalysisConfig()
+DEFAULT_PLY_THICKNESS = _CFG_DEFAULTS.ply_thickness
+DEFAULT_AMPLITUDE = _CFG_DEFAULTS.amplitude
+DEFAULT_WAVELENGTH = _CFG_DEFAULTS.wavelength
+DEFAULT_WIDTH = _CFG_DEFAULTS.width
+DEFAULT_MORPHOLOGY = _CFG_DEFAULTS.morphology
+DEFAULT_DECAY_FLOOR = _CFG_DEFAULTS.decay_floor
+DEFAULT_ANALYTICAL_ONLY = _CFG_DEFAULTS.analytical_only
+DEFAULT_NX = _CFG_DEFAULTS.nx
+DEFAULT_NY = _CFG_DEFAULTS.ny
+DEFAULT_NZ_PER_PLY = _CFG_DEFAULTS.nz_per_ply
+
+# Single source of truth used by the "Reset to defaults" button: maps each
+# sidebar widget ``key=`` argument to the value it should hold after a reset.
+# Keep this aligned with the ``key=`` strings on the widgets below.
+DEFAULTS: dict[str, object] = {
+    "expert_mode": DEFAULT_EXPERT_MODE,
+    "sb_material": DEFAULT_MATERIAL,
+    "sb_custom_name": DEFAULT_CUSTOM_NAME,
+    "sb_ply_thickness": DEFAULT_PLY_THICKNESS,
+    "sb_layup": DEFAULT_LAYUP,
+    "sb_amplitude": DEFAULT_AMPLITUDE,
+    "sb_wavelength": DEFAULT_WAVELENGTH,
+    "sb_width": DEFAULT_WIDTH,
+    "sb_morphology": DEFAULT_MORPHOLOGY,
+    "sb_decay_floor": DEFAULT_DECAY_FLOOR,
+    "sb_loading": DEFAULT_LOADING,
+    "sb_strain_mag_pct": DEFAULT_STRAIN_MAG_PCT,
+    "sb_analytical_only": DEFAULT_ANALYTICAL_ONLY,
+    "sb_nx": DEFAULT_NX,
+    "sb_ny": DEFAULT_NY,
+    "sb_nz_per_ply": DEFAULT_NZ_PER_PLY,
+}
 
 
-def _reset_sidebar_defaults() -> None:
-    """Clear sidebar input keys from session_state so widgets reload defaults.
+def reset_inputs() -> None:
+    """Restore every sidebar input widget to its default value.
 
-    Also clears the dynamic custom-material editor keys (``custom_*``), which
-    are seeded from the chosen material on each rerun.
+    Writes each :data:`DEFAULTS` entry into :data:`st.session_state` so the
+    widget picks up the default on the next rerun. Also clears the dynamic
+    custom-material editor keys (``custom_*``), which are seeded from the
+    chosen material on each rerun and would otherwise survive the reset.
     """
-    for k in SIDEBAR_INPUT_KEYS:
-        st.session_state.pop(k, None)
+    for k, v in DEFAULTS.items():
+        st.session_state[k] = v
     for k in list(st.session_state.keys()):
         if isinstance(k, str) and k.startswith("custom_"):
             st.session_state.pop(k, None)
+
+
+# Back-compat alias for older call sites.
+_reset_sidebar_defaults = reset_inputs
 
 
 # ---------------------------------------------------------------------------
@@ -680,7 +695,7 @@ with st.sidebar:
         ),
     )
     if reset_clicked:
-        _reset_sidebar_defaults()
+        reset_inputs()
         st.rerun()
 
     with st.expander("What do these terms mean?", expanded=False):
