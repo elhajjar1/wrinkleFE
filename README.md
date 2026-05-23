@@ -103,14 +103,20 @@ The longitudinal coordinate `x` runs along the laminate in the fibre
 direction; out-of-plane displacement `z(x)` is measured from the flat
 (undeformed) mid-surface. Angles are in **radians**.
 
-| Parameter | Symbol | Definition | Units |
-|-----------|--------|------------|-------|
-| `amplitude` | A | Half-amplitude: peak displacement of the wrinkled mid-surface from the flat reference, with `z(x) = A·cos(2πx/λ)` (modulated by the envelope) and peak-to-trough height `2A`. For a measured wrinkle, `A = (z_max − z_min)/2`. Must be ≥ 0. | mm |
-| `wavelength` | λ | Period of the `cos(2πx/λ)` carrier along the longitudinal x-direction (crest-to-crest distance). Must be > 0. Wavenumber `k = 2π/λ`. | mm |
-| `width` | w | Longitudinal envelope decay length about the centre. Exact meaning is profile-dependent: Gaussian length scale `exp(−(x−x₀)²/w²)`, tapered flat-top extent (`\|x−x₀\| < w/2`), or triangular half-base (`\|x−x₀\| < w`). Must be > 0. | mm |
-| `center` | x₀ | Longitudinal position of the wrinkle crest / envelope peak, in the global x coordinate. Default 0.0. | mm |
-| `phase_offset` | φ | Phase of one wrinkle relative to a reference, mapping to a geometric offset `Δx = φλ/(2π)`. Stack φ=0, convex φ=+π/2, concave φ=−π/2. | rad |
-| `decay_floor` | — | Fraction of amplitude retained at the surface plies in `graded` mode (0 = full decay to zero, 1 = no decay). Clamped to [0, 1]. | dimensionless |
+This table is the canonical reference for every wrinkle-geometry
+parameter exposed by `AnalysisConfig`, the CLI, and the Streamlit UI.
+The `AnalysisConfig` docstrings, CLI `--help`, and Streamlit `help=`
+tooltips all mirror these definitions; the
+`tests/test_param_docs_match.py` regression test pins the defaults so
+the docs and the dataclass cannot drift.
+
+| Parameter | Units | Default | Definition | Constraint |
+|-----------|-------|---------|------------|------------|
+| `amplitude` (A) | mm | `0.366` | Half-amplitude: peak displacement of the wrinkled mid-surface from the flat reference, with `z(x) = A·cos(2π(x − x₀)/λ)` (modulated by the envelope) and peak-to-trough height `2A`. For a measured wrinkle, `A = (z_max − z_min)/2`. | ≥ 0 (`0` = flat / no wrinkle) |
+| `wavelength` (λ) | mm | `16.0` | Spatial period of the `cos(2π(x − x₀)/λ)` carrier along the longitudinal x-direction (crest-to-crest distance). Wavenumber `k = 2π/λ`. | > 0 |
+| `width` (w) | mm | `12.0` | Longitudinal envelope decay length about the centre `x₀`. Exact meaning is profile-dependent: Gaussian 1/e length scale in `exp(−(x−x₀)²/w²)`, tapered flat-top extent (`\|x−x₀\| < w/2`), or triangular half-base (`\|x−x₀\| < w`). Also used as the transverse (y-direction) extent of the wrinkle in 3-D dual-wrinkle / graded mesh deformation. | > 0 |
+| `phase` (φ) | rad | `None` | Explicit dual-wrinkle phase offset between the two wrinkle centrelines. `None` derives φ from `morphology` via `MORPHOLOGY_PHASES` (stack φ=0, convex φ=+π/2, concave φ=−π/2). A float overrides the named-morphology phase so arbitrary offsets can be swept (e.g. `0` to `π`). Ignored for single-wrinkle morphologies (`uniform`, `graded`). | finite when set |
+| `decay_floor` | dimensionless | `0.0` | Graded morphology only: minimum fraction of the wrinkle amplitude retained at the laminate outer surfaces. `0.0` = full decay to zero amplitude at the surfaces (pure graded); `1.0` = no decay (equivalent to `uniform`). | in `[0, 1]` |
 
 Peak fibre misalignment: `θ_max ≈ arctan(2πA/λ)` (exact for a pure
 cosine; dimensionless because A and λ share the mm length unit). See the
