@@ -69,9 +69,23 @@ _A_REF = 0.183    # Reference amplitude (1 ply thickness, mm)
 _N_PROFILE_PTS = 500
 
 # Confinement model constants
-# Calibrated with CLT-weighted BF against Elhajjar (2025), T700/2510.
+# Calibrated with CLT-weighted BF against Elhajjar (2025), T700/2510, and
+# Mukhopadhyay (2015) blocked-layup compression cases.
 _GAMMA_Y_UD = 0.032   # UD matrix yield strain (no confinement)
-_ALPHA_CONF = 0.050   # confinement boost coefficient
+_ALPHA_CONF = 0.050   # confinement boost coefficient (per off-axis-neighbour score)
+# Block-size penalty: each additional 0-deg ply in a consecutive run beyond
+# the first reduces gamma_Y_eff by this amount. Captures the empirical
+# observation that blocked layups such as Mukhopadhyay's [0_2] (effectively
+# [0_4] across the symmetry plane) kink more easily than the neighbour-
+# counting confinement score alone predicts: inner 0-deg faces of a block
+# are bracketed by another 0-deg ply that does not constrain lateral
+# expansion of the kink band. Only applied when at least one off-axis ply
+# exists so pure UD ([0]_n) remains at the UD calibration point.
+_BETA_BLOCK = 0.010   # per-extra-ply block penalty on gamma_Y_eff
+# Lower bound on gamma_Y_eff so a long 0-deg block cannot drive it negative
+# or arbitrarily close to zero (which would otherwise produce a degenerate
+# Budiansky-Fleck knockdown).
+_GAMMA_Y_FLOOR = _GAMMA_Y_UD / 2.0  # = 0.016 (UD half-strain floor)
 
 
 def _confined_fraction(angles: List[float], tol: float = 5.0) -> float:
@@ -112,22 +126,68 @@ def _confined_fraction(angles: List[float], tol: float = 5.0) -> float:
 def _effective_gamma_Y(angles: List[float]) -> float:
     """Compute layup-dependent effective matrix yield strain.
 
-    gamma_Y_eff = gamma_Y_UD + alpha * f_confined
+    Three-parameter model::
 
-    where f_confined is the weighted confinement fraction of 0-degree
-    plies (0 = unconfined UD, 1 = fully interspersed). This captures
-    the constraint that off-axis plies impose on kink-band lateral
-    expansion in multidirectional laminates.
+        gamma_Y_eff = max(
+            gamma_Y_UD + alpha_conf * f_confined
+                       - beta_block * max(n_block_max - 1, 0),
+            gamma_Y_floor,
+        )
 
-    With CLT-weighted compression (KD_lam = f0*KD_BF + 1-f0),
+    where:
+
+    * ``f_confined`` is the weighted confinement fraction of 0-degree
+      plies (0 = unconfined, 1 = fully interspersed; see
+      :func:`_confined_fraction`).  The linear ``alpha_conf`` term
+      captures the constraint that off-axis plies impose on kink-band
+      lateral expansion in multidirectional laminates.
+    * ``n_block_max`` is the longest run of consecutive 0-degree plies
+      (see :func:`_max_consecutive_zero_plies`).  The ``beta_block``
+      term penalises long 0-deg blocks: each additional ply inside a
+      block beyond the first contributes another increment of
+      lateral-expansion freedom that the neighbour-counting confinement
+      score does not capture.  Inner 0-deg faces of a block are
+      bracketed by another 0-deg ply that does not constrain kink-band
+      lateral expansion, so the matrix yields at a lower applied shear
+      strain in blocked layups than in dispersed layups with the same
+      ``f_confined``.
+
+    The block penalty is only applied when at least one off-axis ply
+    exists in the layup.  Pure UD ``[0]_n`` would otherwise be driven
+    below the calibration point by the penalty term; with the guard, UD
+    retains ``gamma_Y_eff = gamma_Y_UD = 0.032`` regardless of ``n``.
+
+    The result is floored at ``_GAMMA_Y_FLOOR`` (= gamma_Y_UD / 2) so
+    very thick 0-blocks cannot drive ``gamma_Y_eff`` arbitrarily close
+    to zero, which would otherwise produce a degenerate Budiansky-Fleck
+    knockdown.
+
+    With CLT-weighted compression (``KD_lam = f0 * KD_BF + (1 - f0)``),
     the confinement effect is separated from load redistribution.
-    Calibration points:
-        UD (f=0.0):            gamma_Y = 0.032
-        Mukhopadhyay (f≈0.42): gamma_Y = 0.053
-        Elhajjar (f≈0.83):    gamma_Y = 0.074
+
+    Calibration anchors (three-parameter model, beta_block = 0.010):
+
+    ======================================  =======  ===============  ==========
+    Layup                                   ``f``    ``n_block_max``  ``gamma_Y``
+    ======================================  =======  ===============  ==========
+    UD ``[0]_n``                            ~0.13    n (guard skips)  0.032
+    Mukhopadhyay ``[..../0_2]_3s``          ~0.42    4 (block of 4    ~0.023
+                                                     at symmetry
+                                                     plane)
+    Elhajjar ``[0/45/90/-45/0/45/-45/0]_s`` ~0.83    2 (only at the   ~0.064
+                                                     symmetry plane)
+    ======================================  =======  ===============  ==========
     """
     fc = _confined_fraction(angles)
-    return _GAMMA_Y_UD + _ALPHA_CONF * fc
+    # Guard: pure UD has no off-axis plies; the block penalty would
+    # otherwise drive its gamma_Y below the calibration point.
+    n_off_axis = sum(1 for a in angles if abs(a) >= 5.0)
+    if n_off_axis == 0:
+        return _GAMMA_Y_UD
+    n_block_max = _max_consecutive_zero_plies(angles)
+    block_penalty = _BETA_BLOCK * max(n_block_max - 1, 0)
+    gamma_Y = _GAMMA_Y_UD + _ALPHA_CONF * fc - block_penalty
+    return max(gamma_Y, _GAMMA_Y_FLOOR)
 
 
 def _profile_proportional_kd(
