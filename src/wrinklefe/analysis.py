@@ -267,6 +267,39 @@ def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
 # ======================================================================
 
 @dataclass
+class WrinkleSpec:
+    """Single-wrinkle specification used to assemble multi-wrinkle configs.
+
+    A list of :class:`WrinkleSpec` instances passed to
+    :class:`AnalysisConfig` via the ``wrinkles`` field overrides the
+    single/dual-wrinkle dispatch in :meth:`WrinkleAnalysis.run`, allowing
+    arbitrary N-wrinkle layouts at arbitrary ply interfaces with arbitrary
+    phase offsets to be analysed (see Dataset F / Li et al. 2025).
+
+    Parameters
+    ----------
+    amplitude : float
+        Wrinkle half-amplitude *A* [mm], strictly positive.
+    wavelength : float
+        Wavelength lambda [mm], strictly positive.
+    width : float
+        Gaussian envelope half-width *w* [mm], strictly positive.
+    ply_interface : int
+        Ply interface index passed to :class:`WrinklePlacement`. For a
+        laminate with *N* plies valid indices are 0 through N-2 inclusive.
+    phase_offset : float, optional
+        Phase offset phi [rad] relative to the reference wrinkle.
+        Default 0.0.
+    """
+
+    amplitude: float
+    wavelength: float
+    width: float
+    ply_interface: int
+    phase_offset: float = 0.0
+
+
+@dataclass
 class AnalysisConfig:
     """Configuration for a wrinkle analysis run.
 
@@ -456,6 +489,13 @@ class AnalysisConfig:
     # auto-derived pair is (11, 12), preserving backwards compatibility.
     interface_1: Optional[int] = None
     interface_2: Optional[int] = None
+
+    # Multi-wrinkle override. When non-empty, this overrides the named
+    # single/dual-wrinkle dispatch in WrinkleAnalysis.run, allowing
+    # arbitrary N-wrinkle configurations (Li et al. 2025 Dataset F).
+    # Each spec contributes one WrinklePlacement; FE solve is currently
+    # out of scope for this path (set analytical_only=True).
+    wrinkles: Optional[List["WrinkleSpec"]] = None
 
     # Mesh
     nx: int = 12
@@ -677,6 +717,63 @@ class AnalysisConfig:
                 f"{list(valid_solvers)}, got {self.solver!r}"
             )
 
+        # --- Multi-wrinkle override -----------------------------------
+        # When ``wrinkles`` is provided, it overrides the named
+        # single/dual-wrinkle dispatch.  An empty list is rejected
+        # because the intent is ambiguous (use None for the default).
+        if self.wrinkles is not None:
+            if not isinstance(self.wrinkles, list):
+                raise ValueError(
+                    "AnalysisConfig.wrinkles must be a list of WrinkleSpec "
+                    f"or None, got {type(self.wrinkles).__name__}"
+                )
+            if len(self.wrinkles) == 0:
+                raise ValueError(
+                    "AnalysisConfig.wrinkles must contain at least one "
+                    "WrinkleSpec; pass None to use the default dispatch."
+                )
+            for i, spec in enumerate(self.wrinkles):
+                if not isinstance(spec, WrinkleSpec):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}] must be a "
+                        f"WrinkleSpec, got {type(spec).__name__}"
+                    )
+                if not (spec.amplitude > 0 and math.isfinite(spec.amplitude)):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].amplitude must be "
+                        f"a positive finite float, got {spec.amplitude}"
+                    )
+                if not (spec.wavelength > 0 and math.isfinite(spec.wavelength)):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].wavelength must be "
+                        f"a positive finite float, got {spec.wavelength}"
+                    )
+                if not (spec.width > 0 and math.isfinite(spec.width)):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].width must be "
+                        f"a positive finite float, got {spec.width}"
+                    )
+                if (
+                    not isinstance(spec.ply_interface, int)
+                    or isinstance(spec.ply_interface, bool)
+                ):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].ply_interface must "
+                        f"be an int, got {spec.ply_interface!r}"
+                    )
+                # WrinklePlacement valid range is [0, n_plies - 2]
+                if not (0 <= spec.ply_interface <= n_plies - 2):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].ply_interface must "
+                        f"be in [0, {n_plies - 2}] (n_plies={n_plies}), "
+                        f"got {spec.ply_interface}"
+                    )
+                if not math.isfinite(spec.phase_offset):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].phase_offset must "
+                        f"be finite, got {spec.phase_offset}"
+                    )
+
 
 # ======================================================================
 # Results
@@ -885,6 +982,17 @@ class WrinkleAnalysis:
         cfg = self.config
         if analytical_only is None:
             analytical_only = cfg.analytical_only
+
+        # Multi-wrinkle FE solve is not yet supported — the mesh
+        # generator currently assumes one or two wrinkle interfaces.
+        # Reject early so callers get a clear signal rather than a
+        # mid-pipeline failure.
+        if cfg.wrinkles is not None and not analytical_only:
+            raise NotImplementedError(
+                "Multi-wrinkle FE solve not yet implemented; "
+                "pass analytical_only=True."
+            )
+
         results = AnalysisResults(config=cfg)
 
         # Phase weights (sum to 1.0 on the full FE path).  The FE solve
@@ -910,6 +1018,49 @@ class WrinkleAnalysis:
 
         # 2. Create wrinkle configuration (centered in specimen)
         wrinkle_center = cfg.domain_length / 2.0
+
+        # Multi-wrinkle override: build a WrinkleConfiguration directly
+        # from the user-supplied WrinkleSpec list.  Each spec carries its
+        # own geometry (A, lambda, w) and is placed at its own ply
+        # interface with its own phase offset.  Bypasses the single/dual
+        # name dispatch entirely.
+        if cfg.wrinkles is not None:
+            placements = []
+            for spec in cfg.wrinkles:
+                spec_profile = GaussianSinusoidal(
+                    amplitude=spec.amplitude,
+                    wavelength=spec.wavelength,
+                    width=spec.width,
+                    center=wrinkle_center,
+                )
+                placements.append(
+                    WrinklePlacement(
+                        profile=spec_profile,
+                        ply_interface=spec.ply_interface,
+                        phase_offset=spec.phase_offset,
+                    )
+                )
+            is_graded = cfg.morphology.lower().strip() == "graded"
+            wrinkle_config = WrinkleConfiguration(
+                placements,
+                decay_mode="graded" if is_graded else "default",
+                decay_floor=cfg.decay_floor if is_graded else 0.0,
+                amplitude_profile=cfg.amplitude_profile,
+                amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
+                amplitude_profile_axis=cfg.amplitude_profile_axis,
+            )
+            results.wrinkle_config = wrinkle_config
+
+            _report("Computing analytical predictions", 0.05)
+
+            # 3. Analytical predictions (multi-wrinkle path)
+            self._compute_analytical(results, wrinkle_config)
+
+            # FE solve is unsupported for the multi-wrinkle path
+            # (guarded above); always return analytical-only here.
+            _report("Analytical predictions complete", 1.0)
+            return results
+
         profile = GaussianSinusoidal(
             amplitude=cfg.amplitude,
             wavelength=cfg.wavelength,
@@ -1134,7 +1285,22 @@ class WrinkleAnalysis:
         # Unattenuated sinusoidal angle: theta = arctan(2*pi*A/lambda)
         # This is the correct angle for D/T-based knockdown comparison,
         # since D/T uses the full amplitude A without Gaussian attenuation.
-        if cfg.wavelength > 1e-12:
+        if cfg.wrinkles is not None:
+            # Multi-wrinkle analytical model: peak-angle over all wrinkles (initial implementation).
+            # Each wrinkle gets its own theta_max,i = arctan(2*pi*A_i/lambda_i)
+            # and we take the maximum, then scale by the aggregate morphology
+            # factor. This is intentionally coarse; calibration against the
+            # Li et al. (2025) Dataset F multi-wrinkle specimens is a
+            # follow-up activity (D-AB-2, D-A-2, D-M-2, T-M-2).
+            theta_max = 0.0
+            for spec in cfg.wrinkles:
+                if spec.wavelength > 1e-12:
+                    theta_i = float(
+                        np.arctan(2.0 * np.pi * spec.amplitude / spec.wavelength)
+                    )
+                    if theta_i > theta_max:
+                        theta_max = theta_i
+        elif cfg.wavelength > 1e-12:
             theta_max = float(np.arctan(2.0 * np.pi * cfg.amplitude / cfg.wavelength))
         else:
             theta_max = 0.0
@@ -1171,7 +1337,14 @@ class WrinkleAnalysis:
         # is governed by the peak-angle cross-section.
         #
         # KD_lam = (1/N) sum_p [ (1/L_s) int 1/(1 + theta(x)*Phi(z_p)/gY) dx ]
-        is_graded = cfg.morphology.lower().strip() == "graded"
+        # Force the non-graded peak-angle path when a multi-wrinkle
+        # override is active: the graded profile-proportional helper
+        # below uses cfg.amplitude / cfg.wavelength / cfg.width directly
+        # and would silently ignore the per-spec geometry.
+        is_graded = (
+            cfg.morphology.lower().strip() == "graded"
+            and cfg.wrinkles is None
+        )
         n_plies = len(angles)
 
         if is_graded and n_0 > 0 and n_plies > 1:
