@@ -142,6 +142,7 @@ def _profile_proportional_kd(
     *,
     morphology_factor: float = 1.0,
     through_thickness_decay: bool = True,
+    z_position_fraction: float = 0.5,
 ) -> float:
     """Budiansky-Fleck knockdown averaged over the wrinkle profile.
 
@@ -158,7 +159,8 @@ def _profile_proportional_kd(
     with:
         |dz_w/dx|  = slope of the GaussianSinusoidal wrinkle profile
         M_f        = morphology factor (accounts for dual-wrinkle interaction)
-        Phi(z_p)   = exp(-(z_p - T/2)^2 / A^2)   (through-thickness decay)
+        Phi(z_p)   = exp(-(z_p - z_c)^2 / A^2)   (through-thickness decay)
+        z_c        = z_position_fraction * T (laminate thickness)
 
     When *through_thickness_decay* is False, Phi(z_p) = 1 for all plies
     (all plies see the same longitudinal profile).  This is appropriate
@@ -189,8 +191,15 @@ def _profile_proportional_kd(
         stack = 1.0, graded = 1.0).  Default 1.0.
     through_thickness_decay : bool
         If True (default), apply Gaussian through-thickness decay centred
-        at the midplane with scale = amplitude.  If False, all plies see
-        the full wrinkle angle profile (Phi = 1).
+        at ``z_position_fraction * T`` with scale = amplitude.  If False,
+        all plies see the full wrinkle angle profile (Phi = 1).
+    z_position_fraction : float
+        Fraction of the laminate thickness at which the wrinkle through-
+        thickness decay is centred.  ``0.5`` (default) centres the decay
+        at the midplane, reproducing the legacy behaviour; ``0.0`` and
+        ``1.0`` place the decay centre at the bottom and top surfaces,
+        respectively.  Only consulted when ``through_thickness_decay`` is
+        True.
 
     Returns
     -------
@@ -198,7 +207,7 @@ def _profile_proportional_kd(
         Profile-averaged BF knockdown factor (0, 1].
     """
     T = n_plies * ply_thickness
-    z_mid = T / 2.0
+    z_center = z_position_fraction * T
     L_s = domain_length
 
     # Longitudinal profile: compute |dz/dx| at each x-point
@@ -221,7 +230,7 @@ def _profile_proportional_kd(
     for p in range(n_plies):
         z_p = (p + 0.5) * ply_thickness
         if through_thickness_decay:
-            phi_p = np.exp(-((z_p - z_mid) ** 2) / (amplitude ** 2))
+            phi_p = np.exp(-((z_p - z_center) ** 2) / (amplitude ** 2))
         else:
             phi_p = 1.0
         theta_xz = theta_x * phi_p  # local angle at (x, z_p)
@@ -332,6 +341,19 @@ class AnalysisConfig:
         at the surfaces (pure graded); ``1.0`` means no decay
         (equivalent to ``uniform``).  Values outside ``[0, 1]`` are
         rejected by ``__post_init__``.
+    wrinkle_z_position : float
+        Through-thickness position of the (single-wrinkle) decay centre,
+        expressed as a fraction of the laminate thickness *T*.  ``0.0``
+        places the wrinkle at the bottom surface, ``0.5`` (default) at
+        the midplane (legacy behaviour), and ``1.0`` at the top surface.
+        Used by the graded morphology path to shift the Gaussian through-
+        thickness decay centre off the midplane and to bias the linear
+        per-ply tension grading; mirrors the Above / Middle / Below
+        wrinkle locations of Li et al. (2025) Dataset F.  Ignored for the
+        ``stack``, ``convex``, ``concave`` and ``uniform`` morphologies,
+        whose through-thickness behaviour is set by the morphology itself
+        or by the ``interface_1`` / ``interface_2`` interface indices.
+        Must be a finite float in ``[0.0, 1.0]``.
     amplitude_profile : {"constant", "gaussian", "linear"}
         Spatially varying in-plane amplitude modulation applied on top
         of the wrinkle's own longitudinal envelope (see
@@ -405,6 +427,11 @@ class AnalysisConfig:
     # analysed/swept. Ignored for single-wrinkle modes (uniform/graded).
     phase: Optional[float] = None
     decay_floor: float = 0.0  # graded mode: min amplitude fraction at surfaces (0–1)
+    # Single-wrinkle through-thickness position as a fraction of the laminate
+    # thickness (0 = bottom surface, 0.5 = midplane, 1 = top surface). Only
+    # consulted by the graded morphology path; ignored for stack/convex/
+    # concave/uniform.
+    wrinkle_z_position: float = 0.5
 
     # Spatially varying in-plane amplitude profile (#178 follow-up). Defaults
     # mirror WrinkleConfiguration so the legacy "constant" behaviour is
@@ -548,6 +575,22 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.decay_floor must be in [0, 1], "
                 f"got {self.decay_floor}"
+            )
+
+        # Single-wrinkle through-thickness position as a fraction of T.
+        # Must be a finite float in [0, 1]; NaN and infinities are rejected
+        # so they cannot silently shift the decay centre off the laminate.
+        try:
+            wz_value = float(self.wrinkle_z_position)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"AnalysisConfig.wrinkle_z_position must be a finite float "
+                f"in [0, 1], got {self.wrinkle_z_position!r}"
+            )
+        if not math.isfinite(wz_value) or not (0.0 <= wz_value <= 1.0):
+            raise ValueError(
+                f"AnalysisConfig.wrinkle_z_position must be a finite float "
+                f"in [0, 1], got {self.wrinkle_z_position!r}"
             )
 
         # --- Amplitude profile (spatially varying A modulation) -------
@@ -1123,7 +1166,11 @@ class WrinkleAnalysis:
         n_plies = len(angles)
 
         if is_graded and n_0 > 0 and n_plies > 1:
-            # Profile-proportional compression knockdown (graded/embedded)
+            # Profile-proportional compression knockdown (graded/embedded).
+            # ``wrinkle_z_position`` shifts the through-thickness decay
+            # centre off the midplane to model wrinkles closer to the
+            # surface (Li et al. 2025 Dataset F: Above/Below positions).
+            z_pos = float(cfg.wrinkle_z_position)
             kd_profile = _profile_proportional_kd(
                 amplitude=cfg.amplitude,
                 wavelength=cfg.wavelength,
@@ -1135,19 +1182,28 @@ class WrinkleAnalysis:
                 theta_max=theta_max,
                 morphology_factor=1.0,
                 through_thickness_decay=True,
+                z_position_fraction=z_pos,
             )
             kd_compression = f_0 * kd_profile + (1.0 - f_0)
 
             if cfg.loading == "tension":
                 # Average tension knockdown over 0-deg plies at local angles
                 # (profile-proportional, using linear grading as fallback
-                # for the three-mechanism model)
-                p_mid = (n_plies - 1) / 2.0
+                # for the three-mechanism model).  The grading centre
+                # ``p_mid`` is shifted by ``wrinkle_z_position`` so the
+                # per-ply taper peaks at the user-set through-thickness
+                # position rather than the midplane (legacy: midplane).
+                p_mid = z_pos * (n_plies - 1)
                 zero_positions = [i for i, a in enumerate(angles) if abs(a) < 5]
                 decay_floor = cfg.decay_floor
+                # Legacy normaliser ((n_plies - 1) / 2) for backwards-
+                # compatible behaviour at z_pos = 0.5; the max() guards
+                # the off-midplane case so we don't divide by a smaller
+                # number when ``p_mid`` is closer to a surface.
+                p_norm = max((n_plies - 1) / 2.0, 1e-12)
                 kd_0_sum = 0.0
                 for p in zero_positions:
-                    raw = max(0.0, 1.0 - abs(p - p_mid) / p_mid)
+                    raw = max(0.0, 1.0 - abs(p - p_mid) / p_norm)
                     B_p = decay_floor + (1.0 - decay_floor) * raw
                     theta_p = theta_max * B_p
                     kd_p, _ = self._tension_knockdown_analytical(
