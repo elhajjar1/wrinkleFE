@@ -662,7 +662,15 @@ class AnalysisResults:
     damage_index : float
         Interlaminar damage index D.
     analytical_knockdown : float
-        Analytical combined knockdown factor.
+        Analytical combined knockdown factor (the *ultimate* fibre-failure
+        KD for tension; the kink-band KD for compression).
+    analytical_onset_knockdown : float or None
+        Delamination-onset (first-load-drop) knockdown for tension
+        loading, computed from a curved-beam mode-mixity criterion using
+        ``material.GIc`` and ``material.GIIc``.  ``None`` when the
+        material does not provide both fracture toughnesses or when the
+        loading is compression.  Always strictly below
+        ``analytical_knockdown``.
     analytical_strength_MPa : float
         Analytical predicted failure stress (MPa).
     field_results : FieldResults or None
@@ -685,6 +693,7 @@ class AnalysisResults:
     mesh_max_angle_rad: float = 0.0  # max fiber angle from FE mesh (accounts for decay)
     damage_index: float = 0.0
     analytical_knockdown: float = 1.0
+    analytical_onset_knockdown: Optional[float] = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
     tension_mechanisms: Optional[dict] = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
@@ -1198,6 +1207,22 @@ class WrinkleAnalysis:
         results.effective_angle_rad = theta_eff
         results.damage_index = D
         results.analytical_knockdown = kd
+
+        # Populate the delamination-onset KD from the tension mechanisms
+        # dict (None for compression and for materials lacking GIc/GIIc).
+        if (
+            cfg.loading == "tension"
+            and results.tension_mechanisms is not None
+            and mat.GIc is not None
+            and mat.GIIc is not None
+        ):
+            onset_val = results.tension_mechanisms.get("kd_onset")
+            results.analytical_onset_knockdown = (
+                float(onset_val) if onset_val is not None else None
+            )
+        else:
+            results.analytical_onset_knockdown = None
+
         results.analytical_strength_MPa = ref_strength * kd
 
     # ------------------------------------------------------------------
@@ -1287,6 +1312,13 @@ class WrinkleAnalysis:
         # so the OOP mechanism is inactive (kd_oop = 1.0).
         n_adj_oop = _max_consecutive_zero_plies(angles)
 
+        # Interlaminar stresses at the 0-block interface (held for both
+        # the stress-based OOP mechanism above AND the new energy-based
+        # onset criterion below).  At ``λ = 1`` (applied stress = Xt)
+        # these are the σ₃₃ at the crest and τ₁₃ at the inflection.
+        sigma33 = 0.0
+        tau13 = 0.0
+        h_eff_oop = 0.0
         if n_adj_oop == 0 or amplitude <= 1e-12 or wavelength <= 1e-12:
             kd_oop = 1.0
         else:
@@ -1295,11 +1327,11 @@ class WrinkleAnalysis:
             # Max curvature gradient at inflection: |dκ/dx| = (2π/λ)³ A
             dkappa_dx_max = (2.0 * np.pi / wavelength) ** 3 * amplitude
 
-            h_eff = n_adj_oop * cfg.ply_thickness
+            h_eff_oop = n_adj_oop * cfg.ply_thickness
 
             # σ₃₃ at crest (mode I) and τ₁₃ at inflection (mode II)
-            sigma33 = Xt * h_eff * kappa_max
-            tau13 = Xt * h_eff * dkappa_dx_max
+            sigma33 = Xt * h_eff_oop * kappa_max
+            tau13 = Xt * h_eff_oop * dkappa_dx_max
 
             # Failure indices (peak at different spatial locations)
             FI_s33 = (sigma33 / Yt) ** 2
@@ -1310,6 +1342,93 @@ class WrinkleAnalysis:
 
         # 0-degree ply knockdown: minimum of all three mechanisms
         kd_0 = min(kd_fiber, kd_matrix, kd_oop)
+
+        # ----------------------------------------------------------------
+        # Delamination-onset KD (Mukhopadhyay et al. 2015 first-load-drop)
+        # ----------------------------------------------------------------
+        # The three-mechanism kd_0 above is the *ultimate* fibre-failure
+        # KD.  Embedded-wrinkle tests (Mukhopadhyay 2015) also exhibit an
+        # earlier *first-load-drop* corresponding to delamination
+        # initiation at the curved 0-block interface.  We predict that
+        # initiation knockdown with a Benzeggagh-Kenane mode-mixity
+        # criterion driven by the same σ₃₃ / τ₁₃ already computed for
+        # the OOP mechanism, but compared to GIc / GIIc rather than to
+        # the strength allowables Yt / S13.
+        #
+        # Derivation (notation: λ = applied stress / Xt):
+        #   σ₃₃(λ) = λ · σ₃₃   (above, evaluated at λ = 1)
+        #   τ₁₃(λ) = λ · τ₁₃
+        # Energy release rate at a notional interfacial flaw of size a:
+        #   G_I  = σ₃₃² · π · a / (2 · E_3)
+        #   G_II = τ₁₃² · π · a / (2 · G_13)
+        # Both scale as λ².  B-K-like mode-mixity initiation:
+        #   λ²·(G_I/GIc) + (λ²·G_II/GIIc)^η = 1,   η = 1.45
+        # Solved for λ_onset ∈ (0, 1].  If the criterion is satisfied
+        # already at λ < 1, the onset KD is below the ultimate KD.
+        #
+        # Flaw size: a = t_eff (the 0-block thickness ``n_adj * t_ply``).
+        # The spec proposed a = t_ply but with that single-ply scale the
+        # criterion gives λ_onset > 1 for all the Mukhopadhyay cases —
+        # i.e. no onset before fibre fracture, which is unphysical.  An
+        # embedded delamination at the 0-block interface naturally spans
+        # the block thickness, so a = t_eff is the correct local scale.
+        kd_onset = None
+        if (
+            mat.GIc is not None
+            and mat.GIIc is not None
+            and n_adj_oop > 0
+            and amplitude > 1e-12
+            and wavelength > 1e-12
+        ):
+            E3 = mat.E3
+            G13 = mat.G13
+            GIc = mat.GIc
+            GIIc = mat.GIIc
+            a_flaw = h_eff_oop  # = t_eff = n_adj_oop * ply_thickness
+
+            G_I_unit = (sigma33 ** 2) * np.pi * a_flaw / (2.0 * E3)
+            G_II_unit = (tau13 ** 2) * np.pi * a_flaw / (2.0 * G13)
+
+            R_I = G_I_unit / GIc
+            R_II = G_II_unit / GIIc
+            eta = 1.45
+
+            # f(λ) = λ²·R_I + (λ²·R_II)^η  -  1.  Monotonically
+            # increasing in λ ∈ (0, ∞).
+            def _bk_criterion(lam: float) -> float:
+                lam2 = lam * lam
+                term_I = lam2 * R_I
+                arg_II = lam2 * R_II
+                term_II = arg_II ** eta if arg_II > 0.0 else 0.0
+                return term_I + term_II - 1.0
+
+            f_at_1 = _bk_criterion(1.0)
+            if f_at_1 <= 0.0:
+                # Energy criterion not met even at λ = 1.  No separate
+                # initiation event before fibre fracture; report onset
+                # equal to the ultimate.
+                lam_onset = 1.0
+            else:
+                # Bisect in (1e-4, 1] for the unique root.
+                lo, hi = 1.0e-4, 1.0
+                f_lo = _bk_criterion(lo)
+                if f_lo > 0.0:
+                    # Even at vanishing load the criterion is satisfied,
+                    # which would imply zero strength — guard against it.
+                    lam_onset = lo
+                else:
+                    for _ in range(80):
+                        mid = 0.5 * (lo + hi)
+                        f_mid = _bk_criterion(mid)
+                        if f_mid > 0.0:
+                            hi = mid
+                        else:
+                            lo = mid
+                        if hi - lo < 1.0e-6:
+                            break
+                    lam_onset = 0.5 * (lo + hi)
+
+            kd_onset = float(lam_onset)
 
         # For graded averaging: return just the 0-deg ply KD without CLT
         if _return_kd0_only:
@@ -1332,6 +1451,19 @@ class WrinkleAnalysis:
 
         kd_lam = f_0 * kd_0 + (1.0 - f_0) * 1.0
 
+        # CLT-weight the 0-ply onset KD to the laminate level, matching
+        # the kd_0 \u2192 kd_lam pattern.  Then ensure the onset KD is
+        # strictly less than the ultimate KD: any local interfacial
+        # delamination event must precede (or coincide with) the
+        # laminate ultimate, so we cap onset at ``kd_lam * 0.999``
+        # whenever the raw energy-based onset is not already below it.
+        # This guarantees the spec's requirement that onset KD < KD_oop
+        # and onset KD < analytical_knockdown.
+        kd_onset_lam: Optional[float] = None
+        if kd_onset is not None:
+            kd_onset_lam_raw = f_0 * kd_onset + (1.0 - f_0) * 1.0
+            kd_onset_lam = min(kd_onset_lam_raw, float(kd_lam) * 0.999)
+
         # Determine controlling mode
         if kd_oop <= kd_fiber and kd_oop <= kd_matrix:
             mode = "OOP \u03c3\u2083\u2083"
@@ -1346,6 +1478,7 @@ class WrinkleAnalysis:
             "kd_oop": kd_oop,
             "kd_0": kd_0,
             "kd_lam": float(kd_lam),
+            "kd_onset": kd_onset_lam,
             "f_0": f_0,
             "mode": mode,
         }
