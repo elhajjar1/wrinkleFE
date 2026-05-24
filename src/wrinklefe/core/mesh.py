@@ -27,6 +27,7 @@ Elhajjar, R. (2025). Scientific Reports 15, 25977.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,111 @@ class MeshValidationError(ValueError):
     for backwards compatibility with callers that previously relied on
     ``WrinkleMesh.generate()`` only ever raising ``ValueError``.
     """
+
+
+# Through-thickness wrinkle-decay ratio (``nz_per_ply * amplitude /
+# ply_thickness``) that the inversion heuristic flags as borderline /
+# certain-fail.  Calibrated empirically against ``MeshData.validate()``
+# over an (nx, nz_per_ply) sweep at A=0.37 mm / λ=16 mm / ply_t=0.183
+# mm: nz=1,2 always pass (ratio ≤ 4.0); nz=4 always inverts (ratio ≥
+# 8.1), regardless of nx ∈ [12, 60].  Used by both the Streamlit
+# sidebar pre-run warning and the post-failure error augmentation.
+MESH_DECAY_WARN_RATIO: float = 2.5
+MESH_DECAY_INVERT_RATIO: float = 5.0
+
+
+@dataclass(frozen=True)
+class MeshShearDiagnostics:
+    """Mesh-feasibility diagnostic for a hex8 mesh under a sinusoidal wrinkle.
+
+    See :func:`mesh_shear_diagnostics` for the heuristic.
+    """
+
+    decay_ratio: float
+    amplitude: float
+    wavelength: float
+    ply_thickness: float
+    nx: int
+    nz_per_ply: int
+    Lx: float
+    nz_per_ply_safe: int
+    amplitude_safe: float
+
+    @property
+    def is_safe(self) -> bool:
+        return self.decay_ratio < MESH_DECAY_WARN_RATIO
+
+    @property
+    def will_invert(self) -> bool:
+        """Likely to produce inverted elements (det(J) <= 0) on validate()."""
+        return self.decay_ratio >= MESH_DECAY_INVERT_RATIO
+
+    def message(self) -> str:
+        """Human-readable summary with one-knob-at-a-time remediation suggestions."""
+        suggestions = (
+            f"  • nz_per_ply ≤ {self.nz_per_ply_safe} (currently {self.nz_per_ply})\n"
+            f"  • amplitude ≤ {self.amplitude_safe:.3g} mm "
+            f"(currently {self.amplitude:.3g} mm)"
+        )
+        return (
+            f"Applied wrinkle: A={self.amplitude:.3g} mm, "
+            f"λ={self.wavelength:.3g} mm; mesh: nx={self.nx}, "
+            f"nz_per_ply={self.nz_per_ply}, "
+            f"ply_thickness={self.ply_thickness:.3g} mm, Lx={self.Lx:.3g} mm. "
+            f"Through-thickness decay ratio (nz·A/ply_t) ≈ "
+            f"{self.decay_ratio:.2f} (target < {MESH_DECAY_WARN_RATIO}). "
+            f"Adjust either:\n{suggestions}"
+        )
+
+
+def mesh_shear_diagnostics(
+    *,
+    amplitude: float,
+    wavelength: float,
+    ply_thickness: float,
+    nx: int,
+    nz_per_ply: int,
+    Lx: float,
+) -> MeshShearDiagnostics:
+    """Decay-ratio diagnostic plus safe single-knob targets.
+
+    The dominant inversion driver for sinusoidal wrinkles is the
+    through-thickness decay gradient relative to the per-layer extent.
+    Empirically the dimensionless group ``nz_per_ply * amplitude /
+    ply_thickness`` predicts the validate() inversion outcome with
+    100 % accuracy on the calibration sweep (see
+    :data:`MESH_DECAY_INVERT_RATIO`); ``nx``, ``wavelength``, and
+    ``Lx`` recorded for the diagnostic message but they don't change
+    the predicate.
+
+    The returned dataclass carries the largest single-knob values
+    (``nz_per_ply`` and ``amplitude``) that bring the ratio under
+    :data:`MESH_DECAY_WARN_RATIO`.
+    """
+    nx_i = max(int(nx), 1)
+    nz_i = max(int(nz_per_ply), 1)
+    if ply_thickness > 0 and amplitude > 0:
+        decay_ratio = nz_i * amplitude / ply_thickness
+        nz_safe = max(
+            1, int(math.floor(MESH_DECAY_WARN_RATIO * ply_thickness / amplitude))
+        )
+        amp_safe = MESH_DECAY_WARN_RATIO * ply_thickness / nz_i
+    else:
+        decay_ratio = 0.0
+        nz_safe = nz_i
+        amp_safe = amplitude
+
+    return MeshShearDiagnostics(
+        decay_ratio=float(decay_ratio),
+        amplitude=float(amplitude),
+        wavelength=float(wavelength),
+        ply_thickness=float(ply_thickness),
+        nx=nx_i,
+        nz_per_ply=nz_i,
+        Lx=float(Lx),
+        nz_per_ply_safe=int(nz_safe),
+        amplitude_safe=float(amp_safe),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -620,12 +726,57 @@ class WrinkleMesh:
             laminate=self.laminate,
         )
 
-        # Run basic quality checks
-        mesh_warnings = mesh_data.validate()
+        # Run basic quality checks.  When the wrinkle field would shear
+        # hex8 elements into themselves (det(J) <= 0 at the centroid),
+        # ``validate()`` raises ``MeshValidationError``.  The raw message
+        # tells the user *what* went wrong but not *which knob to turn* —
+        # so for the wrinkle-driven path we re-raise with the actual
+        # geometry parameters and a small remediation table.  Issue #244.
+        try:
+            mesh_warnings = mesh_data.validate()
+        except MeshValidationError as err:
+            raise self._augment_inversion_error(err) from err
         for w in mesh_warnings:
             logger.warning(w)
 
         return mesh_data
+
+    def _augment_inversion_error(
+        self, err: "MeshValidationError"
+    ) -> "MeshValidationError":
+        """Attach wrinkle parameters and tuning suggestions to an inversion error.
+
+        Delegates to :func:`mesh_shear_diagnostics` so the post-failure
+        message and any proactive pre-run UI warnings stay in sync.
+        """
+        if self.wrinkle_config is None or not getattr(
+            self.wrinkle_config, "wrinkles", ()
+        ):
+            return err  # Flat mesh — nothing wrinkle-specific to add.
+
+        w0 = self.wrinkle_config.wrinkles[0]
+        profile = w0.profile
+        inner = getattr(profile, "profile", profile)  # unwrap WrinkleSurface3D
+        amplitude = float(getattr(inner, "amplitude", 0.0))
+        wavelength = float(getattr(inner, "wavelength", 0.0))
+        if amplitude <= 0.0 or wavelength <= 0.0:
+            return err
+
+        diag = mesh_shear_diagnostics(
+            amplitude=amplitude,
+            wavelength=wavelength,
+            ply_thickness=float(self.laminate.plies[0].thickness),
+            nx=int(self.nx),
+            nz_per_ply=int(self.nz_per_ply),
+            Lx=float(self.Lx),
+        )
+
+        new_msg = f"{err}\n{diag.message()}"
+        new_err = MeshValidationError(new_msg)
+        for attr in ("inverted_element_indices", "detJ"):
+            if hasattr(err, attr):
+                setattr(new_err, attr, getattr(err, attr))
+        return new_err
 
     # =======================================================================
     # Grid and connectivity helpers

@@ -38,6 +38,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
+from wrinklefe.core.mesh import mesh_shear_diagnostics
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 from wrinklefe.io.export import (
     build_analysis_summary,
@@ -752,6 +753,43 @@ with st.sidebar:
                     "ply. Increase to capture interlaminar stress gradients."
                 ),
             )
+            # Pre-run feasibility check: the wrinkle's in-plane slope
+            # shears stacked hex8 elements in z; if the shear exceeds
+            # the z-layer height the FE mesh inverts and the solve
+            # aborts after 5–30 s of setup. Surface a warning here so
+            # the user can adjust before clicking Run analysis. See
+            # issue #244 and core/mesh.mesh_shear_diagnostics.
+            mesh_diag = (
+                mesh_shear_diagnostics(
+                    amplitude=float(amplitude),
+                    wavelength=float(wavelength),
+                    ply_thickness=float(ply_thickness),
+                    nx=int(nx),
+                    nz_per_ply=int(nz_per_ply),
+                    Lx=3.0 * float(wavelength),
+                )
+                if not analytical_only
+                else None
+            )
+            if mesh_diag is not None:
+                if mesh_diag.will_invert:
+                    st.error(
+                        f"⚠ FE mesh will invert at this nz_per_ply for the "
+                        f"current amplitude (nz·A/ply_t ≈ "
+                        f"{mesh_diag.decay_ratio:.1f}, must be < 5). "
+                        f"Reduce to **nz_per_ply ≤ "
+                        f"{mesh_diag.nz_per_ply_safe}** or set **amplitude ≤ "
+                        f"{mesh_diag.amplitude_safe:.3g} mm** before running."
+                    )
+                elif not mesh_diag.is_safe:
+                    st.warning(
+                        f"Through-thickness decay ratio is high "
+                        f"(nz·A/ply_t ≈ {mesh_diag.decay_ratio:.2f}; "
+                        f"target < 2.5). Solve usually still succeeds, but "
+                        f"nz_per_ply ≤ {mesh_diag.nz_per_ply_safe} or "
+                        f"amplitude ≤ {mesh_diag.amplitude_safe:.3g} mm "
+                        f"adds margin."
+                    )
             if analytical_only:
                 st.caption(
                     "Mesh inputs are inactive — the closed-form analytical "
@@ -770,12 +808,24 @@ with st.sidebar:
         nx = DEFAULT_NX
         ny = DEFAULT_NY
         nz_per_ply = DEFAULT_NZ_PER_PLY
+        mesh_diag = None
         st.caption(
             "Quick analytical estimate. Switch on **Expert mode** above "
             "for the full FE solve, stress fields, and per-ply failure indices."
         )
 
-    run_clicked = st.button("Run analysis", type="primary", width="stretch")
+    run_disabled = bool(mesh_diag is not None and mesh_diag.will_invert)
+    run_clicked = st.button(
+        "Run analysis",
+        type="primary",
+        width="stretch",
+        disabled=run_disabled,
+        help=(
+            "Fix the mesh-inversion warning above before running."
+            if run_disabled
+            else None
+        ),
+    )
 
     st.divider()
     reset_clicked = st.button(
