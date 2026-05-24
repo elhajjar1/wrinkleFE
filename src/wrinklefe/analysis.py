@@ -323,6 +323,107 @@ def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
 
 
 # ======================================================================
+# Public helper: amplitude → wavelength estimation
+# ======================================================================
+
+def estimate_wavelength_from_amplitude(
+    amplitude: float,
+    *,
+    K_lambda: float = 19.9,
+    lambda_min: float = 8.2,
+    lambda_ref: float = 0.366,
+    scaling: str = "sqrt",
+) -> float:
+    """Estimate wrinkle wavelength from amplitude when lambda is not measured.
+
+    Some validation datasets report only the wrinkle amplitude ``A`` and
+    require an external rule to recover the wavelength ``lambda`` needed
+    by the Budiansky-Fleck peak-fibre-angle model
+    ``theta_max = arctan(2*pi*A/lambda)``.  Two scaling rules are
+    supported:
+
+    * ``"linear"`` (legacy):
+        ``lambda = K_lambda * A``.  Reproduces the original convention
+        documented in §1.4 of ``VALIDATION_DATA.md`` and used by older
+        validation harnesses.  Because ``theta_max`` reduces to
+        ``arctan(2*pi/K_lambda)``, the predicted peak fibre angle is
+        *constant* in ``A`` under this rule.  That is unphysical for
+        severe wrinkles, where larger amplitudes produce steeper local
+        fibre rotations and stronger compressive knockdowns.
+
+    * ``"sqrt"`` (default, recommended):
+        ``lambda = K_lambda * sqrt(A * lambda_ref)``.  At the reference
+        amplitude ``A = lambda_ref`` the sqrt rule matches the legacy
+        linear rule exactly (``lambda = K_lambda * lambda_ref``), so
+        the calibration of mild wrinkles is preserved.  For
+        ``A > lambda_ref`` the wavelength grows sub-linearly with
+        amplitude, so ``theta_max = arctan(2*pi*A/lambda)`` increases
+        monotonically with ``A`` and the model captures the experimental
+        knockdown collapse seen at high D/T in the Elhajjar (2025)
+        compression dataset.
+
+    Both rules are clamped from below at ``lambda_min`` so that tiny
+    amplitudes do not produce vanishingly small wavelengths.
+
+    Parameters
+    ----------
+    amplitude : float
+        Wrinkle amplitude *A* [mm].  Must be non-negative.
+    K_lambda : float, optional
+        Slope coefficient. Defaults to ``19.9`` (Elhajjar 2025
+        T700/2510 calibration).
+    lambda_min : float, optional
+        Lower clamp on the returned wavelength [mm].  Defaults to
+        ``8.2`` mm (Elhajjar 2025).
+    lambda_ref : float, optional
+        Reference amplitude [mm] at which the sqrt scaling is anchored
+        to the legacy linear rule.  Defaults to ``0.366`` mm (two ply
+        thicknesses in the Elhajjar T700/2510 layup).  Ignored when
+        ``scaling == "linear"``.
+    scaling : {"sqrt", "linear"}, optional
+        Scaling rule selector.  Defaults to ``"sqrt"``.
+
+    Returns
+    -------
+    float
+        Wavelength ``lambda`` in mm, lower-bounded by ``lambda_min``.
+
+    Raises
+    ------
+    ValueError
+        If ``scaling`` is not one of ``"sqrt"`` or ``"linear"``.
+
+    Examples
+    --------
+    Legacy linear rule (constant peak angle):
+
+    >>> estimate_wavelength_from_amplitude(0.5, scaling="linear")
+    9.95
+
+    Sub-linear sqrt rule (default):  at the reference amplitude the
+    raw rule matches the legacy linear rule exactly
+    (``K_lambda * lambda_ref = 19.9 * 0.366 = 7.2834``), which then
+    clamps to ``lambda_min = 8.2``:
+
+    >>> estimate_wavelength_from_amplitude(0.366)
+    8.2
+    """
+    if scaling not in ("sqrt", "linear"):
+        raise ValueError(
+            f"estimate_wavelength_from_amplitude: scaling must be "
+            f"'sqrt' or 'linear', got {scaling!r}"
+        )
+    if scaling == "linear":
+        lam = K_lambda * amplitude
+    else:  # "sqrt"
+        # lambda = K_lambda * sqrt(A * lambda_ref) -- matches linear at
+        # A = lambda_ref, grows sub-linearly for A > lambda_ref.  Guard
+        # against negative amplitude reaching the sqrt.
+        lam = K_lambda * math.sqrt(max(amplitude, 0.0) * lambda_ref)
+    return max(lam, lambda_min)
+
+
+# ======================================================================
 # Configuration
 # ======================================================================
 
