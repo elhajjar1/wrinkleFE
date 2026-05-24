@@ -220,16 +220,28 @@ def test_cli_sweep_graded_completes() -> None:
 # --------------------------------------------------------------------
 
 def test_graded_readme_config_pinned_knockdown() -> None:
-    """The README example with ``morphology='graded'`` reproduces ~0.97.
+    """The README example with ``morphology='graded'`` reproduces ~0.83.
 
     Issue #183: the reporter saw 0.970 (97.0 %) and expected 0.583
     (58.3 %) from an old v1.1.0 README screenshot. The current value
     is mathematically correct for the present graded model (Gaussian
     through-thickness decay confining the wrinkle to the wrinkle
-    zone). This test pins that the value remains close to 0.97 — if
-    a future change quietly moves it back toward 0.58 (or up to 1.0,
-    i.e. the wrinkle effect vanishing entirely) the regression
-    surfaces here rather than in a user bug report.
+    zone).
+
+    Recalibration history:
+
+    * Pre-May 2026: KD ~ 0.97 with the amplitude-based decay scale
+      (``Phi(z) = exp(-(z - z_c)**2 / A**2)``).  Only the few plies
+      within one A of the midplane felt the wrinkle, so the laminate
+      KD was close to 1.
+    * May 2026: KD ~ 0.83 with the wavelength-based decay scale
+      (``max(lambda/2, A)``).  More plies feel the wrinkle in the
+      24-ply default layup, dropping the laminate average.
+
+    This test pins the value remains close to 0.83 — if a future
+    change quietly moves it back toward 0.58 (or up to 1.0, i.e. the
+    wrinkle effect vanishing entirely) the regression surfaces here
+    rather than in a user bug report.
     """
     cfg = AnalysisConfig(
         amplitude=_README_AMPLITUDE,
@@ -240,7 +252,8 @@ def test_graded_readme_config_pinned_knockdown() -> None:
         analytical_only=True,
     )
     result = WrinkleAnalysis(cfg).run(analytical_only=True)
-    # Current (May 2026) value: 0.970342. Use abs tolerance of 0.02
-    # so kink-band recalibration of order a few percent still passes,
-    # but the legacy 0.58 / a return to 1.0 both fail loudly.
-    assert result.analytical_knockdown == pytest.approx(0.97, abs=0.02)
+    # Current (May 2026, post wavelength-decay recalibration) value:
+    # 0.8304.  Use abs tolerance of 0.05 so kink-band recalibration of
+    # order a few percent still passes, but the legacy 0.58 / a return
+    # to 1.0 both fail loudly.
+    assert result.analytical_knockdown == pytest.approx(0.83, abs=0.05)

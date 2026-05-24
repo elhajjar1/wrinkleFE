@@ -203,6 +203,8 @@ def _profile_proportional_kd(
     morphology_factor: float = 1.0,
     through_thickness_decay: bool = True,
     z_position_fraction: float = 0.5,
+    decay_scale: Optional[float] = None,
+    kink_band_quadratic_coeff: float = 0.0,
 ) -> float:
     """Budiansky-Fleck knockdown averaged over the wrinkle profile.
 
@@ -219,13 +221,39 @@ def _profile_proportional_kd(
     with:
         |dz_w/dx|  = slope of the GaussianSinusoidal wrinkle profile
         M_f        = morphology factor (accounts for dual-wrinkle interaction)
-        Phi(z_p)   = exp(-(z_p - z_c)^2 / A^2)   (through-thickness decay)
+        Phi(z_p)   = exp(-(z_p - z_c)^2 / (2 * sigma^2))  (through-thickness
+                     decay, standard Gaussian convention with sigma =
+                     ``decay_scale``).  This differs from the legacy form
+                     ``exp(-(z_p - T/2)^2 / A^2)`` (no factor of 2 — implicit
+                     ``sqrt(2)*A`` scale): the new form makes the decay
+                     scale an explicit standard deviation.
         z_c        = z_position_fraction * T (laminate thickness)
+
+    The decay scale defaults to ``max(wavelength / 2, amplitude)`` when
+    not provided.  The wrinkle's longitudinal extent (set by the
+    wavelength) is the physical scale over which a buried wrinkle
+    perturbs the through-thickness fibre orientation field: a short-
+    wavelength wrinkle decays through only a few plies; a long-wavelength
+    wrinkle reaches further.  The legacy ``A``-based scale almost always
+    falls inside this default for the calibrated datasets, but for thick
+    UD laminates with long wavelengths (e.g. Li 2024) the legacy form
+    confined the wrinkle effect to just the midplane plies, leaving
+    the laminate KD near 1 even at high amplitudes.
 
     When *through_thickness_decay* is False, Phi(z_p) = 1 for all plies
     (all plies see the same longitudinal profile).  This is appropriate
     for dual-wrinkle morphologies (stack/convex/concave) where the wrinkle
     extends through the full thickness.
+
+    The per-point knockdown uses the Argon-Fleck quadratic extension of
+    the Budiansky-Fleck closed form::
+
+        r = theta_eff / gamma_Y
+        KD = 1.0 / (1.0 + r + c_AF * r^2)
+
+    With ``c_AF = 0`` (default) the legacy linear form is recovered.
+    Non-zero ``c_AF`` improves the high-angle response (theta > ~20 deg)
+    where the linear form systematically over-predicts strength.
 
     Parameters
     ----------
@@ -251,8 +279,9 @@ def _profile_proportional_kd(
         stack = 1.0, graded = 1.0).  Default 1.0.
     through_thickness_decay : bool
         If True (default), apply Gaussian through-thickness decay centred
-        at ``z_position_fraction * T`` with scale = amplitude.  If False,
-        all plies see the full wrinkle angle profile (Phi = 1).
+        at ``z_position_fraction * T`` with scale ``decay_scale`` (see
+        below).  If False, all plies see the full wrinkle angle profile
+        (Phi = 1).
     z_position_fraction : float
         Fraction of the laminate thickness at which the wrinkle through-
         thickness decay is centred.  ``0.5`` (default) centres the decay
@@ -260,6 +289,13 @@ def _profile_proportional_kd(
         ``1.0`` place the decay centre at the bottom and top surfaces,
         respectively.  Only consulted when ``through_thickness_decay`` is
         True.
+    decay_scale : float or None
+        Through-thickness Gaussian standard deviation [mm].  When None
+        (default) the auto formula ``max(wavelength / 2, amplitude)`` is
+        used.  Must be strictly positive when provided.
+    kink_band_quadratic_coeff : float
+        Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless).
+        Default 0.0 (legacy linear BF).  Must be >= 0.
 
     Returns
     -------
@@ -269,6 +305,18 @@ def _profile_proportional_kd(
     T = n_plies * ply_thickness
     z_center = z_position_fraction * T
     L_s = domain_length
+
+    # Resolve the through-thickness decay scale.  The auto default uses
+    # the wrinkle's longitudinal extent (lambda / 2) so long-wavelength
+    # wrinkles reach further through the thickness; falls back to A so
+    # short-wavelength wrinkles do not collapse to an unphysically small
+    # decay scale.
+    if decay_scale is None:
+        sigma = max(wavelength / 2.0, amplitude)
+    else:
+        sigma = float(decay_scale)
+    sigma_sq2 = 2.0 * sigma * sigma
+    c_AF = float(kink_band_quadratic_coeff)
 
     # Longitudinal profile: compute |dz/dx| at each x-point
     x = np.linspace(-L_s / 2.0, L_s / 2.0, _N_PROFILE_PTS)
@@ -290,11 +338,12 @@ def _profile_proportional_kd(
     for p in range(n_plies):
         z_p = (p + 0.5) * ply_thickness
         if through_thickness_decay:
-            phi_p = np.exp(-((z_p - z_center) ** 2) / (amplitude ** 2))
+            phi_p = np.exp(-((z_p - z_center) ** 2) / sigma_sq2)
         else:
             phi_p = 1.0
         theta_xz = theta_x * phi_p  # local angle at (x, z_p)
-        kd_xz = 1.0 / (1.0 + theta_xz / gamma_Y)
+        r = theta_xz / gamma_Y
+        kd_xz = 1.0 / (1.0 + r + c_AF * r * r)
         kd_sum += np.mean(kd_xz)
 
     return kd_sum / n_plies
@@ -606,6 +655,18 @@ class AnalysisConfig:
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
     verbose : bool
         Print progress information.  Default ``False``.
+    through_thickness_decay_scale : float or None
+        Optional override (mm) for the through-thickness Gaussian
+        standard deviation used by the graded morphology's profile-
+        proportional KD path and the tension graded-averaging block.
+        ``None`` (default) triggers the auto formula
+        ``max(wavelength / 2, amplitude)``.  Must be > 0 when set.
+    kink_band_quadratic_coeff : float
+        Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless) in
+        the extended Budiansky-Fleck closed form
+        ``KD = 1 / (1 + r + c_AF * r**2)`` with
+        ``r = theta_eff / gamma_Y_eff``.  Default ``0.0`` recovers the
+        legacy linear BF response.  Must be >= 0.
     """
 
     # Wrinkle geometry
@@ -676,6 +737,24 @@ class AnalysisConfig:
 
     # Verbosity
     verbose: bool = False
+
+    # Through-thickness Gaussian decay scale [mm] used by the graded
+    # morphology's profile-proportional KD path.  ``None`` (default)
+    # triggers the auto formula ``max(wavelength / 2, amplitude)`` so the
+    # decay scale tracks the wrinkle's longitudinal extent rather than
+    # its (much smaller) amplitude.  Provide an explicit positive float
+    # to pin the decay scale (e.g. to reproduce the pre-PR amplitude-
+    # based behaviour for regression testing).  Must be > 0 when set.
+    through_thickness_decay_scale: Optional[float] = None
+
+    # Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless) for the
+    # extended Budiansky-Fleck closed form ``KD = 1/(1 + r + c_AF*r^2)``
+    # where ``r = theta_eff / gamma_Y_eff``.  Default 0.0 recovers the
+    # legacy linear BF response; positive values are required to match
+    # the high-angle response of thick UD wrinkled coupons (Li 2024 /
+    # Li 2025 high-amplitude cases) where the linear form systematically
+    # over-predicts strength.  Must be >= 0.
+    kink_band_quadratic_coeff: float = 0.0
 
     def __post_init__(self) -> None:
         if self.domain_length <= 0:
@@ -876,6 +955,35 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.solver must be one of "
                 f"{list(valid_solvers)}, got {self.solver!r}"
+            )
+
+        # --- Through-thickness decay scale ----------------------------
+        # Optional positive float (mm) overriding the auto formula
+        # ``max(wavelength / 2, amplitude)`` used by the graded
+        # morphology profile-proportional path.  Must be strictly
+        # positive and finite when provided.
+        if self.through_thickness_decay_scale is not None and not (
+            self.through_thickness_decay_scale > 0.0
+            and math.isfinite(self.through_thickness_decay_scale)
+        ):
+            raise ValueError(
+                f"AnalysisConfig.through_thickness_decay_scale must be a "
+                f"finite positive float when set, "
+                f"got {self.through_thickness_decay_scale}"
+            )
+
+        # --- Argon-Fleck quadratic coefficient ------------------------
+        # Dimensionless non-negative float (0.0 = legacy linear BF).
+        if (
+            not isinstance(self.kink_band_quadratic_coeff, (int, float))
+            or isinstance(self.kink_band_quadratic_coeff, bool)
+            or not math.isfinite(self.kink_band_quadratic_coeff)
+            or self.kink_band_quadratic_coeff < 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.kink_band_quadratic_coeff must be a "
+                f"finite float >= 0, "
+                f"got {self.kink_band_quadratic_coeff!r}"
             )
 
         # --- Multi-wrinkle override -----------------------------------
@@ -1508,6 +1616,18 @@ class WrinkleAnalysis:
         )
         n_plies = len(angles)
 
+        # Resolve through-thickness Gaussian decay scale (mm).  The user
+        # can override the auto formula via
+        # ``cfg.through_thickness_decay_scale``; default is
+        # ``max(wavelength / 2, amplitude)``.  Used for both the
+        # compression profile-proportional KD and the tension graded-
+        # averaging block.
+        if cfg.through_thickness_decay_scale is not None:
+            decay_scale_eff = float(cfg.through_thickness_decay_scale)
+        else:
+            decay_scale_eff = max(cfg.wavelength / 2.0, cfg.amplitude)
+        c_AF = float(cfg.kink_band_quadratic_coeff)
+
         if is_graded and n_0 > 0 and n_plies > 1:
             # Profile-proportional compression knockdown (graded/embedded).
             # ``wrinkle_z_position`` shifts the through-thickness decay
@@ -1526,24 +1646,32 @@ class WrinkleAnalysis:
                 morphology_factor=1.0,
                 through_thickness_decay=True,
                 z_position_fraction=z_pos,
+                decay_scale=decay_scale_eff,
+                kink_band_quadratic_coeff=c_AF,
             )
             kd_compression = f_0 * kd_profile + (1.0 - f_0)
 
             if cfg.loading == "tension":
                 # Average tension knockdown over 0-deg plies at local angles
-                # (profile-proportional, using linear grading as fallback
-                # for the three-mechanism model).  The grading centre
-                # ``p_mid`` is shifted by ``wrinkle_z_position`` so the
-                # per-ply taper peaks at the user-set through-thickness
-                # position rather than the midplane (legacy: midplane).
+                # (profile-proportional, using stretched linear grading
+                # on the new ``decay_scale_eff`` so the support tracks
+                # the wrinkle's longitudinal extent rather than the
+                # full half-thickness).  The grading centre ``p_mid`` is
+                # shifted by ``wrinkle_z_position`` so the per-ply taper
+                # peaks at the user-set through-thickness position
+                # rather than the midplane (legacy: midplane).
                 p_mid = z_pos * (n_plies - 1)
                 zero_positions = [i for i, a in enumerate(angles) if abs(a) < 5]
                 decay_floor = cfg.decay_floor
-                # Legacy normaliser ((n_plies - 1) / 2) for backwards-
-                # compatible behaviour at z_pos = 0.5; the max() guards
-                # the off-midplane case so we don't divide by a smaller
-                # number when ``p_mid`` is closer to a surface.
-                p_norm = max((n_plies - 1) / 2.0, 1e-12)
+                # Stretched linear support: width = decay_scale / t_ply
+                # plies.  Falls back to the legacy half-thickness norm if
+                # the decay scale would exceed it (keeps backwards-
+                # compatible behaviour for cases where the auto formula
+                # is at least the legacy support).
+                t_ply = cfg.ply_thickness
+                p_support_decay = decay_scale_eff / max(t_ply, 1e-12)
+                p_support_legacy = (n_plies - 1) / 2.0
+                p_norm = max(min(p_support_decay, p_support_legacy), 1e-12)
                 kd_0_sum = 0.0
                 for p in zero_positions:
                     raw = max(0.0, 1.0 - abs(p - p_mid) / p_norm)
@@ -1568,8 +1696,10 @@ class WrinkleAnalysis:
                 ref_strength = cfg.material.Xc
                 results.tension_mechanisms = None
         else:
-            # Non-graded: peak-angle BF at the critical cross-section
-            kd_bf = 1.0 / (1.0 + theta_eff / gamma_Y_eff)
+            # Non-graded: peak-angle BF at the critical cross-section,
+            # with the Argon-Fleck quadratic extension.
+            r_bf = theta_eff / gamma_Y_eff
+            kd_bf = 1.0 / (1.0 + r_bf + c_AF * r_bf * r_bf)
             kd_compression = f_0 * kd_bf + (1.0 - f_0)
 
             if cfg.loading == "tension":
