@@ -201,6 +201,83 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # ------------------------------------------------------------------ #
+    # CZM (cohesive zone modelling) flags. Off by default; when
+    # --enable-czm is absent every other czm flag is silently ignored so
+    # the legacy ``analyze`` behaviour is bit-identical.
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--enable-czm", action="store_true", default=False,
+        dest="enable_czm",
+        help=(
+            "Enable cohesive zone modelling (delamination prediction). "
+            "Inserts zero-thickness cohesive interface elements at ply "
+            "boundaries and switches the FE solve from the linear "
+            "StaticSolver to Newton-Raphson. Run time is ~5-20x longer; "
+            "produces damage field output and energy dissipation per "
+            "interface."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-GIc", type=float, default=None, dest="czm_GIc",
+        help=(
+            "Mode-I fracture toughness G_Ic in N/mm. Defaults to the "
+            "material's GIc when omitted."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-GIIc", type=float, default=None, dest="czm_GIIc",
+        help=(
+            "Mode-II fracture toughness G_IIc in N/mm. Defaults to the "
+            "material's GIIc when omitted."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-sigma-max", type=float, default=None, dest="czm_sigma_max",
+        help=(
+            "Mode-I peak interface strength sigma_max in MPa. Defaults "
+            "to the material's sigma_max when omitted."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-tau-max", type=float, default=None, dest="czm_tau_max",
+        help=(
+            "Mode-II peak interface strength tau_max in MPa. Defaults "
+            "to the material's tau_max when omitted."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-interfaces", type=str, default="near_crest",
+        dest="czm_interfaces",
+        help=(
+            "Which ply interfaces receive cohesive elements. Accepts "
+            "'near_crest' (default), 'all', or a comma-separated list "
+            "of interface indices (e.g. '11,12')."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-load-increments", type=int, default=20,
+        dest="czm_load_increments",
+        help=(
+            "Number of Newton-Raphson load increments for the CZM "
+            "solve (default: 20)."
+        ),
+    )
+    p_analyze.add_argument(
+        "--czm-newton-tol", type=float, default=1.0e-4,
+        dest="czm_newton_tol",
+        help="Newton-Raphson residual tolerance (default: 1e-4).",
+    )
+    p_analyze.add_argument(
+        "--save-czm-figure", type=str, default=None,
+        dest="save_czm_figure",
+        help=(
+            "When --enable-czm is set, save the CZM overview figure "
+            "(2x2 dashboard) to this path. Matplotlib infers the "
+            "format from the file extension (.png, .pdf, .svg)."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
     # compare
     # ------------------------------------------------------------------ #
     p_compare = subparsers.add_parser(
@@ -356,6 +433,40 @@ def _build_parser() -> argparse.ArgumentParser:
 # Subcommand handlers
 # ====================================================================== #
 
+def _parse_czm_interfaces(value: Optional[str]):
+    """Parse --czm-interfaces into the form ``AnalysisConfig`` expects.
+
+    Accepts the two sentinel strings ``"near_crest"`` / ``"all"`` (passed
+    through verbatim) and a comma-separated list of non-negative
+    integers (returned as a ``list[int]``). Anything else is a fatal
+    CLI error so the user gets a clear message rather than a deep
+    validation traceback.
+    """
+    if value is None:
+        return "near_crest"
+    s = value.strip()
+    if s in ("near_crest", "all"):
+        return s
+    # Otherwise treat as comma-separated list of ints.
+    parts = [p.strip() for p in s.split(",") if p.strip()]
+    if not parts:
+        print(
+            "error: --czm-interfaces must be 'near_crest', 'all', or "
+            "a comma-separated list of interface indices",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        return [int(p) for p in parts]
+    except ValueError:
+        print(
+            f"error: --czm-interfaces could not parse {value!r} as a "
+            "list of integers",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
 def _parse_angles(angles_str: Optional[str]) -> Optional[List[float]]:
     """Parse a layup string into a list of ply angles (degrees).
 
@@ -390,11 +501,15 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
-    #   1. --analytical-only -> skip FE
-    #   2. --fe              -> full FE solve
-    #   3. --no-fe           -> analytical-only
-    #   4. default           -> full FE solve
-    if args.analytical_only:
+    #   1. --enable-czm      -> force full FE solve (CZM requires NR)
+    #   2. --analytical-only -> skip FE
+    #   3. --fe              -> full FE solve
+    #   4. --no-fe           -> analytical-only
+    #   5. default           -> full FE solve
+    enable_czm = bool(getattr(args, "enable_czm", False))
+    if enable_czm:
+        analytical_only = False
+    elif args.analytical_only:
         analytical_only = True
     elif args.fe is True:
         analytical_only = False
@@ -402,6 +517,22 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         analytical_only = True
     else:
         analytical_only = False
+
+    # CZM kwargs. When --enable-czm is absent these defaults exactly
+    # match ``AnalysisConfig``'s class defaults so the resulting config
+    # is bit-identical to the pre-CZM behaviour.
+    czm_kwargs: dict = {}
+    if enable_czm:
+        czm_kwargs = dict(
+            enable_czm=True,
+            czm_interfaces=_parse_czm_interfaces(args.czm_interfaces),
+            czm_GIc=args.czm_GIc,
+            czm_GIIc=args.czm_GIIc,
+            czm_sigma_max=args.czm_sigma_max,
+            czm_tau_max=args.czm_tau_max,
+            czm_n_load_increments=args.czm_load_increments,
+            czm_newton_tol=args.czm_newton_tol,
+        )
 
     config = AnalysisConfig(
         amplitude=args.amplitude,
@@ -422,6 +553,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         solver=args.solver,
         analytical_only=analytical_only,
         verbose=args.verbose,
+        **czm_kwargs,
     )
 
     analysis = WrinkleAnalysis(config)
@@ -433,11 +565,70 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
 
     print(result.summary())
 
+    # Extra CZM section: AnalysisResults.summary() already prints the
+    # core CZM metrics (max/mean damage, energy, convergence) but it
+    # does not break out crack length or # interfaces above the 0.5
+    # threshold. Emit those here so the CLI surface matches the
+    # Streamlit "Cohesive Zone Modeling Results" block.
+    if enable_czm and result.czm_damage is not None and result.czm_damage.size:
+        _print_czm_extras(result)
+
+    # Optional CZM figure export.
+    if enable_czm and args.save_czm_figure is not None:
+        if result.czm_damage is None or not result.czm_damage.size:
+            print(
+                "warning: --save-czm-figure ignored, no CZM damage data "
+                "was produced (the solve may have failed to insert "
+                "cohesive elements).",
+                file=sys.stderr,
+            )
+        else:
+            try:
+                from wrinklefe.viz import czm_overview_figure
+                fig = czm_overview_figure(result)
+                fig.savefig(args.save_czm_figure)
+                print(f"\nCZM overview figure saved to: {args.save_czm_figure}")
+                # Close to free memory and keep matplotlib's "too many open
+                # figures" warning quiet when the CLI is scripted.
+                import matplotlib.pyplot as _plt
+                _plt.close(fig)
+            except Exception as exc:  # pragma: no cover - exercised via tests
+                print(
+                    f"warning: failed to save CZM figure: {exc}",
+                    file=sys.stderr,
+                )
+
     # Export to JSON if requested
     if args.output_json is not None:
         from wrinklefe.io.export import export_results_json
         export_results_json(result, args.output_json)
         print(f"\nResults exported to: {args.output_json}")
+
+
+def _print_czm_extras(result) -> None:
+    """Print CZM crack length / damaged-interface counts after the summary.
+
+    ``AnalysisResults.summary()`` already covers max/mean damage, energy,
+    convergence, and the interface list. This helper appends the two
+    extras the Streamlit UI also exposes so the CLI and web surfaces
+    show the same set of CZM metrics.
+    """
+    damage = result.czm_damage
+    # Per-element damage = mean across Gauss points. An interface "fails"
+    # if any of its elements exceed the 0.5 threshold.
+    damage_per_elem = np.asarray(damage).mean(axis=1) if damage.ndim == 2 else np.asarray(damage)
+    n_above_half = int(np.sum(damage_per_elem > 0.5))
+
+    crack_per_iface = result.czm_crack_length_per_interface or {}
+
+    print()
+    print("  Cohesive Zone Modeling extras:")
+    print(f"    Elements with damage > 0.5: {n_above_half}")
+    if crack_per_iface:
+        for iface, length in sorted(crack_per_iface.items()):
+            print(f"    Crack length, interface {iface}: {length:.4e} mm")
+    else:
+        print("    Crack length per interface: (none)")
 
 
 def _cmd_compare(args: argparse.Namespace) -> None:
