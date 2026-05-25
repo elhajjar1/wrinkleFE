@@ -264,3 +264,78 @@ Main thread ──────┼─ Implementer (general-purpose, in worktree) 
 
 Each phase is independently shippable behind the `enable_czm` flag; the
 default linear path is untouched throughout.
+
+---
+
+## 6. Known limitations of the v1 CZM implementation
+
+Documented honestly here so users understand what the feature does and does
+not do. None block the package's primary tension-wrinkle delamination use
+case; each is a bounded, intentional design choice that could be lifted
+later if a real use case demands it.
+
+### 6.1 Mode-II damage is suppressed under normal compression
+
+`Cohesive8Element._law_local` freezes damage growth whenever `δ_n < 0`.
+Conservative for opening-mode problems (matches Abaqus default), but
+closed-mode-II loading scenarios — e.g. a 3-pt-bend ENF where the
+midplane is in compression nearly everywhere — produce a cohesive zone
+that collapses to one element wide and never fully develops.
+
+Empirical evidence:
+`tests/integration/test_enf_monotonic.py` validates elastic compliance
+(1.0 %), peak load (0.6 %) and steady-state plateau (7.0 %) to within
+spec tolerances, but dissipated energy is ~1/37 of analytical because
+the crack only advances ~1 mm over the load ramp. That assertion is
+marked `pytest.xfail(strict=False)` with a detailed diagnosis.
+
+Implications for wrinkle knockdown:
+
+| Loading | Mode at crest | Impact |
+|---|---|---|
+| Tension | Mode-I dominant | None — fully captured |
+| Compression | Mixed compression + shear | Secondary delamination under-predicted; primary failure (kink-banding) handled analytically by Budiansky-Fleck |
+
+Fix path: either allow mode-II damage under compression with an explicit
+friction model, or add a frictionless-contact element pair on damaged
+interfaces. Neither currently planned.
+
+### 6.2 Arc-length continuation does not yet support snap-back on DCB-style problems
+
+`ArcLengthSolver` (`src/wrinklefe/solver/arclength.py`) uses cylindrical
+arc-length (`‖Δu‖² = Δs²`). On a 1-DOF snap-through problem it correctly
+traverses the limit point (`tests/test_solver/test_arclength_snapback.py`).
+On a real DCB system the cylindrical norm is dominated by penalty BC
+contributions and the constraint degenerates to ordinary displacement
+control — the solver stagnates once the first cohesive element fully
+damages.
+
+Fix path: indirect displacement control, parametrising the arc by a
+single interior DOF (typically the crack-mouth opening displacement, CMOD)
+instead of `‖Δu‖`. Roughly 300 LOC of new solver work. Not on the roadmap
+— wrinkle knockdown is captured by peak load under displacement control,
+and snap-back is a post-peak numerical phenomenon (real DCB labs use
+displacement-controlled rigs and don't observe snap-back anyway).
+
+### 6.3 No fiber-bridging or R-curve effects
+
+The v1 bilinear traction-separation law has constant `Gc`. Real CFRP
+composites show R-curve behavior — apparent toughness rises with crack
+extension due to fiber bridging behind the crack tip. Modeled as a
+trailing traction tail it would add ~50-100 N/mm of dissipated energy on
+moderate crack growth. The v1 implementation ignores this; predictions
+are correspondingly conservative for the steady-state plateau.
+
+Fix path: add a fiber-bridging traction term to `_law_local` and a new
+`bridging_law` field on `CohesiveProperties`. Out of scope for v1.
+
+### 6.4 No fatigue, no rate dependence, no thermal effects
+
+All neglected by the static intrinsic CZM formulation. Each is a major
+extension; none are planned.
+
+### 6.5 Streamlit / CLI integration is not wired
+
+`enable_czm=True` works from the Python API. The Streamlit app and CLI
+do not yet surface the toggle. Users currently need to script against
+the package to invoke CZM. A reasonable follow-up.

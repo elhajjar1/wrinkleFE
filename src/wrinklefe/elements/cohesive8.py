@@ -42,6 +42,33 @@ The mode ratio ``G_II / (G_I + G_II)`` is frozen at damage initiation so
 that mixed-mode ``delta_0``, ``delta_f`` and ``Gc_mixed`` are path-
 independent (Camanho & Davila, NASA/TM-2002-211737).
 
+Known limitations
+-----------------
+**Mode-II damage is suppressed under normal compression** (``delta_n < 0``).
+This follows the Abaqus default and is conservative for opening-mode
+problems (DCB, tension-driven wrinkle delamination at the crest), but it
+means closed-mode-II loading scenarios — e.g. a three-point-bend ENF
+where the midplane is in compression nearly everywhere — produce a
+cohesive zone that collapses to a single element wide and never fully
+develops.  This shows up empirically in
+``tests/integration/test_enf_monotonic.py``: elastic compliance, peak
+load and steady-state plateau all validate to within 7 % of beam theory,
+but dissipated energy is ~1/37 of the analytical value because the
+crack never advances more than ~1 mm.
+
+For wrinkleFE's primary use case (wrinkle knockdown prediction), the
+implication is:
+
+- **Tension wrinkles**: mode-I dominant at the crest — no limitation.
+- **Compression wrinkles**: kink-banding dominates (handled analytically
+  via Budiansky-Fleck); secondary delamination from shear-under-
+  compression at the crest is under-predicted by this v1 cohesive law.
+
+Lifting this restriction would require either (a) allowing mode-II
+damage to accumulate under compression with an explicit friction model
+between damaged surfaces, or (b) a separate frictionless-contact element
+pair on damaged interfaces.  Neither is currently planned.
+
 References
 ----------
 Camanho, P.P. & Davila, C.G. (2002). Mixed-mode decohesion finite elements
