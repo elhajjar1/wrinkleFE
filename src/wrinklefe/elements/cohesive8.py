@@ -207,6 +207,12 @@ class Cohesive8Element:
                 raise ValueError(
                     f"node_ids must be length 8, got {node_ids.shape}."
                 )
+            if np.any(node_ids < 0):
+                raise ValueError(
+                    f"node_ids must be non-negative integers; got values "
+                    f"< 0 at positions "
+                    f"{np.where(node_ids < 0)[0].tolist()}"
+                )
         self.node_ids = node_ids
         self.elem_id = elem_id
 

@@ -113,19 +113,39 @@ class GlobalAssembler:
         )
         self.cohesive_state: dict[int, list[CohesiveState]] = {}
         self.cohesive_state_trial: dict[int, list[CohesiveState]] = {}
+        n_nodes = self.mesh.nodes.shape[0]
         for e_idx, c_elem in self.cohesive_elements:
             if c_elem.node_ids is None:
                 raise ValueError(
                     f"Cohesive element at index {e_idx} has no node_ids; "
                     "pass node_ids to the Cohesive8Element constructor."
                 )
-            if not np.allclose(
+            if np.any(c_elem.node_ids >= n_nodes):
+                raise ValueError(
+                    f"Cohesive element {e_idx}: node_ids out of range; "
+                    f"mesh has {n_nodes} nodes (max valid index "
+                    f"{n_nodes - 1}), got max(node_ids) = "
+                    f"{int(np.max(c_elem.node_ids))}."
+                )
+            # Element-wise exact check: catches mismatches between
+            # mesh.nodes[node_ids] and the node_coords the user passed to
+            # the element constructor.
+            # NOTE: this CANNOT detect node_id permutations among
+            # coincident nodes (common in cohesive split-mesh setups
+            # where bottom and top faces share xyz in the reference
+            # configuration).  A swap within the bottom face (e.g.,
+            # [4,5,6,7,8,9,10,11] -> [5,4,6,7,8,9,10,11]) is invisible
+            # to this check.  Callers must ensure node ordering follows
+            # the documented face convention (rows 0-3 = bottom, CCW
+            # from -,-; rows 4-7 = top).
+            if not np.array_equal(
                 self.mesh.nodes[c_elem.node_ids], c_elem.node_coords
             ):
                 raise ValueError(
                     f"Cohesive element {e_idx}: mesh.nodes[node_ids] does "
-                    "not match the node_coords passed to the element. "
-                    "Likely permutation error."
+                    "not match the node_coords passed to the element "
+                    "constructor — likely permutation error or stale "
+                    "coordinates."
                 )
             self.cohesive_state[e_idx] = make_initial_state(c_elem.n_gp)
             self.cohesive_state_trial[e_idx] = make_initial_state(c_elem.n_gp)

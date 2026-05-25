@@ -615,6 +615,190 @@ def test_mode_I_to_failure_via_solve():
 # Test 5: solve() raises on empty BCs
 # ======================================================================
 
+def _make_laminate_for_two_cube() -> Laminate:
+    """Same laminate used inside :func:`_make_assembler` — extracted so
+    the negative-input regression tests can build a fresh assembler with
+    deliberately-broken cohesive elements without going through
+    ``_make_assembler`` (which constructs its own valid element).
+    """
+    mat = OrthotropicMaterial(
+        E1=1.0e8, E2=1.0e8, E3=1.0e8,
+        G12=4.0e7, G13=4.0e7, G23=4.0e7,
+        nu12=0.25, nu13=0.25, nu23=0.25,
+        name="iso-test",
+    )
+    return Laminate([Ply(material=mat, angle=0.0, thickness=1.0)])
+
+
+def test_assembler_rejects_out_of_range_node_ids():
+    """node_ids referencing nodes beyond ``mesh.nodes.shape[0]`` must be
+    rejected by the assembler.  Without this check the cohesive DOF map
+    silently indexes past the end of the global displacement vector,
+    coupling the element to garbage DOFs.
+    """
+    mesh, _bottom_ids, _top_ids = _two_cube_mesh_with_cohesive()
+    props = _cohesive_props()
+    laminate = _make_laminate_for_two_cube()
+
+    coh_coords = mesh.nodes[[4, 5, 6, 7, 8, 9, 10, 11]]
+    bad_node_ids = np.array(
+        [4, 5, 6, 7, 8, 9, 10, 999], dtype=np.intp,
+    )  # 999 >> n_nodes (which is 16)
+    # Use stand-in coords for the bad-index slot (mesh.nodes[999] would
+    # itself raise on construction otherwise).
+    coh_elem = Cohesive8Element(
+        node_coords=coh_coords,
+        properties=props,
+        node_ids=bad_node_ids,
+        elem_id=0,
+    )
+    with pytest.raises(ValueError, match="out of range"):
+        GlobalAssembler(
+            mesh=mesh,
+            laminate=laminate,
+            cohesive_elements=[(0, coh_elem)],
+        )
+
+
+def test_assembler_rejects_mismatched_node_coords():
+    """Construct an element with node_coords that don't match
+    ``mesh.nodes[node_ids]`` and verify the assembler rejects it.
+
+    This guards the ``np.array_equal`` check: the previous ``np.allclose``
+    check tolerates differences within rtol=1e-5/atol=1e-8, so a tiny
+    perturbation in node_coords would silently pass and the element
+    would compute its Jacobian/normal from stale coordinates.  We use a
+    perturbation well below ``np.allclose``'s default tolerance to
+    specifically exercise the ``array_equal`` upgrade.
+    """
+    mesh, _bottom_ids, _top_ids = _two_cube_mesh_with_cohesive()
+    props = _cohesive_props()
+    laminate = _make_laminate_for_two_cube()
+
+    correct_coords = mesh.nodes[[4, 5, 6, 7, 8, 9, 10, 11]]
+    wrong_coords = correct_coords.copy()
+    # Perturbation well below np.allclose's default rtol=1e-5/atol=1e-8
+    # but trivially detectable by np.array_equal.
+    wrong_coords[0] += np.array([1.0e-12, 0.0, 0.0])
+
+    coh_elem = Cohesive8Element(
+        node_coords=wrong_coords,
+        properties=props,
+        node_ids=np.array([4, 5, 6, 7, 8, 9, 10, 11], dtype=np.intp),
+        elem_id=0,
+    )
+    with pytest.raises(ValueError, match="does not match"):
+        GlobalAssembler(
+            mesh=mesh,
+            laminate=laminate,
+            cohesive_elements=[(0, coh_elem)],
+        )
+
+
+def test_mixed_force_displacement_tolerance_is_tight():
+    """Mixed loading: small applied force on a free DOF + prescribed
+    z-displacement.  The convergence reference ``phys_ref`` MUST be
+    pinned to the applied-force scale (~ ||F_ext_free||), not the
+    much-larger displacement-derived load scale.
+
+    Under the buggy formulation ``phys_ref = max(phys_0, load_scale,
+    tol_abs)``, the displacement-derived ``load_scale`` (proportional
+    to ``diag_max * lam * val``) dominates the applied-force scale by
+    many orders of magnitude, so the relative residual tolerance
+    becomes physically meaningless.
+
+    To make the bug observable we deliberately ask for a strict
+    ``tol_residual`` that is achievable under the buggy reference
+    scale (~ 1e6 → tolerance ~ 1) but UNACHIEVABLE under the correct
+    applied-force reference (~ 1e-3 → tolerance ~ 1e-15, below
+    double-precision numerical noise on the hex8 stiffness).  A
+    consequence-free way to expose this is to pick a problem where
+    Newton converges deeply enough in 2 iters to pass the loose check
+    but never reaches the tight check.
+    """
+    mesh, bottom_ids, top_ids = _two_cube_mesh_with_cohesive()
+    props = _cohesive_props()
+    assembler, _coh = _make_assembler(mesh, props)
+    bc_handler = BoundaryHandler(mesh)
+
+    bottom_arr = np.asarray(bottom_ids, dtype=np.intp)
+    top_arr = np.asarray(top_ids, dtype=np.intp)
+    delta_0 = props.sigma_max / props.K
+    u_top_target = 0.5 * delta_0  # well within elastic regime
+
+    # Free x DOF only at top-face node 12; pin x on the other three top
+    # nodes and y on all top nodes.  Bottom face fully fixed.  A 1e-3 N
+    # force is applied in x at node 12 in addition to the prescribed
+    # z-displacement on the full top face.
+    force_node = int(top_arr[0])
+    f_applied = 1.0e-3
+
+    bcs = [
+        BoundaryCondition(
+            bc_type="fixed", node_ids=bottom_arr, dofs=[0, 1, 2],
+        ),
+        BoundaryCondition(
+            bc_type="fixed", node_ids=top_arr, dofs=[1],
+        ),
+        BoundaryCondition(
+            bc_type="fixed",
+            node_ids=np.asarray(top_ids[1:], dtype=np.intp),
+            dofs=[0],
+        ),
+        BoundaryCondition(
+            bc_type="displacement", node_ids=top_arr,
+            dofs=[2], value=float(u_top_target),
+        ),
+        BoundaryCondition(
+            bc_type="force",
+            node_ids=np.asarray([force_node], dtype=np.intp),
+            dofs=[0], value=float(f_applied),
+        ),
+    ]
+
+    # Ask for a moderately tight relative tolerance ``1e-9``.  With
+    # the fix this means convergence target ~ 1e-9 * 1e-3 = 1e-12 N,
+    # which is just at the edge of what Newton can achieve on this
+    # stiff hex8 problem.  With the BUG the target becomes ~ 1e-9 *
+    # 1e6 = 1e-3 N which Newton hits trivially in 2 iters.  The
+    # iter-count difference is what the test asserts.
+    solver = NewtonRaphsonSolver(
+        assembler=assembler,
+        bc_handler=bc_handler,
+        boundary_conditions=bcs,
+        n_increments=1,
+        max_newton_iter=40,
+        tol_residual=1e-13,  # very tight: only achievable when phys_ref
+                              # is small (applied-force scale).  Under
+                              # the bug, tol becomes 1e-13 * 1e6 = 1e-7,
+                              # trivially met in 2 iterations.
+        tol_absolute=1e-30,  # disable the absolute floor (which would
+                              # otherwise catch Newton's deeply-
+                              # converged residual independent of
+                              # ``phys_ref``).
+        tol_displacement=1e-30,  # disable the displacement-verify path
+                                  # so the relative-residual check is
+                                  # the sole convergence gate.
+        line_search=True,
+    )
+
+    result = solver.solve()
+    # With the fix in place the strict tolerance is unachievable in 40
+    # iterations on a stiff hex problem ⇒ solver should NOT converge.
+    # Under the buggy formulation the displacement-derived load scale
+    # loosens the relative tolerance to ~ 1e-7, which Newton meets
+    # easily in 2 iterations ⇒ solver WOULD converge.  Asserting
+    # non-convergence is the truth-oracle for the fix.
+    assert not result["converged"], (
+        f"Solver converged at tol_residual=1e-13 — but with the "
+        f"correct ``phys_ref`` (~ ||F_ext_free|| = 1e-3) the absolute "
+        f"residual target is 1e-16, which is below numerical noise on "
+        f"the stiff hex8 stiffness.  Apparent convergence here implies "
+        f"``phys_ref`` was spuriously inflated by the displacement-"
+        f"derived load scale.  iters={result['iteration_counts']}"
+    )
+
+
 def test_solve_raises_on_empty_bcs():
     """``solve()`` must reject configurations with no constrained DOFs.
 

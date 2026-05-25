@@ -168,3 +168,84 @@ def test_line_search_helps_softening(softening_params):
         f"ls converged={out_ls['converged']} iters={iters_ls}; "
         f"no-ls converged={out_no['converged']} iters={iters_no}"
     )
+
+
+class _CombinedOnlySoftening1DOFAssembler:
+    """Variant of :class:`_Softening1DOFAssembler` that ONLY exposes the
+    combined ``assemble_residual_and_tangent`` API.
+
+    A user-written assembler may reasonably skip the legacy two-method
+    interface (``assemble_stiffness`` + ``assemble_internal_force``).
+    The solver's line-search and displacement-verify paths must work in
+    that case too — they should route through the combined API rather
+    than calling :meth:`assemble_internal_force` directly.
+    """
+
+    def __init__(
+        self, K: float, sigma_max: float, d0: float, df: float,
+    ) -> None:
+        self.K = K
+        self.sigma_max = sigma_max
+        self.d0 = d0
+        self.df = df
+
+        class _Mesh:
+            n_dof = 1
+
+        self.mesh = _Mesh()
+
+    def _T_and_dT(self, d: float) -> tuple[float, float]:
+        if d <= 0.0:
+            return self.K * d, self.K
+        if d < self.d0:
+            return self.K * d, self.K
+        if d <= self.df:
+            slope = -self.sigma_max / (self.df - self.d0)
+            T = self.sigma_max * (self.df - d) / (self.df - self.d0)
+            return T, slope
+        return 0.0, 0.0
+
+    def assemble_residual_and_tangent(self, u):
+        from scipy import sparse
+
+        u = np.asarray(u, dtype=float).reshape(-1)
+        d = float(u[0])
+        T, dT = self._T_and_dT(d)
+        K_t = sparse.csc_matrix(np.array([[dT]]))
+        F_int = np.array([T])
+        return K_t, F_int
+
+
+def test_solver_works_with_combined_api_only_assembler(softening_params):
+    """A user-written assembler implementing only
+    ``assemble_residual_and_tangent`` (no separate
+    ``assemble_internal_force``) must still drive the line search and
+    the displacement-verify check.
+
+    Without the fix the line search calls
+    ``self.assembler.assemble_internal_force(...)`` directly and raises
+    ``AttributeError`` on this assembler.
+    """
+    asm = _CombinedOnlySoftening1DOFAssembler(**softening_params)
+    bc = _Single1DOFBCHandler(u_target=2.0 * softening_params["df"])
+
+    solver = NewtonRaphsonSolver(
+        assembler=asm,
+        bc_handler=bc,
+        n_increments=20,
+        max_newton_iter=30,
+        tol_residual=1e-6,
+        tol_displacement=1e-9,
+        line_search=True,
+    )
+
+    out = solver.solve()
+    assert out["converged"], (
+        f"Newton failed with combined-API-only assembler: "
+        f"completed {out['increments_completed']}/20 "
+        f"iters={out['iteration_counts']}"
+    )
+    assert out["increments_completed"] == 20
+    assert np.isclose(
+        out["displacement"][0], 2.0 * softening_params["df"], rtol=1e-4
+    )

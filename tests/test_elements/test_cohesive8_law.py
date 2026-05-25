@@ -187,6 +187,24 @@ def test_pure_mode_II_area_equals_GIIc(unit_square_interface_nodes, props):
     )
 
 
+def test_node_ids_rejects_negative(unit_square_interface_nodes, props):
+    """Negative node indices must be rejected at construction time.
+
+    Without an explicit bounds check, a negative index silently wraps
+    through numpy fancy indexing in the assembler's DOF map and couples
+    the cohesive element to the wrong end of the global vector.  This
+    test guards against that off-by-one footgun.
+    """
+    with pytest.raises(ValueError, match="non-negative"):
+        Cohesive8Element(
+            node_coords=unit_square_interface_nodes,
+            properties=props,
+            node_ids=np.array(
+                [-1, 0, 1, 2, 3, 4, 5, 6], dtype=np.intp
+            ),
+        )
+
+
 def test_mixed_mode_BK_envelope(unit_square_interface_nodes, props):
     """Apply combined (delta_n, delta_s) at a fixed mode-mixity angle;
     integrate energy until d -> 1; compare to the BK Gc(psi)."""

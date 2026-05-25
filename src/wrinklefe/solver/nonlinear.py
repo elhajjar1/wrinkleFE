@@ -257,16 +257,39 @@ class NewtonRaphsonSolver:
                 )
 
             if it == 1:
-                # phys_0 is often vanishingly small for displacement-
-                # controlled problems with u_0 = 0 (no internal force on
-                # free DOFs at the start).  Use the iter-1 BC-augmented
-                # residual divided by the penalty scale as a natural
-                # physical-force scale: it represents the load the
-                # Newton solve is driving against, with the penalty
-                # amplification removed.
+                # Choosing the reference scale ``phys_ref`` for the
+                # relative residual test is subtle under mixed loading:
+                #
+                # - The applied-force vector ``F_ext`` (on free DOFs)
+                #   gives a clean physical scale for the imbalance the
+                #   solver must drive to zero.  When present, it is the
+                #   most physically meaningful reference.
+                # - For pure displacement control there is no F_ext on
+                #   free DOFs, so we back out the load scale from the
+                #   penalty-augmented residual (res_norm ~ alpha *
+                #   ||lam * val||; dividing by ``_PENALTY_SCALE``
+                #   recovers diag_max * ||lam * val|| — the physical
+                #   force scale of the displacement loading).
+                #
+                # Always taking the max of these two unconditionally
+                # would spuriously loosen the tolerance under mixed
+                # loading where the applied force is small (say 1e-3 N)
+                # but the displacement-derived load scale is large
+                # (say 1e6 N), making the relative tolerance dominated
+                # by a quantity unrelated to the imbalance the user
+                # cares about.  Using ``F_ext_free_norm`` as the
+                # discriminator avoids that pitfall while remaining
+                # robust to numerical noise in ``phys_0`` accumulated
+                # across continuation increments.
                 phys_0 = phys_norm
-                load_scale = res_norm / float(_PENALTY_SCALE)
-                phys_ref = max(phys_0, load_scale, self.tol_absolute)
+                F_ext_phys = F_ext.copy()
+                F_ext_phys[dofs_arr] = 0.0
+                F_ext_free_norm = float(np.linalg.norm(F_ext_phys))
+                if F_ext_free_norm > self.tol_absolute:
+                    phys_ref = max(F_ext_free_norm, self.tol_absolute)
+                else:
+                    load_scale = res_norm / float(_PENALTY_SCALE)
+                    phys_ref = max(load_scale, self.tol_absolute)
                 if (
                     phys_norm < self.tol_absolute
                     and bc_violation < bc_tol
@@ -305,7 +328,7 @@ class NewtonRaphsonSolver:
             u_norm = max(float(np.linalg.norm(u)), 1.0)
             if du_norm / u_norm < self.tol_displacement:
                 # Verify physical residual + BC violation at the new state.
-                F_int_chk = self.assembler.assemble_internal_force(u)
+                F_int_chk = self._assemble_internal_force(u)
                 R_chk = F_int_chk - F_ext
                 R_chk_phys = R_chk.copy()
                 R_chk_phys[dofs_arr] = 0.0
@@ -353,7 +376,7 @@ class NewtonRaphsonSolver:
         alpha = 1.0
         for i in range(max_trials):
             u_trial = u + alpha * du
-            F_int_trial = self.assembler.assemble_internal_force(u_trial)
+            F_int_trial = self._assemble_internal_force(u_trial)
             R_trial = F_int_trial - F_ext
             _, R_trial_bc = self._apply_bcs_to_system(
                 None, R_trial.copy(), u_trial, constrained_dofs,
@@ -467,6 +490,32 @@ class NewtonRaphsonSolver:
         )
         if callable(combined):
             return combined(u)
+        # This IS the fallback for assemblers without the combined API
+        # — calling through :meth:`_assemble_internal_force` here would
+        # infinitely recurse (that shim routes back through the combined
+        # API when available), so we must call the assembler directly.
         F_int = self.assembler.assemble_internal_force(u)
         K_t = self._assemble_tangent(u)
         return K_t, F_int
+
+    def _assemble_internal_force(self, u: np.ndarray) -> np.ndarray:
+        """Shim: prefer direct API, fall back to combined-then-discard.
+
+        Preserves performance for the built-in ``GlobalAssembler`` (which
+        provides ``assemble_internal_force`` directly) while supporting
+        user-written assemblers that only expose the combined
+        ``assemble_residual_and_tangent`` API.
+        """
+        direct = getattr(self.assembler, "assemble_internal_force", None)
+        if callable(direct):
+            return direct(u)
+        combined = getattr(
+            self.assembler, "assemble_residual_and_tangent", None
+        )
+        if callable(combined):
+            _K, F_int = combined(u)
+            return F_int
+        raise AttributeError(
+            "Assembler must implement either assemble_internal_force(u) "
+            "or assemble_residual_and_tangent(u); neither found."
+        )
