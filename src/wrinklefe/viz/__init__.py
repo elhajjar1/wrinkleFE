@@ -1,7 +1,9 @@
-"""Visualization: 2D plots (matplotlib) and 3D views (matplotlib mplot3d).
+"""Visualization: 2D plots (matplotlib) and 3D views (matplotlib mplot3d / PyVista).
 
 This package provides publication-quality plotting functions for wrinkle
-analysis results. All functions use matplotlib only (no PyVista dependency).
+analysis results.  Matplotlib is the primary 3D backend.  A small group of
+cohesive-zone-modelling plots in :mod:`plots_3d` uses PyVista internally
+(imported lazily) for high-quality interface rendering.
 
 Submodules
 ----------
@@ -10,10 +12,12 @@ style
     and helper utilities.
 plots_2d
     2D plotting functions for profiles, morphology factors, distributions,
-    Jensen gap, failure envelopes, through-thickness stress, and damage.
+    Jensen gap, failure envelopes, through-thickness stress, damage, and
+    cohesive-zone-modelling (CZM) outputs.
 plots_3d
     3D plotting functions for mesh wireframes, displacement contours,
-    stress contours, and buckling mode shapes.
+    stress contours, buckling mode shapes, and PyVista-backed CZM
+    interface visualizations.
 """
 
 # -- Style configuration and helpers --
@@ -39,22 +43,30 @@ from wrinklefe.viz.style import (
 
 # -- 2D plotting functions --
 from wrinklefe.viz.plots_2d import (
+    czm_overview_figure,
     plot_damage_contour,
+    plot_damage_histogram,
     plot_dual_wrinkle_profiles,
+    plot_energy_per_interface,
     plot_failure_envelope,
+    plot_interface_damage_field,
     plot_jensen_gap,
     plot_kinkband_concavity,
+    plot_load_displacement,
     plot_morphology_factor,
     plot_strength_distribution,
     plot_strength_vs_amplitude,
     plot_stress_through_thickness,
+    plot_traction_separation,
     plot_wrinkle_profile,
 )
 
 # -- 3D plotting functions --
 from wrinklefe.viz.plots_3d import (
     plot_buckling_mode,
+    plot_crack_front_3d,
     plot_displacement_3d,
+    plot_interface_damage_3d,
     plot_mesh_3d,
     plot_stress_contour_3d,
 )
@@ -89,9 +101,19 @@ __all__ = [
     "plot_failure_envelope",
     "plot_stress_through_thickness",
     "plot_damage_contour",
+    # 2D plots — CZM
+    "plot_traction_separation",
+    "plot_load_displacement",
+    "plot_damage_histogram",
+    "plot_interface_damage_field",
+    "plot_energy_per_interface",
+    "czm_overview_figure",
     # 3D plots
     "plot_mesh_3d",
     "plot_displacement_3d",
     "plot_stress_contour_3d",
     "plot_buckling_mode",
+    # 3D plots — CZM (PyVista)
+    "plot_interface_damage_3d",
+    "plot_crack_front_3d",
 ]

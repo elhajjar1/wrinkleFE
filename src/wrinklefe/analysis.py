@@ -1295,6 +1295,16 @@ class AnalysisResults:
     """Delamination failure report shaped like the other failure
     criteria, populated by :mod:`wrinklefe.failure.delamination`."""
 
+    czm_element_centroids: Optional[np.ndarray] = None
+    """``(n_iface_elems, 2)`` array of in-plane ``(x, y)`` centroids of the
+    cohesive interface elements, in the reference (undeformed) configuration.
+
+    Populated alongside the other ``czm_*`` fields by ``_run_czm_path`` so
+    that visualization wrappers (e.g.
+    :func:`wrinklefe.viz.czm_overview_figure`) can colour the interface
+    plane without needing access to the assembler / cohesive-element list.
+    Same row order as ``czm_damage``."""
+
     def summary(self) -> str:
         """Generate a comprehensive text summary.
 
@@ -2076,6 +2086,7 @@ class WrinkleAnalysis:
             results.czm_energy_dissipated = 0.0
             results.czm_energy_per_interface = {}
             results.czm_crack_length_per_interface = {}
+            results.czm_element_centroids = np.empty((0, 2))
             results.czm_delamination_report = build_delamination_report({})
             return
 
@@ -2083,6 +2094,15 @@ class WrinkleAnalysis:
         damage = np.zeros((n_iface, n_gp), dtype=float)
         separation = np.zeros((n_iface, n_gp, 3), dtype=float)
         traction = np.zeros((n_iface, n_gp, 3), dtype=float)
+
+        # In-plane (x, y) centroid of each interface element in the
+        # reference configuration; consumed by the viz layer to colour
+        # damage on the interface plane without touching the assembler.
+        centroids_xy = np.zeros((n_iface, 2), dtype=float)
+        for row, (_gid, c_elem) in enumerate(cohesive_elements):
+            bottom_xy = c_elem.node_coords[:4, :2]
+            centroids_xy[row] = bottom_xy.mean(axis=0)
+        results.czm_element_centroids = centroids_xy
 
         u = outcome["displacement"]
         # Iterate in the same order as `cohesive_elements` was built.

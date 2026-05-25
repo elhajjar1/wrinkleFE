@@ -28,11 +28,12 @@ Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Mapping, Optional, Sequence
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from wrinklefe.viz.style import (
     ACCENT_GRAY,
@@ -49,6 +50,7 @@ from wrinklefe.viz.style import (
 )
 
 if TYPE_CHECKING:
+    from wrinklefe.analysis import AnalysisResults
     from wrinklefe.core.mesh import MeshData
     from wrinklefe.core.morphology import WrinkleConfiguration
     from wrinklefe.core.wrinkle import WrinkleProfile
@@ -760,3 +762,428 @@ def plot_damage_contour(
     ax.set_aspect("equal", adjustable="box")
 
     return ax
+
+
+# ======================================================================
+# Cohesive Zone Modeling (CZM) post-processing plots
+# ======================================================================
+#
+# These plot functions operate on raw arrays / dicts extracted from an
+# :class:`~wrinklefe.analysis.AnalysisResults` object whose CZM fields
+# were populated by ``enable_czm=True``.  They intentionally do **not**
+# depend on ``AnalysisResults`` directly so that they remain trivially
+# unit-testable on synthetic inputs.  The :func:`czm_overview_figure`
+# wrapper below assembles them into a single 2x2 dashboard.
+
+
+def plot_traction_separation(
+    separation_history: np.ndarray,
+    traction_history: np.ndarray,
+    ax: Optional[Axes] = None,
+    label: Optional[str] = None,
+    beta: float = 1.0,
+) -> Axes:
+    """Plot the traction-separation trajectory at a single cohesive Gauss point.
+
+    The effective opening and effective traction are reduced from the
+    three-component (normal, shear-s, shear-t) histories using the
+    standard mixed-mode definitions::
+
+        delta_eff = sqrt(<delta_n>^2 + beta^2 * (delta_s^2 + delta_t^2))
+        T_eff    = sqrt(<T_n>^2     +           T_s^2     + T_t^2     )
+
+    where ``<.>`` denotes the Macaulay bracket (negative normal opening
+    is compression and is clamped to zero).  This is the same effective
+    quantity that the bilinear damage law uses internally, so the curve
+    can be read as a damage trajectory along the bilinear envelope.
+
+    Parameters
+    ----------
+    separation_history : np.ndarray
+        Shape ``(n_inc, 3)`` array of ``(delta_n, delta_s, delta_t)``
+        per load increment at the Gauss point of interest.
+    traction_history : np.ndarray
+        Shape ``(n_inc, 3)`` array of ``(T_n, T_s, T_t)``.
+    ax : Axes, optional
+        Matplotlib axes. A new figure is created if ``None``.
+    label : str, optional
+        Curve label (forwarded to ``ax.plot``).
+    beta : float, optional
+        Mode-mixity weighting on the shear opening.  Default is 1.0.
+
+    Returns
+    -------
+    Axes
+        The axes with the traction-separation trajectory.
+    """
+    set_publication_style()
+    ax = ensure_axes(ax)
+
+    sep = np.asarray(separation_history, dtype=float)
+    trc = np.asarray(traction_history, dtype=float)
+    if sep.ndim != 2 or sep.shape[1] != 3:
+        raise ValueError(
+            "separation_history must have shape (n_inc, 3), got "
+            f"{sep.shape}"
+        )
+    if trc.shape != sep.shape:
+        raise ValueError(
+            "traction_history must have the same shape as "
+            f"separation_history; got {trc.shape} vs {sep.shape}"
+        )
+
+    delta_n = np.maximum(sep[:, 0], 0.0)
+    delta_s = sep[:, 1]
+    delta_t = sep[:, 2]
+    delta_eff = np.sqrt(delta_n**2 + beta**2 * (delta_s**2 + delta_t**2))
+
+    T_n = np.maximum(trc[:, 0], 0.0)
+    T_s = trc[:, 1]
+    T_t = trc[:, 2]
+    T_eff = np.sqrt(T_n**2 + T_s**2 + T_t**2)
+
+    ax.plot(
+        delta_eff, T_eff,
+        color=MORPHOLOGY_COLORS["concave"], linewidth=1.5,
+        marker="o", markersize=3, label=label,
+    )
+    ax.axhline(0, color="0.7", linewidth=0.5, zorder=0)
+    ax.axvline(0, color="0.7", linewidth=0.5, zorder=0)
+    ax.set_xlabel("Effective separation $\\delta_{eff}$ (mm)")
+    ax.set_ylabel("Effective traction $T_{eff}$ (MPa)")
+    ax.set_title("Cohesive Traction-Separation")
+    if label is not None:
+        ax.legend(loc="best", fontsize=8)
+
+    return ax
+
+
+def plot_load_displacement(
+    load_displacement: np.ndarray,
+    ax: Optional[Axes] = None,
+    label: Optional[str] = None,
+) -> Axes:
+    """Plot the load-displacement response from a CZM Newton-Raphson run.
+
+    The convention here is x = load factor ``lambda`` (a clean control
+    parameter in ``[0, 1]``) and y = norm of the displacement vector
+    ``||u||``.  Plotting against ``lambda`` (rather than ``||u||``) keeps
+    the abscissa monotone even when the global response softens, which
+    is important for snap-back / snap-through visualization on a CZM
+    run that has passed peak load.
+
+    Parameters
+    ----------
+    load_displacement : np.ndarray
+        Shape ``(n_inc, 2)`` array of ``(lambda, ||u||)`` samples per
+        load increment (i.e. ``results.czm_load_displacement``).
+    ax : Axes, optional
+        Matplotlib axes. A new figure is created if ``None``.
+    label : str, optional
+        Curve label (forwarded to ``ax.plot``).
+
+    Returns
+    -------
+    Axes
+        The axes with the load-displacement curve.
+    """
+    set_publication_style()
+    ax = ensure_axes(ax)
+
+    ld = np.asarray(load_displacement, dtype=float)
+    if ld.ndim != 2 or ld.shape[1] != 2:
+        raise ValueError(
+            "load_displacement must have shape (n_inc, 2), got "
+            f"{ld.shape}"
+        )
+
+    if ld.shape[0] == 0:
+        ax.text(
+            0.5, 0.5, "No load increments", transform=ax.transAxes,
+            ha="center", va="center", fontsize=10, color="0.5",
+        )
+        return ax
+
+    lam = ld[:, 0]
+    u_norm = ld[:, 1]
+
+    ax.plot(
+        lam, u_norm,
+        color=MORPHOLOGY_COLORS["stack"], linewidth=1.5,
+        marker="o", markersize=3, label=label,
+    )
+    ax.set_xlabel("Load factor $\\lambda$")
+    ax.set_ylabel("$\\Vert u \\Vert$ (mm)")
+    ax.set_title("Load-Displacement")
+    if label is not None:
+        ax.legend(loc="best", fontsize=8)
+
+    return ax
+
+
+def plot_damage_histogram(
+    damage: np.ndarray,
+    ax: Optional[Axes] = None,
+    bins: int = 20,
+) -> Axes:
+    """Plot a histogram of the cohesive damage variable.
+
+    Vertical reference lines mark three physically meaningful thresholds:
+
+    * ``d = 0`` : intact cohesive zone.
+    * ``d = 0.5`` : approximate location of the cohesive-zone front.
+    * ``d = 1`` : fully delaminated.
+
+    Parameters
+    ----------
+    damage : np.ndarray
+        Shape ``(n_iface_elems, n_gauss)`` damage array, i.e.
+        ``results.czm_damage``.  A 1-D array is also accepted.
+    ax : Axes, optional
+        Matplotlib axes. A new figure is created if ``None``.
+    bins : int, optional
+        Histogram bin count. Default is 20.
+
+    Returns
+    -------
+    Axes
+        The axes with the damage histogram.
+    """
+    set_publication_style()
+    ax = ensure_axes(ax)
+
+    d = np.asarray(damage, dtype=float).ravel()
+    if d.size == 0:
+        ax.text(
+            0.5, 0.5, "No cohesive data", transform=ax.transAxes,
+            ha="center", va="center", fontsize=10, color="0.5",
+        )
+        return ax
+
+    ax.hist(
+        d, bins=bins, range=(0.0, 1.0),
+        color=MORPHOLOGY_COLORS["stack"], alpha=0.75,
+        edgecolor="white", linewidth=0.4,
+    )
+    ax.axvline(0.0, color="0.4", linestyle=":", linewidth=0.8,
+               label="intact ($d=0$)")
+    ax.axvline(0.5, color=MORPHOLOGY_COLORS["convex"], linestyle="--",
+               linewidth=0.8, label="cohesive front ($d=0.5$)")
+    ax.axvline(1.0, color=MORPHOLOGY_COLORS["concave"], linestyle="--",
+               linewidth=0.8, label="failed ($d=1$)")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_xlabel("Damage $d$")
+    ax.set_ylabel("Gauss-point count")
+    ax.set_title("Damage Distribution")
+    ax.legend(loc="best", fontsize=7)
+
+    return ax
+
+
+def plot_interface_damage_field(
+    damage_per_elem: np.ndarray,
+    xy_centroids: np.ndarray,
+    ax: Optional[Axes] = None,
+    cmap: str = "viridis",
+) -> Axes:
+    """Scatter the per-element damage on the interface (x, y) plane.
+
+    A scatter plot rather than a contour is used because cohesive
+    elements on a wrinkled interface are not guaranteed to form a
+    regular ``(nx, ny)`` grid (the wrinkled surface is parameterised
+    in 3D, projected here onto the in-plane axes).
+
+    Parameters
+    ----------
+    damage_per_elem : np.ndarray
+        Shape ``(n_iface_elems,)`` damage value per cohesive element
+        (typically the Gauss-point mean of ``results.czm_damage``).
+    xy_centroids : np.ndarray
+        Shape ``(n_iface_elems, 2)`` element-centroid in-plane
+        coordinates (``results.czm_element_centroids``).
+    ax : Axes, optional
+        Matplotlib axes. A new figure is created if ``None``.
+    cmap : str, optional
+        Matplotlib colormap name. Default is ``'viridis'`` (perceptually
+        uniform; damage is unsigned in ``[0, 1]``).
+
+    Returns
+    -------
+    Axes
+        The axes with the interface damage scatter.
+    """
+    set_publication_style()
+    ax = ensure_axes(ax, figsize=FIGSIZE_DOUBLE_COLUMN)
+
+    d = np.asarray(damage_per_elem, dtype=float).ravel()
+    xy = np.asarray(xy_centroids, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise ValueError(
+            f"xy_centroids must have shape (n_elem, 2), got {xy.shape}"
+        )
+    if d.size != xy.shape[0]:
+        raise ValueError(
+            "damage_per_elem and xy_centroids must agree on n_elem; "
+            f"got {d.size} damage values vs {xy.shape[0]} centroids."
+        )
+
+    if d.size == 0:
+        ax.text(
+            0.5, 0.5, "No cohesive elements", transform=ax.transAxes,
+            ha="center", va="center", fontsize=10, color="0.5",
+        )
+        return ax
+
+    sc = ax.scatter(
+        xy[:, 0], xy[:, 1], c=d, cmap=cmap,
+        vmin=0.0, vmax=1.0,
+        s=30, edgecolors="0.3", linewidths=0.2,
+    )
+    colorbar_setup(ax, sc, "Damage $d$")
+    ax.set_xlabel("$x$ (mm)")
+    ax.set_ylabel("$y$ (mm)")
+    ax.set_title("Interface Damage Field")
+    ax.set_aspect("equal", adjustable="box")
+
+    return ax
+
+
+def plot_energy_per_interface(
+    energy_per_interface: Mapping[int, float],
+    ax: Optional[Axes] = None,
+) -> Axes:
+    """Bar chart of cohesive energy dissipated, broken down by interface.
+
+    Parameters
+    ----------
+    energy_per_interface : Mapping[int, float]
+        ``{interface_index: energy}`` mapping (i.e.
+        ``results.czm_energy_per_interface``).
+    ax : Axes, optional
+        Matplotlib axes. A new figure is created if ``None``.
+
+    Returns
+    -------
+    Axes
+        The axes with the energy bar chart.
+    """
+    set_publication_style()
+    ax = ensure_axes(ax)
+
+    if not energy_per_interface:
+        ax.text(
+            0.5, 0.5, "No interface energy data", transform=ax.transAxes,
+            ha="center", va="center", fontsize=10, color="0.5",
+        )
+        return ax
+
+    items = sorted(energy_per_interface.items(), key=lambda kv: kv[0])
+    labels = [f"{idx}" for idx, _ in items]
+    values = [float(v) for _, v in items]
+
+    x_pos = np.arange(len(items))
+    bars = ax.bar(
+        x_pos, values,
+        color=ACCENT_GRAY, edgecolor="white", linewidth=0.5,
+    )
+
+    # Value labels above each bar (skip when only one bar so the figure
+    # stays uncluttered for the single-interface case).
+    if len(items) > 1:
+        vmax = max(values) if max(values) > 0 else 1.0
+        for bar_obj, val in zip(bars, values):
+            ax.text(
+                bar_obj.get_x() + bar_obj.get_width() / 2.0,
+                bar_obj.get_height() + 0.02 * vmax,
+                f"{val:.2e}",
+                ha="center", va="bottom", fontsize=7,
+            )
+
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels)
+    ax.set_xlabel("Interface index")
+    ax.set_ylabel("Dissipated energy (N$\\cdot$mm)")
+    ax.set_title("Energy by Interface")
+    ax.axhline(0, color="0.7", linewidth=0.5)
+
+    return ax
+
+
+def czm_overview_figure(results: "AnalysisResults") -> Figure:
+    """Build a 2x2 dashboard of CZM outputs from an ``AnalysisResults``.
+
+    Panels:
+
+    * top-left      : load-displacement curve.
+    * top-right     : damage histogram across all Gauss points.
+    * bottom-left   : interface damage field (in-plane scatter).
+    * bottom-right  : dissipated-energy bar chart per interface.
+
+    Parameters
+    ----------
+    results : AnalysisResults
+        Output of ``WrinkleAnalysis(cfg).run()`` with
+        ``cfg.enable_czm=True``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The composed 2x2 figure.  The caller owns the figure and must
+        close it when done.
+
+    Raises
+    ------
+    ValueError
+        If CZM was not enabled (``results.czm_damage is None``) or
+        the centroid bookkeeping was not populated.
+    """
+    set_publication_style()
+
+    if results.czm_damage is None:
+        raise ValueError(
+            "czm_overview_figure requires AnalysisResults populated by "
+            "WrinkleAnalysis(enable_czm=True); results.czm_damage is None."
+        )
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.0, 8.0), constrained_layout=True)
+
+    # Top-left: load-displacement
+    if results.czm_load_displacement is not None:
+        plot_load_displacement(results.czm_load_displacement, ax=axes[0, 0])
+    else:
+        axes[0, 0].text(
+            0.5, 0.5, "No load-displacement data",
+            transform=axes[0, 0].transAxes,
+            ha="center", va="center", fontsize=10, color="0.5",
+        )
+
+    # Top-right: damage histogram
+    plot_damage_histogram(results.czm_damage, ax=axes[0, 1])
+
+    # Bottom-left: interface damage field scatter
+    if (
+        results.czm_element_centroids is not None
+        and results.czm_damage.size > 0
+    ):
+        damage_per_elem = results.czm_damage.mean(axis=1)
+        plot_interface_damage_field(
+            damage_per_elem,
+            results.czm_element_centroids,
+            ax=axes[1, 0],
+        )
+    else:
+        axes[1, 0].text(
+            0.5, 0.5, "No interface damage field",
+            transform=axes[1, 0].transAxes,
+            ha="center", va="center", fontsize=10, color="0.5",
+        )
+
+    # Bottom-right: per-interface energy
+    plot_energy_per_interface(
+        results.czm_energy_per_interface or {},
+        ax=axes[1, 1],
+    )
+
+    fig.suptitle("Cohesive Zone Modeling — Overview", fontsize=12)
+
+    return fig
