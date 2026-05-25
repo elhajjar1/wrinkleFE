@@ -2043,6 +2043,30 @@ class WrinkleAnalysis:
             "load_displacement", None,
         )
 
+        # ----- Bulk hex8 stress / strain recovery from the final Newton u -----
+        # The CZM path now populates ``field_results`` so users can run
+        # ply-level failure criteria (LaRC05, Hashin, ...) on the bulk
+        # material alongside the interface delamination output.  We reuse
+        # StaticSolver's stress-recovery machinery: instantiate it on the
+        # CZM-enriched mesh (without cohesive_elements registered, so the
+        # assemble_stiffness guard does not fire) and call
+        # recover_element_results on the converged displacement.
+        u_final = outcome["displacement"]
+        recovery_solver = StaticSolver(mesh, laminate)
+        stress_g, stress_l, strain_g, strain_l = (
+            recovery_solver.recover_element_results(u_final, verbose=False)
+        )
+        results.field_results = FieldResults(
+            displacement=u_final.reshape(-1, 3),
+            stress_global=stress_g,
+            stress_local=stress_l,
+            strain_global=strain_g,
+            strain_local=strain_l,
+            mesh=mesh,
+            laminate=laminate,
+        )
+        self._evaluate_failure(results, laminate, results.field_results, mesh)
+
         # ----- Extract per-Gauss-point CZM state -----
         n_iface = len(cohesive_elements)
         if n_iface == 0:

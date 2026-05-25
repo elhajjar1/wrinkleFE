@@ -115,14 +115,20 @@ class TestEnableCzmEndToEnd:
         linear_cfg = dataclasses.replace(cfg, enable_czm=False)
         linear = WrinkleAnalysis(linear_cfg).run()
 
-        # The linear run populates ``field_results``; the CZM run keeps
-        # them as ``None`` (its displacement vector lives in
-        # ``czm_load_displacement`` instead).
+        # Both paths populate ``field_results``: the CZM path recovers
+        # bulk hex8 stress/strain from the final Newton displacement so
+        # ply-level failure criteria can run alongside the interface
+        # delamination output.
         assert linear.field_results is not None
-        assert result.field_results is None, (
-            "CZM path should not populate field_results in v1 "
-            "(stress recovery is a Phase 5 follow-up)."
+        assert result.field_results is not None, (
+            "CZM path must populate field_results so ply-level failure "
+            "criteria can run on the bulk material."
         )
+        # The CZM run's displacement vector has the same shape as the
+        # linear run's (n_nodes, 3) — but with the duplicated cohesive
+        # nodes the CZM array is strictly larger.
+        assert result.field_results.displacement.shape[0] == result.mesh.n_nodes
+        assert result.field_results.stress_local.shape[0] == result.mesh.n_elements
         # The CZM mesh has duplicated interface nodes, so the node
         # count is strictly greater than the linear (no-CZM) mesh's
         # node count.  This is the cheapest end-to-end signal that the
