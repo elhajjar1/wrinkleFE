@@ -4,7 +4,14 @@ Provides 3D wireframe mesh plots, displacement and stress contour
 visualizations on deformed meshes, and buckling mode shape rendering
 using matplotlib's mplot3d toolkit.
 
-All plot functions follow the same interface as :mod:`wrinklefe.viz.plots_2d`:
+A second group of CZM-specific 3D plots (``plot_interface_damage_3d`` and
+``plot_crack_front_3d``) is provided via PyVista for high-quality rendering
+of cohesive interface scalar fields.  PyVista is imported lazily inside
+those functions so importing this module does not pull it in for the
+matplotlib-only callers.
+
+All matplotlib plot functions follow the same interface as
+:mod:`wrinklefe.viz.plots_2d`:
 
 - Accept an optional ``ax`` parameter (must be a 3D projection axes if
   provided); if ``None``, a new figure with 3D axes is created.
@@ -705,3 +712,211 @@ def plot_buckling_mode(
     ax.view_init(elev=25, azim=-60)
 
     return ax
+
+
+# ======================================================================
+# Cohesive Zone Modeling (CZM) interface visualizations — PyVista
+# ======================================================================
+#
+# PyVista is imported lazily so the import cost / availability check is
+# only paid by callers of these specific functions.  PyVista is a hard
+# dependency of wrinklefe (see ``pyproject.toml``), but the lazy import
+# keeps the failure mode clear if the install has been pared down.
+
+
+def _require_pyvista():
+    """Import and return ``pyvista``, raising a helpful error if absent.
+
+    Returns
+    -------
+    module
+        The ``pyvista`` module.
+
+    Raises
+    ------
+    ImportError
+        If PyVista is not installed.
+    """
+    try:
+        import pyvista as pv  # type: ignore[import-untyped]
+    except ImportError as exc:  # pragma: no cover - exercised in sparse envs
+        raise ImportError(
+            "PyVista is required for 3D cohesive-zone visualizations. "
+            "Install it with `pip install pyvista`."
+        ) from exc
+    return pv
+
+
+def _build_interface_polydata(
+    cohesive_node_coords: np.ndarray,
+    cohesive_connectivity: np.ndarray,
+    damage_per_elem: np.ndarray,
+):
+    """Build a PyVista quad-mesh PolyData with per-cell damage scalars.
+
+    Helper shared by the two CZM 3D plotting functions; kept private
+    to avoid exposing PyVista types in the module signature.
+    """
+    pv = _require_pyvista()
+
+    nodes = np.asarray(cohesive_node_coords, dtype=float)
+    conn = np.asarray(cohesive_connectivity, dtype=np.int64)
+    damage = np.asarray(damage_per_elem, dtype=float).ravel()
+
+    if nodes.ndim != 2 or nodes.shape[1] != 3:
+        raise ValueError(
+            "cohesive_node_coords must have shape (n_nodes, 3), got "
+            f"{nodes.shape}"
+        )
+    if conn.ndim != 2 or conn.shape[1] != 4:
+        raise ValueError(
+            "cohesive_connectivity must have shape (n_elem, 4), got "
+            f"{conn.shape}"
+        )
+    if damage.size != conn.shape[0]:
+        raise ValueError(
+            "damage_per_elem length must equal cohesive_connectivity "
+            f"row count; got {damage.size} vs {conn.shape[0]}."
+        )
+
+    # PyVista face block format: [n_verts, v0, v1, v2, v3, n_verts, ...]
+    n_elem = conn.shape[0]
+    faces = np.empty((n_elem, 5), dtype=np.int64)
+    faces[:, 0] = 4
+    faces[:, 1:] = conn
+    poly = pv.PolyData(nodes, faces.ravel())
+    poly.cell_data["damage"] = damage
+    return poly
+
+
+def plot_interface_damage_3d(
+    cohesive_node_coords: np.ndarray,
+    cohesive_connectivity: np.ndarray,
+    damage_per_elem: np.ndarray,
+    plotter=None,
+    cmap: str = "viridis",
+):
+    """Render the cohesive interface as a quad mesh colored by damage.
+
+    Parameters
+    ----------
+    cohesive_node_coords : np.ndarray
+        Shape ``(n_iface_nodes, 3)`` array of node coordinates of the
+        interface mid-surface (or one of the coincident faces).
+    cohesive_connectivity : np.ndarray
+        Shape ``(n_elem, 4)`` integer connectivity of the interface
+        quads.  Each row indexes into ``cohesive_node_coords``.
+    damage_per_elem : np.ndarray
+        Shape ``(n_elem,)`` damage value per quad (typically the
+        Gauss-point mean of ``results.czm_damage``).
+    plotter : pyvista.Plotter, optional
+        Plotter to draw into.  A new one is created if ``None``.
+    cmap : str, optional
+        Colormap name forwarded to PyVista.  Default ``'viridis'``.
+
+    Returns
+    -------
+    pyvista.Plotter
+        The plotter with the interface mesh added.
+
+    Raises
+    ------
+    ImportError
+        If PyVista is not installed.
+    """
+    pv = _require_pyvista()
+    poly = _build_interface_polydata(
+        cohesive_node_coords, cohesive_connectivity, damage_per_elem,
+    )
+
+    if plotter is None:
+        plotter = pv.Plotter(off_screen=pv.OFF_SCREEN)
+
+    plotter.add_mesh(
+        poly,
+        scalars="damage",
+        cmap=cmap,
+        clim=(0.0, 1.0),
+        show_edges=True,
+        edge_color="gray",
+        line_width=0.5,
+        scalar_bar_args={"title": "Damage d"},
+    )
+    return plotter
+
+
+def plot_crack_front_3d(
+    cohesive_node_coords: np.ndarray,
+    cohesive_connectivity: np.ndarray,
+    damage_per_elem: np.ndarray,
+    threshold: float = 0.5,
+    plotter=None,
+):
+    """Highlight the crack front (damage > threshold) on the interface.
+
+    The full interface is drawn in a faded grey; cohesive elements whose
+    damage exceeds ``threshold`` are overlaid in red as the visual crack
+    region.  This is a coarse but robust front indicator that does not
+    require a continuous damage contour or marching-squares logic.
+
+    Parameters
+    ----------
+    cohesive_node_coords, cohesive_connectivity, damage_per_elem :
+        See :func:`plot_interface_damage_3d`.
+    threshold : float, optional
+        Damage threshold used to flag "cracked" elements.  Default 0.5
+        (matches the bilinear-law cohesive-zone-front convention).
+    plotter : pyvista.Plotter, optional
+        Plotter to draw into.  A new one is created if ``None``.
+
+    Returns
+    -------
+    pyvista.Plotter
+        The plotter with the faded interface + red crack overlay.
+
+    Raises
+    ------
+    ImportError
+        If PyVista is not installed.
+    """
+    pv = _require_pyvista()
+    damage = np.asarray(damage_per_elem, dtype=float).ravel()
+    conn = np.asarray(cohesive_connectivity, dtype=np.int64)
+
+    full_poly = _build_interface_polydata(
+        cohesive_node_coords, conn, damage,
+    )
+
+    if plotter is None:
+        plotter = pv.Plotter(off_screen=pv.OFF_SCREEN)
+
+    # Faded full interface for context.
+    plotter.add_mesh(
+        full_poly,
+        color="lightgray",
+        opacity=0.35,
+        show_edges=True,
+        edge_color="gray",
+        line_width=0.4,
+    )
+
+    cracked = damage > threshold
+    if np.any(cracked):
+        # Build a sub-PolyData containing only the cracked quads, keeping
+        # original node coordinates (PyVista will silently ignore unused
+        # nodes during render).
+        sub_conn = conn[cracked]
+        sub_damage = damage[cracked]
+        crack_poly = _build_interface_polydata(
+            cohesive_node_coords, sub_conn, sub_damage,
+        )
+        plotter.add_mesh(
+            crack_poly,
+            color="red",
+            show_edges=True,
+            edge_color="darkred",
+            line_width=0.6,
+            label=f"Crack (d > {threshold:.2f})",
+        )
+
+    return plotter

@@ -24,11 +24,18 @@ Bathe, K.-J. (2006). Finite Element Procedures.
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 from scipy import sparse
 
 from wrinklefe.core.mesh import MeshData
 from wrinklefe.core.laminate import Laminate
+from wrinklefe.elements.cohesive8 import (
+    Cohesive8Element,
+    CohesiveState,
+    make_initial_state,
+)
 from wrinklefe.elements.hex8 import Hex8Element
 
 
@@ -71,6 +78,9 @@ class GlobalAssembler:
         mesh: MeshData,
         laminate: Laminate,
         element_type: str = "hex8",
+        cohesive_elements: (
+            list[tuple[int, Cohesive8Element]] | None
+        ) = None,
     ) -> None:
         if element_type not in ("hex8",):
             raise ValueError(
@@ -80,6 +90,72 @@ class GlobalAssembler:
         self.mesh = mesh
         self.laminate = laminate
         self.element_type = element_type
+
+        # Pre-build hex8 elements once so per-Newton-iteration assembly
+        # doesn't pay the construction cost (finding #15).  Element state
+        # is captured at construction time; the mesh is treated as
+        # immutable for the life of the assembler.
+        n_elem = self.mesh.n_elements
+        self._hex8_elements: list[Hex8Element] = [
+            self.create_element(e) for e in range(n_elem)
+        ]
+        self._hex8_dofs: list[np.ndarray] = [
+            self.element_dof_indices(e) for e in range(n_elem)
+        ]
+
+        # Cohesive element bookkeeping.  Each entry is keyed by the
+        # caller-supplied element index (a stable identifier independent
+        # of the hex8 element numbering), and carries pre-built per-GP
+        # history state for both the committed and trial (in-Newton-loop)
+        # views.
+        self.cohesive_elements: list[tuple[int, Cohesive8Element]] = list(
+            cohesive_elements or []
+        )
+        self.cohesive_state: dict[int, list[CohesiveState]] = {}
+        self.cohesive_state_trial: dict[int, list[CohesiveState]] = {}
+        n_nodes = self.mesh.nodes.shape[0]
+        for e_idx, c_elem in self.cohesive_elements:
+            if c_elem.node_ids is None:
+                raise ValueError(
+                    f"Cohesive element at index {e_idx} has no node_ids; "
+                    "pass node_ids to the Cohesive8Element constructor."
+                )
+            if np.any(c_elem.node_ids >= n_nodes):
+                raise ValueError(
+                    f"Cohesive element {e_idx}: node_ids out of range; "
+                    f"mesh has {n_nodes} nodes (max valid index "
+                    f"{n_nodes - 1}), got max(node_ids) = "
+                    f"{int(np.max(c_elem.node_ids))}."
+                )
+            # Element-wise exact check: catches mismatches between
+            # mesh.nodes[node_ids] and the node_coords the user passed to
+            # the element constructor.
+            # NOTE: this CANNOT detect node_id permutations among
+            # coincident nodes (common in cohesive split-mesh setups
+            # where bottom and top faces share xyz in the reference
+            # configuration).  A swap within the bottom face (e.g.,
+            # [4,5,6,7,8,9,10,11] -> [5,4,6,7,8,9,10,11]) is invisible
+            # to this check.  Callers must ensure node ordering follows
+            # the documented face convention (rows 0-3 = bottom, CCW
+            # from -,-; rows 4-7 = top).
+            if not np.array_equal(
+                self.mesh.nodes[c_elem.node_ids], c_elem.node_coords
+            ):
+                raise ValueError(
+                    f"Cohesive element {e_idx}: mesh.nodes[node_ids] does "
+                    "not match the node_coords passed to the element "
+                    "constructor — likely permutation error or stale "
+                    "coordinates."
+                )
+            self.cohesive_state[e_idx] = make_initial_state(c_elem.n_gp)
+            self.cohesive_state_trial[e_idx] = make_initial_state(c_elem.n_gp)
+
+        # Cache the linear hex8 stiffness matrices once.  These depend
+        # only on geometry/material — both fixed at construction — so
+        # there is no point recomputing them per Newton iteration.
+        self._hex8_Ke: list[np.ndarray] = [
+            elem.stiffness_matrix() for elem in self._hex8_elements
+        ]
 
     # ------------------------------------------------------------------
     # Element construction
@@ -164,7 +240,13 @@ class GlobalAssembler:
     # ------------------------------------------------------------------
 
     def assemble_stiffness(self, verbose: bool = False) -> sparse.csc_matrix:
-        """Assemble the global stiffness matrix K.
+        """Assemble the linear global stiffness matrix K (hex8 only).
+
+        This is the LINEAR stiffness path and does not include cohesive
+        contributions.  When cohesive elements are registered with this
+        assembler, callers must use :meth:`assemble_tangent` (or
+        :meth:`assemble_residual_and_tangent`) instead — see the runtime
+        check below.
 
         Algorithm
         ---------
@@ -172,10 +254,9 @@ class GlobalAssembler:
            Each hex8 element contributes 24 x 24 = 576 entries.
            Total pre-allocated non-zeros = ``n_elements * 576``.
         2. Loop over elements:
-           a. Create element from mesh data.
-           b. Compute element stiffness Ke (24 x 24).
-           c. Get global DOF indices for element nodes.
-           d. Fill COO arrays with Ke entries at global DOF positions.
+           a. Look up the cached element stiffness ``Ke`` (24 x 24).
+           b. Get global DOF indices for element nodes.
+           c. Fill COO arrays with Ke entries at global DOF positions.
         3. Create COO sparse matrix and convert to CSC.  Duplicate entries
            at the same (i, j) position are summed automatically by
            ``scipy.sparse.coo_matrix``.
@@ -189,7 +270,33 @@ class GlobalAssembler:
         Returns
         -------
         scipy.sparse.csc_matrix
-            Shape ``(n_dof, n_dof)`` global stiffness matrix in CSC format.
+            Shape ``(n_dof, n_dof)`` linear global stiffness matrix in
+            CSC format.
+
+        Raises
+        ------
+        RuntimeError
+            If cohesive elements are registered.  Use
+            :meth:`assemble_tangent` (consistent tangent including the
+            cohesive contribution) for nonlinear CZM problems.
+        """
+        if self.cohesive_elements:
+            raise RuntimeError(
+                "GlobalAssembler.assemble_stiffness() is the linear "
+                "stiffness path and does not include cohesive "
+                "contributions. When cohesive elements are registered, "
+                "use NewtonRaphsonSolver (which calls assemble_tangent) "
+                "instead of StaticSolver."
+            )
+        return self._assemble_hex8_stiffness(verbose=verbose)
+
+    def _assemble_hex8_stiffness(
+        self, verbose: bool = False
+    ) -> sparse.csc_matrix:
+        """Hex8-only linear stiffness, no cohesive contribution.
+
+        Shared by :meth:`assemble_stiffness` and
+        :meth:`assemble_tangent` / :meth:`assemble_residual_and_tangent`.
         """
         n_elem = self.mesh.n_elements
         n_dof = self.mesh.n_dof
@@ -213,12 +320,8 @@ class GlobalAssembler:
                 print(f"  Assembling element {e}/{n_elem} "
                       f"({100.0 * e / n_elem:.1f}%)")
 
-            # Create element and compute stiffness
-            elem = self.create_element(e)
-            Ke = elem.stiffness_matrix()  # (24, 24)
-
-            # Global DOF indices
-            dofs = self.element_dof_indices(e)  # (24,)
+            Ke = self._hex8_Ke[e]  # cached at construction time
+            dofs = self._hex8_dofs[e]  # (24,)
 
             # Map local indices to global indices
             offset = e * entries_per_elem
@@ -245,8 +348,223 @@ class GlobalAssembler:
         return K_csc
 
     # ------------------------------------------------------------------
+    # Consistent tangent (Newton-Raphson)
+    # ------------------------------------------------------------------
+
+    def assemble_tangent(self, u: np.ndarray) -> sparse.csc_matrix:
+        """Assemble the consistent global tangent at ``u``.
+
+        Sibling to :meth:`assemble_stiffness` for the nonlinear solver:
+        identical to the linear hex8 path, plus per-Gauss-point cohesive-
+        element contributions linearised at the current trial state.
+        Updates ``self.cohesive_state_trial`` as a side effect.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Shape ``(n_dof,)`` global displacement vector.
+
+        Returns
+        -------
+        scipy.sparse.csc_matrix
+            Shape ``(n_dof, n_dof)`` global tangent in CSC format.
+        """
+        u = np.asarray(u, dtype=float).reshape(-1)
+        K = self._assemble_hex8_stiffness()
+
+        if not self.cohesive_elements:
+            return K
+
+        n_dof = self.mesh.n_dof
+        coh_rows: list[np.ndarray] = []
+        coh_cols: list[np.ndarray] = []
+        coh_vals: list[np.ndarray] = []
+        for e_idx, c_elem in self.cohesive_elements:
+            dofs = self._cohesive_dof_indices(c_elem)
+            u_e = u[dofs]
+            K_e, _F_e, state_new = c_elem.tangent_and_force(
+                u_e, state_prev=self.cohesive_state[e_idx]
+            )
+            self.cohesive_state_trial[e_idx] = state_new
+
+            ii, jj = np.meshgrid(dofs, dofs, indexing="ij")
+            coh_rows.append(ii.ravel())
+            coh_cols.append(jj.ravel())
+            coh_vals.append(K_e.ravel())
+
+        K_coh = sparse.coo_matrix(
+            (
+                np.concatenate(coh_vals),
+                (np.concatenate(coh_rows), np.concatenate(coh_cols)),
+            ),
+            shape=(n_dof, n_dof),
+        ).tocsc()
+        return (K + K_coh).tocsc()
+
+    def assemble_residual_and_tangent(
+        self, u: np.ndarray
+    ) -> tuple[sparse.csc_matrix, np.ndarray]:
+        """Combined consistent tangent + internal force in one pass.
+
+        Calling :meth:`assemble_internal_force` and :meth:`assemble_tangent`
+        back-to-back would invoke each cohesive element's
+        :meth:`tangent_and_force` twice with identical arguments.  This
+        method runs a single pass per cohesive element and returns both
+        outputs, halving the cohesive-law cost per Newton iteration.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Shape ``(n_dof,)`` global displacement vector.
+
+        Returns
+        -------
+        K_t : scipy.sparse.csc_matrix
+            Shape ``(n_dof, n_dof)`` global tangent.
+        F_int : np.ndarray
+            Shape ``(n_dof,)`` global internal force vector.
+        """
+        u = np.asarray(u, dtype=float).reshape(-1)
+        n_dof = self.mesh.n_dof
+
+        # Linear hex8 stiffness + F_int = K_e @ u_e per element.
+        K_linear = self._assemble_hex8_stiffness()
+        F_int = np.zeros(n_dof)
+        for e, _elem in enumerate(self._hex8_elements):
+            dofs = self._hex8_dofs[e]
+            Ke = self._hex8_Ke[e]
+            F_int[dofs] += Ke @ u[dofs]
+
+        if not self.cohesive_elements:
+            return K_linear, F_int
+
+        coh_rows: list[np.ndarray] = []
+        coh_cols: list[np.ndarray] = []
+        coh_vals: list[np.ndarray] = []
+        for e_idx, c_elem in self.cohesive_elements:
+            dofs = self._cohesive_dof_indices(c_elem)
+            u_e = u[dofs]
+            K_e, F_e, state_new = c_elem.tangent_and_force(
+                u_e, state_prev=self.cohesive_state[e_idx]
+            )
+            self.cohesive_state_trial[e_idx] = state_new
+            F_int[dofs] += F_e
+
+            ii, jj = np.meshgrid(dofs, dofs, indexing="ij")
+            coh_rows.append(ii.ravel())
+            coh_cols.append(jj.ravel())
+            coh_vals.append(K_e.ravel())
+
+        K_coh = sparse.coo_matrix(
+            (
+                np.concatenate(coh_vals),
+                (np.concatenate(coh_rows), np.concatenate(coh_cols)),
+            ),
+            shape=(n_dof, n_dof),
+        ).tocsc()
+        return (K_linear + K_coh).tocsc(), F_int
+
+    # ------------------------------------------------------------------
+    # Cohesive history-state management
+    # ------------------------------------------------------------------
+
+    def commit_state(self) -> None:
+        """Promote trial cohesive state to committed state.
+
+        Called by the nonlinear solver at the end of a converged
+        increment.  Deep-copies each ``CohesiveState`` so the committed
+        view cannot be mutated by later trial updates — using
+        :func:`copy.deepcopy` so the contract remains correct if
+        ``CohesiveState`` ever grows nested fields.
+        """
+        self.cohesive_state = {
+            k: [copy.deepcopy(s) for s in v]
+            for k, v in self.cohesive_state_trial.items()
+        }
+
+    def revert_state(self) -> None:
+        """Reset trial cohesive state to the last committed state.
+
+        Called by the nonlinear solver on a failed increment so the next
+        attempt starts from clean history.  Uses :func:`copy.deepcopy`
+        for the same forward-compatibility reason as :meth:`commit_state`.
+        """
+        self.cohesive_state_trial = {
+            k: [copy.deepcopy(s) for s in v]
+            for k, v in self.cohesive_state.items()
+        }
+
+    # ------------------------------------------------------------------
+    # Cohesive DOF mapping
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _cohesive_dof_indices(c_elem: Cohesive8Element) -> np.ndarray:
+        """Build the (24,) global DOF index list from a cohesive element.
+
+        The cohesive element carries ``node_ids`` — the global node
+        indices in the same order as ``node_coords`` — which are set in
+        the :class:`Cohesive8Element` constructor.
+        """
+        if c_elem.node_ids is None:
+            raise ValueError(
+                "Cohesive8Element instance is missing `node_ids` "
+                "(global node indices); pass node_ids to the "
+                "Cohesive8Element constructor."
+            )
+        node_ids = c_elem.node_ids
+        dofs = np.empty(24, dtype=np.intp)
+        for i, nid in enumerate(node_ids):
+            base = 3 * int(nid)
+            dofs[3 * i] = base
+            dofs[3 * i + 1] = base + 1
+            dofs[3 * i + 2] = base + 2
+        return dofs
+
+    # ------------------------------------------------------------------
     # Force vector assembly
     # ------------------------------------------------------------------
+
+    def assemble_internal_force(self, u: np.ndarray) -> np.ndarray:
+        """Assemble the global internal force vector ``F_int(u)``.
+
+        For the linear hex8 path this is ``K_e @ u_e`` per element.
+        Cohesive elements use the path-dependent
+        :meth:`Cohesive8Element.tangent_and_force`; their trial history
+        state is stored in ``self.cohesive_state_trial`` for the next
+        ``commit_state`` call.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Shape ``(n_dof,)`` global displacement vector.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(n_dof,)`` internal force vector.
+        """
+        u = np.asarray(u, dtype=float).reshape(-1)
+        n_elem = self.mesh.n_elements
+        n_dof = self.mesh.n_dof
+        F = np.zeros(n_dof)
+
+        for e in range(n_elem):
+            Ke = self._hex8_Ke[e]
+            dofs = self._hex8_dofs[e]
+            ue = u[dofs]
+            F[dofs] += Ke @ ue
+
+        for e_idx, c_elem in self.cohesive_elements:
+            dofs = self._cohesive_dof_indices(c_elem)
+            u_e = u[dofs]
+            _K_e, F_e, state_new = c_elem.tangent_and_force(
+                u_e, state_prev=self.cohesive_state[e_idx]
+            )
+            self.cohesive_state_trial[e_idx] = state_new
+            F[dofs] += F_e
+
+        return F
 
     def assemble_force_vector(
         self, boundary_conditions: list
