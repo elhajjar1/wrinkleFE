@@ -55,9 +55,17 @@ from wrinklefe.core.morphology import (
     SINGLE_WRINKLE_MODES,
 )
 from wrinklefe.core.mesh import WrinkleMesh, MeshData
+from wrinklefe.core.cohesive_mesh import insert_cohesive_interface
+from wrinklefe.elements.cohesive8 import (
+    Cohesive8Element,
+    CohesiveProperties,
+)
+from wrinklefe.solver.assembler import GlobalAssembler
 from wrinklefe.solver.static import StaticSolver
+from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
 from wrinklefe.solver.results import FieldResults
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
+from wrinklefe.failure.delamination import build_delamination_report
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
 # Analytical damage model constants (Section 6 of CLAUDE.md)
 _D0 = 0.15       # Base damage coefficient
@@ -756,6 +764,33 @@ class AnalysisConfig:
     # over-predicts strength.  Must be >= 0.
     kink_band_quadratic_coeff: float = 0.0
 
+    # ------------------------------------------------------------------
+    # Cohesive zone modelling (delamination prediction).
+    # ------------------------------------------------------------------
+    # v1: bilinear intrinsic CZM with Benzeggagh-Kenane mode-mixity.
+    # Off by default; when ``enable_czm=True`` the FE solve switches
+    # from :class:`StaticSolver` (linear) to
+    # :class:`NewtonRaphsonSolver` and inserts zero-thickness cohesive
+    # elements at the requested ply interfaces.  None of the other
+    # czm_* fields have any effect when ``enable_czm=False``.
+    enable_czm: bool = False
+    # Which ply interfaces to insert cohesive elements at:
+    #   * ``"all"`` — every interior ply interface,
+    #   * ``"near_crest"`` — the single interface whose z-coordinate
+    #     is closest to the wrinkle peak amplitude,
+    #   * ``list[int]`` — explicit list of interface indices in
+    #     ``[0, n_plies-1)`` (0 = bottom-most interior interface).
+    czm_interfaces: Union[List[int], str] = "near_crest"
+    czm_law: str = "bilinear"
+    czm_GIc: Optional[float] = None      # N/mm; None -> material default
+    czm_GIIc: Optional[float] = None
+    czm_sigma_max: Optional[float] = None  # MPa; None -> material default
+    czm_tau_max: Optional[float] = None
+    czm_penalty: float = 1.0e6           # N/mm^3 initial interface stiffness
+    czm_BK_eta: float = 1.45
+    czm_n_load_increments: int = 20
+    czm_newton_tol: float = 1.0e-4
+
     def __post_init__(self) -> None:
         if self.domain_length <= 0:
             self.domain_length = 3.0 * self.wavelength
@@ -986,6 +1021,101 @@ class AnalysisConfig:
                 f"got {self.kink_band_quadratic_coeff!r}"
             )
 
+        # --- Cohesive zone modelling ----------------------------------
+        # All CZM fields are no-ops when ``enable_czm`` is False; we
+        # still type-check them so misconfigurations surface at
+        # construction time rather than mid-solve.
+        if not isinstance(self.enable_czm, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_czm must be a bool, "
+                f"got {self.enable_czm!r}"
+            )
+        if self.czm_law != "bilinear":
+            raise ValueError(
+                f"AnalysisConfig.czm_law: only 'bilinear' is supported "
+                f"in v1, got {self.czm_law!r}"
+            )
+        if isinstance(self.czm_interfaces, str):
+            if self.czm_interfaces not in ("all", "near_crest"):
+                raise ValueError(
+                    "AnalysisConfig.czm_interfaces must be 'all', "
+                    "'near_crest', or a list of int, got "
+                    f"{self.czm_interfaces!r}"
+                )
+        elif isinstance(self.czm_interfaces, list):
+            n_plies = len(self.angles)
+            for i, idx in enumerate(self.czm_interfaces):
+                if not isinstance(idx, int) or isinstance(idx, bool):
+                    raise ValueError(
+                        f"AnalysisConfig.czm_interfaces[{i}] must be an "
+                        f"int, got {idx!r}"
+                    )
+                # Valid interior ply interfaces are 0 .. n_plies-2.
+                if not (0 <= idx <= n_plies - 2):
+                    raise ValueError(
+                        f"AnalysisConfig.czm_interfaces[{i}] must be in "
+                        f"[0, {n_plies - 2}], got {idx}"
+                    )
+        else:
+            raise ValueError(
+                "AnalysisConfig.czm_interfaces must be a string ('all' "
+                "or 'near_crest') or a list[int], got "
+                f"{type(self.czm_interfaces).__name__}"
+            )
+        for name in ("czm_GIc", "czm_GIIc", "czm_sigma_max", "czm_tau_max"):
+            val = getattr(self, name)
+            if val is None:
+                continue
+            if not (
+                isinstance(val, (int, float))
+                and not isinstance(val, bool)
+                and math.isfinite(val)
+                and val > 0.0
+            ):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be a finite positive "
+                    f"float when set, got {val!r}"
+                )
+        if not (
+            isinstance(self.czm_penalty, (int, float))
+            and not isinstance(self.czm_penalty, bool)
+            and math.isfinite(self.czm_penalty)
+            and self.czm_penalty > 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.czm_penalty must be a finite positive "
+                f"float, got {self.czm_penalty!r}"
+            )
+        if not (
+            isinstance(self.czm_BK_eta, (int, float))
+            and not isinstance(self.czm_BK_eta, bool)
+            and math.isfinite(self.czm_BK_eta)
+            and self.czm_BK_eta > 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.czm_BK_eta must be a finite positive "
+                f"float, got {self.czm_BK_eta!r}"
+            )
+        if (
+            not isinstance(self.czm_n_load_increments, int)
+            or isinstance(self.czm_n_load_increments, bool)
+            or self.czm_n_load_increments < 1
+        ):
+            raise ValueError(
+                f"AnalysisConfig.czm_n_load_increments must be an int "
+                f">= 1, got {self.czm_n_load_increments!r}"
+            )
+        if not (
+            isinstance(self.czm_newton_tol, (int, float))
+            and not isinstance(self.czm_newton_tol, bool)
+            and math.isfinite(self.czm_newton_tol)
+            and self.czm_newton_tol > 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.czm_newton_tol must be a finite positive "
+                f"float, got {self.czm_newton_tol!r}"
+            )
+
         # --- Multi-wrinkle override -----------------------------------
         # When ``wrinkles`` is provided, it overrides the named
         # single/dual-wrinkle dispatch.  An empty list is rejected
@@ -1123,6 +1253,48 @@ class AnalysisResults:
     # Tension mechanism decomposition (only for tension loading)
     tension_mechanisms: Optional[dict] = None  # {kd_fiber, kd_matrix, kd_oop, ...}
 
+    # ------------------------------------------------------------------
+    # CZM results — only populated when AnalysisConfig.enable_czm = True.
+    # ------------------------------------------------------------------
+    czm_damage: Optional[np.ndarray] = None
+    """Cohesive damage variable per (interface element, Gauss point).
+    Shape ``(n_iface_elems, n_gauss)``."""
+
+    czm_separation: Optional[np.ndarray] = None
+    """Displacement jump in the local cohesive frame per (interface
+    element, Gauss point, component).  Shape ``(n_iface_elems, n_gauss,
+    3)`` with components ``(delta_n, delta_s, delta_t)``."""
+
+    czm_traction: Optional[np.ndarray] = None
+    """Cohesive traction in the local frame at each Gauss point.  Shape
+    ``(n_iface_elems, n_gauss, 3)``."""
+
+    czm_energy_dissipated: Optional[float] = None
+    """Total cohesive energy dissipated across all interfaces (N*mm)."""
+
+    czm_energy_per_interface: Optional[Dict[int, float]] = None
+    """Per-interface dissipated energy keyed by ply-interface index."""
+
+    czm_crack_length_per_interface: Optional[Dict[int, float]] = None
+    """Per-interface crack length (in mm) keyed by ply-interface index.
+    Computed as the in-plane area of elements with ``damage > 0.99``,
+    divided by the mesh width (so the reported quantity has units of
+    length along the wrinkle/crack direction)."""
+
+    czm_load_displacement: Optional[np.ndarray] = None
+    """``(n_inc, 2)`` array of ``(lambda, ||u||)`` samples from the
+    incremental Newton-Raphson run."""
+
+    czm_converged: Optional[bool] = None
+    """Whether every load increment converged."""
+
+    czm_interfaces_used: Optional[List[int]] = None
+    """Ply-interface indices that actually received cohesive elements."""
+
+    czm_delamination_report: Optional[LaminateFailureReport] = None
+    """Delamination failure report shaped like the other failure
+    criteria, populated by :mod:`wrinklefe.failure.delamination`."""
+
     def summary(self) -> str:
         """Generate a comprehensive text summary.
 
@@ -1175,6 +1347,28 @@ class AnalysisResults:
                 "  FE Results:",
                 f"    Max displacement: {max_disp:.6e} mm",
                 f"    Modulus retention: {self.modulus_retention:.4f}",
+            ])
+
+        if self.czm_damage is not None:
+            max_d = float(np.max(self.czm_damage)) if self.czm_damage.size else 0.0
+            mean_d = float(np.mean(self.czm_damage)) if self.czm_damage.size else 0.0
+            energy = (
+                self.czm_energy_dissipated
+                if self.czm_energy_dissipated is not None
+                else 0.0
+            )
+            iface_str = (
+                ",".join(str(i) for i in self.czm_interfaces_used)
+                if self.czm_interfaces_used else "(none)"
+            )
+            lines.extend([
+                "",
+                "  Cohesive Zone Modeling (delamination):",
+                f"    Interfaces:        {iface_str}",
+                f"    Max damage:        {max_d:.4f}",
+                f"    Mean damage:       {mean_d:.4f}",
+                f"    Energy dissipated: {energy:.4e} N*mm",
+                f"    Converged:         {self.czm_converged}",
             ])
 
         lines.append("=" * 65)
@@ -1393,7 +1587,13 @@ class WrinkleAnalysis:
 
         _report("Solving FE system", 0.25)
 
-        # 5. Static FE solve
+        # 5. FE solve — branch on CZM mode.
+        if cfg.enable_czm:
+            self._run_czm_path(results, laminate, mesh, wrinkle_config)
+            _report("Analysis complete", 1.0)
+            return results
+
+        # Linear (legacy) path.
         solver = StaticSolver(mesh, laminate)
         bcs = BoundaryHandler.compression_bcs(
             mesh, applied_strain=cfg.applied_strain
@@ -1534,6 +1734,410 @@ class WrinkleAnalysis:
             self.config.angles,
             self.config.material,
             ply_thickness=self.config.ply_thickness,
+        )
+
+    # ------------------------------------------------------------------
+    # Cohesive-zone modelling (Phase 3 wiring)
+    # ------------------------------------------------------------------
+
+    def _resolve_cohesive_interfaces(
+        self, laminate: Laminate, wrinkle_config: WrinkleConfiguration,
+    ) -> List[int]:
+        """Resolve ``cfg.czm_interfaces`` to an explicit ply-interface list.
+
+        Parameters
+        ----------
+        laminate : Laminate
+            The fully built laminate; supplies the ply z-coordinates.
+        wrinkle_config : WrinkleConfiguration
+            Used to locate the wrinkle peak when
+            ``cfg.czm_interfaces == "near_crest"``.
+
+        Returns
+        -------
+        list[int]
+            Sorted, de-duplicated list of ply-interface indices in
+            ``[0, n_plies - 2]`` (0 = bottom-most interior interface).
+        """
+        cfg = self.config
+        n_plies = laminate.n_plies
+        if isinstance(cfg.czm_interfaces, list):
+            return sorted({int(i) for i in cfg.czm_interfaces})
+        if cfg.czm_interfaces == "all":
+            return list(range(n_plies - 1))
+        if cfg.czm_interfaces == "near_crest":
+            # Pick the *interior* interface closest to the wrinkle peak.
+            # The wrinkle peak amplitude in the un-deformed (flat) mesh
+            # lies at the wrinkle's reference centre, i.e. at the
+            # nominal z of its ply-interface index, shifted in z by the
+            # wrinkle's peak displacement.  For the dual-wrinkle modes
+            # the two interfaces straddle the laminate midplane; for
+            # single-wrinkle modes there is one wrinkle interface.
+            ply_z = laminate.z_coords()  # length n_plies + 1
+            interface_z = 0.5 * (ply_z[1:n_plies] + ply_z[2:n_plies + 1])
+            # Note: interface_z[i] is the midpoint between plies i+1 and
+            # i+2; we want a z value associated with the boundary
+            # between plies i and i+1, i.e. ply_z[i+1].  Use that
+            # directly.
+            boundary_z = ply_z[1:n_plies]  # internal boundaries
+            # The wrinkle's reference centre z is the boundary z of its
+            # ply_interface.  Take the wrinkle with the largest amplitude
+            # (most-likely-to-delaminate driver) and pick the boundary
+            # closest to that wrinkle's centre.
+            wrinkles = list(getattr(wrinkle_config, "wrinkles", ()))
+            if not wrinkles:
+                # No wrinkle placements (flat mesh) — default to the
+                # midplane interface.
+                target_z = 0.0
+            else:
+                # Find the wrinkle with the largest amplitude; use its
+                # reference centre z as the target.
+                w_best = max(
+                    wrinkles,
+                    key=lambda w: abs(getattr(w.profile, "amplitude", 0.0)),
+                )
+                # The wrinkle's z reference is the ply boundary above ply
+                # ``ply_interface``; ``ply_interface`` is in the [0,
+                # n_plies-2] range and references the boundary at
+                # ply_z[ply_interface + 1].
+                k = int(w_best.ply_interface)
+                if 1 <= k + 1 <= n_plies - 1:
+                    target_z = float(ply_z[k + 1])
+                else:
+                    target_z = 0.0
+            best_i = int(np.argmin(np.abs(boundary_z - target_z)))
+            return [best_i]
+        # Validation in ``__post_init__`` already constrains the values
+        # this method sees; the catch-all keeps mypy happy.
+        raise ValueError(
+            f"Unrecognised czm_interfaces value: {cfg.czm_interfaces!r}"
+        )
+
+    def _build_cohesive_properties(
+        self, laminate: Laminate,
+    ) -> CohesiveProperties:
+        """Build ``CohesiveProperties`` from config-or-material defaults.
+
+        Falls back to ply-0's material when a CZM strength / toughness
+        is not explicitly set on the config.  Raises ``ValueError`` when
+        the laminate's first ply lacks ``GIc`` / ``GIIc`` and the user
+        did not override them on the config.
+        """
+        cfg = self.config
+        # Reference material: ply 0 (simpler than per-interface lookup,
+        # matches the v1 spec).
+        mat = laminate.plies[0].material
+
+        def _coalesce(cfg_val: Optional[float], mat_val) -> float:
+            if cfg_val is not None:
+                return float(cfg_val)
+            if mat_val is None:
+                raise ValueError(
+                    "Cohesive zone modelling requires GIc, GIIc, "
+                    "sigma_max and tau_max either as explicit "
+                    "AnalysisConfig.czm_* overrides or as material "
+                    "defaults.  Material "
+                    f"{mat.name!r} (ply 0) is missing one of them."
+                )
+            return float(mat_val)
+
+        return CohesiveProperties(
+            K=float(cfg.czm_penalty),
+            sigma_max=_coalesce(cfg.czm_sigma_max, mat.sigma_max),
+            tau_max=_coalesce(cfg.czm_tau_max, mat.tau_max),
+            GIc=_coalesce(cfg.czm_GIc, mat.GIc),
+            GIIc=_coalesce(cfg.czm_GIIc, mat.GIIc),
+            eta_BK=float(cfg.czm_BK_eta),
+            beta=1.0,
+        )
+
+    def _build_mesh_with_cohesive_interfaces(
+        self,
+        laminate: Laminate,
+        wrinkle_config: WrinkleConfiguration,
+        iface_indices: List[int],
+        cohesive_props: CohesiveProperties,
+    ) -> Tuple[MeshData, List[Tuple[int, Cohesive8Element]], Dict[int, range]]:
+        """Build a wrinkled mesh with cohesive elements inserted.
+
+        The flat (un-deformed) mesh is built first so that ply-interface
+        nodes lie on exact z-planes; cohesive elements are inserted on
+        those flat planes; finally the wrinkle displacement field is
+        applied to **all** nodes (including the duplicated interface
+        nodes), so the cohesive layer sits at a curved surface in the
+        deformed configuration.  This keeps the
+        :func:`insert_cohesive_interface` topology check valid (which
+        requires axis-aligned interface planes in the reference
+        configuration) while letting the rest of the pipeline see the
+        normal wrinkled geometry.
+
+        Returns
+        -------
+        mesh : MeshData
+            Final wrinkled mesh with duplicated interface nodes.
+        cohesive_elements : list[tuple[int, Cohesive8Element]]
+            Entries suitable for :class:`GlobalAssembler`.  The integer
+            key is the *global* cohesive-element id, unique across
+            interfaces.  Element ``node_coords`` are refreshed against
+            the wrinkled ``mesh.nodes`` so the assembler's exact-equality
+            check passes.
+        elem_ranges : dict[int, range]
+            Map from ply-interface index to the contiguous range of
+            global cohesive-element ids belonging to that interface,
+            used downstream for per-interface aggregation.
+        """
+        cfg = self.config
+
+        # --- Step 1: flat mesh, no wrinkle deformation ---------------
+        flat_mesh_gen = WrinkleMesh(
+            laminate=laminate,
+            wrinkle_config=None,
+            Lx=cfg.domain_length,
+            Ly=cfg.domain_width,
+            nx=cfg.nx,
+            ny=cfg.ny,
+            nz_per_ply=cfg.nz_per_ply,
+        )
+        mesh = flat_mesh_gen.generate()
+
+        # --- Step 2: insert cohesive layers at requested z-planes ----
+        ply_z = laminate.z_coords()  # length n_plies + 1
+        # ply-interface index ``i`` corresponds to the boundary between
+        # plies ``i`` and ``i + 1`` => z = ply_z[i + 1].
+        elem_ranges: Dict[int, range] = {}
+        cohesive_elements: List[Tuple[int, Cohesive8Element]] = []
+        next_global_id = 0
+        for iface_idx in iface_indices:
+            z_iface = float(ply_z[iface_idx + 1])
+            mesh, coh_elems = insert_cohesive_interface(
+                mesh, z_iface, cohesive_props,
+            )
+            start = next_global_id
+            for k, c_elem in enumerate(coh_elems):
+                # Reassign elem_id to be unique across interfaces.
+                c_elem.elem_id = next_global_id
+                cohesive_elements.append((next_global_id, c_elem))
+                next_global_id += 1
+            elem_ranges[iface_idx] = range(start, next_global_id)
+
+        # --- Step 3: apply wrinkle deformation to the expanded mesh -
+        # Rebuild the node_ply_ids array for the new (duplicated) node
+        # set.  WrinkleMesh._node_to_element_ply assigns ply ids by the
+        # z-layer index; for duplicated nodes the natural choice is to
+        # carry the original ply id of the node they were duplicated
+        # from.  The cleanest way to derive this without re-deriving
+        # internal mesh state is to assign each node by the z-value of
+        # its original (flat) coordinate, falling back to the original
+        # ply id for nodes that exactly straddle a boundary.
+        node_ply_ids = self._derive_node_ply_ids(mesh, laminate)
+        deformed_nodes = wrinkle_config.apply_to_nodes(
+            mesh.nodes, node_ply_ids, laminate.n_plies,
+        )
+        fiber_angles = wrinkle_config.fiber_angles_at_nodes(
+            mesh.nodes, node_ply_ids, n_plies=laminate.n_plies,
+        )
+        mesh = MeshData(
+            nodes=deformed_nodes,
+            elements=mesh.elements,
+            ply_ids=mesh.ply_ids,
+            fiber_angles=fiber_angles,
+            ply_angles=mesh.ply_angles,
+            nx=mesh.nx,
+            ny=mesh.ny,
+            nz=mesh.nz,
+            laminate=laminate,
+        )
+
+        # --- Step 4: refresh cohesive node_coords against the deformed
+        # node array so the GlobalAssembler equality check passes -----
+        refreshed: List[Tuple[int, Cohesive8Element]] = []
+        for gid, c_elem in cohesive_elements:
+            new_coords = mesh.nodes[c_elem.node_ids]
+            new_elem = Cohesive8Element(
+                node_coords=new_coords,
+                properties=c_elem.properties,
+                node_ids=c_elem.node_ids,
+                elem_id=c_elem.elem_id,
+            )
+            refreshed.append((gid, new_elem))
+        return mesh, refreshed, elem_ranges
+
+    @staticmethod
+    def _derive_node_ply_ids(mesh: MeshData, laminate: Laminate) -> np.ndarray:
+        """Assign a ply id to every mesh node from its z-coordinate.
+
+        Used after :func:`insert_cohesive_interface` has duplicated
+        interface nodes: those duplicates need the *same* ply id as the
+        originals so the wrinkle through-thickness decay treats them as
+        belonging to the same ply.  A node sitting exactly on a ply
+        boundary z is assigned to the ply *below* (lower index); the
+        wrinkle decay field is continuous across boundaries so this
+        choice has no physical consequence.
+        """
+        ply_z = laminate.z_coords()  # n_plies + 1
+        z = mesh.nodes[:, 2]
+        # ``np.searchsorted(side='right') - 1`` puts a node sitting
+        # exactly on a boundary into the ply below the boundary.
+        ids = np.searchsorted(ply_z, z, side="right") - 1
+        ids = np.clip(ids, 0, laminate.n_plies - 1)
+        return ids.astype(np.intp)
+
+    def _run_czm_path(
+        self,
+        results: AnalysisResults,
+        laminate: Laminate,
+        flat_mesh: MeshData,
+        wrinkle_config: WrinkleConfiguration,
+    ) -> None:
+        """End-to-end CZM solve: insert interfaces, run Newton, populate results.
+
+        The ``flat_mesh`` argument is the wrinkled hex8 mesh that the
+        linear path would use; we rebuild a *different* mesh here that
+        also carries cohesive layers (see
+        :meth:`_build_mesh_with_cohesive_interfaces`) and use that for
+        the solve.  The mesh passed in is otherwise unused — it is the
+        sentinel value that the linear-path callers (``_evaluate_failure``,
+        ``_compute_retention_factors``) consume; we overwrite
+        ``results.mesh`` with our enriched mesh below.
+        """
+        cfg = self.config
+
+        iface_indices = self._resolve_cohesive_interfaces(
+            laminate, wrinkle_config,
+        )
+        results.czm_interfaces_used = list(iface_indices)
+
+        cohesive_props = self._build_cohesive_properties(laminate)
+        mesh, cohesive_elements, elem_ranges = (
+            self._build_mesh_with_cohesive_interfaces(
+                laminate, wrinkle_config, iface_indices, cohesive_props,
+            )
+        )
+        results.mesh = mesh
+        if mesh.fiber_angles.size > 0:
+            results.mesh_max_angle_rad = float(np.max(mesh.fiber_angles))
+
+        # Boundary conditions: ``compression_bcs`` is sign-agnostic (the
+        # sign of ``applied_strain`` selects compression vs tension), so
+        # we use it for both loading modes here, matching the linear
+        # path.
+        bcs = BoundaryHandler.compression_bcs(
+            mesh, applied_strain=cfg.applied_strain
+        )
+        bc_handler = BoundaryHandler(mesh)
+        assembler = GlobalAssembler(
+            mesh, laminate, cohesive_elements=cohesive_elements,
+        )
+
+        solver = NewtonRaphsonSolver(
+            assembler=assembler,
+            bc_handler=bc_handler,
+            boundary_conditions=bcs,
+            n_increments=int(cfg.czm_n_load_increments),
+            tol_residual=float(cfg.czm_newton_tol),
+        )
+        outcome = solver.solve(verbose=cfg.verbose)
+
+        results.czm_converged = bool(outcome.get("converged", False))
+        results.czm_load_displacement = outcome.get(
+            "load_displacement", None,
+        )
+
+        # ----- Extract per-Gauss-point CZM state -----
+        n_iface = len(cohesive_elements)
+        if n_iface == 0:
+            results.czm_damage = np.empty((0, 0))
+            results.czm_separation = np.empty((0, 0, 3))
+            results.czm_traction = np.empty((0, 0, 3))
+            results.czm_energy_dissipated = 0.0
+            results.czm_energy_per_interface = {}
+            results.czm_crack_length_per_interface = {}
+            results.czm_delamination_report = build_delamination_report({})
+            return
+
+        n_gp = cohesive_elements[0][1].n_gp
+        damage = np.zeros((n_iface, n_gp), dtype=float)
+        separation = np.zeros((n_iface, n_gp, 3), dtype=float)
+        traction = np.zeros((n_iface, n_gp, 3), dtype=float)
+
+        u = outcome["displacement"]
+        # Iterate in the same order as `cohesive_elements` was built.
+        for row, (gid, c_elem) in enumerate(cohesive_elements):
+            # Damage from the assembler-committed state.
+            state = assembler.cohesive_state.get(
+                gid, [None] * c_elem.n_gp
+            )
+            for g in range(c_elem.n_gp):
+                s = state[g]
+                damage[row, g] = float(s.d) if s is not None else 0.0
+
+            # Recompute the local separation and traction at each GP
+            # from the final displacement.  ``tangent_and_force`` returns
+            # the assembled force / tangent but does not expose
+            # per-GP values; we recompute the kinematic / constitutive
+            # pieces directly here.
+            dofs = GlobalAssembler._cohesive_dof_indices(c_elem)
+            u_e = u[dofs]
+            for g in range(c_elem.n_gp):
+                B = c_elem._B_jump(g)
+                R = c_elem._R_gp[g]
+                delta_global = B @ u_e
+                delta_local = R @ delta_global
+                separation[row, g] = delta_local
+                # Traction via the committed-state law evaluation.
+                T_local, _D_local, _new = c_elem._law_local(
+                    delta_local, state[g],
+                )
+                traction[row, g] = T_local
+
+        results.czm_damage = damage
+        results.czm_separation = separation
+        results.czm_traction = traction
+
+        # ----- Per-interface energy + crack length -----
+        # Per-element dissipated energy (approximate):
+        # E_e ≈ 0.5 * sigma_max * delta_f * area_e * d_avg, where
+        # delta_f is mode-dependent.  We use the simpler bound
+        # GIc * area * d_avg which is accurate for mode-I-dominated
+        # failure and gives the right total in the fully-failed limit.
+        energy_per_iface: Dict[int, float] = {}
+        crack_len_per_iface: Dict[int, float] = {}
+        damage_per_iface: Dict[int, np.ndarray] = {}
+
+        # Mesh width in y for crack-length estimation.  Use the bounding
+        # box of the *original* (flat) coordinates which the cohesive
+        # element retains internally; falls back to the deformed mesh.
+        y_min = float(mesh.nodes[:, 1].min())
+        y_max = float(mesh.nodes[:, 1].max())
+        Ly = max(y_max - y_min, 1e-12)
+
+        for iface_idx, gid_range in elem_ranges.items():
+            rows = list(range(gid_range.start, gid_range.stop))
+            d_iface = damage[rows]
+            damage_per_iface[iface_idx] = d_iface
+
+            # Energy: sum per element of GIc * area * d_mean (mode-I
+            # bound).  Mode-mixity refines this in principle but the
+            # mode-I approximation suffices for the v1 reporter.
+            e_iface = 0.0
+            crack_area = 0.0
+            for row, gid in enumerate(rows):
+                _, c_elem = cohesive_elements[gid]
+                area_e = c_elem.area
+                d_avg = float(d_iface[row].mean())
+                e_iface += cohesive_props.GIc * area_e * d_avg
+                if d_iface[row].max() > 0.99:
+                    crack_area += area_e
+            energy_per_iface[iface_idx] = float(e_iface)
+            crack_len_per_iface[iface_idx] = float(crack_area / Ly)
+
+        results.czm_energy_per_interface = energy_per_iface
+        results.czm_crack_length_per_interface = crack_len_per_iface
+        results.czm_energy_dissipated = float(sum(energy_per_iface.values()))
+        results.czm_delamination_report = build_delamination_report(
+            damage_per_iface,
+            energy_per_interface=energy_per_iface,
+            crack_length_per_interface=crack_len_per_iface,
         )
 
     def _compute_analytical(

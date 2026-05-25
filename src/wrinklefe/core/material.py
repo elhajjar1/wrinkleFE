@@ -101,10 +101,19 @@ class OrthotropicMaterial:
     gamma_Y: float = 0.02
 
     # --- LaRC04/05 parameters ---
-    GIc: Optional[float] = None       # Mode I fracture toughness (kJ/m²)
-    GIIc: Optional[float] = None      # Mode II fracture toughness (kJ/m²)
+    GIc: Optional[float] = None       # Mode I fracture toughness (N/mm)
+    GIIc: Optional[float] = None      # Mode II fracture toughness (N/mm)
     beta_shear: float = 3.2e-8        # Ramberg-Osgood nonlinear shear coeff (1/MPa³)
     alpha_0: float = 53.0             # Fracture plane angle under pure transverse compression (degrees)
+
+    # --- Cohesive-interface defaults (Mode I / Mode II for the
+    # bilinear traction-separation law used by the CZM Phase 3 path).
+    # ``sigma_max`` is the peak normal traction (Mode I) and ``tau_max``
+    # is the peak shear traction (Mode II) on the ply-to-ply interface.
+    # Values default to typical CFRP epoxy literature; per-material
+    # overrides are supplied by ``MaterialLibrary._load_builtins``.
+    sigma_max: float = 50.0           # MPa
+    tau_max: float = 75.0             # MPa
 
     # --- Identifier ---
     name: str = "IM7_8552"
@@ -146,7 +155,8 @@ class OrthotropicMaterial:
         # 1. Positivity
         for attr in ("E1", "E2", "E3", "G12", "G13", "G23",
                       "Xt", "Xc", "Yt", "Yc", "Zt", "Zc",
-                      "S12", "S13", "S23", "gamma_Y"):
+                      "S12", "S13", "S23", "gamma_Y",
+                      "sigma_max", "tau_max"):
             val = getattr(self, attr)
             if val <= 0:
                 raise ValueError(f"{attr} must be positive, got {val}")
@@ -467,6 +477,10 @@ class MaterialLibrary:
         and aramid/epoxy reference systems)."""
 
         # 1. AS4 / 3501-6  (Soden et al. 1998; MIL-HDBK-17)
+        #    Cohesive defaults: sigma_max=60, tau_max=80 (typical AS4-
+        #    epoxy interface values; spec).  GIc/GIIc kept at the legacy
+        #    library values to preserve backwards compatibility with
+        #    onset-KD regression tests.
         self.add(OrthotropicMaterial(
             name="AS4_3501_6",
             E1=126_000.0, E2=11_000.0, E3=11_000.0,
@@ -480,15 +494,23 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.4, beta3=0.4,
             gamma_Y=0.02,
             GIc=0.20, GIIc=0.80, beta_shear=2.5e-8, alpha_0=53.0,
+            sigma_max=60.0, tau_max=80.0,
         ))
 
         # 2. IM7 / 8552  (Camanho et al. 2007; Hexcel data sheets)
-        #    Also the default of OrthotropicMaterial
+        #    Also the default of OrthotropicMaterial.  Cohesive defaults
+        #    sigma_max=80, tau_max=90 per Camanho & Davila (NASA/TM-
+        #    2002-211737, Table 1).  GIc/GIIc kept at the legacy library
+        #    values to preserve backwards compatibility.
         self.add(OrthotropicMaterial(
             GIc=0.28, GIIc=0.79,
+            sigma_max=80.0, tau_max=90.0,
         ))
 
         # 3. T300 / 914  (Soden et al. 1998; WWFE-I benchmark)
+        #    Cohesive defaults: sigma_max=50, tau_max=70 (typical T300-
+        #    epoxy interface values; spec).  GIc/GIIc kept at the legacy
+        #    library values.
         self.add(OrthotropicMaterial(
             name="T300_914",
             E1=138_000.0, E2=11_000.0, E3=11_000.0,
@@ -502,9 +524,13 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.35, beta3=0.35,
             gamma_Y=0.02,
             GIc=0.15, GIIc=0.45, alpha_0=53.0,
+            sigma_max=50.0, tau_max=70.0,
         ))
 
         # 4. T700SC / 2510  (Cytec CYCOM 2510 OOA VBO system)
+        #    Cohesive defaults: generic CFRP epoxy — no published value
+        #    found specifically for T700/2510; fall back to typical CFRP
+        #    interface strengths (sigma_max=50, tau_max=75 from spec).
         self.add(OrthotropicMaterial(
             name="T700_2510",
             E1=132_000.0, E2=10_300.0, E3=10_300.0,
@@ -518,6 +544,7 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.38, beta3=0.38,
             gamma_Y=0.02,
             GIc=0.23, GIIc=0.90, alpha_0=53.0,
+            sigma_max=50.0, tau_max=75.0,
         ))
 
         # 5. AC318 / S6C10-800  (S-glass fiber / epoxy, Li et al. 2026)
@@ -525,6 +552,9 @@ class MaterialLibrary:
         #    Composites Part A 205:109719.  Composite-level properties
         #    computed via micromechanics at Vf ≈ 0.60, validated against
         #    E1 ≈ 58 GPa from Fig. 12b (pristine compression modulus).
+        #    Cohesive defaults: sigma_max=70, tau_max=90 (typical glass-
+        #    fiber/epoxy interface; spec).  GIc/GIIc kept at the legacy
+        #    library values.
         self.add(OrthotropicMaterial(
             name="AC318_S6C10",
             E1=58_000.0, E2=12_000.0, E3=12_000.0,
@@ -538,6 +568,7 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.3, beta3=0.3,
             gamma_Y=0.02,
             GIc=0.25, GIIc=0.75, alpha_0=53.0,
+            sigma_max=70.0, tau_max=90.0,
         ))
 
         # 6. T800S / M21  (Hexcel T800S fibre / M21 toughened epoxy).
@@ -561,6 +592,7 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.4, beta3=0.4,
             gamma_Y=0.02,
             GIc=0.21, GIIc=0.77, alpha_0=53.0,
+            sigma_max=80.0, tau_max=90.0,
         ))
 
         # 7. IM10 / 8552  (Hexcel IM10 fibre / 8552 toughened epoxy).
@@ -583,6 +615,7 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.4, beta3=0.4,
             gamma_Y=0.02,
             GIc=0.28, GIIc=0.79, alpha_0=53.0,
+            sigma_max=80.0, tau_max=90.0,
         ))
 
         # 8. S-2 Glass / Epoxy  (generic).
@@ -603,6 +636,7 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.3, beta3=0.3,
             gamma_Y=0.02,
             GIc=None, GIIc=None, alpha_0=53.0,
+            sigma_max=70.0, tau_max=90.0,
         ))
 
         # 9. Kevlar 49 / Epoxy  (generic aramid).
@@ -624,6 +658,7 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.6, beta3=0.6,
             gamma_Y=0.02,
             GIc=None, GIIc=None, alpha_0=53.0,
+            sigma_max=40.0, tau_max=70.0,
         ))
 
 
