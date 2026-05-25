@@ -248,6 +248,40 @@ class GlobalAssembler:
     # Force vector assembly
     # ------------------------------------------------------------------
 
+    def assemble_internal_force(self, u: np.ndarray) -> np.ndarray:
+        """Assemble the global internal force vector ``F_int(u)``.
+
+        For the existing linear hex8-only path this is simply ``K @ u``,
+        computed by looping over elements and accumulating
+        ``K_e u_e`` into the global vector — i.e. it is the natural
+        nonlinear-solver counterpart to :meth:`assemble_stiffness` and
+        does **not** change the behaviour of any existing caller.  The
+        Newton-Raphson solver relies on this method to evaluate residuals
+        ``R = F_int - F_ext``.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Shape ``(n_dof,)`` global displacement vector.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(n_dof,)`` internal force vector.
+        """
+        u = np.asarray(u, dtype=float).reshape(-1)
+        n_elem = self.mesh.n_elements
+        n_dof = self.mesh.n_dof
+        F = np.zeros(n_dof)
+
+        for e in range(n_elem):
+            elem = self.create_element(e)
+            Ke = elem.stiffness_matrix()
+            dofs = self.element_dof_indices(e)
+            ue = u[dofs]
+            F[dofs] += Ke @ ue
+        return F
+
     def assemble_force_vector(
         self, boundary_conditions: list
     ) -> np.ndarray:
