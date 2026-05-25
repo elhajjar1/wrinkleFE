@@ -33,12 +33,14 @@ Intrinsic bilinear traction-separation:
   monotonically non-decreasing.
 - Traction in tension:   ``T_i = (1 - d) * K * delta_i``.
 - Traction in compression (``delta_n < 0``): ``T_n = K * delta_n`` (penalty
-  contact), no damage accumulation from compression.
+  contact), no damage accumulation from compression.  Mode-II damage is
+  also suppressed while the interface is in normal contact (Abaqus default).
 
 Mode-mixity via Benzeggagh-Kenane:
 ``G_c(psi) = G_Ic + (G_IIc - G_Ic) * (G_II / (G_I + G_II))^eta``.
-The mixed-mode ``delta_f`` is recovered from the equivalent fracture
-toughness.
+The mode ratio ``G_II / (G_I + G_II)`` is frozen at damage initiation so
+that mixed-mode ``delta_0``, ``delta_f`` and ``Gc_mixed`` are path-
+independent (Camanho & Davila, NASA/TM-2002-211737).
 
 References
 ----------
@@ -100,10 +102,18 @@ class CohesiveProperties:
 
 @dataclass
 class CohesiveState:
-    """History variables tracked per Gauss point per element."""
+    """History variables tracked per Gauss point per element.
+
+    ``mode_ratio_init`` is the BK mode ratio G_II/(G_I + G_II) captured at
+    the instant damage first initiated at this Gauss point.  The sentinel
+    value ``-1.0`` means "not yet initiated"; once set, it is held fixed
+    for the rest of the analysis so the mixed-mode envelope is path-
+    independent (Camanho & Davila convention).
+    """
 
     d: float = 0.0
     delta_max_eff: float = 0.0
+    mode_ratio_init: float = -1.0
 
 
 def make_initial_state(n_gp: int = 4) -> list[CohesiveState]:
@@ -301,60 +311,86 @@ class Cohesive8Element:
         shear_sq = d_s * d_s + d_t * d_t
         delta_eff = float(np.sqrt(d_n_pos * d_n_pos + (beta * beta) * shear_sq))
 
-        # Mode-mixity weighting for Benzeggagh-Kenane.  The energies are
-        # computed at the current opening using the penalty stiffness; for
-        # the BK ratio only the ratio G_II / (G_I + G_II) matters, so we
-        # use the (squared opening * K / 2) form.
-        G_I = 0.5 * K * d_n_pos * d_n_pos
-        G_II = 0.5 * K * shear_sq * (beta * beta)
-        G_total = G_I + G_II
-        if G_total > 0.0:
-            mode_ratio = G_II / G_total
-            Gc_mixed = p.GIc + (p.GIIc - p.GIc) * (mode_ratio ** p.eta_BK)
-            # Mixed peak traction — interpolate the same way so the
-            # bilinear law remains self-consistent.
-            sigma_mixed_sq = (
+        # Helper: evaluate (Gc_mixed, sigma_mixed, delta_0, delta_f) at a
+        # given BK mode ratio.  Used to test initiation against the current
+        # ratio and again with the frozen ratio after initiation.
+        def _bk_at(mode_ratio: float) -> tuple[float, float, float, float]:
+            Gc_m = p.GIc + (p.GIIc - p.GIc) * (mode_ratio ** p.eta_BK)
+            sigma_m_sq = (
                 (p.sigma_max ** 2)
                 + ((p.tau_max ** 2) - (p.sigma_max ** 2))
                 * (mode_ratio ** p.eta_BK)
             )
-            sigma_mixed = float(np.sqrt(max(sigma_mixed_sq, 1.0e-30)))
+            sigma_m = float(np.sqrt(max(sigma_m_sq, 1.0e-30)))
+            return Gc_m, sigma_m, sigma_m / K, 2.0 * Gc_m / sigma_m
+
+        # Current mode ratio from the opening (BK ratio of normal energy
+        # to total).  Only valid when there is some opening to take a ratio
+        # of; otherwise default to pure mode I.
+        G_I = 0.5 * K * d_n_pos * d_n_pos
+        G_II = 0.5 * K * shear_sq * (beta * beta)
+        G_total = G_I + G_II
+        mode_ratio_current = (G_II / G_total) if G_total > 0.0 else 0.0
+
+        # Pick the mode ratio used to evaluate the bilinear envelope.
+        # Frozen at initiation per Camanho & Davila so that non-radial
+        # paths cannot drift along the envelope.
+        mode_ratio_init_new = state_prev.mode_ratio_init
+        if state_prev.mode_ratio_init >= 0.0:
+            mode_ratio_use = state_prev.mode_ratio_init
         else:
-            Gc_mixed = p.GIc
-            sigma_mixed = p.sigma_max
+            mode_ratio_use = mode_ratio_current
 
-        delta_0 = sigma_mixed / K
-        delta_f = 2.0 * Gc_mixed / sigma_mixed
+        Gc_mixed, sigma_mixed, delta_0, delta_f = _bk_at(mode_ratio_use)
 
-        # Damage update — monotonically non-decreasing.
-        if delta_eff <= delta_0:
+        # Suppress damage evolution when the interface is in normal
+        # contact: no Mode-I energy is available, and accumulating Mode-II
+        # damage under closed contact would corrupt the secant on
+        # subsequent reopening.  This matches the docstring ("no damage
+        # accumulation from compression") and Abaqus' default behaviour.
+        if d_n < 0.0:
+            d_new = state_prev.d
+        elif delta_eff <= delta_0:
             d_new = state_prev.d
         elif delta_eff >= delta_f:
             d_new = 1.0
+            if state_prev.mode_ratio_init < 0.0:
+                mode_ratio_init_new = mode_ratio_current
         else:
             d_trial = (
                 (delta_f * (delta_eff - delta_0))
                 / (delta_eff * (delta_f - delta_0))
             )
             d_new = max(state_prev.d, min(d_trial, 1.0))
+            if state_prev.mode_ratio_init < 0.0 and d_new > 0.0:
+                # Damage just initiated this call; freeze the current mode
+                # ratio and re-evaluate the bilinear envelope using it.
+                mode_ratio_init_new = mode_ratio_current
+                mode_ratio_use = mode_ratio_current
+                Gc_mixed, sigma_mixed, delta_0, delta_f = _bk_at(mode_ratio_use)
+                if delta_eff <= delta_0:
+                    d_new = state_prev.d
+                elif delta_eff >= delta_f:
+                    d_new = 1.0
+                else:
+                    d_trial = (
+                        (delta_f * (delta_eff - delta_0))
+                        / (delta_eff * (delta_f - delta_0))
+                    )
+                    d_new = max(state_prev.d, min(d_trial, 1.0))
 
         d = d_new
 
         # Traction.
         T_local = np.empty(3)
-        # Normal:
         if d_n < 0.0:
             T_local[0] = K * d_n
         else:
             T_local[0] = (1.0 - d) * K * d_n
-        # Shear:
         T_local[1] = (1.0 - d) * K * d_s
         T_local[2] = (1.0 - d) * K * d_t
 
-        # Consistent tangent — use the secant for the damaged components.
-        # (Full algorithmic tangent including dd/ddelta is omitted; secant
-        # converges quadratically once damage stops growing in a step and
-        # is the standard simple choice for intrinsic CZM.)
+        # Consistent tangent — secant for the damaged components.
         D_local = np.zeros((3, 3))
         if d_n < 0.0:
             D_local[0, 0] = K
@@ -364,7 +400,9 @@ class Cohesive8Element:
         D_local[2, 2] = (1.0 - d) * K
 
         state_new = CohesiveState(
-            d=d, delta_max_eff=max(state_prev.delta_max_eff, delta_eff)
+            d=d,
+            delta_max_eff=max(state_prev.delta_max_eff, delta_eff),
+            mode_ratio_init=mode_ratio_init_new,
         )
         return T_local, D_local, state_new
 
