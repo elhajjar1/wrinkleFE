@@ -138,10 +138,11 @@ DEFAULT_NX = _CFG_DEFAULTS.nx
 DEFAULT_NY = _CFG_DEFAULTS.ny
 DEFAULT_NZ_PER_PLY = _CFG_DEFAULTS.nz_per_ply
 
-# CZM defaults. Mirrors AnalysisConfig's class defaults; the toughness /
-# strength inputs default to 0.0 in the UI when the material exposes no
-# default and are otherwise seeded from the chosen material below at
-# render time.
+# CZM defaults. The on/off flag, interface placement, Newton tunables
+# mirror ``AnalysisConfig``. The toughness/strength fields default to
+# the IM7/8552 library values (the default material) so the *Reset to
+# defaults* button has a concrete starting point; the actual seed value
+# used at render time tracks whichever material the user has selected.
 DEFAULT_ENABLE_CZM = _CFG_DEFAULTS.enable_czm
 DEFAULT_CZM_INTERFACES = (
     _CFG_DEFAULTS.czm_interfaces
@@ -150,6 +151,17 @@ DEFAULT_CZM_INTERFACES = (
 )
 DEFAULT_CZM_LOAD_INCREMENTS = _CFG_DEFAULTS.czm_n_load_increments
 DEFAULT_CZM_NEWTON_TOL = _CFG_DEFAULTS.czm_newton_tol
+_default_mat_for_czm = LIB.get(DEFAULT_MATERIAL)
+DEFAULT_CZM_GIC = (
+    float(_default_mat_for_czm.GIc)
+    if _default_mat_for_czm.GIc is not None else 0.30
+)
+DEFAULT_CZM_GIIC = (
+    float(_default_mat_for_czm.GIIc)
+    if _default_mat_for_czm.GIIc is not None else 0.80
+)
+DEFAULT_CZM_SIGMA_MAX = float(_default_mat_for_czm.sigma_max)
+DEFAULT_CZM_TAU_MAX = float(_default_mat_for_czm.tau_max)
 
 # Single source of truth used by the "Reset to defaults" button: maps each
 # sidebar widget ``key=`` argument to the value it should hold after a reset.
@@ -179,6 +191,10 @@ DEFAULTS: dict[str, object] = {
     "sb_czm_interfaces": DEFAULT_CZM_INTERFACES,
     "sb_czm_load_increments": DEFAULT_CZM_LOAD_INCREMENTS,
     "sb_czm_newton_tol": DEFAULT_CZM_NEWTON_TOL,
+    "sb_czm_GIc": DEFAULT_CZM_GIC,
+    "sb_czm_GIIc": DEFAULT_CZM_GIIC,
+    "sb_czm_sigma_max": DEFAULT_CZM_SIGMA_MAX,
+    "sb_czm_tau_max": DEFAULT_CZM_TAU_MAX,
 }
 
 
@@ -1202,6 +1218,109 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# CZM rendering
+# ---------------------------------------------------------------------------
+
+
+def _render_czm_results(czm: dict) -> None:
+    """Render the *Cohesive Zone Modeling Results* section on the Results tab.
+
+    Driven by the ``czm`` sub-dict that ``run_analysis_cached`` attaches
+    to the results payload. When the underlying solve was enabled but
+    produced no damage data (e.g. ``czm_damage`` is empty), the function
+    surfaces a clear warning instead of crashing on the missing figure.
+    """
+    with st.expander("Cohesive Zone Modeling Results", expanded=True):
+        result_obj = czm.get("_result")
+        # Sentinel: enable_czm=True but no damage array was populated.
+        # This usually means the solve failed before reaching the
+        # Newton-Raphson stage or no cohesive elements were inserted.
+        damage_missing = (
+            result_obj is None
+            or result_obj.czm_damage is None
+            or not result_obj.czm_damage.size
+        )
+        if damage_missing:
+            st.warning(
+                "CZM was enabled but no damage data was produced — "
+                "the solver may have failed before the Newton-Raphson "
+                "stage, or no cohesive elements were inserted at the "
+                "selected interfaces."
+            )
+            return
+
+        # Top-line metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(
+            "Max damage",
+            f"{czm['max_damage']:.3f}",
+            help=(
+                "Peak Gauss-point damage scalar across every cohesive "
+                "element. 0 = intact, 1 = fully separated."
+            ),
+        )
+        m2.metric(
+            "Energy dissipated",
+            f"{czm['energy_dissipated']:.3e} N·mm",
+            help="Total cohesive energy dissipated across all interfaces.",
+        )
+        m3.metric(
+            "Elements w/ damage > 0.5",
+            f"{czm['n_elements_above_half']}",
+            help=(
+                "Count of cohesive elements whose per-element mean "
+                "damage exceeds 0.5 — a proxy for the partially-failed "
+                "delamination footprint."
+            ),
+        )
+        crack_lengths = czm.get("crack_length_per_interface", {}) or {}
+        if crack_lengths:
+            _total_crack = sum(crack_lengths.values())
+            m4.metric(
+                "Total crack length",
+                f"{_total_crack:.3e} mm",
+                help=(
+                    "Summed crack length across all cohesive "
+                    "interfaces (element area / mesh width, with "
+                    "damage > 0.99)."
+                ),
+            )
+        else:
+            m4.metric("Total crack length", "—")
+
+        st.caption(
+            f"Converged: **{czm.get('converged')}**  ·  "
+            f"Interfaces: **{', '.join(str(i) for i in czm.get('interfaces_used', [])) or '(none)'}**"
+        )
+
+        # Per-interface crack-length table
+        if crack_lengths:
+            st.markdown("**Crack length per interface**")
+            rows = sorted(crack_lengths.items())
+            st.table(
+                {
+                    "Interface": [str(i) for i, _ in rows],
+                    "Crack length (mm)": [f"{v:.4e}" for _, v in rows],
+                    "Energy (N·mm)": [
+                        f"{czm.get('energy_per_interface', {}).get(i, 0.0):.4e}"
+                        for i, _ in rows
+                    ],
+                }
+            )
+
+        # 2x2 overview figure from wrinklefe.viz.plots_2d
+        try:
+            from wrinklefe.viz import czm_overview_figure as _czm_fig
+
+            fig = _czm_fig(result_obj)
+            st.pyplot(fig, clear_figure=True)
+        except Exception as exc:
+            st.warning(
+                f"Could not render the CZM overview figure: {exc}"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Main area
 # ---------------------------------------------------------------------------
 
@@ -1253,6 +1372,12 @@ if run_clicked or _demo_pending:
             st.error(f"Invalid custom material: {e}")
             st.stop()
 
+        # CZM requires the Newton-Raphson FE path; force analytical_only
+        # off when CZM is enabled regardless of the *Analytical only*
+        # checkbox so the user can't accidentally request an analytical
+        # CZM run (which would silently drop the cohesive solve).
+        _effective_analytical_only = bool(analytical_only) and not bool(enable_czm)
+
         cfg_items: dict = {
             "amplitude": amplitude,
             "wavelength": wavelength,
@@ -1267,15 +1392,26 @@ if run_clicked or _demo_pending:
             "angles_tuple": tuple(layup),
             "applied_strain": applied_strain_pct / 100.0,
             "material_tuple": tuple(sorted(material_dict.items())),
-            "analytical_only": bool(analytical_only),
+            "analytical_only": _effective_analytical_only,
         }
         # Mesh keys only matter for the FE path; omitting them in
         # analytical-only mode means the cache key doesn't churn when the
         # user tweaks nx/ny/nz.
-        if not analytical_only:
+        if not _effective_analytical_only:
             cfg_items["nx"] = int(nx)
             cfg_items["ny"] = int(ny)
             cfg_items["nz_per_ply"] = int(nz_per_ply)
+        # CZM keys — only added when CZM is enabled so the cache key
+        # for non-CZM runs is bit-identical to the pre-CZM behaviour.
+        if enable_czm:
+            cfg_items["enable_czm"] = True
+            cfg_items["czm_interfaces"] = czm_interfaces_choice
+            cfg_items["czm_GIc"] = float(czm_GIc)
+            cfg_items["czm_GIIc"] = float(czm_GIIc)
+            cfg_items["czm_sigma_max"] = float(czm_sigma_max)
+            cfg_items["czm_tau_max"] = float(czm_tau_max)
+            cfg_items["czm_n_load_increments"] = int(czm_load_increments)
+            cfg_items["czm_newton_tol"] = float(czm_newton_tol)
         cfg_payload = tuple(sorted(cfg_items.items()))
 
     with st.status("Running analysis…", expanded=True) as status:
