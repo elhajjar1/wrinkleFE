@@ -114,8 +114,28 @@ class GlobalAssembler:
         self.cohesive_state: dict[int, list[CohesiveState]] = {}
         self.cohesive_state_trial: dict[int, list[CohesiveState]] = {}
         for e_idx, c_elem in self.cohesive_elements:
-            self.cohesive_state[e_idx] = make_initial_state(c_elem._n_gp)
-            self.cohesive_state_trial[e_idx] = make_initial_state(c_elem._n_gp)
+            if c_elem.node_ids is None:
+                raise ValueError(
+                    f"Cohesive element at index {e_idx} has no node_ids; "
+                    "pass node_ids to the Cohesive8Element constructor."
+                )
+            if not np.allclose(
+                self.mesh.nodes[c_elem.node_ids], c_elem.node_coords
+            ):
+                raise ValueError(
+                    f"Cohesive element {e_idx}: mesh.nodes[node_ids] does "
+                    "not match the node_coords passed to the element. "
+                    "Likely permutation error."
+                )
+            self.cohesive_state[e_idx] = make_initial_state(c_elem.n_gp)
+            self.cohesive_state_trial[e_idx] = make_initial_state(c_elem.n_gp)
+
+        # Cache the linear hex8 stiffness matrices once.  These depend
+        # only on geometry/material — both fixed at construction — so
+        # there is no point recomputing them per Newton iteration.
+        self._hex8_Ke: list[np.ndarray] = [
+            elem.stiffness_matrix() for elem in self._hex8_elements
+        ]
 
     # ------------------------------------------------------------------
     # Element construction
@@ -200,7 +220,13 @@ class GlobalAssembler:
     # ------------------------------------------------------------------
 
     def assemble_stiffness(self, verbose: bool = False) -> sparse.csc_matrix:
-        """Assemble the global stiffness matrix K.
+        """Assemble the linear global stiffness matrix K (hex8 only).
+
+        This is the LINEAR stiffness path and does not include cohesive
+        contributions.  When cohesive elements are registered with this
+        assembler, callers must use :meth:`assemble_tangent` (or
+        :meth:`assemble_residual_and_tangent`) instead — see the runtime
+        check below.
 
         Algorithm
         ---------
@@ -208,10 +234,9 @@ class GlobalAssembler:
            Each hex8 element contributes 24 x 24 = 576 entries.
            Total pre-allocated non-zeros = ``n_elements * 576``.
         2. Loop over elements:
-           a. Create element from mesh data.
-           b. Compute element stiffness Ke (24 x 24).
-           c. Get global DOF indices for element nodes.
-           d. Fill COO arrays with Ke entries at global DOF positions.
+           a. Look up the cached element stiffness ``Ke`` (24 x 24).
+           b. Get global DOF indices for element nodes.
+           c. Fill COO arrays with Ke entries at global DOF positions.
         3. Create COO sparse matrix and convert to CSC.  Duplicate entries
            at the same (i, j) position are summed automatically by
            ``scipy.sparse.coo_matrix``.
@@ -225,7 +250,33 @@ class GlobalAssembler:
         Returns
         -------
         scipy.sparse.csc_matrix
-            Shape ``(n_dof, n_dof)`` global stiffness matrix in CSC format.
+            Shape ``(n_dof, n_dof)`` linear global stiffness matrix in
+            CSC format.
+
+        Raises
+        ------
+        RuntimeError
+            If cohesive elements are registered.  Use
+            :meth:`assemble_tangent` (consistent tangent including the
+            cohesive contribution) for nonlinear CZM problems.
+        """
+        if self.cohesive_elements:
+            raise RuntimeError(
+                "GlobalAssembler.assemble_stiffness() is the linear "
+                "stiffness path and does not include cohesive "
+                "contributions. When cohesive elements are registered, "
+                "use NewtonRaphsonSolver (which calls assemble_tangent) "
+                "instead of StaticSolver."
+            )
+        return self._assemble_hex8_stiffness(verbose=verbose)
+
+    def _assemble_hex8_stiffness(
+        self, verbose: bool = False
+    ) -> sparse.csc_matrix:
+        """Hex8-only linear stiffness, no cohesive contribution.
+
+        Shared by :meth:`assemble_stiffness` and
+        :meth:`assemble_tangent` / :meth:`assemble_residual_and_tangent`.
         """
         n_elem = self.mesh.n_elements
         n_dof = self.mesh.n_dof
@@ -249,9 +300,7 @@ class GlobalAssembler:
                 print(f"  Assembling element {e}/{n_elem} "
                       f"({100.0 * e / n_elem:.1f}%)")
 
-            elem = self._hex8_elements[e]
-            Ke = elem.stiffness_matrix()  # (24, 24)
-
+            Ke = self._hex8_Ke[e]  # cached at construction time
             dofs = self._hex8_dofs[e]  # (24,)
 
             # Map local indices to global indices
@@ -286,10 +335,9 @@ class GlobalAssembler:
         """Assemble the consistent global tangent at ``u``.
 
         Sibling to :meth:`assemble_stiffness` for the nonlinear solver:
-        identical to ``assemble_stiffness`` for the linear hex8 path, plus
-        per-Gauss-point cohesive-element contributions linearised at the
-        current trial state.  Updates ``self.cohesive_state_trial`` as a
-        side effect.
+        identical to the linear hex8 path, plus per-Gauss-point cohesive-
+        element contributions linearised at the current trial state.
+        Updates ``self.cohesive_state_trial`` as a side effect.
 
         Parameters
         ----------
@@ -302,7 +350,7 @@ class GlobalAssembler:
             Shape ``(n_dof, n_dof)`` global tangent in CSC format.
         """
         u = np.asarray(u, dtype=float).reshape(-1)
-        K = self.assemble_stiffness()
+        K = self._assemble_hex8_stiffness()
 
         if not self.cohesive_elements:
             return K
@@ -333,6 +381,69 @@ class GlobalAssembler:
         ).tocsc()
         return (K + K_coh).tocsc()
 
+    def assemble_residual_and_tangent(
+        self, u: np.ndarray
+    ) -> tuple[sparse.csc_matrix, np.ndarray]:
+        """Combined consistent tangent + internal force in one pass.
+
+        Calling :meth:`assemble_internal_force` and :meth:`assemble_tangent`
+        back-to-back would invoke each cohesive element's
+        :meth:`tangent_and_force` twice with identical arguments.  This
+        method runs a single pass per cohesive element and returns both
+        outputs, halving the cohesive-law cost per Newton iteration.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Shape ``(n_dof,)`` global displacement vector.
+
+        Returns
+        -------
+        K_t : scipy.sparse.csc_matrix
+            Shape ``(n_dof, n_dof)`` global tangent.
+        F_int : np.ndarray
+            Shape ``(n_dof,)`` global internal force vector.
+        """
+        u = np.asarray(u, dtype=float).reshape(-1)
+        n_dof = self.mesh.n_dof
+
+        # Linear hex8 stiffness + F_int = K_e @ u_e per element.
+        K_linear = self._assemble_hex8_stiffness()
+        F_int = np.zeros(n_dof)
+        for e, _elem in enumerate(self._hex8_elements):
+            dofs = self._hex8_dofs[e]
+            Ke = self._hex8_Ke[e]
+            F_int[dofs] += Ke @ u[dofs]
+
+        if not self.cohesive_elements:
+            return K_linear, F_int
+
+        coh_rows: list[np.ndarray] = []
+        coh_cols: list[np.ndarray] = []
+        coh_vals: list[np.ndarray] = []
+        for e_idx, c_elem in self.cohesive_elements:
+            dofs = self._cohesive_dof_indices(c_elem)
+            u_e = u[dofs]
+            K_e, F_e, state_new = c_elem.tangent_and_force(
+                u_e, state_prev=self.cohesive_state[e_idx]
+            )
+            self.cohesive_state_trial[e_idx] = state_new
+            F_int[dofs] += F_e
+
+            ii, jj = np.meshgrid(dofs, dofs, indexing="ij")
+            coh_rows.append(ii.ravel())
+            coh_cols.append(jj.ravel())
+            coh_vals.append(K_e.ravel())
+
+        K_coh = sparse.coo_matrix(
+            (
+                np.concatenate(coh_vals),
+                (np.concatenate(coh_rows), np.concatenate(coh_cols)),
+            ),
+            shape=(n_dof, n_dof),
+        ).tocsc()
+        return (K_linear + K_coh).tocsc(), F_int
+
     # ------------------------------------------------------------------
     # Cohesive history-state management
     # ------------------------------------------------------------------
@@ -342,10 +453,12 @@ class GlobalAssembler:
 
         Called by the nonlinear solver at the end of a converged
         increment.  Deep-copies each ``CohesiveState`` so the committed
-        view cannot be mutated by later trial updates.
+        view cannot be mutated by later trial updates — using
+        :func:`copy.deepcopy` so the contract remains correct if
+        ``CohesiveState`` ever grows nested fields.
         """
         self.cohesive_state = {
-            k: [copy.copy(s) for s in v]
+            k: [copy.deepcopy(s) for s in v]
             for k, v in self.cohesive_state_trial.items()
         }
 
@@ -353,10 +466,11 @@ class GlobalAssembler:
         """Reset trial cohesive state to the last committed state.
 
         Called by the nonlinear solver on a failed increment so the next
-        attempt starts from clean history.
+        attempt starts from clean history.  Uses :func:`copy.deepcopy`
+        for the same forward-compatibility reason as :meth:`commit_state`.
         """
         self.cohesive_state_trial = {
-            k: [copy.copy(s) for s in v]
+            k: [copy.deepcopy(s) for s in v]
             for k, v in self.cohesive_state.items()
         }
 
@@ -368,23 +482,17 @@ class GlobalAssembler:
     def _cohesive_dof_indices(c_elem: Cohesive8Element) -> np.ndarray:
         """Build the (24,) global DOF index list from a cohesive element.
 
-        The cohesive element carries 8 explicit node IDs in
-        ``node_coords``-shape ordering — we need the *node indices* into
-        the global mesh, which we stash on ``c_elem.node_ids`` at
-        registration time.
+        The cohesive element carries ``node_ids`` — the global node
+        indices in the same order as ``node_coords`` — which are set in
+        the :class:`Cohesive8Element` constructor.
         """
-        if not hasattr(c_elem, "node_ids"):
-            raise AttributeError(
-                "Cohesive8Element instance is missing `node_ids` "
-                "(global node indices); set elem.node_ids before "
-                "registering it with GlobalAssembler."
-            )
-        node_ids = np.asarray(c_elem.node_ids, dtype=np.intp).reshape(-1)
-        if node_ids.shape != (8,):
+        if c_elem.node_ids is None:
             raise ValueError(
-                f"Cohesive element node_ids must be length 8, "
-                f"got {node_ids.shape}."
+                "Cohesive8Element instance is missing `node_ids` "
+                "(global node indices); pass node_ids to the "
+                "Cohesive8Element constructor."
             )
+        node_ids = c_elem.node_ids
         dofs = np.empty(24, dtype=np.intp)
         for i, nid in enumerate(node_ids):
             base = 3 * int(nid)
@@ -422,8 +530,7 @@ class GlobalAssembler:
         F = np.zeros(n_dof)
 
         for e in range(n_elem):
-            elem = self._hex8_elements[e]
-            Ke = elem.stiffness_matrix()
+            Ke = self._hex8_Ke[e]
             dofs = self._hex8_dofs[e]
             ue = u[dofs]
             F[dofs] += Ke @ ue

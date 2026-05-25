@@ -29,6 +29,15 @@ The hex8 elements are:
 The cohesive element is:
 
     nodes [4,5,6,7, 8,9,10,11]
+
+Note on solver entry point
+--------------------------
+The first three tests deliberately drive Newton via ``_newton_step``
+rather than the public :meth:`NewtonRaphsonSolver.solve` because they
+need non-monotone displacement control (unload/reload, compression then
+tension); the public ``solve()`` only supports ramps from ``u = 0``.
+``test_mode_I_to_failure_via_solve`` exercises the public
+``solve()`` entry point end-to-end on a monotone Mode-I ramp.
 """
 
 from __future__ import annotations
@@ -124,9 +133,9 @@ def _make_assembler(mesh: MeshData, cohesive_props: CohesiveProperties) -> tuple
     coh_elem = Cohesive8Element(
         node_coords=coh_coords,
         properties=cohesive_props,
+        node_ids=coh_node_ids,
         elem_id=0,
     )
-    coh_elem.node_ids = coh_node_ids  # tag for global DOF lookup
 
     assembler = GlobalAssembler(
         mesh=mesh,
@@ -492,3 +501,138 @@ def test_compression_followed_by_tension():
     )
 
     _ = coh_elem
+
+
+# ======================================================================
+# Test 4: Mode-I to failure via the public solve() API
+# ======================================================================
+
+def test_mode_I_to_failure_via_solve():
+    """End-to-end smoke test through the public ``solve()`` entry point.
+
+    Drives the 2-cube + 1-cohesive sandwich on a monotone Mode-I ramp
+    (the only loading pattern ``solve()`` supports — equal load
+    increments from ``u = 0``) and checks the solver-result contract
+    plus end-state cohesive damage.
+    """
+    mesh, bottom_ids, top_ids = _two_cube_mesh_with_cohesive()
+    props = _cohesive_props()
+    assembler, coh_elem = _make_assembler(mesh, props)
+    bc_handler = BoundaryHandler(mesh)
+
+    delta_f = 2.0 * props.GIc / props.sigma_max
+    u_top_target = 1.5 * delta_f  # ramps through full damage
+    n_increments = 400
+
+    bcs = _ramp_bcs(bottom_ids, top_ids, u_top_target)
+    solver = NewtonRaphsonSolver(
+        assembler=assembler,
+        bc_handler=bc_handler,
+        boundary_conditions=bcs,
+        n_increments=n_increments,
+        max_newton_iter=40,
+        tol_residual=1e-6,
+        tol_displacement=1e-9,
+        line_search=True,
+    )
+
+    result = solver.solve()
+
+    # Result contract.
+    assert result["converged"] is True, (
+        f"solve() did not converge: completed "
+        f"{result['increments_completed']}/{n_increments}, "
+        f"iterations={result['iteration_counts']}"
+    )
+    assert result["increments_completed"] == n_increments
+    assert result["load_displacement"].shape == (n_increments, 2), (
+        f"unexpected load_displacement shape "
+        f"{result['load_displacement'].shape}"
+    )
+
+    # Final cohesive state at every GP should be fully damaged.
+    final_state = assembler.cohesive_state[0]
+    damages = np.array([s.d for s in final_state])
+    assert np.all(damages > 0.99), (
+        f"Expected full damage at all GPs after Mode-I-to-failure ramp, "
+        f"got d = {damages}"
+    )
+
+    # Trapezoidal work integral on the (lambda, top-face reaction) pairs.
+    # ``solve()`` exposes [lambda, ||u||] only, so we reconstruct the
+    # per-increment top-face displacement and reaction post hoc by
+    # re-walking the same monotone ramp through ``_newton_step`` on a
+    # fresh assembler.  This costs another full pass, but the energy
+    # check is the strongest scientific assertion we have on the public
+    # solve() path.
+    assembler2, _ = _make_assembler(mesh, props)
+    solver2 = NewtonRaphsonSolver(
+        assembler=assembler2,
+        bc_handler=bc_handler,
+        boundary_conditions=bcs,
+        n_increments=n_increments,
+        max_newton_iter=40,
+        tol_residual=1e-6,
+        tol_displacement=1e-9,
+        line_search=True,
+    )
+    constrained_full = bc_handler.get_constrained_dofs(bcs)
+    F_ext_full = bc_handler.get_force_dofs(bcs)
+    top_arr = np.asarray(top_ids, dtype=np.intp)
+    top_z_dofs = 3 * top_arr + 2
+
+    u = np.zeros(mesh.n_dof)
+    u_top_history = [0.0]
+    F_top_history = [0.0]
+    for inc in range(1, n_increments + 1):
+        lam = inc / n_increments
+        constrained_inc = {
+            d: lam * v for d, v in constrained_full.items()
+        }
+        u, _it, ok = solver2._newton_step(
+            u, lam * F_ext_full, constrained_inc, verbose=False, inc=inc,
+        )
+        assert ok, f"second pass: Newton failed at increment {inc}"
+        solver2._commit_state()
+        F_int = assembler2.assemble_internal_force(u)
+        u_top_history.append(float(u[top_z_dofs[0]]))
+        F_top_history.append(float(np.sum(F_int[top_z_dofs])))
+
+    work = 0.0
+    for i in range(1, len(u_top_history)):
+        work += 0.5 * (
+            F_top_history[i - 1] + F_top_history[i]
+        ) * (u_top_history[i] - u_top_history[i - 1])
+    expected = props.GIc * coh_elem.area
+    rel_err = abs(work - expected) / expected
+    assert rel_err < 0.05, (
+        f"Mode-I energy through solve() vs analytical GIc*A: "
+        f"work={work:.4f}, GIc*A={expected:.4f}, rel={rel_err:.3%}"
+    )
+
+
+# ======================================================================
+# Test 5: solve() raises on empty BCs
+# ======================================================================
+
+def test_solve_raises_on_empty_bcs():
+    """``solve()`` must reject configurations with no constrained DOFs.
+
+    A system with zero displacement BCs (and zero applied forces) is
+    rigid-body singular; the solver must refuse to run rather than
+    silently producing nonsense.
+    """
+    mesh, _bottom_ids, _top_ids = _two_cube_mesh_with_cohesive()
+    props = _cohesive_props()
+    assembler, _coh_elem = _make_assembler(mesh, props)
+    bc_handler = BoundaryHandler(mesh)
+
+    solver = NewtonRaphsonSolver(
+        assembler=assembler,
+        bc_handler=bc_handler,
+        boundary_conditions=[],
+        n_increments=5,
+        max_newton_iter=10,
+    )
+    with pytest.raises(ValueError, match="boundary"):
+        solver.solve()

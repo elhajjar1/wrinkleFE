@@ -112,7 +112,6 @@ class CohesiveState:
     """
 
     d: float = 0.0
-    delta_max_eff: float = 0.0
     mode_ratio_init: float = -1.0
 
 
@@ -179,6 +178,11 @@ class Cohesive8Element:
         index-by-index with the bottom (node 4 sits on node 0, etc.).
     properties : CohesiveProperties
         Material parameters for the bilinear law.
+    node_ids : np.ndarray or None, optional
+        Shape ``(8,)`` global node indices in the same order as
+        ``node_coords``.  Required by :class:`GlobalAssembler` to build
+        the element DOF map; may be omitted for unit-tests of the law
+        in isolation.
     elem_id : int or None, optional
         Optional identifier used in error messages.
     """
@@ -187,6 +191,7 @@ class Cohesive8Element:
         self,
         node_coords: np.ndarray,
         properties: CohesiveProperties,
+        node_ids: np.ndarray | None = None,
         elem_id: int | None = None,
     ) -> None:
         self.node_coords = np.asarray(node_coords, dtype=float)
@@ -196,6 +201,13 @@ class Cohesive8Element:
                 f"{self.node_coords.shape}."
             )
         self.properties = properties
+        if node_ids is not None:
+            node_ids = np.asarray(node_ids, dtype=np.intp).reshape(-1)
+            if node_ids.shape != (8,):
+                raise ValueError(
+                    f"node_ids must be length 8, got {node_ids.shape}."
+                )
+        self.node_ids = node_ids
         self.elem_id = elem_id
 
         self._gp_points, self._gp_weights = _gauss_points_quad(order=2)
@@ -307,7 +319,26 @@ class Cohesive8Element:
         d_s = float(delta_local[1])
         d_t = float(delta_local[2])
 
-        d_n_pos = max(d_n, 0.0)
+        # Compression branch: no damage growth, contact penalty in the
+        # normal direction, secant in shear using previously committed
+        # damage.  Handle this as a structural early return so the
+        # mode-ratio math below is only ever evaluated when there is
+        # actual opening (d_n >= 0); this avoids a fragile dependence
+        # on a downstream branch to suppress an ill-defined mode_ratio
+        # under closed contact (matches the docstring and Abaqus default).
+        if d_n < 0.0:
+            d = state_prev.d
+            T_local = np.array(
+                [K * d_n, (1.0 - d) * K * d_s, (1.0 - d) * K * d_t]
+            )
+            D_local = np.diag([K, (1.0 - d) * K, (1.0 - d) * K])
+            state_new = CohesiveState(
+                d=d, mode_ratio_init=state_prev.mode_ratio_init
+            )
+            return T_local, D_local, state_new
+
+        # Opening branch (d_n >= 0): the mode-ratio math is well-defined.
+        d_n_pos = d_n
         shear_sq = d_s * d_s + d_t * d_t
         delta_eff = float(np.sqrt(d_n_pos * d_n_pos + (beta * beta) * shear_sq))
 
@@ -341,16 +372,9 @@ class Cohesive8Element:
         else:
             mode_ratio_use = mode_ratio_current
 
-        Gc_mixed, sigma_mixed, delta_0, delta_f = _bk_at(mode_ratio_use)
+        _Gc_mixed, _sigma_mixed, delta_0, delta_f = _bk_at(mode_ratio_use)
 
-        # Suppress damage evolution when the interface is in normal
-        # contact: no Mode-I energy is available, and accumulating Mode-II
-        # damage under closed contact would corrupt the secant on
-        # subsequent reopening.  This matches the docstring ("no damage
-        # accumulation from compression") and Abaqus' default behaviour.
-        if d_n < 0.0:
-            d_new = state_prev.d
-        elif delta_eff <= delta_0:
+        if delta_eff <= delta_0:
             d_new = state_prev.d
         elif delta_eff >= delta_f:
             d_new = 1.0
@@ -364,44 +388,23 @@ class Cohesive8Element:
             d_new = max(state_prev.d, min(d_trial, 1.0))
             if state_prev.mode_ratio_init < 0.0 and d_new > 0.0:
                 # Damage just initiated this call; freeze the current mode
-                # ratio and re-evaluate the bilinear envelope using it.
+                # ratio.  delta_0/delta_f from the helper above were already
+                # evaluated at this same mode_ratio (since state_prev had
+                # no frozen ratio), so no re-evaluation is needed.
                 mode_ratio_init_new = mode_ratio_current
-                mode_ratio_use = mode_ratio_current
-                Gc_mixed, sigma_mixed, delta_0, delta_f = _bk_at(mode_ratio_use)
-                if delta_eff <= delta_0:
-                    d_new = state_prev.d
-                elif delta_eff >= delta_f:
-                    d_new = 1.0
-                else:
-                    d_trial = (
-                        (delta_f * (delta_eff - delta_0))
-                        / (delta_eff * (delta_f - delta_0))
-                    )
-                    d_new = max(state_prev.d, min(d_trial, 1.0))
 
         d = d_new
 
-        # Traction.
-        T_local = np.empty(3)
-        if d_n < 0.0:
-            T_local[0] = K * d_n
-        else:
-            T_local[0] = (1.0 - d) * K * d_n
-        T_local[1] = (1.0 - d) * K * d_s
-        T_local[2] = (1.0 - d) * K * d_t
+        # Traction (opening branch).
+        T_local = np.array(
+            [(1.0 - d) * K * d_n, (1.0 - d) * K * d_s, (1.0 - d) * K * d_t]
+        )
 
         # Consistent tangent — secant for the damaged components.
-        D_local = np.zeros((3, 3))
-        if d_n < 0.0:
-            D_local[0, 0] = K
-        else:
-            D_local[0, 0] = (1.0 - d) * K
-        D_local[1, 1] = (1.0 - d) * K
-        D_local[2, 2] = (1.0 - d) * K
+        D_local = np.diag([(1.0 - d) * K, (1.0 - d) * K, (1.0 - d) * K])
 
         state_new = CohesiveState(
             d=d,
-            delta_max_eff=max(state_prev.delta_max_eff, delta_eff),
             mode_ratio_init=mode_ratio_init_new,
         )
         return T_local, D_local, state_new
@@ -464,3 +467,8 @@ class Cohesive8Element:
     def area(self) -> float:
         """Mid-surface area via Gauss quadrature on the bottom face."""
         return float(np.sum(self._detJ_gp * self._gp_weights))
+
+    @property
+    def n_gp(self) -> int:
+        """Number of Gauss points (4 for the 2x2 rule on the mid-surface)."""
+        return self._n_gp

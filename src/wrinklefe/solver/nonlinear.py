@@ -59,16 +59,19 @@ class NewtonRaphsonSolver:
     max_newton_iter : int, optional
         Maximum Newton iterations per increment.  Default 25.
     tol_residual : float, optional
-        Relative residual tolerance ``||R|| / ||R_0||`` where ``R_0`` is
-        the residual at the first Newton iteration of the increment.
-        Default 1e-4.
+        Relative residual tolerance ``||R_phys|| / ||R_phys,0||`` on the
+        free-DOF (non-constrained) part of the physical residual, where
+        ``R_phys,0`` is the iter-1 physical residual norm.  Default 1e-4.
     tol_absolute : float, optional
-        Absolute residual floor: an increment with first-iteration
-        ``||R||`` below this value is considered already converged.
-        Default 1e-10.
+        Absolute floor for the physical residual: an increment with
+        ``||R_phys||`` below this value is considered already converged.
+        Also bounds the relative test from below to handle the case of
+        a vanishingly small ``R_phys,0``.  Default 1e-10.
     tol_displacement : float, optional
         Relative displacement-increment tolerance
-        ``||du|| / max(||u||, 1)``.  Default 1e-6.
+        ``||du|| / max(||u||, 1)``, combined with a BC-violation check
+        ``max(|u[d] - v|) < tol_displacement * max(|v|, 1.0)`` on
+        constrained DOFs.  Default 1e-6.
     line_search : bool, optional
         Enable backtracking line search on the Newton step.  Default True.
     """
@@ -81,9 +84,9 @@ class NewtonRaphsonSolver:
         n_increments: int = 10,
         max_newton_iter: int = 25,
         tol_residual: float = 1e-4,
+        tol_absolute: float = 1e-10,
         tol_displacement: float = 1e-6,
         line_search: bool = True,
-        tol_absolute: float = 1e-10,
     ) -> None:
         self.assembler = assembler
         self.bc_handler = bc_handler
@@ -94,7 +97,6 @@ class NewtonRaphsonSolver:
         self.tol_absolute = float(tol_absolute)
         self.tol_displacement = float(tol_displacement)
         self.line_search = bool(line_search)
-        self._diag_max: float = 1.0
 
     # ------------------------------------------------------------------
     # Main solve
@@ -128,13 +130,13 @@ class NewtonRaphsonSolver:
         )
         F_ext_full = self.bc_handler.get_force_dofs(self.boundary_conditions)
 
-        if (
-            len(constrained_full) == 0
-            and float(np.linalg.norm(F_ext_full)) == 0.0
-        ):
+        if len(constrained_full) == 0:
             raise ValueError(
-                "NewtonRaphsonSolver requires at least one boundary "
-                "condition; got empty list."
+                "NewtonRaphsonSolver requires at least one displacement "
+                "boundary condition (constrained DOF) to avoid rigid-body "
+                "singularity. "
+                f"Got {len(self.boundary_conditions)} BCs with no "
+                "constraints."
             )
 
         for inc in range(1, self.n_increments + 1):
@@ -181,15 +183,44 @@ class NewtonRaphsonSolver:
         verbose: bool,
         inc: int,
     ) -> tuple[np.ndarray, int, bool]:
+        from wrinklefe.solver.boundary import _PENALTY_SCALE
+
         u = u_prev.copy()
-        res_0: float | None = None
+        phys_0: float | None = None
+        phys_ref: float = self.tol_absolute
+
+        # Build the constrained-DOF index/value arrays once per increment.
+        # Used both for BC application and for the BC-violation half of
+        # the convergence test.
+        if constrained_dofs:
+            dofs_arr = np.fromiter(
+                constrained_dofs.keys(), dtype=np.intp,
+                count=len(constrained_dofs),
+            )
+            vals_arr = np.fromiter(
+                constrained_dofs.values(), dtype=float,
+                count=len(constrained_dofs),
+            )
+            val_scale = float(max(np.max(np.abs(vals_arr)), 1.0))
+        else:
+            dofs_arr = np.empty(0, dtype=np.intp)
+            vals_arr = np.empty(0, dtype=float)
+            val_scale = 1.0
+
+        # BC-violation tolerance: respect the user's tol_displacement but
+        # not below the inherent penalty-method precision floor
+        # ``~ 10 / _PENALTY_SCALE`` (the residual on a constrained DOF
+        # decays as ~ K_phys / alpha = K_phys / (_PENALTY_SCALE * diag_max),
+        # so absolute u-error is ~ val / _PENALTY_SCALE).
+        penalty_floor = 10.0 / float(_PENALTY_SCALE)
+        bc_tol = max(self.tol_displacement, penalty_floor) * val_scale
+
+        diag_max: float = 1.0
 
         for it in range(1, self.max_newton_iter + 1):
-            # Internal force is evaluated first so the assembler can cache
-            # per-element trial state (e.g. damage in cohesive elements)
-            # that ``assemble_tangent`` then linearises about.
-            F_int = self.assembler.assemble_internal_force(u)
-            K_t = self._assemble_tangent(u)
+            # One combined pass: assembler returns (K_t, F_int) computed
+            # from the same trial-state evaluation of the cohesive law.
+            K_t, F_int = self._assemble_residual_and_tangent(u)
             R = F_int - F_ext
 
             # Penalty scale derived once per increment from the first
@@ -197,28 +228,58 @@ class NewtonRaphsonSolver:
             # and displacement verify) see the same alpha as the Newton
             # solve itself.
             if it == 1:
-                self._diag_max = max(
+                diag_max = max(
                     float(np.abs(K_t.diagonal()).max()) if K_t.nnz else 1.0,
                     1.0,
                 )
 
             K_bc, R_bc = self._apply_bcs_to_system(
-                K_t, R.copy(), u, constrained_dofs, self._diag_max,
+                K_t, R.copy(), u, constrained_dofs, diag_max,
             )
 
+            # Physical residual: ignore the constrained rows so the
+            # penalty term does not dominate the convergence check
+            # for displacement-controlled problems.
+            R_phys = R.copy()
+            R_phys[dofs_arr] = 0.0
+            phys_norm = float(np.linalg.norm(R_phys))
+            # BC violation: how far the current u is from prescribed
+            # values on constrained DOFs.
+            if dofs_arr.size:
+                bc_violation = float(np.max(np.abs(u[dofs_arr] - vals_arr)))
+            else:
+                bc_violation = 0.0
             res_norm = float(np.linalg.norm(R_bc))
             if verbose:
-                print(f"  inc {inc} iter {it}: |R|={res_norm:.3e}")
+                print(
+                    f"  inc {inc} iter {it}: |R_phys|={phys_norm:.3e} "
+                    f"|R_bc|={res_norm:.3e} bc_viol={bc_violation:.3e}"
+                )
 
             if it == 1:
-                if res_norm < self.tol_absolute:
-                    return u, it, True
-                res_0 = max(res_norm, 1e-12)
-            else:
-                assert res_0 is not None
+                # phys_0 is often vanishingly small for displacement-
+                # controlled problems with u_0 = 0 (no internal force on
+                # free DOFs at the start).  Use the iter-1 BC-augmented
+                # residual divided by the penalty scale as a natural
+                # physical-force scale: it represents the load the
+                # Newton solve is driving against, with the penalty
+                # amplification removed.
+                phys_0 = phys_norm
+                load_scale = res_norm / float(_PENALTY_SCALE)
+                phys_ref = max(phys_0, load_scale, self.tol_absolute)
                 if (
-                    res_norm < self.tol_residual * res_0
-                    or res_norm < self.tol_absolute
+                    phys_norm < self.tol_absolute
+                    and bc_violation < bc_tol
+                ):
+                    return u, it, True
+            else:
+                assert phys_0 is not None
+                if (
+                    (
+                        phys_norm < self.tol_residual * phys_ref
+                        or phys_norm < self.tol_absolute
+                    )
+                    and bc_violation < bc_tol
                 ):
                     return u, it, True
 
@@ -235,7 +296,7 @@ class NewtonRaphsonSolver:
             alpha = 1.0
             if self.line_search:
                 alpha = self._backtracking_line_search(
-                    u, du, F_ext, constrained_dofs, res_norm
+                    u, du, F_ext, constrained_dofs, res_norm, diag_max,
                 )
 
             u = u + alpha * du
@@ -243,18 +304,25 @@ class NewtonRaphsonSolver:
             du_norm = float(np.linalg.norm(alpha * du))
             u_norm = max(float(np.linalg.norm(u)), 1.0)
             if du_norm / u_norm < self.tol_displacement:
-                # Verify the residual at the new state.
+                # Verify physical residual + BC violation at the new state.
                 F_int_chk = self.assembler.assemble_internal_force(u)
                 R_chk = F_int_chk - F_ext
-                _, R_chk_bc = self._apply_bcs_to_system(
-                    None, R_chk.copy(), u, constrained_dofs,
-                    self._diag_max, only_residual=True,
-                )
-                chk_norm = float(np.linalg.norm(R_chk_bc))
-                assert res_0 is not None
+                R_chk_phys = R_chk.copy()
+                R_chk_phys[dofs_arr] = 0.0
+                chk_phys_norm = float(np.linalg.norm(R_chk_phys))
+                if dofs_arr.size:
+                    chk_bc_viol = float(
+                        np.max(np.abs(u[dofs_arr] - vals_arr))
+                    )
+                else:
+                    chk_bc_viol = 0.0
+                assert phys_0 is not None
                 if (
-                    chk_norm < self.tol_residual * res_0
-                    or chk_norm < self.tol_absolute
+                    (
+                        chk_phys_norm < self.tol_residual * phys_ref
+                        or chk_phys_norm < self.tol_absolute
+                    )
+                    and chk_bc_viol < bc_tol
                 ):
                     return u, it, True
 
@@ -272,28 +340,32 @@ class NewtonRaphsonSolver:
         F_ext: np.ndarray,
         constrained_dofs: dict[int, float],
         res_norm: float,
+        diag_max: float,
         max_trials: int = 6,
         shrink: float = 0.5,
     ) -> float:
         """Simple backtracking: pick the largest ``alpha in {1, 0.5, ...}``
         that strictly reduces the residual norm.  Falls back to the
-        smallest tried alpha (``shrink ** max_trials``) if no trial
+        smallest TRIED alpha (``shrink ** (max_trials - 1)``) if no trial
         improves on the current residual — a tiny step is preferred over
         a full overshoot in the softening regime.
         """
         alpha = 1.0
-        for _ in range(max_trials):
+        for i in range(max_trials):
             u_trial = u + alpha * du
             F_int_trial = self.assembler.assemble_internal_force(u_trial)
             R_trial = F_int_trial - F_ext
             _, R_trial_bc = self._apply_bcs_to_system(
                 None, R_trial.copy(), u_trial, constrained_dofs,
-                self._diag_max, only_residual=True,
+                diag_max, only_residual=True,
             )
             trial_norm = float(np.linalg.norm(R_trial_bc))
             if trial_norm < res_norm:
                 return alpha
-            alpha *= shrink
+            if i < max_trials - 1:
+                alpha *= shrink
+        # No trial reduced the residual; return the last (smallest)
+        # tried alpha rather than an untested ``alpha * shrink``.
         return alpha
 
     # ------------------------------------------------------------------
@@ -366,4 +438,35 @@ class NewtonRaphsonSolver:
         tan = getattr(self.assembler, "assemble_tangent", None)
         if callable(tan):
             return tan(u)
+        # Fall back to linear stiffness only when the assembler has no
+        # cohesive elements registered; otherwise the linear path is
+        # silently wrong for nonlinear CZM problems.
+        cohesive = getattr(self.assembler, "cohesive_elements", None)
+        if cohesive:
+            raise RuntimeError(
+                "Assembler has cohesive elements registered but does not "
+                "implement assemble_tangent(u); the linear "
+                "assemble_stiffness() is not appropriate for nonlinear "
+                "CZM problems."
+            )
         return self.assembler.assemble_stiffness()
+
+    def _assemble_residual_and_tangent(
+        self, u: np.ndarray
+    ) -> tuple[sparse.csc_matrix, np.ndarray]:
+        """Single-pass tangent + internal force.
+
+        Prefers the assembler's combined ``assemble_residual_and_tangent``
+        when available; falls back to two separate calls for assemblers
+        that only expose the older two-method API.  As with
+        :meth:`_assemble_tangent`, the linear-stiffness fall-back path
+        is rejected for assemblers that have cohesive elements.
+        """
+        combined = getattr(
+            self.assembler, "assemble_residual_and_tangent", None
+        )
+        if callable(combined):
+            return combined(u)
+        F_int = self.assembler.assemble_internal_force(u)
+        K_t = self._assemble_tangent(u)
+        return K_t, F_int
