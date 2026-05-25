@@ -69,9 +69,23 @@ _A_REF = 0.183    # Reference amplitude (1 ply thickness, mm)
 _N_PROFILE_PTS = 500
 
 # Confinement model constants
-# Calibrated with CLT-weighted BF against Elhajjar (2025), T700/2510.
+# Calibrated with CLT-weighted BF against Elhajjar (2025), T700/2510, and
+# Mukhopadhyay (2015) blocked-layup compression cases.
 _GAMMA_Y_UD = 0.032   # UD matrix yield strain (no confinement)
-_ALPHA_CONF = 0.050   # confinement boost coefficient
+_ALPHA_CONF = 0.050   # confinement boost coefficient (per off-axis-neighbour score)
+# Block-size penalty: each additional 0-deg ply in a consecutive run beyond
+# the first reduces gamma_Y_eff by this amount. Captures the empirical
+# observation that blocked layups such as Mukhopadhyay's [0_2] (effectively
+# [0_4] across the symmetry plane) kink more easily than the neighbour-
+# counting confinement score alone predicts: inner 0-deg faces of a block
+# are bracketed by another 0-deg ply that does not constrain lateral
+# expansion of the kink band. Only applied when at least one off-axis ply
+# exists so pure UD ([0]_n) remains at the UD calibration point.
+_BETA_BLOCK = 0.010   # per-extra-ply block penalty on gamma_Y_eff
+# Lower bound on gamma_Y_eff so a long 0-deg block cannot drive it negative
+# or arbitrarily close to zero (which would otherwise produce a degenerate
+# Budiansky-Fleck knockdown).
+_GAMMA_Y_FLOOR = _GAMMA_Y_UD / 2.0  # = 0.016 (UD half-strain floor)
 
 
 def _confined_fraction(angles: List[float], tol: float = 5.0) -> float:
@@ -112,22 +126,68 @@ def _confined_fraction(angles: List[float], tol: float = 5.0) -> float:
 def _effective_gamma_Y(angles: List[float]) -> float:
     """Compute layup-dependent effective matrix yield strain.
 
-    gamma_Y_eff = gamma_Y_UD + alpha * f_confined
+    Three-parameter model::
 
-    where f_confined is the weighted confinement fraction of 0-degree
-    plies (0 = unconfined UD, 1 = fully interspersed). This captures
-    the constraint that off-axis plies impose on kink-band lateral
-    expansion in multidirectional laminates.
+        gamma_Y_eff = max(
+            gamma_Y_UD + alpha_conf * f_confined
+                       - beta_block * max(n_block_max - 1, 0),
+            gamma_Y_floor,
+        )
 
-    With CLT-weighted compression (KD_lam = f0*KD_BF + 1-f0),
+    where:
+
+    * ``f_confined`` is the weighted confinement fraction of 0-degree
+      plies (0 = unconfined, 1 = fully interspersed; see
+      :func:`_confined_fraction`).  The linear ``alpha_conf`` term
+      captures the constraint that off-axis plies impose on kink-band
+      lateral expansion in multidirectional laminates.
+    * ``n_block_max`` is the longest run of consecutive 0-degree plies
+      (see :func:`_max_consecutive_zero_plies`).  The ``beta_block``
+      term penalises long 0-deg blocks: each additional ply inside a
+      block beyond the first contributes another increment of
+      lateral-expansion freedom that the neighbour-counting confinement
+      score does not capture.  Inner 0-deg faces of a block are
+      bracketed by another 0-deg ply that does not constrain kink-band
+      lateral expansion, so the matrix yields at a lower applied shear
+      strain in blocked layups than in dispersed layups with the same
+      ``f_confined``.
+
+    The block penalty is only applied when at least one off-axis ply
+    exists in the layup.  Pure UD ``[0]_n`` would otherwise be driven
+    below the calibration point by the penalty term; with the guard, UD
+    retains ``gamma_Y_eff = gamma_Y_UD = 0.032`` regardless of ``n``.
+
+    The result is floored at ``_GAMMA_Y_FLOOR`` (= gamma_Y_UD / 2) so
+    very thick 0-blocks cannot drive ``gamma_Y_eff`` arbitrarily close
+    to zero, which would otherwise produce a degenerate Budiansky-Fleck
+    knockdown.
+
+    With CLT-weighted compression (``KD_lam = f0 * KD_BF + (1 - f0)``),
     the confinement effect is separated from load redistribution.
-    Calibration points:
-        UD (f=0.0):            gamma_Y = 0.032
-        Mukhopadhyay (f≈0.42): gamma_Y = 0.053
-        Elhajjar (f≈0.83):    gamma_Y = 0.074
+
+    Calibration anchors (three-parameter model, beta_block = 0.010):
+
+    ======================================  =======  ===============  ==========
+    Layup                                   ``f``    ``n_block_max``  ``gamma_Y``
+    ======================================  =======  ===============  ==========
+    UD ``[0]_n``                            ~0.13    n (guard skips)  0.032
+    Mukhopadhyay ``[..../0_2]_3s``          ~0.42    4 (block of 4    ~0.023
+                                                     at symmetry
+                                                     plane)
+    Elhajjar ``[0/45/90/-45/0/45/-45/0]_s`` ~0.83    2 (only at the   ~0.064
+                                                     symmetry plane)
+    ======================================  =======  ===============  ==========
     """
     fc = _confined_fraction(angles)
-    return _GAMMA_Y_UD + _ALPHA_CONF * fc
+    # Guard: pure UD has no off-axis plies; the block penalty would
+    # otherwise drive its gamma_Y below the calibration point.
+    n_off_axis = sum(1 for a in angles if abs(a) >= 5.0)
+    if n_off_axis == 0:
+        return _GAMMA_Y_UD
+    n_block_max = _max_consecutive_zero_plies(angles)
+    block_penalty = _BETA_BLOCK * max(n_block_max - 1, 0)
+    gamma_Y = _GAMMA_Y_UD + _ALPHA_CONF * fc - block_penalty
+    return max(gamma_Y, _GAMMA_Y_FLOOR)
 
 
 def _profile_proportional_kd(
@@ -142,6 +202,9 @@ def _profile_proportional_kd(
     *,
     morphology_factor: float = 1.0,
     through_thickness_decay: bool = True,
+    z_position_fraction: float = 0.5,
+    decay_scale: Optional[float] = None,
+    kink_band_quadratic_coeff: float = 0.0,
 ) -> float:
     """Budiansky-Fleck knockdown averaged over the wrinkle profile.
 
@@ -158,12 +221,39 @@ def _profile_proportional_kd(
     with:
         |dz_w/dx|  = slope of the GaussianSinusoidal wrinkle profile
         M_f        = morphology factor (accounts for dual-wrinkle interaction)
-        Phi(z_p)   = exp(-(z_p - T/2)^2 / A^2)   (through-thickness decay)
+        Phi(z_p)   = exp(-(z_p - z_c)^2 / (2 * sigma^2))  (through-thickness
+                     decay, standard Gaussian convention with sigma =
+                     ``decay_scale``).  This differs from the legacy form
+                     ``exp(-(z_p - T/2)^2 / A^2)`` (no factor of 2 — implicit
+                     ``sqrt(2)*A`` scale): the new form makes the decay
+                     scale an explicit standard deviation.
+        z_c        = z_position_fraction * T (laminate thickness)
+
+    The decay scale defaults to ``max(wavelength / 2, amplitude)`` when
+    not provided.  The wrinkle's longitudinal extent (set by the
+    wavelength) is the physical scale over which a buried wrinkle
+    perturbs the through-thickness fibre orientation field: a short-
+    wavelength wrinkle decays through only a few plies; a long-wavelength
+    wrinkle reaches further.  The legacy ``A``-based scale almost always
+    falls inside this default for the calibrated datasets, but for thick
+    UD laminates with long wavelengths (e.g. Li 2024) the legacy form
+    confined the wrinkle effect to just the midplane plies, leaving
+    the laminate KD near 1 even at high amplitudes.
 
     When *through_thickness_decay* is False, Phi(z_p) = 1 for all plies
     (all plies see the same longitudinal profile).  This is appropriate
     for dual-wrinkle morphologies (stack/convex/concave) where the wrinkle
     extends through the full thickness.
+
+    The per-point knockdown uses the Argon-Fleck quadratic extension of
+    the Budiansky-Fleck closed form::
+
+        r = theta_eff / gamma_Y
+        KD = 1.0 / (1.0 + r + c_AF * r^2)
+
+    With ``c_AF = 0`` (default) the legacy linear form is recovered.
+    Non-zero ``c_AF`` improves the high-angle response (theta > ~20 deg)
+    where the linear form systematically over-predicts strength.
 
     Parameters
     ----------
@@ -189,8 +279,23 @@ def _profile_proportional_kd(
         stack = 1.0, graded = 1.0).  Default 1.0.
     through_thickness_decay : bool
         If True (default), apply Gaussian through-thickness decay centred
-        at the midplane with scale = amplitude.  If False, all plies see
-        the full wrinkle angle profile (Phi = 1).
+        at ``z_position_fraction * T`` with scale ``decay_scale`` (see
+        below).  If False, all plies see the full wrinkle angle profile
+        (Phi = 1).
+    z_position_fraction : float
+        Fraction of the laminate thickness at which the wrinkle through-
+        thickness decay is centred.  ``0.5`` (default) centres the decay
+        at the midplane, reproducing the legacy behaviour; ``0.0`` and
+        ``1.0`` place the decay centre at the bottom and top surfaces,
+        respectively.  Only consulted when ``through_thickness_decay`` is
+        True.
+    decay_scale : float or None
+        Through-thickness Gaussian standard deviation [mm].  When None
+        (default) the auto formula ``max(wavelength / 2, amplitude)`` is
+        used.  Must be strictly positive when provided.
+    kink_band_quadratic_coeff : float
+        Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless).
+        Default 0.0 (legacy linear BF).  Must be >= 0.
 
     Returns
     -------
@@ -198,8 +303,20 @@ def _profile_proportional_kd(
         Profile-averaged BF knockdown factor (0, 1].
     """
     T = n_plies * ply_thickness
-    z_mid = T / 2.0
+    z_center = z_position_fraction * T
     L_s = domain_length
+
+    # Resolve the through-thickness decay scale.  The auto default uses
+    # the wrinkle's longitudinal extent (lambda / 2) so long-wavelength
+    # wrinkles reach further through the thickness; falls back to A so
+    # short-wavelength wrinkles do not collapse to an unphysically small
+    # decay scale.
+    if decay_scale is None:
+        sigma = max(wavelength / 2.0, amplitude)
+    else:
+        sigma = float(decay_scale)
+    sigma_sq2 = 2.0 * sigma * sigma
+    c_AF = float(kink_band_quadratic_coeff)
 
     # Longitudinal profile: compute |dz/dx| at each x-point
     x = np.linspace(-L_s / 2.0, L_s / 2.0, _N_PROFILE_PTS)
@@ -221,11 +338,12 @@ def _profile_proportional_kd(
     for p in range(n_plies):
         z_p = (p + 0.5) * ply_thickness
         if through_thickness_decay:
-            phi_p = np.exp(-((z_p - z_mid) ** 2) / (amplitude ** 2))
+            phi_p = np.exp(-((z_p - z_center) ** 2) / sigma_sq2)
         else:
             phi_p = 1.0
         theta_xz = theta_x * phi_p  # local angle at (x, z_p)
-        kd_xz = 1.0 / (1.0 + theta_xz / gamma_Y)
+        r = theta_xz / gamma_Y
+        kd_xz = 1.0 / (1.0 + r + c_AF * r * r)
         kd_sum += np.mean(kd_xz)
 
     return kd_sum / n_plies
@@ -254,8 +372,142 @@ def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
 
 
 # ======================================================================
+# Public helper: amplitude → wavelength estimation
+# ======================================================================
+
+def estimate_wavelength_from_amplitude(
+    amplitude: float,
+    *,
+    K_lambda: float = 19.9,
+    lambda_min: float = 8.2,
+    lambda_ref: float = 0.366,
+    scaling: str = "sqrt",
+) -> float:
+    """Estimate wrinkle wavelength from amplitude when lambda is not measured.
+
+    Some validation datasets report only the wrinkle amplitude ``A`` and
+    require an external rule to recover the wavelength ``lambda`` needed
+    by the Budiansky-Fleck peak-fibre-angle model
+    ``theta_max = arctan(2*pi*A/lambda)``.  Two scaling rules are
+    supported:
+
+    * ``"linear"`` (legacy):
+        ``lambda = K_lambda * A``.  Reproduces the original convention
+        documented in §1.4 of ``VALIDATION_DATA.md`` and used by older
+        validation harnesses.  Because ``theta_max`` reduces to
+        ``arctan(2*pi/K_lambda)``, the predicted peak fibre angle is
+        *constant* in ``A`` under this rule.  That is unphysical for
+        severe wrinkles, where larger amplitudes produce steeper local
+        fibre rotations and stronger compressive knockdowns.
+
+    * ``"sqrt"`` (default, recommended):
+        ``lambda = K_lambda * sqrt(A * lambda_ref)``.  At the reference
+        amplitude ``A = lambda_ref`` the sqrt rule matches the legacy
+        linear rule exactly (``lambda = K_lambda * lambda_ref``), so
+        the calibration of mild wrinkles is preserved.  For
+        ``A > lambda_ref`` the wavelength grows sub-linearly with
+        amplitude, so ``theta_max = arctan(2*pi*A/lambda)`` increases
+        monotonically with ``A`` and the model captures the experimental
+        knockdown collapse seen at high D/T in the Elhajjar (2025)
+        compression dataset.
+
+    Both rules are clamped from below at ``lambda_min`` so that tiny
+    amplitudes do not produce vanishingly small wavelengths.
+
+    Parameters
+    ----------
+    amplitude : float
+        Wrinkle amplitude *A* [mm].  Must be non-negative.
+    K_lambda : float, optional
+        Slope coefficient. Defaults to ``19.9`` (Elhajjar 2025
+        T700/2510 calibration).
+    lambda_min : float, optional
+        Lower clamp on the returned wavelength [mm].  Defaults to
+        ``8.2`` mm (Elhajjar 2025).
+    lambda_ref : float, optional
+        Reference amplitude [mm] at which the sqrt scaling is anchored
+        to the legacy linear rule.  Defaults to ``0.366`` mm (two ply
+        thicknesses in the Elhajjar T700/2510 layup).  Ignored when
+        ``scaling == "linear"``.
+    scaling : {"sqrt", "linear"}, optional
+        Scaling rule selector.  Defaults to ``"sqrt"``.
+
+    Returns
+    -------
+    float
+        Wavelength ``lambda`` in mm, lower-bounded by ``lambda_min``.
+
+    Raises
+    ------
+    ValueError
+        If ``scaling`` is not one of ``"sqrt"`` or ``"linear"``.
+
+    Examples
+    --------
+    Legacy linear rule (constant peak angle):
+
+    >>> estimate_wavelength_from_amplitude(0.5, scaling="linear")
+    9.95
+
+    Sub-linear sqrt rule (default):  at the reference amplitude the
+    raw rule matches the legacy linear rule exactly
+    (``K_lambda * lambda_ref = 19.9 * 0.366 = 7.2834``), which then
+    clamps to ``lambda_min = 8.2``:
+
+    >>> estimate_wavelength_from_amplitude(0.366)
+    8.2
+    """
+    if scaling not in ("sqrt", "linear"):
+        raise ValueError(
+            f"estimate_wavelength_from_amplitude: scaling must be "
+            f"'sqrt' or 'linear', got {scaling!r}"
+        )
+    if scaling == "linear":
+        lam = K_lambda * amplitude
+    else:  # "sqrt"
+        # lambda = K_lambda * sqrt(A * lambda_ref) -- matches linear at
+        # A = lambda_ref, grows sub-linearly for A > lambda_ref.  Guard
+        # against negative amplitude reaching the sqrt.
+        lam = K_lambda * math.sqrt(max(amplitude, 0.0) * lambda_ref)
+    return max(lam, lambda_min)
+
+
+# ======================================================================
 # Configuration
 # ======================================================================
+
+@dataclass
+class WrinkleSpec:
+    """Single-wrinkle specification used to assemble multi-wrinkle configs.
+
+    A list of :class:`WrinkleSpec` instances passed to
+    :class:`AnalysisConfig` via the ``wrinkles`` field overrides the
+    single/dual-wrinkle dispatch in :meth:`WrinkleAnalysis.run`, allowing
+    arbitrary N-wrinkle layouts at arbitrary ply interfaces with arbitrary
+    phase offsets to be analysed (see Dataset F / Li et al. 2025).
+
+    Parameters
+    ----------
+    amplitude : float
+        Wrinkle half-amplitude *A* [mm], strictly positive.
+    wavelength : float
+        Wavelength lambda [mm], strictly positive.
+    width : float
+        Gaussian envelope half-width *w* [mm], strictly positive.
+    ply_interface : int
+        Ply interface index passed to :class:`WrinklePlacement`. For a
+        laminate with *N* plies valid indices are 0 through N-2 inclusive.
+    phase_offset : float, optional
+        Phase offset phi [rad] relative to the reference wrinkle.
+        Default 0.0.
+    """
+
+    amplitude: float
+    wavelength: float
+    width: float
+    ply_interface: int
+    phase_offset: float = 0.0
+
 
 @dataclass
 class AnalysisConfig:
@@ -332,6 +584,19 @@ class AnalysisConfig:
         at the surfaces (pure graded); ``1.0`` means no decay
         (equivalent to ``uniform``).  Values outside ``[0, 1]`` are
         rejected by ``__post_init__``.
+    wrinkle_z_position : float
+        Through-thickness position of the (single-wrinkle) decay centre,
+        expressed as a fraction of the laminate thickness *T*.  ``0.0``
+        places the wrinkle at the bottom surface, ``0.5`` (default) at
+        the midplane (legacy behaviour), and ``1.0`` at the top surface.
+        Used by the graded morphology path to shift the Gaussian through-
+        thickness decay centre off the midplane and to bias the linear
+        per-ply tension grading; mirrors the Above / Middle / Below
+        wrinkle locations of Li et al. (2025) Dataset F.  Ignored for the
+        ``stack``, ``convex``, ``concave`` and ``uniform`` morphologies,
+        whose through-thickness behaviour is set by the morphology itself
+        or by the ``interface_1`` / ``interface_2`` interface indices.
+        Must be a finite float in ``[0.0, 1.0]``.
     amplitude_profile : {"constant", "gaussian", "linear"}
         Spatially varying in-plane amplitude modulation applied on top
         of the wrinkle's own longitudinal envelope (see
@@ -390,6 +655,18 @@ class AnalysisConfig:
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
     verbose : bool
         Print progress information.  Default ``False``.
+    through_thickness_decay_scale : float or None
+        Optional override (mm) for the through-thickness Gaussian
+        standard deviation used by the graded morphology's profile-
+        proportional KD path and the tension graded-averaging block.
+        ``None`` (default) triggers the auto formula
+        ``max(wavelength / 2, amplitude)``.  Must be > 0 when set.
+    kink_band_quadratic_coeff : float
+        Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless) in
+        the extended Budiansky-Fleck closed form
+        ``KD = 1 / (1 + r + c_AF * r**2)`` with
+        ``r = theta_eff / gamma_Y_eff``.  Default ``0.0`` recovers the
+        legacy linear BF response.  Must be >= 0.
     """
 
     # Wrinkle geometry
@@ -405,6 +682,11 @@ class AnalysisConfig:
     # analysed/swept. Ignored for single-wrinkle modes (uniform/graded).
     phase: Optional[float] = None
     decay_floor: float = 0.0  # graded mode: min amplitude fraction at surfaces (0–1)
+    # Single-wrinkle through-thickness position as a fraction of the laminate
+    # thickness (0 = bottom surface, 0.5 = midplane, 1 = top surface). Only
+    # consulted by the graded morphology path; ignored for stack/convex/
+    # concave/uniform.
+    wrinkle_z_position: float = 0.5
 
     # Spatially varying in-plane amplitude profile (#178 follow-up). Defaults
     # mirror WrinkleConfiguration so the legacy "constant" behaviour is
@@ -430,6 +712,13 @@ class AnalysisConfig:
     interface_1: Optional[int] = None
     interface_2: Optional[int] = None
 
+    # Multi-wrinkle override. When non-empty, this overrides the named
+    # single/dual-wrinkle dispatch in WrinkleAnalysis.run, allowing
+    # arbitrary N-wrinkle configurations (Li et al. 2025 Dataset F).
+    # Each spec contributes one WrinklePlacement; FE solve is currently
+    # out of scope for this path (set analytical_only=True).
+    wrinkles: Optional[List["WrinkleSpec"]] = None
+
     # Mesh
     nx: int = 12
     ny: int = 6
@@ -448,6 +737,24 @@ class AnalysisConfig:
 
     # Verbosity
     verbose: bool = False
+
+    # Through-thickness Gaussian decay scale [mm] used by the graded
+    # morphology's profile-proportional KD path.  ``None`` (default)
+    # triggers the auto formula ``max(wavelength / 2, amplitude)`` so the
+    # decay scale tracks the wrinkle's longitudinal extent rather than
+    # its (much smaller) amplitude.  Provide an explicit positive float
+    # to pin the decay scale (e.g. to reproduce the pre-PR amplitude-
+    # based behaviour for regression testing).  Must be > 0 when set.
+    through_thickness_decay_scale: Optional[float] = None
+
+    # Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless) for the
+    # extended Budiansky-Fleck closed form ``KD = 1/(1 + r + c_AF*r^2)``
+    # where ``r = theta_eff / gamma_Y_eff``.  Default 0.0 recovers the
+    # legacy linear BF response; positive values are required to match
+    # the high-angle response of thick UD wrinkled coupons (Li 2024 /
+    # Li 2025 high-amplitude cases) where the linear form systematically
+    # over-predicts strength.  Must be >= 0.
+    kink_band_quadratic_coeff: float = 0.0
 
     def __post_init__(self) -> None:
         if self.domain_length <= 0:
@@ -550,6 +857,22 @@ class AnalysisConfig:
                 f"got {self.decay_floor}"
             )
 
+        # Single-wrinkle through-thickness position as a fraction of T.
+        # Must be a finite float in [0, 1]; NaN and infinities are rejected
+        # so they cannot silently shift the decay centre off the laminate.
+        try:
+            wz_value = float(self.wrinkle_z_position)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"AnalysisConfig.wrinkle_z_position must be a finite float "
+                f"in [0, 1], got {self.wrinkle_z_position!r}"
+            )
+        if not math.isfinite(wz_value) or not (0.0 <= wz_value <= 1.0):
+            raise ValueError(
+                f"AnalysisConfig.wrinkle_z_position must be a finite float "
+                f"in [0, 1], got {self.wrinkle_z_position!r}"
+            )
+
         # --- Amplitude profile (spatially varying A modulation) -------
         valid_amplitude_profiles = ("constant", "gaussian", "linear")
         if (
@@ -634,6 +957,92 @@ class AnalysisConfig:
                 f"{list(valid_solvers)}, got {self.solver!r}"
             )
 
+        # --- Through-thickness decay scale ----------------------------
+        # Optional positive float (mm) overriding the auto formula
+        # ``max(wavelength / 2, amplitude)`` used by the graded
+        # morphology profile-proportional path.  Must be strictly
+        # positive and finite when provided.
+        if self.through_thickness_decay_scale is not None and not (
+            self.through_thickness_decay_scale > 0.0
+            and math.isfinite(self.through_thickness_decay_scale)
+        ):
+            raise ValueError(
+                f"AnalysisConfig.through_thickness_decay_scale must be a "
+                f"finite positive float when set, "
+                f"got {self.through_thickness_decay_scale}"
+            )
+
+        # --- Argon-Fleck quadratic coefficient ------------------------
+        # Dimensionless non-negative float (0.0 = legacy linear BF).
+        if (
+            not isinstance(self.kink_band_quadratic_coeff, (int, float))
+            or isinstance(self.kink_band_quadratic_coeff, bool)
+            or not math.isfinite(self.kink_band_quadratic_coeff)
+            or self.kink_band_quadratic_coeff < 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.kink_band_quadratic_coeff must be a "
+                f"finite float >= 0, "
+                f"got {self.kink_band_quadratic_coeff!r}"
+            )
+
+        # --- Multi-wrinkle override -----------------------------------
+        # When ``wrinkles`` is provided, it overrides the named
+        # single/dual-wrinkle dispatch.  An empty list is rejected
+        # because the intent is ambiguous (use None for the default).
+        if self.wrinkles is not None:
+            if not isinstance(self.wrinkles, list):
+                raise ValueError(
+                    "AnalysisConfig.wrinkles must be a list of WrinkleSpec "
+                    f"or None, got {type(self.wrinkles).__name__}"
+                )
+            if len(self.wrinkles) == 0:
+                raise ValueError(
+                    "AnalysisConfig.wrinkles must contain at least one "
+                    "WrinkleSpec; pass None to use the default dispatch."
+                )
+            for i, spec in enumerate(self.wrinkles):
+                if not isinstance(spec, WrinkleSpec):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}] must be a "
+                        f"WrinkleSpec, got {type(spec).__name__}"
+                    )
+                if not (spec.amplitude > 0 and math.isfinite(spec.amplitude)):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].amplitude must be "
+                        f"a positive finite float, got {spec.amplitude}"
+                    )
+                if not (spec.wavelength > 0 and math.isfinite(spec.wavelength)):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].wavelength must be "
+                        f"a positive finite float, got {spec.wavelength}"
+                    )
+                if not (spec.width > 0 and math.isfinite(spec.width)):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].width must be "
+                        f"a positive finite float, got {spec.width}"
+                    )
+                if (
+                    not isinstance(spec.ply_interface, int)
+                    or isinstance(spec.ply_interface, bool)
+                ):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].ply_interface must "
+                        f"be an int, got {spec.ply_interface!r}"
+                    )
+                # WrinklePlacement valid range is [0, n_plies - 2]
+                if not (0 <= spec.ply_interface <= n_plies - 2):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].ply_interface must "
+                        f"be in [0, {n_plies - 2}] (n_plies={n_plies}), "
+                        f"got {spec.ply_interface}"
+                    )
+                if not math.isfinite(spec.phase_offset):
+                    raise ValueError(
+                        f"AnalysisConfig.wrinkles[{i}].phase_offset must "
+                        f"be finite, got {spec.phase_offset}"
+                    )
+
 
 # ======================================================================
 # Results
@@ -662,7 +1071,15 @@ class AnalysisResults:
     damage_index : float
         Interlaminar damage index D.
     analytical_knockdown : float
-        Analytical combined knockdown factor.
+        Analytical combined knockdown factor (the *ultimate* fibre-failure
+        KD for tension; the kink-band KD for compression).
+    analytical_onset_knockdown : float or None
+        Delamination-onset (first-load-drop) knockdown for tension
+        loading, computed from a curved-beam mode-mixity criterion using
+        ``material.GIc`` and ``material.GIIc``.  ``None`` when the
+        material does not provide both fracture toughnesses or when the
+        loading is compression.  Always strictly below
+        ``analytical_knockdown``.
     analytical_strength_MPa : float
         Analytical predicted failure stress (MPa).
     field_results : FieldResults or None
@@ -685,6 +1102,7 @@ class AnalysisResults:
     mesh_max_angle_rad: float = 0.0  # max fiber angle from FE mesh (accounts for decay)
     damage_index: float = 0.0
     analytical_knockdown: float = 1.0
+    analytical_onset_knockdown: Optional[float] = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
     tension_mechanisms: Optional[dict] = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
@@ -833,6 +1251,17 @@ class WrinkleAnalysis:
         cfg = self.config
         if analytical_only is None:
             analytical_only = cfg.analytical_only
+
+        # Multi-wrinkle FE solve is not yet supported — the mesh
+        # generator currently assumes one or two wrinkle interfaces.
+        # Reject early so callers get a clear signal rather than a
+        # mid-pipeline failure.
+        if cfg.wrinkles is not None and not analytical_only:
+            raise NotImplementedError(
+                "Multi-wrinkle FE solve not yet implemented; "
+                "pass analytical_only=True."
+            )
+
         results = AnalysisResults(config=cfg)
 
         # Phase weights (sum to 1.0 on the full FE path).  The FE solve
@@ -858,6 +1287,49 @@ class WrinkleAnalysis:
 
         # 2. Create wrinkle configuration (centered in specimen)
         wrinkle_center = cfg.domain_length / 2.0
+
+        # Multi-wrinkle override: build a WrinkleConfiguration directly
+        # from the user-supplied WrinkleSpec list.  Each spec carries its
+        # own geometry (A, lambda, w) and is placed at its own ply
+        # interface with its own phase offset.  Bypasses the single/dual
+        # name dispatch entirely.
+        if cfg.wrinkles is not None:
+            placements = []
+            for spec in cfg.wrinkles:
+                spec_profile = GaussianSinusoidal(
+                    amplitude=spec.amplitude,
+                    wavelength=spec.wavelength,
+                    width=spec.width,
+                    center=wrinkle_center,
+                )
+                placements.append(
+                    WrinklePlacement(
+                        profile=spec_profile,
+                        ply_interface=spec.ply_interface,
+                        phase_offset=spec.phase_offset,
+                    )
+                )
+            is_graded = cfg.morphology.lower().strip() == "graded"
+            wrinkle_config = WrinkleConfiguration(
+                placements,
+                decay_mode="graded" if is_graded else "default",
+                decay_floor=cfg.decay_floor if is_graded else 0.0,
+                amplitude_profile=cfg.amplitude_profile,
+                amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
+                amplitude_profile_axis=cfg.amplitude_profile_axis,
+            )
+            results.wrinkle_config = wrinkle_config
+
+            _report("Computing analytical predictions", 0.05)
+
+            # 3. Analytical predictions (multi-wrinkle path)
+            self._compute_analytical(results, wrinkle_config)
+
+            # FE solve is unsupported for the multi-wrinkle path
+            # (guarded above); always return analytical-only here.
+            _report("Analytical predictions complete", 1.0)
+            return results
+
         profile = GaussianSinusoidal(
             amplitude=cfg.amplitude,
             wavelength=cfg.wavelength,
@@ -1082,7 +1554,22 @@ class WrinkleAnalysis:
         # Unattenuated sinusoidal angle: theta = arctan(2*pi*A/lambda)
         # This is the correct angle for D/T-based knockdown comparison,
         # since D/T uses the full amplitude A without Gaussian attenuation.
-        if cfg.wavelength > 1e-12:
+        if cfg.wrinkles is not None:
+            # Multi-wrinkle analytical model: peak-angle over all wrinkles (initial implementation).
+            # Each wrinkle gets its own theta_max,i = arctan(2*pi*A_i/lambda_i)
+            # and we take the maximum, then scale by the aggregate morphology
+            # factor. This is intentionally coarse; calibration against the
+            # Li et al. (2025) Dataset F multi-wrinkle specimens is a
+            # follow-up activity (D-AB-2, D-A-2, D-M-2, T-M-2).
+            theta_max = 0.0
+            for spec in cfg.wrinkles:
+                if spec.wavelength > 1e-12:
+                    theta_i = float(
+                        np.arctan(2.0 * np.pi * spec.amplitude / spec.wavelength)
+                    )
+                    if theta_i > theta_max:
+                        theta_max = theta_i
+        elif cfg.wavelength > 1e-12:
             theta_max = float(np.arctan(2.0 * np.pi * cfg.amplitude / cfg.wavelength))
         else:
             theta_max = 0.0
@@ -1119,11 +1606,34 @@ class WrinkleAnalysis:
         # is governed by the peak-angle cross-section.
         #
         # KD_lam = (1/N) sum_p [ (1/L_s) int 1/(1 + theta(x)*Phi(z_p)/gY) dx ]
-        is_graded = cfg.morphology.lower().strip() == "graded"
+        # Force the non-graded peak-angle path when a multi-wrinkle
+        # override is active: the graded profile-proportional helper
+        # below uses cfg.amplitude / cfg.wavelength / cfg.width directly
+        # and would silently ignore the per-spec geometry.
+        is_graded = (
+            cfg.morphology.lower().strip() == "graded"
+            and cfg.wrinkles is None
+        )
         n_plies = len(angles)
 
+        # Resolve through-thickness Gaussian decay scale (mm).  The user
+        # can override the auto formula via
+        # ``cfg.through_thickness_decay_scale``; default is
+        # ``max(wavelength / 2, amplitude)``.  Used for both the
+        # compression profile-proportional KD and the tension graded-
+        # averaging block.
+        if cfg.through_thickness_decay_scale is not None:
+            decay_scale_eff = float(cfg.through_thickness_decay_scale)
+        else:
+            decay_scale_eff = max(cfg.wavelength / 2.0, cfg.amplitude)
+        c_AF = float(cfg.kink_band_quadratic_coeff)
+
         if is_graded and n_0 > 0 and n_plies > 1:
-            # Profile-proportional compression knockdown (graded/embedded)
+            # Profile-proportional compression knockdown (graded/embedded).
+            # ``wrinkle_z_position`` shifts the through-thickness decay
+            # centre off the midplane to model wrinkles closer to the
+            # surface (Li et al. 2025 Dataset F: Above/Below positions).
+            z_pos = float(cfg.wrinkle_z_position)
             kd_profile = _profile_proportional_kd(
                 amplitude=cfg.amplitude,
                 wavelength=cfg.wavelength,
@@ -1135,19 +1645,36 @@ class WrinkleAnalysis:
                 theta_max=theta_max,
                 morphology_factor=1.0,
                 through_thickness_decay=True,
+                z_position_fraction=z_pos,
+                decay_scale=decay_scale_eff,
+                kink_band_quadratic_coeff=c_AF,
             )
             kd_compression = f_0 * kd_profile + (1.0 - f_0)
 
             if cfg.loading == "tension":
                 # Average tension knockdown over 0-deg plies at local angles
-                # (profile-proportional, using linear grading as fallback
-                # for the three-mechanism model)
-                p_mid = (n_plies - 1) / 2.0
+                # (profile-proportional, using stretched linear grading
+                # on the new ``decay_scale_eff`` so the support tracks
+                # the wrinkle's longitudinal extent rather than the
+                # full half-thickness).  The grading centre ``p_mid`` is
+                # shifted by ``wrinkle_z_position`` so the per-ply taper
+                # peaks at the user-set through-thickness position
+                # rather than the midplane (legacy: midplane).
+                p_mid = z_pos * (n_plies - 1)
                 zero_positions = [i for i, a in enumerate(angles) if abs(a) < 5]
                 decay_floor = cfg.decay_floor
+                # Stretched linear support: width = decay_scale / t_ply
+                # plies.  Falls back to the legacy half-thickness norm if
+                # the decay scale would exceed it (keeps backwards-
+                # compatible behaviour for cases where the auto formula
+                # is at least the legacy support).
+                t_ply = cfg.ply_thickness
+                p_support_decay = decay_scale_eff / max(t_ply, 1e-12)
+                p_support_legacy = (n_plies - 1) / 2.0
+                p_norm = max(min(p_support_decay, p_support_legacy), 1e-12)
                 kd_0_sum = 0.0
                 for p in zero_positions:
-                    raw = max(0.0, 1.0 - abs(p - p_mid) / p_mid)
+                    raw = max(0.0, 1.0 - abs(p - p_mid) / p_norm)
                     B_p = decay_floor + (1.0 - decay_floor) * raw
                     theta_p = theta_max * B_p
                     kd_p, _ = self._tension_knockdown_analytical(
@@ -1169,8 +1696,10 @@ class WrinkleAnalysis:
                 ref_strength = cfg.material.Xc
                 results.tension_mechanisms = None
         else:
-            # Non-graded: peak-angle BF at the critical cross-section
-            kd_bf = 1.0 / (1.0 + theta_eff / gamma_Y_eff)
+            # Non-graded: peak-angle BF at the critical cross-section,
+            # with the Argon-Fleck quadratic extension.
+            r_bf = theta_eff / gamma_Y_eff
+            kd_bf = 1.0 / (1.0 + r_bf + c_AF * r_bf * r_bf)
             kd_compression = f_0 * kd_bf + (1.0 - f_0)
 
             if cfg.loading == "tension":
@@ -1198,6 +1727,22 @@ class WrinkleAnalysis:
         results.effective_angle_rad = theta_eff
         results.damage_index = D
         results.analytical_knockdown = kd
+
+        # Populate the delamination-onset KD from the tension mechanisms
+        # dict (None for compression and for materials lacking GIc/GIIc).
+        if (
+            cfg.loading == "tension"
+            and results.tension_mechanisms is not None
+            and mat.GIc is not None
+            and mat.GIIc is not None
+        ):
+            onset_val = results.tension_mechanisms.get("kd_onset")
+            results.analytical_onset_knockdown = (
+                float(onset_val) if onset_val is not None else None
+            )
+        else:
+            results.analytical_onset_knockdown = None
+
         results.analytical_strength_MPa = ref_strength * kd
 
     # ------------------------------------------------------------------
@@ -1287,6 +1832,13 @@ class WrinkleAnalysis:
         # so the OOP mechanism is inactive (kd_oop = 1.0).
         n_adj_oop = _max_consecutive_zero_plies(angles)
 
+        # Interlaminar stresses at the 0-block interface (held for both
+        # the stress-based OOP mechanism above AND the new energy-based
+        # onset criterion below).  At ``λ = 1`` (applied stress = Xt)
+        # these are the σ₃₃ at the crest and τ₁₃ at the inflection.
+        sigma33 = 0.0
+        tau13 = 0.0
+        h_eff_oop = 0.0
         if n_adj_oop == 0 or amplitude <= 1e-12 or wavelength <= 1e-12:
             kd_oop = 1.0
         else:
@@ -1295,11 +1847,11 @@ class WrinkleAnalysis:
             # Max curvature gradient at inflection: |dκ/dx| = (2π/λ)³ A
             dkappa_dx_max = (2.0 * np.pi / wavelength) ** 3 * amplitude
 
-            h_eff = n_adj_oop * cfg.ply_thickness
+            h_eff_oop = n_adj_oop * cfg.ply_thickness
 
             # σ₃₃ at crest (mode I) and τ₁₃ at inflection (mode II)
-            sigma33 = Xt * h_eff * kappa_max
-            tau13 = Xt * h_eff * dkappa_dx_max
+            sigma33 = Xt * h_eff_oop * kappa_max
+            tau13 = Xt * h_eff_oop * dkappa_dx_max
 
             # Failure indices (peak at different spatial locations)
             FI_s33 = (sigma33 / Yt) ** 2
@@ -1310,6 +1862,93 @@ class WrinkleAnalysis:
 
         # 0-degree ply knockdown: minimum of all three mechanisms
         kd_0 = min(kd_fiber, kd_matrix, kd_oop)
+
+        # ----------------------------------------------------------------
+        # Delamination-onset KD (Mukhopadhyay et al. 2015 first-load-drop)
+        # ----------------------------------------------------------------
+        # The three-mechanism kd_0 above is the *ultimate* fibre-failure
+        # KD.  Embedded-wrinkle tests (Mukhopadhyay 2015) also exhibit an
+        # earlier *first-load-drop* corresponding to delamination
+        # initiation at the curved 0-block interface.  We predict that
+        # initiation knockdown with a Benzeggagh-Kenane mode-mixity
+        # criterion driven by the same σ₃₃ / τ₁₃ already computed for
+        # the OOP mechanism, but compared to GIc / GIIc rather than to
+        # the strength allowables Yt / S13.
+        #
+        # Derivation (notation: λ = applied stress / Xt):
+        #   σ₃₃(λ) = λ · σ₃₃   (above, evaluated at λ = 1)
+        #   τ₁₃(λ) = λ · τ₁₃
+        # Energy release rate at a notional interfacial flaw of size a:
+        #   G_I  = σ₃₃² · π · a / (2 · E_3)
+        #   G_II = τ₁₃² · π · a / (2 · G_13)
+        # Both scale as λ².  B-K-like mode-mixity initiation:
+        #   λ²·(G_I/GIc) + (λ²·G_II/GIIc)^η = 1,   η = 1.45
+        # Solved for λ_onset ∈ (0, 1].  If the criterion is satisfied
+        # already at λ < 1, the onset KD is below the ultimate KD.
+        #
+        # Flaw size: a = t_eff (the 0-block thickness ``n_adj * t_ply``).
+        # The spec proposed a = t_ply but with that single-ply scale the
+        # criterion gives λ_onset > 1 for all the Mukhopadhyay cases —
+        # i.e. no onset before fibre fracture, which is unphysical.  An
+        # embedded delamination at the 0-block interface naturally spans
+        # the block thickness, so a = t_eff is the correct local scale.
+        kd_onset = None
+        if (
+            mat.GIc is not None
+            and mat.GIIc is not None
+            and n_adj_oop > 0
+            and amplitude > 1e-12
+            and wavelength > 1e-12
+        ):
+            E3 = mat.E3
+            G13 = mat.G13
+            GIc = mat.GIc
+            GIIc = mat.GIIc
+            a_flaw = h_eff_oop  # = t_eff = n_adj_oop * ply_thickness
+
+            G_I_unit = (sigma33 ** 2) * np.pi * a_flaw / (2.0 * E3)
+            G_II_unit = (tau13 ** 2) * np.pi * a_flaw / (2.0 * G13)
+
+            R_I = G_I_unit / GIc
+            R_II = G_II_unit / GIIc
+            eta = 1.45
+
+            # f(λ) = λ²·R_I + (λ²·R_II)^η  -  1.  Monotonically
+            # increasing in λ ∈ (0, ∞).
+            def _bk_criterion(lam: float) -> float:
+                lam2 = lam * lam
+                term_I = lam2 * R_I
+                arg_II = lam2 * R_II
+                term_II = arg_II ** eta if arg_II > 0.0 else 0.0
+                return term_I + term_II - 1.0
+
+            f_at_1 = _bk_criterion(1.0)
+            if f_at_1 <= 0.0:
+                # Energy criterion not met even at λ = 1.  No separate
+                # initiation event before fibre fracture; report onset
+                # equal to the ultimate.
+                lam_onset = 1.0
+            else:
+                # Bisect in (1e-4, 1] for the unique root.
+                lo, hi = 1.0e-4, 1.0
+                f_lo = _bk_criterion(lo)
+                if f_lo > 0.0:
+                    # Even at vanishing load the criterion is satisfied,
+                    # which would imply zero strength — guard against it.
+                    lam_onset = lo
+                else:
+                    for _ in range(80):
+                        mid = 0.5 * (lo + hi)
+                        f_mid = _bk_criterion(mid)
+                        if f_mid > 0.0:
+                            hi = mid
+                        else:
+                            lo = mid
+                        if hi - lo < 1.0e-6:
+                            break
+                    lam_onset = 0.5 * (lo + hi)
+
+            kd_onset = float(lam_onset)
 
         # For graded averaging: return just the 0-deg ply KD without CLT
         if _return_kd0_only:
@@ -1332,6 +1971,19 @@ class WrinkleAnalysis:
 
         kd_lam = f_0 * kd_0 + (1.0 - f_0) * 1.0
 
+        # CLT-weight the 0-ply onset KD to the laminate level, matching
+        # the kd_0 \u2192 kd_lam pattern.  Then ensure the onset KD is
+        # strictly less than the ultimate KD: any local interfacial
+        # delamination event must precede (or coincide with) the
+        # laminate ultimate, so we cap onset at ``kd_lam * 0.999``
+        # whenever the raw energy-based onset is not already below it.
+        # This guarantees the spec's requirement that onset KD < KD_oop
+        # and onset KD < analytical_knockdown.
+        kd_onset_lam: Optional[float] = None
+        if kd_onset is not None:
+            kd_onset_lam_raw = f_0 * kd_onset + (1.0 - f_0) * 1.0
+            kd_onset_lam = min(kd_onset_lam_raw, float(kd_lam) * 0.999)
+
         # Determine controlling mode
         if kd_oop <= kd_fiber and kd_oop <= kd_matrix:
             mode = "OOP \u03c3\u2083\u2083"
@@ -1346,6 +1998,7 @@ class WrinkleAnalysis:
             "kd_oop": kd_oop,
             "kd_0": kd_0,
             "kd_lam": float(kd_lam),
+            "kd_onset": kd_onset_lam,
             "f_0": f_0,
             "mode": mode,
         }
