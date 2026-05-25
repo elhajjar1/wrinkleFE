@@ -22,6 +22,29 @@ same incremental loop structure but parametrises by arc length instead
 of by the load factor.  Implementation choices follow Crisfield
 (1981) for the spherical method specialised to psi = 0 (cylindrical):
 
+.. warning::
+    **Known limitation — not yet suitable for DCB-style snap-back
+    problems with displacement BCs.**  The cylindrical norm
+    ``||Delta u||`` is dominated by the penalty BC contributions at
+    constrained DOFs, which makes the arc-length constraint behave
+    essentially as ordinary displacement control — defeating the
+    purpose on systems where snap-back must be traversed.
+
+    On the canonical 1-DOF softening-spring snap-through problem
+    (see ``tests/test_solver/test_arclength_snapback.py``) the solver
+    works correctly and traverses the limit point.  On a real DCB
+    with displacement-controlled BCs the solver stagnates after the
+    first cohesive element fully damages.
+
+    The proper fix is *indirect displacement control*: parametrise the
+    arc by a single interior DOF (typically the crack-mouth opening
+    displacement, CMOD) rather than the global ``||Delta u||``.  This
+    is roughly a 300-LOC addition and not currently on the roadmap —
+    wrinkleFE's wrinkle-knockdown use case (compression kink-band,
+    tension curved-beam delamination) is captured by peak load under
+    displacement control via :class:`NewtonRaphsonSolver`; snap-back
+    is a post-peak numerical feature, not a knockdown driver.
+
 - Inner Newton iteration uses the standard update u <- u + Delta u,
   lambda <- lambda + Delta lambda.
 - The constraint reduces to a scalar quadratic in Delta lambda,
