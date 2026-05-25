@@ -94,6 +94,8 @@ class ArcLengthSolver:
         max_newton_iter: int = 25,
         tol_residual: float = 1e-4,
         tol_absolute: float = 1e-10,
+        adaptive: bool = True,
+        max_halvings_per_step: int = 6,
     ) -> None:
         self.assembler = assembler
         self.bc_handler = bc_handler
@@ -103,6 +105,8 @@ class ArcLengthSolver:
         self.max_newton_iter = int(max_newton_iter)
         self.tol_residual = float(tol_residual)
         self.tol_absolute = float(tol_absolute)
+        self.adaptive = bool(adaptive)
+        self.max_halvings_per_step = int(max_halvings_per_step)
 
     # ------------------------------------------------------------------
     # Main solve
@@ -150,6 +154,18 @@ class ArcLengthSolver:
             dofs_arr = np.empty(0, dtype=np.intp)
             vals_arr = np.empty(0, dtype=float)
 
+        # Free-DOF mask: arc-length norm is computed over the free
+        # DOFs only, so the prescribed-displacement BC contributions
+        # don't dominate ``||Delta u||``.  Without this, the predictor
+        # under penalty BCs has ``Delta u[constrained] = vals * lam``
+        # which scales with the prescribed displacement magnitude, not
+        # the physical structural response — turning the arc-length
+        # constraint into a thin proxy for load control.
+        free_mask = np.ones(n_dof, dtype=bool)
+        if dofs_arr.size:
+            free_mask[dofs_arr] = False
+        self._free_mask = free_mask
+
         lam_history: list[float] = [lam]
         u_history: list[np.ndarray] = [u.copy()]
         converged_all = True
@@ -162,24 +178,38 @@ class ArcLengthSolver:
 
         ds = self.arc_length
 
-        for step in range(1, self.n_arc_steps + 1):
-            try:
-                u_new, lam_new, n_iter, ok, prev_sign = self._arc_step(
-                    u, lam, F_ext_ref, dofs_arr, vals_arr,
-                    constrained_full, ds, prev_sign, verbose, step,
-                )
-            except RuntimeError:
-                converged_all = False
-                if verbose:
-                    print(f"  arc step {step}: solver bailed out")
-                break
+        step = 0
+        while step < self.n_arc_steps:
+            step += 1
+            tried_ds = ds
+            n_halvings = 0
+            attempt_ok = False
+            while n_halvings <= self.max_halvings_per_step:
+                # Revert state in case prior attempt updated it
+                self._revert_state()
+                try:
+                    u_new, lam_new, n_iter, ok, sign_new = self._arc_step(
+                        u, lam, F_ext_ref, dofs_arr, vals_arr,
+                        constrained_full, tried_ds, prev_sign,
+                        verbose, step,
+                    )
+                except RuntimeError:
+                    ok = False
+                if ok:
+                    attempt_ok = True
+                    prev_sign = sign_new
+                    break
+                if not self.adaptive:
+                    break
+                tried_ds *= 0.5
+                n_halvings += 1
 
-            if not ok:
+            if not attempt_ok:
                 converged_all = False
                 if verbose:
                     print(
-                        f"  arc step {step}: Newton failed after "
-                        f"{n_iter} iterations"
+                        f"  arc step {step}: bailed out after "
+                        f"{n_halvings} halvings (last ds={tried_ds:.3e})"
                     )
                 break
 
@@ -194,8 +224,18 @@ class ArcLengthSolver:
             if verbose:
                 print(
                     f"  arc step {step}: lambda={lam:+.4e} "
-                    f"|u|={float(np.linalg.norm(u)):.3e}"
+                    f"|u|={float(np.linalg.norm(u)):.3e} "
+                    f"ds={tried_ds:.3e}"
                 )
+
+            # Re-arm step size for the next attempt: grow modestly on
+            # success, but never above the user-supplied initial ds.
+            if self.adaptive:
+                if tried_ds < ds and n_halvings > 0:
+                    # Still in the halved region — keep the smaller ds.
+                    ds = tried_ds
+                else:
+                    ds = min(ds * 1.2, self.arc_length)
 
         return {
             "displacement": u,
@@ -259,7 +299,12 @@ class ArcLengthSolver:
         if not np.all(np.isfinite(du_F_pred)):
             raise RuntimeError("predictor solve produced non-finite values")
 
-        norm_du_F = float(np.linalg.norm(du_F_pred))
+        # Arc-length norm: free DOFs only.
+        fm = self._free_mask
+        if fm.any():
+            norm_du_F = float(np.linalg.norm(du_F_pred[fm]))
+        else:
+            norm_du_F = float(np.linalg.norm(du_F_pred))
         if norm_du_F <= 0.0:
             raise RuntimeError(
                 "predictor du_F has zero norm; reference load may be empty"
@@ -280,7 +325,12 @@ class ArcLengthSolver:
         if delta_u_prev_step is None:
             sign_choice = prev_sign
         else:
-            dotp = float(np.dot(delta_u_prev_step, du_F_pred))
+            if fm.any():
+                dotp = float(
+                    np.dot(delta_u_prev_step[fm], du_F_pred[fm])
+                )
+            else:
+                dotp = float(np.dot(delta_u_prev_step, du_F_pred))
             if abs(dotp) < 1.0e-30:
                 sign_choice = prev_sign
             else:
@@ -367,12 +417,20 @@ class ArcLengthSolver:
 
             # Cylindrical-arc constraint: ||Delta u + dlam * du_F||^2
             # = ds^2, where ``Delta u`` is the total displacement
-            # increment from the start of this arc step.
+            # increment from the start of this arc step.  Inner
+            # products take the free-DOF mask (see :meth:`solve`).
             delta_u_cur = u - u_prev
             v = delta_u_cur + du_R
-            a_coef = float(np.dot(du_F, du_F))
-            b_coef = 2.0 * float(np.dot(v, du_F))
-            c_coef = float(np.dot(v, v)) - ds * ds
+            if fm.any():
+                v_f = v[fm]
+                du_F_f = du_F[fm]
+                a_coef = float(np.dot(du_F_f, du_F_f))
+                b_coef = 2.0 * float(np.dot(v_f, du_F_f))
+                c_coef = float(np.dot(v_f, v_f)) - ds * ds
+            else:
+                a_coef = float(np.dot(du_F, du_F))
+                b_coef = 2.0 * float(np.dot(v, du_F))
+                c_coef = float(np.dot(v, v)) - ds * ds
             disc = b_coef * b_coef - 4.0 * a_coef * c_coef
             if a_coef <= 0.0 or disc < 0.0:
                 # No real intersection — arc length too large for the
@@ -385,11 +443,17 @@ class ArcLengthSolver:
 
             # Crisfield's closest-root strategy: pick whichever Delta
             # lambda makes the resulting Delta u most aligned with the
-            # current direction Delta u_cur.
+            # current direction Delta u_cur.  Use the masked inner
+            # product so the prescribed-displacement BC terms don't
+            # dominate the cosine.
             u1 = v + dlam1 * du_F
             u2 = v + dlam2 * du_F
-            cos1 = float(np.dot(u1, delta_u_cur))
-            cos2 = float(np.dot(u2, delta_u_cur))
+            if fm.any():
+                cos1 = float(np.dot(u1[fm], delta_u_cur[fm]))
+                cos2 = float(np.dot(u2[fm], delta_u_cur[fm]))
+            else:
+                cos1 = float(np.dot(u1, delta_u_cur))
+                cos2 = float(np.dot(u2, delta_u_cur))
             if cos1 >= cos2:
                 dlam_use = dlam1
                 du_use = u1
