@@ -33,8 +33,16 @@ Intrinsic bilinear traction-separation:
   monotonically non-decreasing.
 - Traction in tension:   ``T_i = (1 - d) * K * delta_i``.
 - Traction in compression (``delta_n < 0``): ``T_n = K * delta_n`` (penalty
-  contact), no damage accumulation from compression.  Mode-II damage is
-  also suppressed while the interface is in normal contact (Abaqus default).
+  contact, no ``(1 - d)`` reduction — closed surfaces transmit normal load
+  fully regardless of interface damage).  Shear components still use the
+  damaged secant ``(1 - d) * K * delta_{s,t}``.
+- **Mode-II damage CAN accumulate in normal contact** (``delta_n < 0``
+  with non-zero shear): the Macaulay bracket on ``delta_n`` makes
+  ``delta_eff = beta * ||delta_shear||`` and ``mode_ratio = 1.0``, so
+  the bilinear law operates on the pure mode-II envelope.  Pure
+  compression (no shear) gives ``delta_eff = 0`` and no damage growth.
+  This unblocks closed-mode-II loading like 3-pt-bend ENF where the
+  bonded midplane is in compression nearly everywhere.
 
 Mode-mixity via Benzeggagh-Kenane:
 ``G_c(psi) = G_Ic + (G_IIc - G_Ic) * (G_II / (G_I + G_II))^eta``.
@@ -44,30 +52,19 @@ independent (Camanho & Davila, NASA/TM-2002-211737).
 
 Known limitations
 -----------------
-**Mode-II damage is suppressed under normal compression** (``delta_n < 0``).
-This follows the Abaqus default and is conservative for opening-mode
-problems (DCB, tension-driven wrinkle delamination at the crest), but it
-means closed-mode-II loading scenarios — e.g. a three-point-bend ENF
-where the midplane is in compression nearly everywhere — produce a
-cohesive zone that collapses to a single element wide and never fully
-develops.  This shows up empirically in
-``tests/integration/test_enf_monotonic.py``: elastic compliance, peak
-load and steady-state plateau all validate to within 7 % of beam theory,
-but dissipated energy is ~1/37 of the analytical value because the
-crack never advances more than ~1 mm.
+None at the constitutive-law level for v1.  An earlier release
+suppressed mode-II damage entirely under normal compression (matching
+the Abaqus default) — that restriction was removed after the Phase 7
+NASA TM ENF validation showed it caused the cohesive zone to collapse
+to a single element wide in 3-pt-bend geometry.  Mode-II damage now
+accumulates correctly under closed contact (Macaulay-bracketed
+delta_eff makes mode_ratio = 1.0 in shear-only loading), preserving
+the conservative pure-compression behaviour (no shear -> no damage).
 
-For wrinkleFE's primary use case (wrinkle knockdown prediction), the
-implication is:
-
-- **Tension wrinkles**: mode-I dominant at the crest — no limitation.
-- **Compression wrinkles**: kink-banding dominates (handled analytically
-  via Budiansky-Fleck); secondary delamination from shear-under-
-  compression at the crest is under-predicted by this v1 cohesive law.
-
-Lifting this restriction would require either (a) allowing mode-II
-damage to accumulate under compression with an explicit friction model
-between damaged surfaces, or (b) a separate frictionless-contact element
-pair on damaged interfaces.  Neither is currently planned.
+No friction is modelled between damaged surfaces in closed contact —
+the assumption is that frictional sliding work is small compared to
+the fracture energy GIIc.  This is the standard simplification used in
+v1 cohesive zone implementations (Abaqus, LS-DYNA tie-break).
 
 References
 ----------
@@ -352,26 +349,12 @@ class Cohesive8Element:
         d_s = float(delta_local[1])
         d_t = float(delta_local[2])
 
-        # Compression branch: no damage growth, contact penalty in the
-        # normal direction, secant in shear using previously committed
-        # damage.  Handle this as a structural early return so the
-        # mode-ratio math below is only ever evaluated when there is
-        # actual opening (d_n >= 0); this avoids a fragile dependence
-        # on a downstream branch to suppress an ill-defined mode_ratio
-        # under closed contact (matches the docstring and Abaqus default).
-        if d_n < 0.0:
-            d = state_prev.d
-            T_local = np.array(
-                [K * d_n, (1.0 - d) * K * d_s, (1.0 - d) * K * d_t]
-            )
-            D_local = np.diag([K, (1.0 - d) * K, (1.0 - d) * K])
-            state_new = CohesiveState(
-                d=d, mode_ratio_init=state_prev.mode_ratio_init
-            )
-            return T_local, D_local, state_new
-
-        # Opening branch (d_n >= 0): the mode-ratio math is well-defined.
-        d_n_pos = d_n
+        # Macaulay-bracketed normal opening: compression contributes 0 to
+        # the effective opening and to the mode-mixity ratio.  This means
+        # closed-contact + shear naturally drives mode-II damage growth
+        # (mode_ratio = 1.0 in that state), while pure compression with
+        # no shear gives delta_eff = 0 and no damage accumulates.
+        d_n_pos = max(d_n, 0.0)
         shear_sq = d_s * d_s + d_t * d_t
         delta_eff = float(np.sqrt(d_n_pos * d_n_pos + (beta * beta) * shear_sq))
 
@@ -388,9 +371,12 @@ class Cohesive8Element:
             sigma_m = float(np.sqrt(max(sigma_m_sq, 1.0e-30)))
             return Gc_m, sigma_m, sigma_m / K, 2.0 * Gc_m / sigma_m
 
-        # Current mode ratio from the opening (BK ratio of normal energy
-        # to total).  Only valid when there is some opening to take a ratio
-        # of; otherwise default to pure mode I.
+        # Current mode ratio from the opening (BK ratio of shear energy
+        # to total energy).  With Macaulay-bracketed d_n_pos, closed
+        # contact + shear gives mode_ratio = 1.0 (pure mode-II),
+        # pure tension gives mode_ratio = 0 (mode-I), and pure
+        # compression gives G_total = 0 -> mode_ratio = 0 (irrelevant
+        # since delta_eff is also 0 there).
         G_I = 0.5 * K * d_n_pos * d_n_pos
         G_II = 0.5 * K * shear_sq * (beta * beta)
         G_total = G_I + G_II
@@ -428,13 +414,22 @@ class Cohesive8Element:
 
         d = d_new
 
-        # Traction (opening branch).
-        T_local = np.array(
-            [(1.0 - d) * K * d_n, (1.0 - d) * K * d_s, (1.0 - d) * K * d_t]
-        )
+        # Traction: normal uses penalty contact (no (1-d) reduction)
+        # under compression — closed surfaces transmit normal load fully
+        # regardless of interface damage.  Shear always uses the damaged
+        # secant.  This allows mode-II propagation in closed-mode-II
+        # loading (e.g. 3-pt-bend ENF) while preserving correct contact
+        # behaviour in normal direction.
+        if d_n >= 0.0:
+            T_n = (1.0 - d) * K * d_n
+            D_nn = (1.0 - d) * K
+        else:
+            T_n = K * d_n
+            D_nn = K
+        T_local = np.array([T_n, (1.0 - d) * K * d_s, (1.0 - d) * K * d_t])
 
         # Consistent tangent — secant for the damaged components.
-        D_local = np.diag([(1.0 - d) * K, (1.0 - d) * K, (1.0 - d) * K])
+        D_local = np.diag([D_nn, (1.0 - d) * K, (1.0 - d) * K])
 
         state_new = CohesiveState(
             d=d,
