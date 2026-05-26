@@ -163,6 +163,33 @@ EXPERIMENTAL_P_CRITICAL_N: float = 712.0    # 160 lbf
 EXPERIMENTAL_GIIC_MEAN_NMM: float = 0.777   # 4.44 in*lb/in^2
 EXPERIMENTAL_GIIC_STD_NMM: float = 0.063    # +/- 0.36 in*lb/in^2
 
+# Averaged P-delta curve digitised from NASA TM Figure 35.  Four specimens
+# P4-T-ENF-201-{08,09,10,11} are shown tightly clustered (well within 10 %
+# scatter); the curve is mildly concave-up from the cohesive-zone
+# development as the crack tip advances under increasing load.  Peak ~
+# 157 lbf (~698 N) at displacement ~0.025 in (~0.635 mm).  Only specimen
+# -08 (blue) shows the post-peak drop, the rest of the tests were stopped
+# at the pre-determined critical load per ASTM D7905 — we digitise the
+# loading branch only.
+#
+# Format: list of (displacement [mm], load [N]) tuples for the averaged
+# loading branch.  Used to overlay the experimental curve on the
+# predicted-vs-experimental plot.
+EXPERIMENTAL_PD_NASA: list[tuple[float, float]] = [
+    (0.000, 0.0),
+    (0.051,  18.0),   # 0.002 in,   4 lbf
+    (0.127,  53.0),   # 0.005 in,  12 lbf
+    (0.203, 111.0),   # 0.008 in,  25 lbf
+    (0.254, 156.0),   # 0.010 in,  35 lbf
+    (0.305, 222.0),   # 0.012 in,  50 lbf
+    (0.381, 311.0),   # 0.015 in,  70 lbf
+    (0.457, 423.0),   # 0.018 in,  95 lbf
+    (0.508, 512.0),   # 0.020 in, 115 lbf
+    (0.559, 600.0),   # 0.022 in, 135 lbf
+    (0.610, 667.0),   # 0.024 in, 150 lbf
+    (0.635, 698.0),   # 0.025 in, 157 lbf — peak
+]
+
 # Wide band on the peak load: +/- 15 % covers (a) the +/- 8 % scatter
 # in measured G_IIc and (b) typical CZM-vs-experiment numerical gap
 # from a non-tuned bilinear law.
@@ -593,26 +620,27 @@ def _save_comparison_plot(
 
     fig, ax = plt.subplots(figsize=(7.5, 5.5))
 
-    # Experimental peak load with +/- 10 % shaded band (per-coupon
-    # scatter estimate -- the TM only publishes the average so we use
-    # the +/- 10 % bracket as a visual scatter proxy).
-    exp_band_lo = EXPERIMENTAL_P_CRITICAL_N * 0.90
-    exp_band_hi = EXPERIMENTAL_P_CRITICAL_N * 1.10
-    x_max = float(cd[-1]) * 1.02
-    ax.axhspan(
-        exp_band_lo, exp_band_hi, color="tab:orange", alpha=0.15,
-        label=(
-            f"Experimental scatter band ($\\pm$10 %): "
-            f"[{exp_band_lo:.0f}, {exp_band_hi:.0f}] N"
-        ),
+    # Experimental loading branch from NASA TM Figure 35 (digitized
+    # averaged curve across 4 specimens, P4-T-ENF-201-{08-11}).
+    exp_arr = np.asarray(EXPERIMENTAL_PD_NASA, dtype=float)
+    exp_delta = exp_arr[:, 0]
+    exp_P = exp_arr[:, 1]
+    x_max = max(float(cd[-1]), float(exp_delta[-1])) * 1.02
+    # Light shaded band ±10 % around the experimental curve as a scatter
+    # proxy (the TM specimens are within ~5-10 % of each other but only
+    # the average curve is shown).
+    ax.fill_between(
+        exp_delta, 0.9 * exp_P, 1.1 * exp_P,
+        color="tab:orange", alpha=0.18,
+        label="Experimental scatter band ($\\pm$10 %)",
     )
-    ax.axhline(
-        EXPERIMENTAL_P_CRITICAL_N, color="tab:orange",
-        linestyle="--", linewidth=2.0,
+    ax.plot(
+        exp_delta, exp_P,
+        linestyle="--", color="tab:orange", linewidth=2.0,
+        marker="o", markersize=4,
         label=(
-            f"Experimental $P_\\mathrm{{critical}}$ = "
-            f"{EXPERIMENTAL_P_CRITICAL_N:.0f} N "
-            f"(NASA/TM-2020-220498 §4.15)"
+            f"Experimental P-$\\delta$ (NASA/TM-2020-220498 §4.15, "
+            f"$P_\\mathrm{{peak}}$ = {EXPERIMENTAL_P_CRITICAL_N:.0f} N)"
         ),
     )
 
