@@ -788,7 +788,16 @@ class AnalysisConfig:
     czm_tau_max: Optional[float] = None
     czm_penalty: float = 1.0e6           # N/mm^3 initial interface stiffness
     czm_BK_eta: float = 1.45
-    czm_n_load_increments: int = 20
+    # Default bumped 20 -> 100 after the Phase 7 NASA TM DCB validation
+    # showed that the original 20-increment default was too coarse for
+    # accurate post-peak crack-propagation tracking; coarse increments
+    # also amplified the cohesive law's d=1 corner artefact (post-peak
+    # see-saw oscillations) by ~33 %.  100 fixed equal increments lands
+    # the predicted peak load within experimental scatter and integrated
+    # energy within 7 % for the IM7/8552 DCB benchmark.  Users who need
+    # faster turnaround can lower this; users running publication-grade
+    # validations should bump to 200.
+    czm_n_load_increments: int = 100
     czm_newton_tol: float = 1.0e-4
 
     def __post_init__(self) -> None:
