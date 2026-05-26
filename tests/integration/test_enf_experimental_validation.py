@@ -690,30 +690,6 @@ def _predicted_initial_slope(
     return float(np.sum(d * p) / np.sum(d * d))
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "TWO of four metrics PASS cleanly (initial elastic compliance "
-        "within 1 % of Carlsson-Pipes; cohesive damage initiates with "
-        "max d > 0.99).  Peak load assertion FAILS by design: the v1 "
-        "Cohesive8 bilinear law suppresses mode-II damage growth "
-        "whenever the interface is in normal compression (Abaqus "
-        "default — Known Limitation #6.1 in CZM_PLAN.md).  In 3-pt-"
-        "bend ENF the sagging-beam moment compresses the bonded "
-        "interface everywhere except the single crack-tip element, so "
-        "the cohesive zone collapses to one element wide and the crack "
-        "cannot advance.  The load therefore rises ~linearly past the "
-        "experimental peak (P_FE ~ 1130 N @ delta = 10 mm vs "
-        "P_critical = 712 N expected at delta ~ 6.2 mm).  This is the "
-        "same failure mode as test_enf_monotonic.py's energy-dissipated "
-        "assertion.  See the module docstring 'Loading strategy' / "
-        "'Validation strategy' sections for the full diagnosis.  The "
-        "elastic-compliance match (which depends on the cohesive-zone "
-        "*initiation* and the global elastic response, not propagation) "
-        "and the damage-existence check together still validate the "
-        "core CZM physics on this experimental panel."
-    ),
-)
 def test_enf_experimental_validation_nasa_tm():
     """Compare the CZM prediction to NASA/TM-2020-220498 ENF data.
 
