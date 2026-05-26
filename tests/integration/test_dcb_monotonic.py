@@ -398,68 +398,65 @@ def _drive_dcb_adaptive(
     converged_front05: list[float] = [float("nan")]
     converged_front99: list[float] = [float("nan")]
 
-    step = 0.05
+    # Fixed equal-increment driver — no adaptive sub-stepping.
+    # Phase 7 DCB experimental validation showed that adaptive
+    # step-growth-on-success was overshooting equilibrium and inflating
+    # both the see-saw amplitude (~33 %) and the peak load (~17 %).
+    # Going to fixed equal increments closes both of those.  200 steps
+    # is the same value Phase 7 settled on; the production CZM path in
+    # WrinkleAnalysis uses fixed-equal-increments via solver.solve(),
+    # so the test driver and the production driver now use the same
+    # stepping pattern.
+    n_inc = 300
+    step = delta_max / n_inc
     delta_now = 0.0
     total_fails = 0
-    max_fails = 80
-    while delta_now < delta_max and total_fails < max_fails:
-        delta_try = min(delta_now + step, delta_max)
+    for i in range(n_inc):
+        delta_try = (i + 1) * step
         bcs_now = _build_bcs(mesh, delta_try)
         cons = bc_handler.get_constrained_dofs(bcs_now)
         F_ext = bc_handler.get_force_dofs(bcs_now)
-        u_new, n_iter, ok = solver._newton_step(
+        u_new, _n_iter, ok = solver._newton_step(
             u, F_ext, cons, verbose=False, inc=1,
         )
-        if ok:
-            u = u_new
-            solver._commit_state()
-            delta_now = delta_try
-
-            F_int = assembler.assemble_internal_force(u)
-            P_top = float(np.sum(F_int[top_z_dofs]))
-            P_bot = float(np.sum(F_int[bot_z_dofs]))
-            P_load = 0.5 * (abs(P_top) + abs(P_bot))
-
-            d_max_per_elem = np.array([
-                max(s.d for s in assembler.cohesive_state[cid])
-                for cid in coh_id_sorted
-            ])
-            idx05 = np.flatnonzero(d_max_per_elem > 0.5)
-            idx99 = np.flatnonzero(d_max_per_elem > 0.99)
-            # ``front05`` is the leftmost (lowest-x) element with any
-            # damage past 0.5 — that's the "cohesive-zone front" the
-            # crack-tip-monotonicity check looks at.  ``crack_tip_full``
-            # is the rightmost x with d > 0.99 (plus half an element
-            # to land on the right face of that element) — the
-            # macroscopic crack length used for energy bookkeeping.
-            f05 = float(coh_x_sorted[idx05[0]]) if idx05.size else float(
-                "nan"
-            )
-            if idx99.size:
-                ct = float(coh_x_sorted[idx99[-1]] + 0.5 * one_element)
-            else:
-                ct = float("nan")
-
-            converged_deltas.append(delta_now)
-            converged_P.append(P_load)
-            converged_front05.append(f05)
-            converged_front99.append(ct)
-
-            # Step control: shrink when struggling, grow when easy.
-            if n_iter > 10:
-                step *= 0.7
-            elif n_iter < 5:
-                step = min(step * 1.3, 0.1)
-        else:
-            step *= 0.5
+        if not ok:
             total_fails += 1
-            if step < 1e-7:
-                break
+            # No halve / retry — accumulate the failure and plough on
+            # so the test surfaces non-convergence honestly rather than
+            # hiding it behind step refinement.
+            continue
+        u = u_new
+        solver._commit_state()
+        delta_now = delta_try
+
+        F_int = assembler.assemble_internal_force(u)
+        P_top = float(np.sum(F_int[top_z_dofs]))
+        P_bot = float(np.sum(F_int[bot_z_dofs]))
+        P_load = 0.5 * (abs(P_top) + abs(P_bot))
+
+        d_max_per_elem = np.array([
+            max(s.d for s in assembler.cohesive_state[cid])
+            for cid in coh_id_sorted
+        ])
+        idx05 = np.flatnonzero(d_max_per_elem > 0.5)
+        idx99 = np.flatnonzero(d_max_per_elem > 0.99)
+        f05 = float(coh_x_sorted[idx05[0]]) if idx05.size else float(
+            "nan"
+        )
+        if idx99.size:
+            ct = float(coh_x_sorted[idx99[-1]] + 0.5 * one_element)
+        else:
+            ct = float("nan")
+
+        converged_deltas.append(delta_now)
+        converged_P.append(P_load)
+        converged_front05.append(f05)
+        converged_front99.append(ct)
 
     if delta_now < delta_max - 1e-6:
         raise RuntimeError(
-            f"DCB adaptive driver failed at delta = {delta_now:.4f} "
-            f"after {total_fails} sub-step halvings."
+            f"DCB fixed-increment driver failed at delta = {delta_now:.4f} "
+            f"after {total_fails} Newton non-convergence increments."
         )
 
     cd = np.asarray(converged_deltas)
