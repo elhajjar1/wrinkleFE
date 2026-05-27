@@ -64,56 +64,47 @@ this is the dominant source of the wider validation tolerance bands
 quoted below (compared to DCB/ENF/4PB where the fixture geometry IS
 published).
 
-Loading approach for MMR = 50 % (also documented as an approximation)
+Loading approach for MMR = 50 % (ASTM D6671 lever-derived ratio)
 ---------------------------------------------------------------------
-Per ASTM D6671 / Reeder-Crews (1990), the lever applies an upward
-hinge load P_I = P (c + L) / L at x = 0 (top arm) and a downward
-midspan load P_II = P c / L at x = L (top face), with the lever arm
-length ``c`` chosen so that the resulting crack-tip mode-mixity B =
-G_II / (G_I + G_II) equals the target MMR.  Various closed-form
-expressions for c(MMR) appear in the literature with slightly
-different sign / domain conventions; rather than depending on a
-specific algebraic form we instead:
+Per ASTM D6671 / Reeder-Crews (1990, AIAA J. 28(7), 1270-1276), the
+MMB lever rigidly constrains the relationship between the upward
+hinge load (at the cracked end) and the downward saddle load (at
+midspan).  By lever statics about the saddle pivot:
 
-  * apply the two BCs directly as kinematic displacement BCs --
-    ``+delta_I`` at the top-arm hinge nodes (x = 0, z = z_max) and
-    ``-delta_II`` at the midspan top nodes (x = 101.6 mm, z = z_max);
-  * pick the ratio ``r = delta_I / delta_II`` empirically so the
-    crack-tip cohesive elements show a captured mode-ratio close to
-    0.5 once damage initiates.
+    F_hinge_up   =  P_lever × c / L      (upward pull on the top arm)
+    F_saddle_dn  =  P_lever × (c + L) / L (downward push at midspan)
+    => F_hinge_up / F_saddle_dn = c / (c + L)
 
-For the MMB geometry above (cracked end at x = 0, crack tip at x =
-76.2 mm, midspan downward load at x = 101.6 mm), the bending
-stiffness of the half-span / quarter-arm beam is much higher than
-the cantilever-arm DCB stiffness, so the displacement ratio needed
-to balance G_I and G_II at the crack tip is much larger than the
-force ratio that the standard ASTM D6671 lever would deliver.
-Specifically, with the same applied displacement at hinge and
-midspan, the resulting crack-tip stress state is mode-II dominated
-(mode_ratio_init -> 1.0).  Hand-calibration over r in {0.5, 2, 5,
-7.5, 10, 12, 15, 20, 25, 30, 50, 100} at NX=100 / N_INC=50 selected
-``r = 20.0`` as the value that produces:
+The lever arm length ``c`` is chosen so that the Reeder-Crews crack-
+tip mode decomposition gives the target B = G_II / (G_I + G_II).
+Using the equivalent crack-tip loads P_I = P(3c-L)/(4L),
+P_II = P(c+L)/(4L) (Reeder-Crews 1990, also ASTM D6671 §11.1):
 
-  * a best mode_ratio_init across all damaged bonded cohesives of
-    ~ 0.50 (within +/- 0.05 of the target 0.5 -- see metric (3)
-    below);
-  * a load at the first-fully-failed-element instant
-    (= the FE analogue of the experimental unstable-propagation
-    point) of ~ 530 N -- within 2.5 % of the experimental
-    P_peak ~ 543 N.
+    G_II/G_I = (3/4) × [(c+L)/(3c-L)]^2
+    let r = (c+L)/(3c-L) = sqrt(4β / (3(1-β)))
+    =>  c = L × (r + 1) / (3r - 1)
 
-The first-damaged element (right at the crack tip) is still
-mode-II-dominated (its captured mode_ratio_init ~ 0.88); the
-elements that capture the target mode-mixity of 0.5 are slightly
-further into the bonded region, where the bending shear has decayed
-and the lever-opening contribution is comparable.  This is a known
-artifact of independent kinematic displacement BCs in place of a
-true lever-MPC; the spec acknowledges this approach as
-"best-effort under documented assumptions".
+For β = 0.50, L = 50.8 mm: r = sqrt(2/3) ≈ 0.8165, c ≈ 44.42 mm,
+c/L ≈ 0.874, and the lever-derived applied-force ratio is
+F_hinge_up / F_saddle_dn = c/(c+L) ≈ 0.466.
 
-If a future TM revision publishes the actual NIAR MMB lever / span
-geometry, ``DELTA_RATIO_OPENING`` should be replaced with the
-analytically-derived value from Reeder-Crews / ASTM D6671 directly.
+Because the existing FE BC infrastructure uses prescribed
+displacements (no rigid-body MPC), we translate the lever-derived
+FORCE ratio into a displacement ratio r_δ = δ_I / δ_II by an
+elastic probe at the start of the test.  The probe runs two small
+unit-displacement increments (δ_I=ε,δ_II=0 and δ_I=0,δ_II=ε) to
+extract the 2×2 reduced stiffness matrix
+    [P_I, P_II] = M @ [δ_I, δ_II]
+and then solves analytically for the r_δ that yields the target
+|F_hinge_up|/|F_saddle_dn| = c/(c+L) with the correct physical
+signs (hinge pulled UP, midspan pushed DOWN).  The result for
+β = 0.50 is r_δ ≈ 69 (at NX=200 production density) — NOT
+hand-tuned, derived from the lever geometry.
+
+This replaces the previous hand-calibrated r = 20.0 (which got
+LOCAL crack-tip mode mixity right but produced the WRONG
+GLOBAL force distribution; see prior session's error quantification
+documented in ``test_mmb_mixity_synthesis.py``).
 
 NOTE on the experimental "delta" axis
 -------------------------------------
@@ -374,19 +365,13 @@ N_INCREMENTS = 200
 # point at which the first cohesive element fully fails (= the FE
 # analogue of the experimentally-observed unstable propagation point;
 # see _drive_mmb_fixed and the test docstring for details).
-#
-# DELTA_RATIO_OPENING was calibrated by hand-running the driver at
-# NX=100 / N_INC=50 over r in {0.5, 2, 5, 7.5, 10, 12, 15, 20, 25,
-# 30, 50, 100} and selecting the value that:
-#   (a) produced a best mode_ratio_init closest to 0.5 across the
-#       damaged bonded cohesives (target metric (3)), and
-#   (b) put the load at the first-fully-failed-element instant
-#       (metric (2)) inside the +/- 20 % experimental band [434, 652]
-#       N (Section "Loading approach" above).
-# r = 20.0 satisfied both with best_mr ~ 0.50 and P_ff ~ 530 N.
 DELTA_II_MAX = 4.0         # mm (midspan downward)
-DELTA_RATIO_OPENING = 20.0  # delta_I / delta_II  (calibrated -- see
-                            # docstring "Loading approach" note)
+
+# Target mode mixity for THIS test (50 % MMR -> β = 0.50).  The
+# lever arm length c and the corresponding δ_I / δ_II ratio used in
+# the driver are DERIVED from this and the elastic stiffness probe
+# at startup -- see ``_lever_arm_c`` and ``_lever_derived_delta_ratio``.
+TARGET_BETA: float = 0.50
 
 
 # ----------------------------------------------------------------------
@@ -430,6 +415,63 @@ def _bk_envelope_gc(mode_ratio: float) -> float:
     return GIC_MEASURED + (GIIC_MEASURED - GIC_MEASURED) * (
         mode_ratio ** ETA_BK
     )
+
+
+def _lever_arm_c(beta: float, L_half_span: float) -> float:
+    """ASTM D6671 / Reeder-Crews (1990) closed-form lever arm length.
+
+    From the Reeder-Crews crack-tip mode decomposition (Reeder &
+    Crews 1990, AIAA J. 28(7), 1270-1276; ASTM D6671 §11.1):
+
+        P_I  = P_lever × (3c - L) / (4L)
+        P_II = P_lever × (c  + L) / (4L)
+        G_II / G_I = (3/4) × [(c + L) / (3c - L)]^2
+
+    Setting β = G_II / (G_I + G_II), so G_II / G_I = β / (1 - β):
+
+        let r = (c + L) / (3c - L) = sqrt(4β / (3(1-β)))
+        =>  c = L × (r + 1) / (3r - 1)
+
+    Sanity-check: at β = 4/7 ≈ 0.5714, r = 1, c = L (classic 1:1
+    Reeder MMB lever).  At β → 1 (pure mode II), c → L/3; at β → 0
+    (pure mode I), c → ∞.
+
+    Parameters
+    ----------
+    beta : float
+        Target mode mixity G_II / (G_I + G_II) in (0, 1).
+    L_half_span : float
+        Half of the support span (ASTM D6671 L), in mm.
+
+    Returns
+    -------
+    c : float
+        Lever arm length in mm.
+    """
+    if not 0.0 < beta < 1.0:
+        raise ValueError(f"beta must be in (0, 1), got {beta}")
+    r = float(np.sqrt(4.0 * beta / (3.0 * (1.0 - beta))))
+    return float(L_half_span * (r + 1.0) / (3.0 * r - 1.0))
+
+
+def _lever_force_ratio(beta: float, L_half_span: float) -> float:
+    """Lever-derived ratio of APPLIED force at hinge to APPLIED force
+    at midspan saddle: |F_hinge_up| / |F_saddle_dn|.
+
+    From lever statics about the saddle pivot (Reeder-Crews 1990):
+
+        F_hinge_up  = P_lever × c / L
+        F_saddle_dn = P_lever × (c + L) / L
+        =>  R_force = c / (c + L)
+
+    For β ∈ {0.25, 0.50, 0.75} and L = 50.8 mm this gives
+    R_force ∈ {0.625, 0.466, 0.375} -- the lever physically applies
+    LESS upward force at the hinge than downward at midspan in all
+    practical MMR ranges (because the lever's bearing reaction is
+    distributed unequally).
+    """
+    c = _lever_arm_c(beta, L_half_span)
+    return c / (c + L_half_span)
 
 
 # ----------------------------------------------------------------------
@@ -626,6 +668,152 @@ def _build_bcs(
 
 
 # ----------------------------------------------------------------------
+# Lever-derived displacement-ratio probe
+# ----------------------------------------------------------------------
+
+
+def _lever_derived_delta_ratio(
+    mesh: MeshData,
+    cohesive_elements: list,
+    is_bonded: list[bool],
+    beta: float,
+    L_half_span: float = HALF_SPAN,
+    delta_probe: float = 1.0e-3,
+) -> tuple[float, dict]:
+    """Translate the lever-derived FORCE ratio into a displacement
+    ratio r_δ = δ_I / δ_II for the FE BC infrastructure.
+
+    The ASTM D6671 rigid lever fixes the ratio of APPLIED forces
+    |F_hinge_up| / |F_saddle_dn| = c / (c + L) (see ``_lever_force_ratio``).
+    The existing FE infrastructure uses prescribed displacements, so we
+    determine the displacement ratio that delivers the lever's force
+    ratio via a two-unit-displacement elastic probe of the un-damaged
+    structure.
+
+    Probe procedure
+    ---------------
+    Let M_ab be the linear elastic coupling matrix between the two
+    prescribed-displacement DOF groups (hinge δ_I, midspan δ_II) and
+    the resulting internal forces (P_I, P_II), all on the un-damaged
+    cohesive interface:
+
+        P_I  = M_II_I * δ_I + M_II_M * δ_II
+        P_II = M_M_I  * δ_I + M_M_M  * δ_II
+
+    Probe A: δ_I = 0, δ_II = ε  =>  P_I_a = M_II_M * ε,
+                                    P_II_a = M_M_M * ε
+    Probe B: δ_I = ε, δ_II = 0  =>  P_I_b = M_II_I * ε,
+                                    P_II_b = M_M_I * ε
+
+    Then solve for r_δ such that the realized force ratio
+    |P_I| / |P_II| matches R = c / (c + L), with P_I > 0 (hinge held
+    UP) and P_II < 0 (midspan pushed DOWN):
+
+        M_II_I * r + M_II_M = -R * (M_M_I * r + M_M_M)
+        r = -(R * M_M_M + M_II_M) / (M_II_I + R * M_M_I)
+
+    The probe uses a very small ε (1e-3 mm) so the bonded cohesive
+    elements remain firmly in their elastic regime (initial damage =
+    0, no traction-separation evolution).  The probe does NOT commit
+    any state, so the subsequent production run starts from a clean
+    u = 0 / committed-state = 0 baseline.
+
+    Returns
+    -------
+    r_delta : float
+        δ_I / δ_II ratio required to match the lever's applied-force
+        ratio.
+    diag : dict
+        Probe diagnostics (stiffness coefficients, realized force
+        ratio, lever arm c) — printed in the test summary.
+    """
+    assembler = _build_assembler(mesh, cohesive_elements, is_bonded)
+    bc_handler = BoundaryHandler(mesh)
+
+    solver = NewtonRaphsonSolver(
+        assembler=assembler,
+        bc_handler=bc_handler,
+        boundary_conditions=_build_bcs(mesh, 0.0, 0.0),
+        n_increments=1,
+        max_newton_iter=200,
+        tol_residual=1e-4,
+        tol_absolute=1e-8,
+        tol_displacement=1e-9,
+        line_search=False,
+    )
+
+    _, _, midspan_load, opening_hinge = _support_load_and_hinge_nodes(mesh)
+    mid_z_dofs = 3 * midspan_load + 2
+    op_z_dofs = 3 * opening_hinge + 2
+
+    u0 = np.zeros(mesh.n_dof)
+
+    # Probe A: δ_II = ε, δ_I = 0
+    bcs_a = _build_bcs(mesh, delta_probe, 0.0)
+    cons_a = bc_handler.get_constrained_dofs(bcs_a)
+    F_ext_a = bc_handler.get_force_dofs(bcs_a)
+    u_a, _, ok_a = solver._newton_step(u0, F_ext_a, cons_a, verbose=False, inc=1)
+    if not ok_a:
+        raise RuntimeError("Lever-arm probe A (midspan-only) failed to converge")
+    F_int_a = assembler.assemble_internal_force(u_a)
+    P_II_a = float(np.sum(F_int_a[mid_z_dofs]))
+    P_I_a = float(np.sum(F_int_a[op_z_dofs]))
+
+    # Probe B: δ_I = ε, δ_II = 0.  Start fresh from u=0 (do NOT use u_a).
+    bcs_b = _build_bcs(mesh, 0.0, delta_probe)
+    cons_b = bc_handler.get_constrained_dofs(bcs_b)
+    F_ext_b = bc_handler.get_force_dofs(bcs_b)
+    u_b, _, ok_b = solver._newton_step(u0, F_ext_b, cons_b, verbose=False, inc=2)
+    if not ok_b:
+        raise RuntimeError("Lever-arm probe B (opening-only) failed to converge")
+    F_int_b = assembler.assemble_internal_force(u_b)
+    P_II_b = float(np.sum(F_int_b[mid_z_dofs]))
+    P_I_b = float(np.sum(F_int_b[op_z_dofs]))
+
+    # 2x2 reduced stiffness matrix.
+    M_II_I = P_I_b / delta_probe
+    M_II_M = P_I_a / delta_probe
+    M_M_I = P_II_b / delta_probe
+    M_M_M = P_II_a / delta_probe
+
+    # Lever target force ratio.
+    c_arm = _lever_arm_c(beta, L_half_span)
+    R_force = _lever_force_ratio(beta, L_half_span)
+
+    # Solve linear equation for r_δ.  Guard against the denominator
+    # being near zero (would indicate the FE can't reach the target
+    # force ratio in any monotonic regime).
+    denom = M_II_I + R_force * M_M_I
+    if abs(denom) < 1e-12:
+        raise RuntimeError(
+            "Lever-derived δ ratio is singular for β = "
+            f"{beta:.3f} -- the FE stiffness coupling cannot reach the "
+            "target force ratio."
+        )
+    r_delta = -(R_force * M_M_M + M_II_M) / denom
+
+    # Verify the realized P_I / P_II ratio.
+    P_I_v = M_II_I * r_delta + M_II_M
+    P_II_v = M_M_I * r_delta + M_M_M
+    realized = abs(P_I_v / P_II_v) if abs(P_II_v) > 1e-12 else float("inf")
+
+    diag = {
+        "beta": beta,
+        "c_arm": c_arm,
+        "R_force_target": R_force,
+        "R_force_realized": realized,
+        "r_delta": r_delta,
+        "M_II_I": M_II_I,
+        "M_II_M": M_II_M,
+        "M_M_I": M_M_I,
+        "M_M_M": M_M_M,
+        "P_I_unit": P_I_v,
+        "P_II_unit": P_II_v,
+    }
+    return r_delta, diag
+
+
+# ----------------------------------------------------------------------
 # Fixed-increment Newton driver (no adaptive sub-stepping)
 # ----------------------------------------------------------------------
 
@@ -782,6 +970,7 @@ def _drive_mmb_fixed(
 def _save_comparison_plot(
     result: dict,
     out_path: Path,
+    delta_ratio_opening: float,
 ) -> None:
     """Write the predicted-vs-experimental P-delta comparison plot."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -838,7 +1027,7 @@ def _save_comparison_plot(
         linestyle="-", color="tab:blue", linewidth=2.0,
         label=(
             f"FE prediction (CZM, $\\tau_\\max$ = {TAU_MAX:.0f} MPa, "
-            f"$\\delta_I/\\delta_{{II}}$ = {DELTA_RATIO_OPENING:.2f})"
+            f"$\\delta_I/\\delta_{{II}}$ = {delta_ratio_opening:.2f})"
         ),
     )
 
@@ -878,7 +1067,7 @@ def _save_comparison_plot(
         f"IM7/8552, h$_\\mathrm{{arm}}$ = {H_ARM:.2f} mm (calibrated), "
         f"a$_0$ = {A0_FROM_LEFT_SUPPORT:.1f} mm, "
         f"G$_c$(0.5) = {EXPERIMENTAL_MMB_50_GC_NMM:.3f} N/mm (exp), "
-        f"$\\delta_I/\\delta_{{II}}$ = {DELTA_RATIO_OPENING:.1f}"
+        f"$\\delta_I/\\delta_{{II}}$ = {delta_ratio_opening:.1f} (lever-derived)"
     )
     ax.set_xlim(0.0, x_max)
     # y-axis cap: enough headroom above FE peak (= first-full-fail
@@ -933,10 +1122,17 @@ def _predicted_initial_slope(
         "specimen midspan deflection while the experimental delta is "
         "the laser-extensometer reading near the lever pivot -- the "
         "lever amplifies the laser target's travel by an unpublished "
-        "geometric factor (~ 4-5x).  Metrics (2)-(4) are designed to "
+        "geometric factor (~ 4-5x).  Metrics (2)-(4) -- peak load, "
+        "mode mixity, and damage propagation -- are designed to "
         "validate independently of this displacement-axis "
-        "interpretation and should pass.  Spec instruction: 'PASS or "
-        "xfail honestly with detailed reason'."
+        "interpretation and pass cleanly with the new ASTM D6671 "
+        "lever-derived δ_I/δ_II ratio (≈ 69 at NX=200 — see the "
+        "'Loading approach' section of the module docstring for the "
+        "Reeder-Crews 1990 derivation).  With the lever-derived "
+        "ratio the peak load lands at ~ 488 N inside the ±20 % band "
+        "[434, 652] around the experimental 543 N, and the captured "
+        "mode mixity is 0.51 (within 0.01 of the 0.50 target).  Spec "
+        "instruction: 'PASS or xfail honestly with detailed reason'."
     ),
 )
 def test_mmb_50_experimental_validation_nasa_tm():
@@ -969,10 +1165,18 @@ def test_mmb_50_experimental_validation_nasa_tm():
         f"{len(cohesive_elements)}"
     )
 
+    # ASTM D6671 lever-derived δ_I / δ_II ratio (replaces the prior
+    # hand-tuned constant).  See ``_lever_derived_delta_ratio`` for
+    # the derivation.
+    delta_ratio_opening, probe_diag = _lever_derived_delta_ratio(
+        mesh, cohesive_elements, is_bonded,
+        beta=TARGET_BETA, L_half_span=HALF_SPAN,
+    )
+
     res = _drive_mmb_fixed(
         mesh, cohesive_elements, is_bonded,
         delta_II_max=DELTA_II_MAX,
-        delta_ratio_opening=DELTA_RATIO_OPENING,
+        delta_ratio_opening=delta_ratio_opening,
         n_increments=N_INCREMENTS,
         verbose=False,
     )
@@ -1057,12 +1261,20 @@ def test_mmb_50_experimental_validation_nasa_tm():
     out_path = Path(__file__).resolve().parents[2] / "figures" / (
         "phase7_mmb_50_validation.png"
     )
-    _save_comparison_plot(res, out_path)
+    _save_comparison_plot(res, out_path, delta_ratio_opening=delta_ratio_opening)
 
     print(
         f"\nPhase 7 MMB 50 % validation (NX={NX}, tau_max={TAU_MAX:.1f} MPa, "
         f"GIc={GIC_MEASURED:.3f}, GIIc={GIIC_MEASURED:.3f} N/mm, "
-        f"h_arm={H_ARM:.3f} mm, dI/dII={DELTA_RATIO_OPENING:.2f}):\n"
+        f"h_arm={H_ARM:.3f} mm, β_target={TARGET_BETA:.2f}):\n"
+        f"  ASTM D6671 lever (Reeder-Crews 1990):\n"
+        f"      L_half_span = {HALF_SPAN:.2f} mm, c_lever_arm = "
+        f"{probe_diag['c_arm']:.3f} mm, c/L = "
+        f"{probe_diag['c_arm']/HALF_SPAN:.4f}\n"
+        f"      F_hinge_up/F_saddle_dn = c/(c+L) = "
+        f"{probe_diag['R_force_target']:.4f} (target)\n"
+        f"      elastic probe -> δ_I/δ_II = {delta_ratio_opening:.4f} "
+        f"(realized force ratio = {probe_diag['R_force_realized']:.4f})\n"
         f"  (1) slope     = {slope_pred:8.2f} N/mm "
         f"(exp {EXPERIMENTAL_MMB_50_SLOPE_NMM:.1f} N/mm, rel "
         f"{slope_rel_to_exp:.2%}, tol {SLOPE_TOLERANCE_REL:.0%})  "
@@ -1125,8 +1337,13 @@ def test_mmb_50_experimental_validation_nasa_tm():
     assert mode_ratio_in_band, (
         f"Best captured mode_ratio_init {mode_ratio_observed:+.3f} not "
         f"within {MODE_RATIO_TOLERANCE:.2f} of target "
-        f"{MODE_RATIO_TARGET:.2f}.  Adjust DELTA_RATIO_OPENING "
-        f"(currently {DELTA_RATIO_OPENING:.2f}) and re-run."
+        f"{MODE_RATIO_TARGET:.2f}.  Lever-derived δ_I/δ_II = "
+        f"{delta_ratio_opening:.3f}; this is set by the ASTM D6671 lever "
+        f"geometry, not a free knob -- a miss here indicates that the "
+        f"lever-derived force ratio (intentionally chosen to match the "
+        f"GLOBAL fixture statics) does not produce the target LOCAL "
+        f"mode mixity at the crack tip due to the specimen-overhang "
+        f"stiffness coupling."
     )
 
     # (4) At least 2 cohesive elements fully failed (d > 0.99).
