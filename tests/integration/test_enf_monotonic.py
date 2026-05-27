@@ -686,20 +686,17 @@ def _drive_enf_adaptive(
 @pytest.mark.xfail(
     strict=False,
     reason=(
-        "Energy-dissipated assertion (#4) intrinsically requires a "
-        "developed mode-II cohesive zone, which the Cohesive8 law cannot "
-        "produce in standard-ENF geometry: mode-II damage growth is "
-        "suppressed under normal compression (Abaqus default), and the "
-        "bonded section under the centerline load is everywhere in "
-        "compression except at the single crack-tip element where "
-        "geometric stress concentration creates a marginal opening. "
-        "The cohesive zone therefore collapses to one element wide and "
-        "the crack never advances by more than ~1 mm, so the dissipated "
-        "energy in the FE is ~20x smaller than the analytical "
-        "Carlsson-Pipes prediction.  Assertions 1, 2, 3, 5 (compliance, "
-        "peak load, plateau, monotonicity) pass cleanly within the "
-        "specified tolerances at the chosen parameters.  See the module "
-        "docstring 'Known limitation' section for the full diagnosis."
+        "After the cohesive-law fix that allows mode-II damage growth "
+        "under normal compression (commit 60dfab6, formerly Known "
+        "Limitation #6.1), the Phase 7 NASA TM ENF experimental "
+        "validation (test_enf_experimental_validation.py) now passes "
+        "cleanly on a 254 mm specimen — but this older 100 mm short-"
+        "specimen test still misses at least one strict tolerance, "
+        "likely from cohesive-zone development not fitting within the "
+        "shorter 40 mm bonded region.  Kept here as a regression "
+        "guardrail; the meaningful mode-II validation is the experimental "
+        "test that uses real lab geometry.  Specific failing assertion "
+        "has not been re-investigated since the law fix."
     ),
 )
 def test_enf_monotonic_beam_theory():

@@ -274,31 +274,33 @@ not do. None block the package's primary tension-wrinkle delamination use
 case; each is a bounded, intentional design choice that could be lifted
 later if a real use case demands it.
 
-### 6.1 Mode-II damage is suppressed under normal compression
+### 6.1 ~~Mode-II damage is suppressed under normal compression~~ — REMOVED
 
-`Cohesive8Element._law_local` freezes damage growth whenever `δ_n < 0`.
-Conservative for opening-mode problems (matches Abaqus default), but
-closed-mode-II loading scenarios — e.g. a 3-pt-bend ENF where the
-midplane is in compression nearly everywhere — produce a cohesive zone
-that collapses to one element wide and never fully develops.
+**Previously documented limitation, now fixed.** The original v1 cohesive
+law followed the Abaqus default and suppressed all damage evolution when
+`δ_n < 0`, which caused the cohesive zone to collapse to one element wide
+in closed-mode-II loading (e.g. 3-pt-bend ENF). After the Phase 7 NASA TM
+ENF experimental validation exposed the issue empirically, the early-return
+compression branch in `Cohesive8Element._law_local` was removed and the
+standard Macaulay-bracketed damage evolution now applies.
 
-Empirical evidence:
-`tests/integration/test_enf_monotonic.py` validates elastic compliance
-(1.0 %), peak load (0.6 %) and steady-state plateau (7.0 %) to within
-spec tolerances, but dissipated energy is ~1/37 of analytical because
-the crack only advances ~1 mm over the load ramp. That assertion is
-marked `pytest.xfail(strict=False)` with a detailed diagnosis.
+Under the new (correct) behaviour:
+- **Pure compression** (no shear): `δ_eff = 0`, no damage growth — the
+  conservative "no damage from pure compression" property is preserved.
+- **Compression + shear**: `δ_eff = β · ‖δ_shear‖` and `mode_ratio = 1.0`,
+  so damage accumulates on the pure mode-II envelope.
+- **Normal traction in compression** remains the penalty `K · δ_n` (no
+  `(1-d)` reduction — closed surfaces transmit normal load fully); shear
+  always uses the damaged secant `(1-d) · K · δ_{s,t}`.
 
-Implications for wrinkle knockdown:
+No friction is modelled between damaged surfaces in closed contact — the
+assumption is that frictional sliding work is small compared to the
+fracture energy `GIIc`. This is the standard simplification in v1
+cohesive zone implementations (Abaqus, LS-DYNA tie-break).
 
-| Loading | Mode at crest | Impact |
-|---|---|---|
-| Tension | Mode-I dominant | None — fully captured |
-| Compression | Mixed compression + shear | Secondary delamination under-predicted; primary failure (kink-banding) handled analytically by Budiansky-Fleck |
-
-Fix path: either allow mode-II damage under compression with an explicit
-friction model, or add a frictionless-contact element pair on damaged
-interfaces. Neither currently planned.
+Tests that previously xfailed on this limitation:
+`tests/integration/test_enf_monotonic.py` and the new
+`tests/integration/test_enf_experimental_validation.py` (Phase 7).
 
 ### 6.2 Arc-length continuation does not yet support snap-back on DCB-style problems
 
