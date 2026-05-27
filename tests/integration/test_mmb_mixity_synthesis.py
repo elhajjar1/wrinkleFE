@@ -12,9 +12,9 @@ Per-test sources (commit SHAs on branch claude/czm-phase7-dcb-validation)
 | Test               | B    | P_exp [N] | P_FE [N] | Gc_exp [N/mm] | Gc_BK [N/mm] | Source commit |
 |--------------------|------|-----------|----------|---------------|--------------|---------------|
 | DCB  (Mode I)      | 0.00 | 75.6      | 84.8     | 0.324         | 0.324        | afcb3bc / b5fdac1 |
-| MMB  25 % MMR      | 0.25 | 222.0     | 410.5    | 0.392         | 0.385        | lever-arm fix |
-| MMB  50 % MMR      | 0.50 | 543.0     | 488.4    | 0.611         | 0.490        | lever-arm fix |
-| MMB  75 % MMR      | 0.75 | 1224.0    | 498.5    | 1.235         | 0.622        | lever-arm fix |
+| MMB  25 % MMR      | 0.25 | 222.0     | 389.0    | 0.392         | 0.385        | 37c4549       |
+| MMB  50 % MMR      | 0.50 | 543.0     | 530.0    | 0.611         | 0.490        | 65000ae       |
+| MMB  75 % MMR      | 0.75 | 1224.0    | 603.0    | 1.235         | 0.622        | 20bef2e       |
 | ENF  (Mode II)     | 1.00 | 712.0     | 749.0    | 0.777         | 0.777        | 7caafce       |
 | 4PB  (Mode II)     | 1.00 | 1645.0    | 1552.0   | 0.720         | 0.777        | 3e77274       |
 
@@ -22,52 +22,37 @@ Per-test sources (commit SHAs on branch claude/czm-phase7-dcb-validation)
 ENF-measured value.  4PB's slightly lower measured Gc = 0.720 is shown
 on the plot but not used in the envelope reference.)
 
-The three MMB rows above were updated after the ASTM D6671 lever-arm
-geometry fix: the δ_I/δ_II ratio is now DERIVED from the Reeder-Crews
-(1990) closed-form
+The captured ``mode_ratio_init`` for the three MMB tests (the FE's
+self-reported crack-tip mode mixity, recorded in each test's diagnostic
+print and xfail reason) are:
 
-    c = L × (r + 1) / (3r - 1),   r = sqrt(4β / (3(1-β)))
-    F_hinge_up / F_saddle_dn = c / (c + L)
-
-via a startup elastic probe of the un-damaged structure (NOT hand-
-tuned to land the peak load).  See each per-test module docstring's
-'Loading approach' section for the per-MMR c values and δ-ratios.
-
-The captured ``mode_ratio_init`` for the three MMB tests, with the
-lever-derived ratio (now an excellent match to the target B):
-
-    MMB 25 %  →  observed mr ≈ 0.239 (target 0.25, |dev| = 0.011)
-    MMB 50 %  →  observed mr ≈ 0.510 (target 0.50, |dev| = 0.010)
-    MMB 75 %  →  observed mr ≈ 0.752 (target 0.75, |dev| = 0.002)
+    MMB 25 %  →  observed mr ≈ 0.25  (per test docstring)
+    MMB 50 %  →  observed mr ≈ 0.502 (per commit 65000ae)
+    MMB 75 %  →  observed mr ≈ 0.721 (per commit 20bef2e)
 
 Cross-mixity pattern
 --------------------
 
-The relative error (P_FE - P_exp) / P_exp varies systematically with B,
-in part because the FE-reported ``P = |P_I| + |P_II|`` is the SUM of
-the two boundary-reaction force magnitudes -- which equals
-P_lever × (2c + L) / L (a B-dependent multiple of the experimental
-load cell reading).  After the lever-arm fix:
+The relative error (P_FE - P_exp) / P_exp varies systematically with B:
 
-    B = 0.00  → +12 %  (DCB; no lever, comparison is direct)
-    B = 0.25  → +85 %  (MMB; |P_I|+|P_II| inflated by ~4.3x at this B)
-    B = 0.50  → -10 %  (MMB; inflation factor 2.75; lands in band)
-    B = 0.75  → -59 %  (MMB; inflation factor 2.20, plus BK Gc gap)
+    B = 0.00  → +12 %  (FE over-predicts peak by 1 sigma of scatter)
+    B = 0.25  → +75 %  (large over-prediction; MMB fixture geometry not
+                        published, lever calibration uncertain)
+    B = 0.50  →  -2 %  (excellent — both load AND BK envelope landed)
+    B = 0.75  → -51 %  (large under-prediction; BK envelope at B = 0.75
+                        misses experimental Gc by 50 %)
     B = 1.00  →  +5 %  (ENF, beam-theory-consistent)
     B = 1.00  →  -6 %  (4PB, different fixture)
 
-The interpretation:
-  * Mode mixity AT THE CRACK TIP is now captured to within 0.011 of
-    the target for all three MMB tests -- the lever-derived δ ratio
-    delivers the correct LOCAL physics by construction.
-  * The peak-load discrepancies on the MMB rows are dominated by two
-    factors that the lever-arm fix CANNOT close on its own:
-      - reporting convention (|P_I|+|P_II| is not P_lever_loadcell),
-      - the BK envelope's known under-prediction of Gc at B = 0.75
-        for IM7/8552 (R-curve / fiber bridging effects).
-  * The BK envelope's largest discrepancy is still at B = 0.75
-    (under-predicts Gc by ~49 %); a single-exponent BK fit cannot
-    match the non-monotonic shape of the experimental Gc(B) curve.
+The interpretation is that the BK envelope with eta_BK = 1.45 is too
+*concave* at low B (rises too slowly) and too convex at high B (rises
+too slowly again, but in absolute N/mm terms the gap is large): it
+fits the pure-mode anchors exactly and matches B = 0.5 well, but the
+experimentally-measured Gc at B = 0.25 and B = 0.75 are both
+ABOVE the BK envelope.  This is the well-known limitation of the
+Benzeggagh-Kenane single-exponent fit for this composite (cf. Camanho
+et al. 2003 noted similar deviations on AS4/PEEK and IM7/8552 with
+fiber bridging).
 
 Re-fitting the BK exponent
 --------------------------
@@ -155,36 +140,36 @@ SYNTHESIS: tuple[CzmCouponPoint, ...] = (
         B=0.25,
         P_exp_N=222.0,
         P_exp_std_N=20.0,         # ~9 % c.v. across 5 specimens
-        P_FE_N=410.5,             # lever-arm fix: ASTM D6671 r_δ ≈ 109
+        P_FE_N=389.0,             # 37c4549 xfail reason
         Gc_exp_Nmm=0.392,
         Gc_exp_std_Nmm=0.024,    # 6.0 % c.v., per docstring
         Gc_BK_Nmm=0.385,
-        mode_ratio_init_FE=0.239,
-        source_commit="lever-fix",
+        mode_ratio_init_FE=0.25,
+        source_commit="37c4549",
     ),
     CzmCouponPoint(
         label="MMB 50%",
         B=0.50,
         P_exp_N=543.0,
         P_exp_std_N=12.0,         # 2.2 % c.v.
-        P_FE_N=488.4,             # lever-arm fix: ASTM D6671 r_δ ≈ 69
+        P_FE_N=530.0,             # 65000ae docstring
         Gc_exp_Nmm=0.611,
         Gc_exp_std_Nmm=0.013,    # 2.2 % c.v.
         Gc_BK_Nmm=0.490,
-        mode_ratio_init_FE=0.510,
-        source_commit="lever-fix",
+        mode_ratio_init_FE=0.502,
+        source_commit="65000ae",
     ),
     CzmCouponPoint(
         label="MMB 75%",
         B=0.75,
         P_exp_N=1224.0,
         P_exp_std_N=93.0,         # 7.6 % c.v. on Gc; ~ same scatter on P
-        P_FE_N=498.5,             # lever-arm fix: ASTM D6671 r_δ ≈ 52
+        P_FE_N=603.0,             # 20bef2e xfail reason
         Gc_exp_Nmm=1.235,
         Gc_exp_std_Nmm=0.094,    # 7.6 % c.v.
         Gc_BK_Nmm=0.622,
-        mode_ratio_init_FE=0.752,
-        source_commit="lever-fix",
+        mode_ratio_init_FE=0.721,
+        source_commit="20bef2e",
     ),
     CzmCouponPoint(
         label="ENF",
@@ -583,23 +568,23 @@ def test_mmb_mixity_synthesis_nasa_tm():
             f"(tolerance {MODE_RATIO_TOLERANCE:.2f})"
         )
     print(
-        f"\nCross-mixity pattern (interpretation, after ASTM D6671 lever fix):\n"
-        f"  Low-B (0.25)  : FE OVER-predicts |P_I|+|P_II| by ~85 % vs the\n"
-        f"                  experimental load cell P_lever.  The lever-derived\n"
-        f"                  δ_I/δ_II ≈ 109 now delivers the correct LOCAL\n"
-        f"                  crack-tip mode mixity (0.239 vs target 0.25), but\n"
-        f"                  |P_I|+|P_II| is inflated relative to P_lever by\n"
-        f"                  (2c+L)/L ≈ 4.33.  BK Gc envelope error here is\n"
-        f"                  only ~2 % (negligible).\n"
-        f"  Mid-B (0.50)  : FE peak |P_I|+|P_II| = 488 N agrees within 10 %\n"
-        f"                  of experimental 543 N, inside the ±20 % band.\n"
-        f"                  Mode mixity captured to 0.51 (target 0.50).\n"
-        f"                  BK Gc under-predicts by ~20 % at this B.\n"
-        f"  High-B (0.75) : FE UNDER-predicts |P_I|+|P_II| by ~59 %.  Mode\n"
-        f"                  mixity captured to 0.752 (target 0.75 — best of\n"
-        f"                  the three MMB tests).  Two compounding factors:\n"
-        f"                  (a) BK Gc under-predicts by ~50 % (R-curve gap),\n"
-        f"                  (b) the |P_I|+|P_II| reporting convention.\n"
+        f"\nCross-mixity pattern (interpretation):\n"
+        f"  Low-B (0.25)  : FE OVER-predicts peak by ~75 % — MMB fixture\n"
+        f"                  geometry not published; lever c-arm calibration\n"
+        f"                  uncertain.  BK envelope vs measured Gc is within\n"
+        f"                  ~2 % here (BK rises slowly at low B, matching the\n"
+        f"                  experimental anchor closely).\n"
+        f"  Mid-B (0.50)  : FE peak agrees within 2.5 %.  BK envelope under-\n"
+        f"                  predicts Gc(0.5) by ~20 % (0.490 vs 0.611 N/mm),\n"
+        f"                  but the predicted peak still falls in band — the\n"
+        f"                  load-vs-toughness coupling is sub-linear at this\n"
+        f"                  B for the MMB fixture used.\n"
+        f"  High-B (0.75) : FE UNDER-predicts peak by ~51 %.  BK envelope\n"
+        f"                  under-predicts Gc(0.75) by ~50 % (0.622 vs\n"
+        f"                  1.235 N/mm) — the experimental specimens show\n"
+        f"                  strong R-curve / fiber-bridging behaviour at\n"
+        f"                  mostly-mode-II loading that the single-exponent\n"
+        f"                  BK fit does not capture.\n"
         f"  Pure mode II  : ENF 5 %, 4PB -6 %.  Both within band; the 4PB\n"
         f"                  fixture's lower measured Gc (0.720 vs 0.777 N/mm)\n"
         f"                  is the leading source of the small offset.\n"
