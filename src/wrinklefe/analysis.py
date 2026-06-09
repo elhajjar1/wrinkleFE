@@ -216,6 +216,7 @@ def _profile_proportional_kd(
     through_thickness_decay: bool = True,
     z_position_fraction: float = 0.5,
     decay_scale: Optional[float] = None,
+    decay_floor: float = 0.0,
     kink_band_quadratic_coeff: float = 0.0,
 ) -> float:
     """Budiansky-Fleck knockdown averaged over the wrinkle profile.
@@ -305,6 +306,16 @@ def _profile_proportional_kd(
         Through-thickness Gaussian standard deviation [mm].  When None
         (default) the auto formula ``max(wavelength / 2, amplitude)`` is
         used.  Must be strictly positive when provided.
+    decay_floor : float
+        Minimum fraction of the wrinkle angle retained at any ply
+        (issue #254): the through-thickness term becomes
+        ``decay_floor + (1 - decay_floor) * raw`` with ``raw`` the
+        Gaussian above — the same floor semantics the tension graded
+        path applies, so a sign-flipped load sees the same envelope.
+        ``0.0`` (default) reproduces the legacy pure-Gaussian decay
+        bit-for-bit; ``1.0`` disables the decay (every ply sees the
+        full angle).  Caller is responsible for the [0, 1] range
+        (``AnalysisConfig`` validates it).
     kink_band_quadratic_coeff : float
         Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless).
         Default 0.0 (legacy linear BF).  Must be >= 0.
@@ -350,7 +361,8 @@ def _profile_proportional_kd(
     for p in range(n_plies):
         z_p = (p + 0.5) * ply_thickness
         if through_thickness_decay:
-            phi_p = np.exp(-((z_p - z_center) ** 2) / sigma_sq2)
+            raw_p = np.exp(-((z_p - z_center) ** 2) / sigma_sq2)
+            phi_p = decay_floor + (1.0 - decay_floor) * raw_p
         else:
             phi_p = 1.0
         theta_xz = theta_x * phi_p  # local angle at (x, z_p)
@@ -2331,6 +2343,7 @@ class WrinkleAnalysis:
                 through_thickness_decay=True,
                 z_position_fraction=z_pos,
                 decay_scale=decay_scale_eff,
+                decay_floor=cfg.decay_floor,
                 kink_band_quadratic_coeff=c_AF,
             )
             kd_compression = f_0 * kd_profile + (1.0 - f_0)

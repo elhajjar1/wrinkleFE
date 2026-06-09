@@ -163,17 +163,20 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   needs geometrically nonlinear progressive-damage FE (issue #161). S-A-2
   additionally exposes a missing through-thickness wrinkle-position
   parameter (out of scope; excluded on future inclusion).
-- **Related**: the `graded` compression through-thickness decay has a
-  separate real bug (`decay_floor` inert in compression, decay scale
-  hard-wired to amplitude A), tracked by issue #254. A "mirror the
-  tension path" fix was prototyped and **reverted** (commit `00584b4`)
-  pending a reproducible harness for *all* existing datasets; it
-  corrects the angle response but does not address the amplitude gap
-  above. The harness now exists (see *Reproducible harness* above, with
-  this dataset's cases pinned in `tests/test_validation/ledger.json`,
-  and a strict-xfail test in `tests/test_validation/test_ledger.py`
-  documenting the compression `decay_floor` inertness), unblocking the
-  re-land.
+- **Related (resolved)**: the `graded` compression through-thickness
+  decay had a separate real bug, tracked and closed by issue #254:
+  `decay_floor` was inert in compression (honored in tension), and the
+  decay scale was originally hard-wired to the amplitude A. An early
+  "mirror the tension path" fix was **reverted** (commit `00584b4`)
+  pending a reproducible harness. Both halves are now fixed: the decay
+  scale became the explicit `through_thickness_decay_scale` parameter
+  (auto default `max(λ/2, A)`), and `decay_floor` is applied with the
+  same floor semantics on both loading paths
+  (`Φ = floor + (1 − floor)·gaussian`), with defaults preserving prior
+  results bit-for-bit — confirmed by zero drift across this dataset's
+  pinned baselines in `tests/test_validation/ledger.json`. Neither
+  change addresses the amplitude-at-constant-angle gap above, which
+  remains issue #161.
 
 ## Identified — pending evaluation
 

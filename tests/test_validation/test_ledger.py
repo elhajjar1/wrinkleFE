@@ -54,51 +54,58 @@ def test_validate_script_passes():
 
 
 # --------------------------------------------------------------------------- #
-# Issue #254 defect documentation — strict xfail flips when the fix lands
+# Issue #254 — decay_floor symmetric under sign-flipped load
 # --------------------------------------------------------------------------- #
 
 
 def _graded_kd(loading: str, decay_floor: float) -> float:
-    # Quasi-isotropic IM7/8552: the tension path's decay_floor handling
-    # is exercised by multi-angle layups (a UD stack shows no effect on
-    # either path), which makes the compression-side inertness visible
-    # as an asymmetry rather than a shared no-op.
+    # Quasi-isotropic layup on a config whose through-thickness Gaussian
+    # actually decays inside the laminate: 24 plies (T = 4.39 mm) with an
+    # explicit 0.5 mm decay scale, so the surface plies see raw ~ 0 and
+    # the floor governs how much angle they retain.
     cfg = AnalysisConfig(
         amplitude=0.75, wavelength=12.9, width=12.9,
         morphology="graded", decay_floor=decay_floor, loading=loading,
-        angles=[0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0],
+        angles=[0.0, 45.0, -45.0, 90.0] * 3
+        + [90.0, -45.0, 45.0, 0.0] * 3,
+        through_thickness_decay_scale=0.5,
     )
     return float(
         WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="issue #254: decay_floor is inert on the graded compression "
-    "path (honored in tension). When the re-landed fix makes it "
-    "effective, this xfail flips and must be converted to a real test.",
-)
-def test_decay_floor_affects_compression_issue_254():
-    kd_floor0 = _graded_kd("compression", 0.0)
-    kd_floor1 = _graded_kd("compression", 0.9)
-    assert kd_floor0 != pytest.approx(kd_floor1), (
-        "decay_floor=0.0 and 0.9 produce identical compression knockdown"
+@pytest.mark.parametrize("loading", ["compression", "tension"])
+def test_decay_floor_effective_under_both_loadings_issue_254(loading):
+    """decay_floor produces the same envelope semantics under a
+    sign-flipped load: raising the floor retains more misalignment in
+    the outer plies and monotonically lowers the knockdown, in tension
+    AND compression. (Before the #254 fix, compression ignored the
+    floor entirely while tension honored it.)"""
+    kds = [_graded_kd(loading, f) for f in (0.0, 0.5, 1.0)]
+    assert kds[0] > kds[1] > kds[2], (
+        f"{loading}: KD must decrease monotonically as decay_floor "
+        f"retains more angle, got {kds}"
     )
+    # The floor must have a material effect, not a numerical whisper.
+    assert kds[0] - kds[2] > 0.01
 
 
-def test_decay_floor_compression_tension_asymmetry_is_current_behavior():
-    """Pin the asymmetry itself: tension honors decay_floor, compression
-    does not. Documents the user-visible inconsistency named in #254;
-    delete together with the xfail above when the fix lands."""
-    comp_delta = abs(
-        _graded_kd("compression", 0.0) - _graded_kd("compression", 0.9)
+def test_decay_floor_one_disables_compression_decay():
+    """floor=1.0 means every ply keeps the full angle — identical to a
+    decay scale so large the Gaussian never drops below ~1."""
+    kd_floor1 = _graded_kd("compression", 1.0)
+    cfg = AnalysisConfig(
+        amplitude=0.75, wavelength=12.9, width=12.9,
+        morphology="graded", decay_floor=0.0, loading="compression",
+        angles=[0.0, 45.0, -45.0, 90.0] * 3
+        + [90.0, -45.0, 45.0, 0.0] * 3,
+        through_thickness_decay_scale=1.0e6,
     )
-    tens_delta = abs(
-        _graded_kd("tension", 0.0) - _graded_kd("tension", 0.9)
+    kd_nodecay = float(
+        WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
     )
-    assert comp_delta == pytest.approx(0.0, abs=1e-12)
-    assert tens_delta > 1e-6
+    assert kd_floor1 == pytest.approx(kd_nodecay, rel=1e-9)
 
 
 def test_ledger_recipe_round_trips_config():
