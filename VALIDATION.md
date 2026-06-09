@@ -20,6 +20,26 @@ A paper qualifies as a knockdown validation point when it reports, for a
 Each case is run through `WrinkleAnalysis`; predicted vs measured knockdown
 gives the per-point error, aggregated into the README table.
 
+## Reproducible harness
+
+The machine-readable ledger lives at `tests/test_validation/ledger.json`
+(per-case analysis recipe, measured knockdown, and a pinned analytical
+baseline computed by the current code). One command recomputes every
+case and fails on drift from the pinned baselines:
+
+```bash
+python scripts/validate.py            # compare; exit 1 on drift
+python scripts/validate.py --update   # re-pin after a deliberate model change
+```
+
+`tests/test_validation/test_ledger.py` runs the same comparisons in CI.
+The pinned values are regression baselines, not claims of experimental
+agreement — the measured-vs-predicted error per dataset is printed
+alongside. This is the harness whose absence forced the revert of the
+graded-decay fix (issue #254, commit `00584b4`); datasets whose raw
+case data are not yet in the repository (Elhajjar 2025, Mukhopadhyay
+2015, Li 2026) should be added to the ledger as their points land.
+
 ## Included datasets
 
 See the table in [README.md](README.md). Current sources:
@@ -145,10 +165,15 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   parameter (out of scope; excluded on future inclusion).
 - **Related**: the `graded` compression through-thickness decay has a
   separate real bug (`decay_floor` inert in compression, decay scale
-  hard-wired to amplitude A). A "mirror the tension path" fix was
-  prototyped and **reverted** (commit `00584b4`) pending a reproducible
-  harness for *all* existing datasets; it corrects the angle response but
-  does not address the amplitude gap above.
+  hard-wired to amplitude A), tracked by issue #254. A "mirror the
+  tension path" fix was prototyped and **reverted** (commit `00584b4`)
+  pending a reproducible harness for *all* existing datasets; it
+  corrects the angle response but does not address the amplitude gap
+  above. The harness now exists (see *Reproducible harness* above, with
+  this dataset's cases pinned in `tests/test_validation/ledger.json`,
+  and a strict-xfail test in `tests/test_validation/test_ledger.py`
+  documenting the compression `decay_floor` inertness), unblocking the
+  re-land.
 
 ## Identified — pending evaluation
 
