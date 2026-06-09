@@ -81,7 +81,7 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `sweep/parametric_sweep.py` | Parametric sweep over amplitude/wavelength/morphology; CSV output |
 | `analysis.py` | Top-level orchestrator: `WrinkleAnalysis`, `AnalysisConfig`, `compare_morphologies`, `parametric_sweep` |
 | `cli.py` | Entry point referenced by `[project.scripts]` (the `wrinklefe` command) |
-| `io/export.py` | meshio-backed mesh/field export, gated by the `export` extra |
+| `io/export.py` | Native JSON, Abaqus `.inp`, and legacy VTK export (no extra dependencies) |
 
 ## Confinement Model
 

@@ -35,7 +35,6 @@ dependencies = [
 # so plain `pip install wrinklefe` produces a headless-safe environment. See
 # requirements.txt for the rationale.
 [project.optional-dependencies]
-export = ["meshio>=5.3"]
 # Streamlit web app deps — keep versions in sync with requirements.txt.
 streamlit = [
     "streamlit>=1.57",
@@ -47,7 +46,7 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.5",
 ]
-all = ["wrinklefe[export,streamlit,dev]"]
+all = ["wrinklefe[streamlit,dev]"]
 
 [project.scripts]
 wrinklefe = "wrinklefe.cli:main"
