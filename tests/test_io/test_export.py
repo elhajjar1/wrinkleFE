@@ -529,6 +529,24 @@ class TestBuildAnalysisSummary:
         # Must not raise.
         json.dumps(s)
 
+    def test_layup_contracted_field(self, summary_inputs):
+        """Issue #241: JSON summary carries contracted layup notation."""
+        defect, engineering = summary_inputs
+        defect = dict(defect)
+        defect["layup"] = [0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0]
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        lam = s["laminate"]
+        assert lam["layup_contracted"] == "[0/±45/90]s"
+        from wrinklefe.core.layup import parse_layup
+        assert parse_layup(lam["layup_contracted"]) == lam["layup_deg"]
+
+    def test_layup_contracted_none_when_layup_missing(self, summary_inputs):
+        _, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect={"loading": "compression"}, engineering=engineering
+        )
+        assert s["laminate"]["layup_contracted"] is None
+
     def test_fe_block_cited_when_present(self, summary_inputs):
         defect, engineering = summary_inputs
         eng = dict(engineering)
@@ -566,6 +584,19 @@ class TestRenderAndExportSummary:
             build_analysis_summary(defect=defect, engineering=engineering)
         )
         assert "do not constitute a final material disposition" in md
+
+    def test_markdown_shows_contracted_and_expanded_layup(
+        self, summary_inputs
+    ):
+        """Issue #241: NCR shows shorthand alongside the expanded list."""
+        defect, engineering = summary_inputs
+        defect = dict(defect)
+        defect["layup"] = [0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0]
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
+        assert "- Layup: [0/±45/90]s" in md
+        assert "- Layup (deg, expanded): [0.0, 45.0, -45.0, 90.0" in md
 
     def test_export_md(self, summary_inputs, tmp_path):
         defect, engineering = summary_inputs

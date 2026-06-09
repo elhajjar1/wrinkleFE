@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 import numpy as np
 
+from wrinklefe.core.layup import to_contracted_layup
+
 if TYPE_CHECKING:
     from wrinklefe.analysis import AnalysisResults
     from wrinklefe.core.laminate import Laminate
@@ -604,6 +606,7 @@ def build_analysis_summary(
             "ply_thickness_mm": defect.get("ply_thickness_mm"),
             "n_plies": defect.get("n_plies"),
             "layup_deg": defect.get("layup"),
+            "layup_contracted": _contracted_or_none(defect.get("layup")),
         },
         "engineering_analysis": {
             "analytical_knockdown": kd,
@@ -643,6 +646,16 @@ def build_analysis_summary(
         ),
     }
     return summary
+
+
+def _contracted_or_none(layup: Any) -> Optional[str]:
+    """Contracted notation for an angle list, or ``None`` if unavailable."""
+    if not layup:
+        return None
+    try:
+        return to_contracted_layup(layup)
+    except (ValueError, TypeError):
+        return None
 
 
 def _fmt(value: Any, default: str = "—") -> str:
@@ -705,7 +718,12 @@ def render_summary_markdown(summary: dict) -> str:
         f"- Ply thickness: {_fmt(lam['ply_thickness_mm'])} mm  "
         f"·  Plies: {_fmt(lam['n_plies'])}"
     )
-    lines.append(f"- Layup (deg): {_fmt(lam['layup_deg'])}")
+    contracted = lam.get("layup_contracted")
+    if contracted:
+        lines.append(f"- Layup: {contracted}")
+        lines.append(f"- Layup (deg, expanded): {_fmt(lam['layup_deg'])}")
+    else:
+        lines.append(f"- Layup (deg): {_fmt(lam['layup_deg'])}")
     lines.append("")
     lines.append("## 3. Engineering analysis (WrinkleFE)")
     lines.append("")

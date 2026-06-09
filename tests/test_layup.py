@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from wrinklefe.core.layup import parse_layup
+from wrinklefe.core.layup import parse_layup, to_contracted_layup
 
 
 # --------------------------------------------------------------------------- #
@@ -73,6 +73,66 @@ def test_explicit_plus_minus_token():
 def test_malformed_layup_raises_value_error(bad):
     with pytest.raises(ValueError):
         parse_layup(bad)
+
+
+# --------------------------------------------------------------------------- #
+# Contracted rendering (to_contracted_layup)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("angles", "expected"),
+    [
+        ([0.0, 90.0] * 4 + [90.0, 0.0] * 4, "[0/90]_4s"),
+        (
+            ([0.0, 45.0, -45.0, 90.0] * 3)
+            + ([0.0, 45.0, -45.0, 90.0] * 3)[::-1],
+            "[0/±45/90]_3s",
+        ),
+        (
+            [45.0, -45.0, 45.0, -45.0, -45.0, 45.0, -45.0, 45.0],
+            "[±45]_2s",
+        ),
+        ([0.0] * 8, "[0]_8"),
+        ([0.0, 45.0, 90.0], "[0/45/90]"),
+        ([0.0, 90.0, 90.0, 0.0], "[0/90]s"),
+        ([22.5, -22.5], "[±22.5]"),
+    ],
+)
+def test_contracted_rendering(angles, expected):
+    assert to_contracted_layup(angles) == expected
+
+
+@pytest.mark.parametrize(
+    "angles",
+    [
+        [0.0, 90.0] * 4 + [90.0, 0.0] * 4,
+        ([0.0, 45.0, -45.0, 90.0] * 3) + ([0.0, 45.0, -45.0, 90.0] * 3)[::-1],
+        [45.0, -45.0, 45.0, -45.0, -45.0, 45.0, -45.0, 45.0],
+        [0.0] * 8,
+        [0.0, 45.0, 90.0],
+        [0.0],
+        [-45.0, 45.0],
+        [30.0, -30.0, 60.0],
+        [0.0, 12.345, -12.345, 90.0],
+    ],
+)
+def test_contracted_round_trip(angles):
+    """parse_layup(to_contracted_layup(a)) == a for any angle list."""
+    assert parse_layup(to_contracted_layup(angles)) == angles
+
+
+def test_contracted_asymmetric_falls_back_to_expanded():
+    """No misleading shorthand: asymmetric stacks render in full."""
+    angles = [0.0, 45.0, 90.0, -45.0, 0.0]
+    out = to_contracted_layup(angles)
+    assert out == "[0/45/90/-45/0]"
+    assert parse_layup(out) == angles
+
+
+def test_contracted_empty_raises():
+    with pytest.raises(ValueError):
+        to_contracted_layup([])
 
 
 # --------------------------------------------------------------------------- #
