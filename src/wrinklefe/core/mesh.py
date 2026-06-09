@@ -754,11 +754,18 @@ class WrinkleMesh:
         ):
             return err  # Flat mesh — nothing wrinkle-specific to add.
 
-        w0 = self.wrinkle_config.wrinkles[0]
-        profile = w0.profile
-        inner = getattr(profile, "profile", profile)  # unwrap WrinkleSurface3D
-        amplitude = float(getattr(inner, "amplitude", 0.0))
-        wavelength = float(getattr(inner, "wavelength", 0.0))
+        # Use the most shear-severe wrinkle (largest A/lambda slope) so
+        # multi-wrinkle configurations get diagnostics for the wrinkle
+        # that actually drives the inversion.
+        amplitude = wavelength = 0.0
+        worst = -1.0
+        for w in self.wrinkle_config.wrinkles:
+            inner = getattr(w.profile, "profile", w.profile)
+            a = float(getattr(inner, "amplitude", 0.0))
+            lam = float(getattr(inner, "wavelength", 0.0))
+            if a > 0.0 and lam > 0.0 and a / lam > worst:
+                worst = a / lam
+                amplitude, wavelength = a, lam
         if amplitude <= 0.0 or wavelength <= 0.0:
             return err
 

@@ -164,16 +164,26 @@ class TestMultiWrinkleValidation:
         with pytest.raises(ValueError, match="ply_interface"):
             _build_cfg(ac318_material, ud14_angles, bad)
 
-    def test_fe_solve_raises_not_implemented(self, ac318_material, ud14_angles):
-        """Multi-wrinkle + FE solve must raise NotImplementedError."""
+    def test_fe_solve_rejects_overlapping_wrinkles(
+        self, ac318_material, ud14_angles
+    ):
+        """Overlapping wrinkles + FE solve raise a precise
+        NotImplementedError (issue #252 Stage 1 supports non-overlapping
+        wrinkles only; see tests/test_integration/test_multi_wrinkle_fe.py
+        for the supported path)."""
         wrinkles = [
-            WrinkleSpec(amplitude=1.5, wavelength=12.9, width=12.9, ply_interface=4),
+            WrinkleSpec(amplitude=1.5, wavelength=12.9, width=12.9,
+                        ply_interface=4),
+            WrinkleSpec(amplitude=1.5, wavelength=12.9, width=12.9,
+                        ply_interface=6, phase_offset=0.5),
         ]
         cfg = _build_cfg(
             ac318_material, ud14_angles, wrinkles, analytical_only=False
         )
         analysis = WrinkleAnalysis(cfg)
-        with pytest.raises(NotImplementedError, match="Multi-wrinkle FE solve"):
+        with pytest.raises(
+            NotImplementedError, match="overlap longitudinally"
+        ):
             analysis.run(analytical_only=False)
 
 

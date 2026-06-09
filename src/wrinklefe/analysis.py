@@ -373,6 +373,40 @@ def _profile_proportional_kd(
     return kd_sum / n_plies
 
 
+def _check_multi_wrinkle_fe_support(cfg: "AnalysisConfig") -> None:
+    """Reject multi-wrinkle FE configs the pipeline cannot represent yet.
+
+    Issue #252 Stage 1 supports N wrinkles whose longitudinal supports
+    (center offset from the phase, ± 3*width Gaussian extent) do not
+    overlap — the Li (2025) specimen layout. Overlapping wrinkles and
+    the CZM pathway remain analytical-only and are rejected with a
+    message that states exactly what is unsupported.
+    """
+    if cfg.enable_czm:
+        raise NotImplementedError(
+            "Multi-wrinkle FE with cohesive zones (enable_czm=True) is "
+            "not yet supported: cohesive interface placement assumes a "
+            "single wrinkle crest. Run with enable_czm=False or pass "
+            "analytical_only=True."
+        )
+    center = cfg.domain_length / 2.0
+    spans = []
+    for i, spec in enumerate(cfg.wrinkles):
+        c = center + spec.phase_offset * spec.wavelength / (2.0 * math.pi)
+        spans.append((c - 3.0 * spec.width, c + 3.0 * spec.width, i))
+    spans.sort()
+    for (lo1, hi1, i), (lo2, hi2, j) in zip(spans, spans[1:]):
+        if lo2 < hi1:
+            raise NotImplementedError(
+                f"Wrinkles {i} and {j} overlap longitudinally (supports "
+                f"[{lo1:.2f}, {hi1:.2f}] and [{lo2:.2f}, {hi2:.2f}] mm, "
+                "using the 3*width Gaussian extent). The FE solve "
+                "currently supports non-overlapping wrinkles only "
+                "(issue #252 Stage 1) — separate them via phase_offset "
+                "or pass analytical_only=True."
+            )
+
+
 def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
     """Find maximum number of consecutive 0-degree plies in a layup.
 
@@ -818,7 +852,22 @@ class AnalysisConfig:
 
     def __post_init__(self) -> None:
         if self.domain_length <= 0:
-            self.domain_length = 3.0 * self.wavelength
+            if self.wrinkles:
+                # Multi-wrinkle: size the domain from the union of the
+                # wrinkle extents (per-spec center offset from its phase
+                # plus the 3*width Gaussian support), not from the
+                # scalar wavelength field. The 3*wavelength floor keeps
+                # a single centred spec consistent with the scalar path.
+                half_span = max(
+                    abs(s.phase_offset) * s.wavelength / (2.0 * math.pi)
+                    + 3.0 * s.width
+                    for s in self.wrinkles
+                )
+                self.domain_length = max(
+                    2.0 * half_span, 3.0 * self.wavelength
+                )
+            else:
+                self.domain_length = 3.0 * self.wavelength
         if self.material is None:
             self.material = MaterialLibrary().get("IM7_8552")
         if self.angles is None:
@@ -1481,15 +1530,12 @@ class WrinkleAnalysis:
         if analytical_only is None:
             analytical_only = cfg.analytical_only
 
-        # Multi-wrinkle FE solve is not yet supported — the mesh
-        # generator currently assumes one or two wrinkle interfaces.
-        # Reject early so callers get a clear signal rather than a
-        # mid-pipeline failure.
+        # Multi-wrinkle FE solve supports non-overlapping wrinkles along
+        # the length (issue #252 Stage 1). Reject the still-unsupported
+        # shapes early, with a precise message, rather than failing
+        # mid-pipeline.
         if cfg.wrinkles is not None and not analytical_only:
-            raise NotImplementedError(
-                "Multi-wrinkle FE solve not yet implemented; "
-                "pass analytical_only=True."
-            )
+            _check_multi_wrinkle_fe_support(cfg)
 
         results = AnalysisResults(config=cfg)
 
@@ -1555,53 +1601,39 @@ class WrinkleAnalysis:
                 amplitude_profile_axis=cfg.amplitude_profile_axis,
             )
             results.wrinkle_config = wrinkle_config
-
-            _report("Computing analytical predictions", 0.05)
-
-            # 3. Analytical predictions (multi-wrinkle path)
-            self._compute_analytical(results, wrinkle_config)
-
-            # FE solve is unsupported for the multi-wrinkle path
-            # (guarded above); always return analytical-only here.
-            _report("Analytical predictions complete", 1.0)
-            logger.info(
-                "Analysis complete (multi-wrinkle analytical): "
-                "knockdown=%s", results.analytical_knockdown,
-            )
-            return results
-
-        profile = GaussianSinusoidal(
-            amplitude=cfg.amplitude,
-            wavelength=cfg.wavelength,
-            width=cfg.width,
-            center=wrinkle_center,
-        )
-        if cfg.phase is not None and (
-            cfg.morphology.lower().strip() not in SINGLE_WRINKLE_MODES
-        ):
-            # Explicit phase overrides the named-morphology phase so
-            # arbitrary dual-wrinkle phase offsets can be analysed/swept.
-            wrinkle_config = WrinkleConfiguration.dual_wrinkle(
-                profile,
-                interface1=cfg.interface_1,
-                interface2=cfg.interface_2,
-                phase=float(cfg.phase),
-                amplitude_profile=cfg.amplitude_profile,
-                amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
-                amplitude_profile_axis=cfg.amplitude_profile_axis,
-            )
-            wrinkle_config.decay_floor = max(0.0, min(1.0, cfg.decay_floor))
         else:
-            wrinkle_config = WrinkleConfiguration.from_morphology_name(
-                cfg.morphology, profile,
-                interface1=cfg.interface_1,
-                interface2=cfg.interface_2,
-                decay_floor=cfg.decay_floor,
-                amplitude_profile=cfg.amplitude_profile,
-                amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
-                amplitude_profile_axis=cfg.amplitude_profile_axis,
+            profile = GaussianSinusoidal(
+                amplitude=cfg.amplitude,
+                wavelength=cfg.wavelength,
+                width=cfg.width,
+                center=wrinkle_center,
             )
-        results.wrinkle_config = wrinkle_config
+            if cfg.phase is not None and (
+                cfg.morphology.lower().strip() not in SINGLE_WRINKLE_MODES
+            ):
+                # Explicit phase overrides the named-morphology phase so
+                # arbitrary dual-wrinkle phase offsets can be analysed/swept.
+                wrinkle_config = WrinkleConfiguration.dual_wrinkle(
+                    profile,
+                    interface1=cfg.interface_1,
+                    interface2=cfg.interface_2,
+                    phase=float(cfg.phase),
+                    amplitude_profile=cfg.amplitude_profile,
+                    amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
+                    amplitude_profile_axis=cfg.amplitude_profile_axis,
+                )
+                wrinkle_config.decay_floor = max(0.0, min(1.0, cfg.decay_floor))
+            else:
+                wrinkle_config = WrinkleConfiguration.from_morphology_name(
+                    cfg.morphology, profile,
+                    interface1=cfg.interface_1,
+                    interface2=cfg.interface_2,
+                    decay_floor=cfg.decay_floor,
+                    amplitude_profile=cfg.amplitude_profile,
+                    amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
+                    amplitude_profile_axis=cfg.amplitude_profile_axis,
+                )
+            results.wrinkle_config = wrinkle_config
 
         _report("Computing analytical predictions", 0.05)
 
