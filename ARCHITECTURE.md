@@ -83,6 +83,16 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `cli.py` | Entry point referenced by `[project.scripts]` (the `wrinklefe` command) |
 | `io/export.py` | Native JSON, Abaqus `.inp`, and legacy VTK export (no extra dependencies) |
 
+## Logging
+
+Library modules report progress through standard `logging` with one module-level logger each (`logging.getLogger(__name__)`), all under the `wrinklefe` hierarchy (e.g. `wrinklefe.analysis`, `wrinklefe.solver.static`, `wrinklefe.failure.evaluator`). Conventions:
+
+- **DEBUG** — per-element/per-iteration detail (assembly progress, Newton residuals, preconditioner setup).
+- **INFO** — one-line milestones (mesh built, solve timings, failure-criteria peaks, analysis complete with knockdown).
+- **WARNING** — degraded-but-continuing situations (non-converged increments, preconditioner fallback, mesh decay-ratio feasibility).
+
+The library never calls `logging.basicConfig` or attaches handlers; that is left to the application. The CLI's `-v`/`--verbose` flag attaches a stderr handler and sets the `wrinklefe` logger to DEBUG; without it the default output is unchanged. The legacy `verbose=` parameters on solver APIs are deprecated and ignored.
+
 ## Confinement Model
 
 The matrix yield strain `gamma_Y` is not a fixed constant -- it depends on how much lateral support neighboring off-axis plies provide to the 0-degree plies that fail by kink-banding. Each 0-degree ply is scored by whether its neighbors are off-axis (confined) or also 0-degree (unconfined). The effective yield strain is then `gamma_Y_eff = 0.032 + 0.050 * f_confined`, where `f_confined` is the weighted confinement fraction. This means dispersed layups like `[0/45/90/-45]s` are significantly more resistant to wrinkle-induced knockdown than blocked layups like `[0_4/90_4]s`.

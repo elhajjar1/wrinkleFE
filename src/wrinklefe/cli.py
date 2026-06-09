@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from typing import List, Optional, Sequence
 
@@ -192,8 +193,11 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_analyze.add_argument(
-        "--verbose", action="store_true", default=False,
-        help="Print detailed progress information",
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
     )
     p_analyze.add_argument(
         "--output-json", type=str, default=None,
@@ -344,8 +348,11 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_compare.add_argument(
-        "--verbose", action="store_true", default=False,
-        help="Print detailed progress information",
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
     )
 
     # ------------------------------------------------------------------ #
@@ -413,8 +420,11 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_sweep.add_argument(
-        "--verbose", action="store_true", default=False,
-        help="Print detailed progress information",
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
     )
 
     # ------------------------------------------------------------------ #
@@ -755,6 +765,25 @@ def _cmd_materials(args: argparse.Namespace) -> None:
 # Entry point
 # ====================================================================== #
 
+def _configure_logging(verbose: bool) -> None:
+    """Attach a stderr handler to the package logger for ``--verbose``.
+
+    The library itself never configures handlers (standard logging
+    etiquette); the CLI is the application, so handler setup lives here.
+    Without ``--verbose`` the logger is left untouched and the default
+    output is unchanged.
+    """
+    if not verbose:
+        return
+    pkg_logger = logging.getLogger("wrinklefe")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("%(levelname)s %(name)s: %(message)s")
+    )
+    pkg_logger.addHandler(handler)
+    pkg_logger.setLevel(logging.DEBUG)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> None:
     """Main CLI entry point.
 
@@ -769,6 +798,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     if args.command is None:
         parser.print_help()
         sys.exit(0)
+
+    _configure_logging(getattr(args, "verbose", False))
 
     handlers = {
         "analyze": _cmd_analyze,

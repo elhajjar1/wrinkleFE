@@ -36,6 +36,7 @@ References
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field, fields, replace
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -67,6 +68,9 @@ from wrinklefe.solver.results import FieldResults
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
 from wrinklefe.failure.delamination import build_delamination_report
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
+
+logger = logging.getLogger(__name__)
+
 # Analytical damage model constants (Section 6 of CLAUDE.md)
 _D0 = 0.15       # Base damage coefficient
 _BETA_ANGLE = 3.0  # Angle sensitivity
@@ -1492,6 +1496,13 @@ class WrinkleAnalysis:
             if progress_callback is not None:
                 progress_callback(label, max(0.0, min(1.0, float(fraction))))
 
+        logger.info(
+            "Starting analysis: morphology=%s A=%.4g lambda=%.4g "
+            "analytical_only=%s czm=%s",
+            cfg.morphology, cfg.amplitude, cfg.wavelength,
+            analytical_only, cfg.enable_czm,
+        )
+
         _report("Building laminate", 0.0)
 
         # 1. Build laminate
@@ -1541,6 +1552,10 @@ class WrinkleAnalysis:
             # FE solve is unsupported for the multi-wrinkle path
             # (guarded above); always return analytical-only here.
             _report("Analytical predictions complete", 1.0)
+            logger.info(
+                "Analysis complete (multi-wrinkle analytical): "
+                "knockdown=%s", results.analytical_knockdown,
+            )
             return results
 
         profile = GaussianSinusoidal(
@@ -1584,6 +1599,10 @@ class WrinkleAnalysis:
         # In analytical-only mode, skip mesh, solve, failure, and retention.
         if analytical_only:
             _report("Analytical predictions complete", 1.0)
+            logger.info(
+                "Analysis complete (analytical only): knockdown=%s",
+                results.analytical_knockdown,
+            )
             return results
 
         _report("Assembling FE mesh", 0.10)
@@ -1610,6 +1629,10 @@ class WrinkleAnalysis:
         if cfg.enable_czm:
             self._run_czm_path(results, laminate, mesh, wrinkle_config)
             _report("Analysis complete", 1.0)
+            logger.info(
+                "Analysis complete (CZM path): knockdown=%s",
+                results.analytical_knockdown,
+            )
             return results
 
         # Linear (legacy) path.
@@ -1633,6 +1656,10 @@ class WrinkleAnalysis:
         self._compute_retention_factors(results, laminate)
 
         _report("Analysis complete", 1.0)
+        logger.info(
+            "Analysis complete: knockdown=%s",
+            results.analytical_knockdown,
+        )
 
         return results
 
@@ -2694,10 +2721,7 @@ class WrinkleAnalysis:
             report = evaluator.evaluate_laminate(laminate, load)
             results.failure_report = report
         except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "CLT evaluation skipped: %s", exc
-            )
+            logger.warning("CLT evaluation skipped: %s", exc)
 
     def _compute_retention_factors(
         self,
