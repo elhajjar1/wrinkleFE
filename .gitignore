@@ -68,5 +68,6 @@ joss/*.fls
 .superpowers/
 docs/superpowers/
 joss/
+docs/_build/
 validation/*.png
 validation/

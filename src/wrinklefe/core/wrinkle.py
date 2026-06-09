@@ -174,7 +174,7 @@ class WrinkleProfile(ABC):
         Sample density rationale (Nyquist vs wrinkle wavelength).  The
         finest oscillation in ``slope(x)`` has period ``wavelength``; its
         derivative content is band-limited to that scale.  Resolving every
-        |slope| lobe requires at least a few samples per quarter-wave.  The
+        ``|slope|`` lobe requires at least a few samples per quarter-wave.  The
         domain spans at most ~6 envelope widths or ~6 wavelengths, so
         ``n_grid = 4096`` yields hundreds of samples per wavelength even for
         the most oscillatory profiles in this module -- far above the

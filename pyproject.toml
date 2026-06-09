@@ -46,10 +46,20 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.5",
 ]
-all = ["wrinklefe[streamlit,dev]"]
+docs = [
+    "sphinx>=8.0",
+    "myst-parser>=4.0",
+    "furo>=2024.8",
+]
+all = ["wrinklefe[streamlit,dev,docs]"]
 
 [project.scripts]
 wrinklefe = "wrinklefe.cli:main"
+
+[project.urls]
+Documentation = "https://wrinklefe.readthedocs.io"
+Repository = "https://github.com/elhajjar1/wrinkleFE"
+Issues = "https://github.com/elhajjar1/wrinkleFE/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
