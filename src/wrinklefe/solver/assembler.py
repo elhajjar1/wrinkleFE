@@ -25,6 +25,7 @@ Bathe, K.-J. (2006). Finite Element Procedures.
 from __future__ import annotations
 
 import copy
+import logging
 
 import numpy as np
 from scipy import sparse
@@ -37,6 +38,8 @@ from wrinklefe.elements.cohesive8 import (
     make_initial_state,
 )
 from wrinklefe.elements.hex8 import Hex8Element
+
+logger = logging.getLogger(__name__)
 
 
 class GlobalAssembler:
@@ -67,7 +70,7 @@ class GlobalAssembler:
     Examples
     --------
     >>> assembler = GlobalAssembler(mesh, laminate)
-    >>> K = assembler.assemble_stiffness(verbose=True)
+    >>> K = assembler.assemble_stiffness()
     >>> dofs = assembler.element_dof_indices(0)
     >>> dofs.shape
     (24,)
@@ -264,8 +267,9 @@ class GlobalAssembler:
         Parameters
         ----------
         verbose : bool, optional
-            If ``True``, print progress every 1000 elements.
-            Default is ``False``.
+            Deprecated and ignored. Progress is reported through the
+            ``wrinklefe.solver.assembler`` logger (per-element progress
+            at DEBUG, the assembly summary at INFO).
 
         Returns
         -------
@@ -316,9 +320,11 @@ class GlobalAssembler:
         local_jj = local_jj.ravel()  # (576,)
 
         for e in range(n_elem):
-            if verbose and e % 1000 == 0:
-                print(f"  Assembling element {e}/{n_elem} "
-                      f"({100.0 * e / n_elem:.1f}%)")
+            if e % 1000 == 0:
+                logger.debug(
+                    "Assembling element %d/%d (%.1f%%)",
+                    e, n_elem, 100.0 * e / n_elem,
+                )
 
             Ke = self._hex8_Ke[e]  # cached at construction time
             dofs = self._hex8_dofs[e]  # (24,)
@@ -329,10 +335,13 @@ class GlobalAssembler:
             coo_cols[offset:offset + entries_per_elem] = dofs[local_jj]
             coo_vals[offset:offset + entries_per_elem] = Ke.ravel()
 
-        if verbose:
-            print(f"  Assembling element {n_elem}/{n_elem} (100.0%) — done.")
-            print(f"  Building sparse matrix: {n_dof} DOFs, "
-                  f"{total_entries} COO entries")
+        logger.debug(
+            "Assembling element %d/%d (100.0%%) — done.", n_elem, n_elem
+        )
+        logger.debug(
+            "Building sparse matrix: %d DOFs, %d COO entries",
+            n_dof, total_entries,
+        )
 
         # Build COO matrix and convert to CSC
         K_coo = sparse.coo_matrix(
@@ -341,9 +350,11 @@ class GlobalAssembler:
         )
         K_csc = K_coo.tocsc()
 
-        if verbose:
-            print(f"  CSC matrix: {K_csc.nnz} stored entries "
-                  f"({K_csc.nnz / n_dof:.1f} per DOF)")
+        logger.info(
+            "Assembled global stiffness: %d elements, %d DOFs, "
+            "%d stored entries (%.1f per DOF)",
+            n_elem, n_dof, K_csc.nnz, K_csc.nnz / n_dof,
+        )
 
         return K_csc
 

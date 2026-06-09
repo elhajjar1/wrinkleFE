@@ -85,6 +85,11 @@ result = WrinkleAnalysis(config).run()
 print(result.summary())
 ```
 
+Runnable scripts for the common workflows — parametric sweeps,
+morphology comparison, CZM delamination, export round-trips, custom
+materials — live in [`examples/`](examples/); each states its expected
+runtime and output, and CI executes them all so they stay current.
+
 `amplitude` (`A`) is the **half-amplitude** [mm]: the peak displacement
 of the wrinkled mid-surface from the flat (unwrinkled) reference plane,
 so `z(x) = A·cos(2πx/λ)` (modulated by the envelope) and the

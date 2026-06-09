@@ -24,6 +24,7 @@ References
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence, Union
 
@@ -32,6 +33,8 @@ import numpy as np
 from wrinklefe.failure.base import FailureCriterion, FailureResult
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+
+logger = logging.getLogger(__name__)
 
 
 # Type alias for per-ply context input.  Either a sequence indexable by
@@ -482,6 +485,17 @@ class FailureEvaluator:
                 mode_fields[criterion.name][elem_mask] = modes.reshape(
                     n_e_group, n_gauss
                 )
+
+        if logger.isEnabledFor(logging.INFO):
+            peaks = ", ".join(
+                f"{name}={float(arr.max()):.3f}" if arr.size else f"{name}=n/a"
+                for name, arr in fi_fields.items()
+            )
+            logger.info(
+                "Evaluated %d criteria over %d elements x %d Gauss points "
+                "(max FI: %s)",
+                len(self.criteria), n_elements, n_gauss, peaks,
+            )
 
         return fi_fields, mode_fields
 

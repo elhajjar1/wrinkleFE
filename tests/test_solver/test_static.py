@@ -155,12 +155,19 @@ class TestGlobalAssembler:
         K = assembler.assemble_stiffness()
         assert K.nnz > 0
 
-    def test_assemble_verbose(self, small_mesh, single_ply_laminate, capsys):
-        """Verbose assembly prints progress information."""
+    def test_assembly_logs_progress(
+        self, small_mesh, single_ply_laminate, caplog
+    ):
+        """Assembly reports progress through the module logger."""
+        import logging
+
         assembler = GlobalAssembler(small_mesh, single_ply_laminate)
-        K = assembler.assemble_stiffness(verbose=True)
-        captured = capsys.readouterr()
-        assert "Assembling" in captured.out
+        with caplog.at_level(
+            logging.DEBUG, logger="wrinklefe.solver.assembler"
+        ):
+            assembler.assemble_stiffness()
+        assert "Assembling" in caplog.text
+        assert "Assembled global stiffness" in caplog.text
 
 
 # ======================================================================

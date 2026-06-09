@@ -27,6 +27,7 @@ definiteness once damage starts accumulating.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -36,6 +37,9 @@ from scipy.sparse import linalg as spla
 if TYPE_CHECKING:
     from wrinklefe.solver.assembler import GlobalAssembler
     from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
+
+
+logger = logging.getLogger(__name__)
 
 
 class NewtonRaphsonSolver:
@@ -153,8 +157,9 @@ class NewtonRaphsonSolver:
 
             if not ok:
                 converged_all = False
-                if verbose:
-                    print(f"  Increment {inc}: Newton failed to converge.")
+                logger.warning(
+                    "Increment %d: Newton failed to converge.", inc
+                )
                 break
 
             u = u_new
@@ -162,6 +167,11 @@ class NewtonRaphsonSolver:
             load_displacement.append([lam, float(np.linalg.norm(u))])
 
             self._commit_state()
+
+        logger.info(
+            "Newton-Raphson solve: %d/%d increments completed, converged=%s",
+            completed, self.n_increments, converged_all,
+        )
 
         return {
             "displacement": u,
@@ -250,11 +260,10 @@ class NewtonRaphsonSolver:
             else:
                 bc_violation = 0.0
             res_norm = float(np.linalg.norm(R_bc))
-            if verbose:
-                print(
-                    f"  inc {inc} iter {it}: |R_phys|={phys_norm:.3e} "
-                    f"|R_bc|={res_norm:.3e} bc_viol={bc_violation:.3e}"
-                )
+            logger.debug(
+                "inc %d iter %d: |R_phys|=%.3e |R_bc|=%.3e bc_viol=%.3e",
+                inc, it, phys_norm, res_norm, bc_violation,
+            )
 
             if it == 1:
                 # Choosing the reference scale ``phys_ref`` for the
