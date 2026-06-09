@@ -1,6 +1,7 @@
 """Orthotropic material properties and material library for composite FE analysis.
 
 This module provides:
+
 - OrthotropicMaterial: A dataclass encapsulating the full set of orthotropic
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.

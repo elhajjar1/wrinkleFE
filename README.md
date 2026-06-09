@@ -89,6 +89,10 @@ Runnable scripts for the common workflows — parametric sweeps,
 morphology comparison, CZM delamination, export round-trips, custom
 materials — live in [`examples/`](examples/); each states its expected
 runtime and output, and CI executes them all so they stay current.
+The full API reference and user guide are built from [`docs/`](docs/)
+with Sphinx (`pip install -e ".[docs]" && sphinx-build -W docs
+docs/_build`) and published at
+<https://wrinklefe.readthedocs.io>.
 
 `amplitude` (`A`) is the **half-amplitude** [mm]: the peak displacement
 of the wrinkled mid-surface from the flat (unwrinkled) reference plane,
