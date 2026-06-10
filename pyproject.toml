@@ -45,6 +45,7 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1",
     "mypy>=1.5",
+    "scipy-stubs>=1.14",
 ]
 docs = [
     "sphinx>=8.0",

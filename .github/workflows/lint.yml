@@ -35,8 +35,9 @@ jobs:
       - name: Ruff (full pyproject config)
         run: ruff check .
 
-      # Starter scope: package `__init__` only. Broader src/wrinklefe has ~102
-      # mypy errors today (mostly numpy `Any` returns + missing stubs); fixing
-      # those is tracked as a follow-up to issue #87.
-      - name: Mypy (starter scope - package init)
-        run: mypy src/wrinklefe/__init__.py
+      # Walking outward module-by-module (expand-mypy-coverage skill):
+      # core/ and elements/ are clean; failure/, solver/, viz/, sweep/,
+      # io/, analysis.py, and cli.py still carry errors (mostly numpy
+      # `Any` returns) and are the next passes.
+      - name: Mypy (scope - package init + core + elements)
+        run: mypy src/wrinklefe/__init__.py src/wrinklefe/core src/wrinklefe/elements

@@ -241,7 +241,7 @@ class Cohesive8Element:
         self.elem_id = elem_id
 
         self._gp_points, self._gp_weights = _gauss_points_quad(order=2)
-        self._n_gp = self._gp_points.shape[0]
+        self._n_gp: int = int(self._gp_points.shape[0])
 
         # Pre-compute local frame and 2D detJ at each Gauss point from the
         # bottom-face reference geometry — these are constant for the

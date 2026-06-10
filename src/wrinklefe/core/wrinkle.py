@@ -148,7 +148,7 @@ class WrinkleProfile(ABC):
         numpy.ndarray
             Fiber angle at each *x* location (radians).
         """
-        return np.arctan(self.slope(np.asarray(x, dtype=float)))
+        return np.asarray(np.arctan(self.slope(np.asarray(x, dtype=float))))
 
     def max_angle(self) -> float:
         """Numerical maximum fiber misalignment angle (radians).
@@ -182,7 +182,7 @@ class WrinkleProfile(ABC):
         xlo, xhi = self.domain()
 
         def abs_slope_arr(xv: np.ndarray) -> np.ndarray:
-            return np.abs(self.slope(np.asarray(xv, dtype=float)))
+            return np.asarray(np.abs(self.slope(np.asarray(xv, dtype=float))))
 
         # Dense grid sweep to locate the global argmax robustly.  4096 pts
         # over a <=6-wavelength support => hundreds of samples per wrinkle
@@ -658,7 +658,7 @@ class WrinkleSurface3D:
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
-        return self.profile.displacement(x) * self._f_y(y)
+        return np.asarray(self.profile.displacement(x) * self._f_y(y))
 
     def gradient(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Surface gradient (dz/dx, dz/dy).
@@ -725,4 +725,4 @@ class WrinkleSurface3D:
             Misalignment angle (radians).
         """
         dz_dx, _ = self.gradient(x, y)
-        return np.arctan(dz_dx)
+        return np.asarray(np.arctan(dz_dx))

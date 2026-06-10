@@ -145,7 +145,7 @@ class Ply:
     @property
     def angle_rad(self) -> float:
         """Fiber angle in radians."""
-        return np.deg2rad(self.angle)
+        return float(np.deg2rad(self.angle))
 
     def Q(self) -> np.ndarray:
         """Reduced stiffness matrix [Q] in material (1-2) coordinates.
@@ -341,7 +341,7 @@ class Laminate:
             Midplane z-coordinate (mm).
         """
         zc = self.z_coords()
-        return 0.5 * (zc[i] + zc[i + 1])
+        return float(0.5 * (zc[i] + zc[i + 1]))
 
     @property
     def is_symmetric(self) -> bool:
@@ -529,7 +529,7 @@ class Laminate:
             NM[0:3] += NT
             NM[3:6] += MT
 
-        return self.abd_inverse() @ NM
+        return np.asarray(self.abd_inverse() @ NM)
 
     def _ply_z(self, ply_idx: int, position: Literal['top', 'mid', 'bottom'] = 'mid') -> float:
         """Return the z-coordinate for a given position within a ply.
@@ -550,11 +550,11 @@ class Laminate:
         z_bot = zc[ply_idx]
         z_top = zc[ply_idx + 1]
         if position == 'bottom':
-            return z_bot
+            return float(z_bot)
         elif position == 'top':
-            return z_top
+            return float(z_top)
         else:
-            return 0.5 * (z_bot + z_top)
+            return float(0.5 * (z_bot + z_top))
 
     def ply_strains(
         self,
@@ -616,7 +616,7 @@ class Laminate:
         """
         eps = self.ply_strains(load, ply_idx, position)
         Qb = self.plies[ply_idx].Q_bar()
-        return Qb @ eps
+        return np.asarray(Qb @ eps)
 
     def ply_stresses_local(
         self,
@@ -646,7 +646,7 @@ class Laminate:
         sig_global = self.ply_stresses_global(load, ply_idx, position)
         theta = self.plies[ply_idx].angle_rad
         T = self._stress_transformation_matrix(theta)
-        return T @ sig_global
+        return np.asarray(T @ sig_global)
 
     @staticmethod
     def _stress_transformation_matrix(theta: float) -> np.ndarray:
@@ -724,19 +724,19 @@ class Laminate:
         Computed from the extensional compliance: E_x = 1 / (a_11 * h).
         """
         h = self.total_thickness
-        return 1.0 / (self._a_matrix[0, 0] * h)
+        return float(1.0 / (self._a_matrix[0, 0] * h))
 
     @cached_property
     def Ey(self) -> float:
         """Effective laminate Young's modulus in y-direction (MPa)."""
         h = self.total_thickness
-        return 1.0 / (self._a_matrix[1, 1] * h)
+        return float(1.0 / (self._a_matrix[1, 1] * h))
 
     @cached_property
     def Gxy(self) -> float:
         """Effective laminate shear modulus (MPa)."""
         h = self.total_thickness
-        return 1.0 / (self._a_matrix[2, 2] * h)
+        return float(1.0 / (self._a_matrix[2, 2] * h))
 
     @cached_property
     def nu_xy(self) -> float:
@@ -744,7 +744,7 @@ class Laminate:
 
         Defined as nu_xy = -a_12 / a_11.
         """
-        return -self._a_matrix[0, 1] / self._a_matrix[0, 0]
+        return float(-self._a_matrix[0, 1] / self._a_matrix[0, 0])
 
     # ----- String representation -------------------------------------------
 
