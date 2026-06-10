@@ -376,11 +376,12 @@ def _profile_proportional_kd(
 def _check_multi_wrinkle_fe_support(cfg: "AnalysisConfig") -> None:
     """Reject multi-wrinkle FE configs the pipeline cannot represent yet.
 
-    Issue #252 Stage 1 supports N wrinkles whose longitudinal supports
-    (center offset from the phase, ± 3*width Gaussian extent) do not
-    overlap — the Li (2025) specimen layout. Overlapping wrinkles and
-    the CZM pathway remain analytical-only and are rejected with a
-    message that states exactly what is unsupported.
+    Issue #252: arbitrary N-wrinkle layouts — including longitudinally
+    overlapping and interacting wrinkles — run through the FE path; the
+    displacement and fiber-angle fields both derive from the composed
+    wrinkle field ("compose then differentiate"). Only the CZM pathway
+    remains analytical-only, because cohesive interface placement
+    assumes a single wrinkle crest.
     """
     if cfg.enable_czm:
         raise NotImplementedError(
@@ -389,22 +390,6 @@ def _check_multi_wrinkle_fe_support(cfg: "AnalysisConfig") -> None:
             "single wrinkle crest. Run with enable_czm=False or pass "
             "analytical_only=True."
         )
-    center = cfg.domain_length / 2.0
-    spans = []
-    for i, spec in enumerate(cfg.wrinkles):
-        c = center + spec.phase_offset * spec.wavelength / (2.0 * math.pi)
-        spans.append((c - 3.0 * spec.width, c + 3.0 * spec.width, i))
-    spans.sort()
-    for (lo1, hi1, i), (lo2, hi2, j) in zip(spans, spans[1:]):
-        if lo2 < hi1:
-            raise NotImplementedError(
-                f"Wrinkles {i} and {j} overlap longitudinally (supports "
-                f"[{lo1:.2f}, {hi1:.2f}] and [{lo2:.2f}, {hi2:.2f}] mm, "
-                "using the 3*width Gaussian extent). The FE solve "
-                "currently supports non-overlapping wrinkles only "
-                "(issue #252 Stage 1) — separate them via phase_offset "
-                "or pass analytical_only=True."
-            )
 
 
 def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
@@ -1530,9 +1515,9 @@ class WrinkleAnalysis:
         if analytical_only is None:
             analytical_only = cfg.analytical_only
 
-        # Multi-wrinkle FE solve supports non-overlapping wrinkles along
-        # the length (issue #252 Stage 1). Reject the still-unsupported
-        # shapes early, with a precise message, rather than failing
+        # Multi-wrinkle FE solve (issue #252): overlapping and
+        # non-overlapping layouts both run; only the CZM pathway is
+        # rejected (early, with a precise message) rather than failing
         # mid-pipeline.
         if cfg.wrinkles is not None and not analytical_only:
             _check_multi_wrinkle_fe_support(cfg)

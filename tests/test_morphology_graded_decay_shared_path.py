@@ -112,10 +112,10 @@ def test_through_thickness_decay_helper_drives_both_methods(monkeypatch):
     profile = cfg.wrinkles[0].profile
     x = nodes[:, 0]
     raw_dz = profile.displacement(x)
-    raw_angle = np.arctan(np.abs(profile.slope(x)))
 
     expected_dz = raw_dz * sentinel_value
-    expected_angle = np.sqrt((raw_angle * sentinel_value) ** 2)
+    # Composed-field angles (#252): decay scales the slope, not the angle.
+    expected_angle = np.arctan(np.abs(profile.slope(x)) * sentinel_value)
 
     deformed = cfg.apply_to_nodes(nodes, ply_ids, N_PLIES)
     angles = cfg.fiber_angles_at_nodes(nodes, ply_ids, n_plies=N_PLIES)
@@ -160,11 +160,11 @@ def test_apply_to_nodes_and_fiber_angles_share_graded_decay():
     nodes_steep = np.zeros((N_PLIES, 3), dtype=np.float64)
     nodes_steep[:, 0] = x_steep
     angles = cfg.fiber_angles_at_nodes(nodes_steep, ply_ids, n_plies=N_PLIES)
-    raw_angle = np.arctan(np.abs(profile.slope(nodes_steep[:, 0])))
-    assert raw_angle[0] > 1e-9, "slope at quarter-wavelength should be non-zero"
-    # The angle field RSS-combines a single wrinkle's contribution => same as
-    # raw_angle * decay (positive). Recover decay by dividing.
-    decay_from_angle = angles / raw_angle
+    raw_slope = np.abs(profile.slope(nodes_steep[:, 0]))
+    assert raw_slope[0] > 1e-9, "slope at quarter-wavelength should be non-zero"
+    # Composed-field angles (#252): angle = arctan(decay * |slope|), so
+    # the decay is recovered in slope space.
+    decay_from_angle = np.tan(angles) / raw_slope
 
     # --- The two recovered decay vectors must agree exactly. --------------
     npt.assert_allclose(
@@ -217,8 +217,8 @@ def test_decay_parity_across_modes(decay_mode):
     nodes_steep = np.zeros((N_PLIES, 3), dtype=np.float64)
     nodes_steep[:, 0] = WAVELENGTH / 4.0
     angles = cfg.fiber_angles_at_nodes(nodes_steep, ply_ids, n_plies=N_PLIES)
-    raw_angle = np.arctan(np.abs(profile.slope(nodes_steep[:, 0])))
-    decay_from_angle = angles / raw_angle
+    raw_slope = np.abs(profile.slope(nodes_steep[:, 0]))
+    decay_from_angle = np.tan(angles) / raw_slope
 
     npt.assert_allclose(
         decay_from_disp,

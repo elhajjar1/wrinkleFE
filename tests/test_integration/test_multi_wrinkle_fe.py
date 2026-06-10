@@ -1,11 +1,11 @@
-"""FE solve for multi-wrinkle configurations (issue #252, Stage 1).
+"""FE solve for multi-wrinkle configurations (issue #252).
 
-Stage 1 supports N wrinkles whose longitudinal supports do not overlap
-(the Li 2025 specimen layout): the composed displacement / fiber-angle
-fields come from ``WrinkleConfiguration.apply_to_nodes`` /
-``fiber_angles_at_nodes``, which already superpose N placements.
-Overlapping wrinkles and the CZM pathway remain rejected with precise
-messages.
+Stage 1: N wrinkles with disjoint longitudinal supports (the Li 2025
+specimen layout). Stage 2: overlapping/interacting wrinkles — both the
+displacement and the fiber-angle field derive from the composed wrinkle
+field ("compose then differentiate"), so two coincident half-amplitude
+wrinkles reproduce the single full-amplitude result exactly. Only the
+CZM pathway remains rejected, with a precise message.
 """
 
 from __future__ import annotations
@@ -131,12 +131,61 @@ class TestMultiWrinkleFE:
                 "graded path and the one-entry wrinkles path",
             )
 
-    def test_overlapping_wrinkles_rejected_with_precise_message(self):
+    def test_coincident_half_wrinkles_equal_full_amplitude(self):
+        """Issue #252 Stage 2 regression: two coincident half-amplitude
+        wrinkles reproduce the single full-amplitude result — exact
+        under compose-then-differentiate, where displacement and fiber
+        angle both derive from the composed field."""
+        common = dict(
+            wavelength=16.0, width=8.0,
+            morphology="graded", loading="compression",
+            angles=list(_ANGLES_8),
+            nx=16, ny=2, nz_per_ply=1,
+            domain_length=48.0,
+        )
+        spec = dict(wavelength=16.0, width=8.0, ply_interface=3,
+                    phase_offset=0.0)
+        full = AnalysisConfig(
+            **common, amplitude=0.15,
+            wrinkles=[WrinkleSpec(amplitude=0.15, **spec)],
+        )
+        halves = AnalysisConfig(
+            **common, amplitude=0.15,
+            wrinkles=[
+                WrinkleSpec(amplitude=0.075, **spec),
+                WrinkleSpec(amplitude=0.075, **spec),
+            ],
+        )
+        r_full = WrinkleAnalysis(full).run()
+        r_halves = WrinkleAnalysis(halves).run()
+
+        np.testing.assert_allclose(
+            r_halves.mesh.nodes, r_full.mesh.nodes, rtol=0, atol=1e-12,
+            err_msg="coincident halves must deform the mesh identically",
+        )
+        np.testing.assert_allclose(
+            r_halves.mesh.fiber_angles, r_full.mesh.fiber_angles,
+            rtol=0, atol=1e-12,
+            err_msg="coincident halves must produce the same angle field",
+        )
+        assert r_halves.modulus_retention == pytest.approx(
+            r_full.modulus_retention, rel=1e-9
+        )
+        for crit, arr in r_full.failure_indices.items():
+            np.testing.assert_allclose(
+                r_halves.failure_indices[crit], arr, rtol=1e-9,
+                err_msg=f"{crit} FI field diverged between coincident "
+                "halves and the full-amplitude wrinkle",
+            )
+
+    def test_overlapping_wrinkles_run_through_fe(self):
+        """Stage 2: longitudinally overlapping wrinkles solve end-to-end."""
         cfg = _two_wrinkle_config()
-        # Pull the second wrinkle onto the first: supports overlap.
-        cfg.wrinkles[1].phase_offset = 0.5 * np.pi  # dx = +2 mm
-        with pytest.raises(NotImplementedError, match="overlap longitudinally"):
-            WrinkleAnalysis(cfg).run()
+        cfg.wrinkles[1].phase_offset = 0.5 * np.pi  # dx = +2 mm: overlap
+        r = WrinkleAnalysis(cfg).run()
+        assert r.field_results is not None
+        assert r.failure_indices
+        assert 0.0 < r.modulus_retention <= 1.0
 
     def test_overlapping_wrinkles_still_run_analytically(self):
         cfg = _two_wrinkle_config()
