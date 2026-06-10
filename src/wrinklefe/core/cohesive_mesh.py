@@ -29,7 +29,6 @@ from wrinklefe.elements.cohesive8 import (
     CohesiveProperties,
 )
 
-
 # Hex8 face definitions following the VTK / Abaqus convention used by
 # :class:`~wrinklefe.core.mesh.WrinkleMesh`:
 #

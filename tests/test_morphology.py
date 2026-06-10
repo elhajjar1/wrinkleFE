@@ -4,12 +4,12 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from wrinklefe.core.wrinkle import GaussianSinusoidal
 from wrinklefe.core.morphology import (
     MORPHOLOGY_PHASES,
-    WrinklePlacement,
     WrinkleConfiguration,
+    WrinklePlacement,
 )
+from wrinklefe.core.wrinkle import GaussianSinusoidal
 
 
 class TestPhaseFromOffset:

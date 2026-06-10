@@ -17,12 +17,11 @@ pinned so future drift is caught.
 import numpy as np
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.mesh import WrinkleMesh
 from wrinklefe.solver.boundary import BoundaryHandler
 from wrinklefe.solver.static import StaticSolver
-
 
 # ======================================================================
 # Fixtures (mirror tests/test_solver/test_static.py conventions)

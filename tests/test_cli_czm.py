@@ -23,7 +23,6 @@ from pathlib import Path
 
 import pytest
 
-
 _WRINKLEFE_CLI = shutil.which("wrinklefe")
 
 

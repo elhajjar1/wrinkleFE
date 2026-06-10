@@ -6,7 +6,7 @@ from numpy.testing import assert_allclose
 
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.base import FailureResult
-from wrinklefe.failure.progressive import PlyDiscount, ContinuumDamage
+from wrinklefe.failure.progressive import ContinuumDamage, PlyDiscount
 
 
 @pytest.fixture

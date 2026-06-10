@@ -4,11 +4,11 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.base import FailureResult
-from wrinklefe.failure.larc05 import LaRC05Criterion
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
+from wrinklefe.failure.larc05 import LaRC05Criterion
 
 
 @pytest.fixture

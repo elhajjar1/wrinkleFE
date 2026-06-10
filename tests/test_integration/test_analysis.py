@@ -12,8 +12,7 @@ import numpy as np
 import pytest
 
 from wrinklefe.analysis import AnalysisConfig, AnalysisResults, WrinkleAnalysis
-from wrinklefe.core.material import OrthotropicMaterial, MaterialLibrary
-
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 
 # ======================================================================
 # Fixtures

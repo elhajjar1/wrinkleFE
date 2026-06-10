@@ -44,8 +44,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.axes import Axes
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # type: ignore[import-untyped]
 

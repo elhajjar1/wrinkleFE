@@ -35,6 +35,12 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg as spla
 
+from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.mesh import MeshData
+from wrinklefe.core.transforms import stress_transformation_3d
+from wrinklefe.solver.assembler import GlobalAssembler
+from wrinklefe.solver.results import FieldResults
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,14 +50,8 @@ def _suppress_assembly_warnings():
     with np.errstate(divide='ignore', invalid='ignore'):
         yield
 
-from wrinklefe.core.mesh import MeshData
-from wrinklefe.core.laminate import Laminate, LoadState
-from wrinklefe.core.transforms import stress_transformation_3d
-from wrinklefe.solver.assembler import GlobalAssembler
-from wrinklefe.solver.results import FieldResults
-
 if TYPE_CHECKING:
-    from wrinklefe.solver.boundary import BoundaryHandler, BoundaryCondition
+    from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
 
 
 class StaticSolver:
@@ -383,7 +383,7 @@ class StaticSolver:
         within :meth:`solve`).  See the helper docstring for the math
         and the choice of penalty scaling.
         """
-        from wrinklefe.solver.boundary import apply_penalty_bcs, _PENALTY_SCALE
+        from wrinklefe.solver.boundary import _PENALTY_SCALE, apply_penalty_bcs
 
         if not constrained_dofs:
             return K, F
@@ -499,8 +499,8 @@ class StaticSolver:
         if cls._hex8_gp_shape_cache is not None:
             return cls._hex8_gp_shape_cache
 
-        from wrinklefe.elements.hex8 import Hex8Element
         from wrinklefe.elements.gauss import gauss_points_hex
+        from wrinklefe.elements.hex8 import Hex8Element
 
         gp_coords, _ = gauss_points_hex(order=2)
         n_gp = gp_coords.shape[0]
@@ -720,8 +720,8 @@ class StaticSolver:
         if cls._hex8_extrap_cache is not None:
             return cls._hex8_extrap_cache
 
-        from wrinklefe.elements.hex8 import Hex8Element, _NODE_COORDS
         from wrinklefe.elements.gauss import gauss_points_hex
+        from wrinklefe.elements.hex8 import _NODE_COORDS, Hex8Element
 
         gp_coords, _ = gauss_points_hex(order=2)  # lex order, shape (8, 3)
 

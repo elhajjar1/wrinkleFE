@@ -28,7 +28,6 @@ import numpy as np
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.transforms import reduced_stiffness_matrix, transform_reduced_stiffness
 
-
 # ---------------------------------------------------------------------------
 # LoadState
 # ---------------------------------------------------------------------------

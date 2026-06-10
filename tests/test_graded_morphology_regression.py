@@ -46,7 +46,6 @@ import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
-
 # README quick-start parameters (see README.md "Python API" block).
 _README_AMPLITUDE = 0.366
 _README_WAVELENGTH = 16.0

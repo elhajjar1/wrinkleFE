@@ -27,7 +27,6 @@ from wrinklefe.core.morphology import (
 )
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 
-
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------

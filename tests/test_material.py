@@ -1,11 +1,12 @@
 """Tests for wrinklefe.core.material module."""
 
 import json
+
 import numpy as np
 import numpy.testing as npt
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial, MaterialLibrary
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 
 
 class TestOrthotropicMaterialDefaults:

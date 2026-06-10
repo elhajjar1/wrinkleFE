@@ -31,7 +31,6 @@ from wrinklefe.analysis import (
     WrinkleAnalysis,
 )
 
-
 # --------------------------------------------------------------------------- #
 # Issue #186 supersedes #7: the run_buckling / run_montecarlo / mc_samples
 # fields were silent no-ops and have been removed from ``AnalysisConfig``.

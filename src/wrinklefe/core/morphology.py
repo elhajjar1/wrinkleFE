@@ -38,7 +38,6 @@ import numpy as np
 
 from wrinklefe.core.wrinkle import WrinkleProfile, WrinkleSurface3D
 
-
 # ======================================================================
 # Predefined morphology phases
 # ======================================================================

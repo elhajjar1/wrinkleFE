@@ -18,7 +18,6 @@ import pytest
 from wrinklefe.core.morphology import WrinkleConfiguration, WrinklePlacement
 from wrinklefe.core.wrinkle import GaussianSinusoidal, WrinkleSurface3D
 
-
 # ----------------------------------------------------------------------
 # Legacy reference implementations (verbatim port of the pre-vectorised
 # Python loops). Kept here so the production class can stay clean.

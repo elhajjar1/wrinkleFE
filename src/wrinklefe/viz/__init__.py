@@ -21,26 +21,6 @@ plots_3d
 """
 
 # -- Style configuration and helpers --
-from wrinklefe.viz.style import (
-    ACCENT_GRAY,
-    FIGSIZE_DOUBLE_COLUMN,
-    FIGSIZE_DOUBLE_WIDE,
-    FIGSIZE_SINGLE_COLUMN,
-    FIGSIZE_SINGLE_TALL,
-    MORPHOLOGY_COLORS,
-    MORPHOLOGY_LABELS,
-    MORPHOLOGY_LINESTYLES,
-    MORPHOLOGY_MARKERS,
-    TENSION_MECHANISM_COLORS,
-    colorbar_setup,
-    ensure_axes,
-    figure_context,
-    get_morphology_style,
-    save_figure,
-    set_axes_equal_aspect,
-    set_publication_style,
-)
-
 # -- 2D plotting functions --
 from wrinklefe.viz.plots_2d import (
     czm_overview_figure,
@@ -69,6 +49,25 @@ from wrinklefe.viz.plots_3d import (
     plot_interface_damage_3d,
     plot_mesh_3d,
     plot_stress_contour_3d,
+)
+from wrinklefe.viz.style import (
+    ACCENT_GRAY,
+    FIGSIZE_DOUBLE_COLUMN,
+    FIGSIZE_DOUBLE_WIDE,
+    FIGSIZE_SINGLE_COLUMN,
+    FIGSIZE_SINGLE_TALL,
+    MORPHOLOGY_COLORS,
+    MORPHOLOGY_LABELS,
+    MORPHOLOGY_LINESTYLES,
+    MORPHOLOGY_MARKERS,
+    TENSION_MECHANISM_COLORS,
+    colorbar_setup,
+    ensure_axes,
+    figure_context,
+    get_morphology_style,
+    save_figure,
+    set_axes_equal_aspect,
+    set_publication_style,
 )
 
 __all__ = [

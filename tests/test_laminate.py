@@ -4,8 +4,8 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
+from wrinklefe.core.laminate import Laminate, LoadState, Ply
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.laminate import Ply, Laminate, LoadState
 from wrinklefe.core.transforms import reduced_stiffness_matrix, transform_reduced_stiffness
 
 

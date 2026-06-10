@@ -14,9 +14,9 @@ Compliance and stiffness matrices follow standard Voigt notation
 
 from __future__ import annotations
 
-import json
 import functools
-from dataclasses import dataclass, field, fields, asdict
+import json
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -105,7 +105,8 @@ class OrthotropicMaterial:
     GIc: Optional[float] = None       # Mode I fracture toughness (N/mm)
     GIIc: Optional[float] = None      # Mode II fracture toughness (N/mm)
     beta_shear: float = 3.2e-8        # Ramberg-Osgood nonlinear shear coeff (1/MPa³)
-    alpha_0: float = 53.0             # Fracture plane angle under pure transverse compression (degrees)
+    # Fracture plane angle under pure transverse compression (degrees)
+    alpha_0: float = 53.0
 
     # --- Cohesive-interface defaults (Mode I / Mode II for the
     # bilinear traction-separation law used by the CZM Phase 3 path).

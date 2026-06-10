@@ -43,31 +43,31 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from wrinklefe.core.material import OrthotropicMaterial, MaterialLibrary
+from wrinklefe.core.cohesive_mesh import insert_cohesive_interface
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
+from wrinklefe.core.mesh import MeshData, WrinkleMesh
+from wrinklefe.core.morphology import (
+    MORPHOLOGY_PHASES,
+    SINGLE_WRINKLE_MODES,
+    WrinkleConfiguration,
+    WrinklePlacement,
+)
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
     WrinkleProfile,
 )
-from wrinklefe.core.morphology import (
-    WrinkleConfiguration,
-    WrinklePlacement,
-    MORPHOLOGY_PHASES,
-    SINGLE_WRINKLE_MODES,
-)
-from wrinklefe.core.mesh import WrinkleMesh, MeshData
-from wrinklefe.core.cohesive_mesh import insert_cohesive_interface
 from wrinklefe.elements.cohesive8 import (
     Cohesive8Element,
     CohesiveProperties,
 )
-from wrinklefe.solver.assembler import GlobalAssembler
-from wrinklefe.solver.static import StaticSolver
-from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
-from wrinklefe.solver.results import FieldResults
-from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
 from wrinklefe.failure.delamination import build_delamination_report
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
+from wrinklefe.solver.assembler import GlobalAssembler
+from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
+from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
+from wrinklefe.solver.results import FieldResults
+from wrinklefe.solver.static import StaticSolver
 
 logger = logging.getLogger(__name__)
 
@@ -1650,7 +1650,10 @@ class WrinkleAnalysis:
         results.mesh = mesh
 
         # 4b. Mesh-based max fiber angle (accounts for decay mode)
-        results.mesh_max_angle_rad = float(np.max(mesh.fiber_angles)) if mesh.fiber_angles.size > 0 else 0.0
+        results.mesh_max_angle_rad = (
+            float(np.max(mesh.fiber_angles))
+            if mesh.fiber_angles.size > 0 else 0.0
+        )
 
         _report("Solving FE system", 0.25)
 

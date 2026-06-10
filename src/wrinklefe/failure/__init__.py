@@ -2,8 +2,8 @@
 
 from wrinklefe.failure.base import FailureCriterion, FailureResult
 from wrinklefe.failure.delamination import build_delamination_report
-from wrinklefe.failure.larc05 import LaRC05Criterion
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
+from wrinklefe.failure.larc05 import LaRC05Criterion
 
 __all__ = [
     "FailureCriterion",

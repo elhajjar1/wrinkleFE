@@ -3,13 +3,12 @@
 import numpy as np
 import numpy.testing as npt
 import pytest
-
 from scipy.optimize import minimize_scalar
 
 from wrinklefe.core.wrinkle import (
+    GaussianBump,
     GaussianSinusoidal,
     PureSinusoidal,
-    GaussianBump,
     RectangularSinusoidal,
     WrinkleSurface3D,
 )
@@ -54,7 +53,10 @@ class TestGaussianSinusoidal:
         numerical = gaussian_wrinkle.max_angle()
         approx = gaussian_wrinkle.max_angle_approx()
         ratio = numerical / approx
-        assert 0.3 < ratio < 2.0, f"ratio={ratio:.3f}, numerical={numerical:.6f}, approx={approx:.6f}"
+        assert 0.3 < ratio < 2.0, (
+            f"ratio={ratio:.3f}, numerical={numerical:.6f}, "
+            f"approx={approx:.6f}"
+        )
 
     def test_fiber_angle_shape(self, gaussian_wrinkle):
         x = np.linspace(-20, 20, 50)

@@ -23,7 +23,10 @@ coh_props = t._build_cohesive_properties()
 
 r = 100.0
 print(f"r={r}, NX={t.NX}")
-print(f"{'N_INC':>6} | {'D_MAX':>6} | {'step':>7} | {'best_mr':>8} | {'P_ff':>8} | {'dII_ff':>7} | {'n_failed':>8}")
+print(
+    f"{'N_INC':>6} | {'D_MAX':>6} | {'step':>7} | {'best_mr':>8} | "
+    f"{'P_ff':>8} | {'dII_ff':>7} | {'n_failed':>8}"
+)
 print("-" * 80)
 
 for N_INC, DELTA_II_MAX in configs:
@@ -46,4 +49,7 @@ for N_INC, DELTA_II_MAX in configs:
     dII_ff = float(res["delta_II"][i_ff]) if i_ff > 0 else float("nan")
     n_failed = int(res["n_failed_elements"])
     step = DELTA_II_MAX / N_INC
-    print(f"{N_INC:>6d} | {DELTA_II_MAX:>6.3f} | {step:>7.4f} | {best_mr:>+8.3f} | {P_ff:>8.1f} | {dII_ff:>7.4f} | {n_failed:>8d}")
+    print(
+        f"{N_INC:>6d} | {DELTA_II_MAX:>6.3f} | {step:>7.4f} | "
+        f"{best_mr:>+8.3f} | {P_ff:>8.1f} | {dII_ff:>7.4f} | {n_failed:>8d}"
+    )

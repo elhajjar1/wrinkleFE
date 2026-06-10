@@ -53,7 +53,6 @@ from wrinklefe.solver.assembler import GlobalAssembler
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
 
-
 # ======================================================================
 # Mesh + element construction
 # ======================================================================

@@ -15,7 +15,6 @@ import pytest
 
 from wrinklefe.core.layup import parse_layup, to_contracted_layup
 
-
 # --------------------------------------------------------------------------- #
 # Contracted notation
 # --------------------------------------------------------------------------- #

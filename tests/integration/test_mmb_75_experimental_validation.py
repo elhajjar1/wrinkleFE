@@ -779,7 +779,10 @@ def _drive_mmb_fixed(
                     # for this 75 % MMR test, configured via
                     # MODE_RATIO_TARGET so the bookkeeping logic
                     # matches the 50 % test's structure).
-                    if best_mr < 0.0 or abs(s.mode_ratio_init - MODE_RATIO_TARGET) < abs(best_mr - MODE_RATIO_TARGET):
+                    if best_mr < 0.0 or (
+                        abs(s.mode_ratio_init - MODE_RATIO_TARGET)
+                        < abs(best_mr - MODE_RATIO_TARGET)
+                    ):
                         best_mr = s.mode_ratio_init
 
         converged_delta_II.append(delta_II_try)
