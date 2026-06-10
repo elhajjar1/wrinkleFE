@@ -31,8 +31,8 @@ References
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from dataclasses import dataclass
+from typing import Dict, Literal, Optional, Union
 
 import numpy as np
 

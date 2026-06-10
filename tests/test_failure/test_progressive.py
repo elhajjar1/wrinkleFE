@@ -1,6 +1,5 @@
 """Tests for progressive damage models: PlyDiscount and ContinuumDamage."""
 
-import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 

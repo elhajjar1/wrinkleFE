@@ -24,7 +24,6 @@ from scipy import sparse
 
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.mesh import MeshData
-from wrinklefe.core.transforms import stress_transformation_3d
 
 
 @dataclass

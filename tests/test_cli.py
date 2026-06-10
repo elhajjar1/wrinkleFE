@@ -9,7 +9,6 @@ the configs/kwargs the CLI hands them.
 from __future__ import annotations
 
 import functools
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,8 +29,6 @@ def _stub_analysis_run():
     :meth:`WrinkleAnalysis.run`).
     """
     captured: dict = {}
-
-    real_init = None  # filled in below
 
     def fake_run(self, analytical_only=None):
         captured["analytical_only"] = analytical_only

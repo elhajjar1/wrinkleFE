@@ -6,7 +6,6 @@ import pytest
 
 from wrinklefe.core.laminate import Laminate, LoadState, Ply
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.transforms import reduced_stiffness_matrix, transform_reduced_stiffness
 
 
 class TestPly:
@@ -174,7 +173,6 @@ class TestABDValidation:
         Ply 3 (0-deg):  z_bot=0.125,  z_top=0.25    -> contributes Q11
         """
         mat = simple_material
-        t = 0.125
         nu21 = mat.nu12 * mat.E2 / mat.E1
         denom = 1.0 - mat.nu12 * nu21
 

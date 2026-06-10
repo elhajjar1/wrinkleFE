@@ -403,7 +403,6 @@ def _build_bcs(
     - Centerline load: prescribed ``u_z = -delta`` on the top face at
       x = 0 (i.e. the mesh-native ``CENTER_X``).
     """
-    tol = 1e-6
     left_support, right_support, center_load = _support_and_load_nodes(
         mesh,
     )

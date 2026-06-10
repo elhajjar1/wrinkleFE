@@ -192,7 +192,6 @@ class WrinkleProfile(ABC):
         xs = np.linspace(xlo, xhi, n_grid)
         vals = abs_slope_arr(xs)
         idx = int(np.argmax(vals))
-        best_x = float(xs[idx])
         best_val = float(vals[idx])
 
         # Local refinement bracketed to neighbours of the grid winner.
@@ -209,7 +208,6 @@ class WrinkleProfile(ABC):
                 refined_val = float(np.abs(self.slope(np.atleast_1d(result.x))[0]))
                 if refined_val > best_val:
                     best_val = refined_val
-                    best_x = float(result.x)
             except Exception:
                 # Fall back to grid winner on any optimizer hiccup.
                 pass
@@ -328,7 +326,6 @@ class RectangularSinusoidal(WrinkleProfile):
         arg = (self.width / 2.0 - adx) / tw
         sech2 = 1.0 / np.cosh(arg) ** 2
         tanh_val = np.tanh(arg)
-        sign = np.sign(dx)
         # env(x) = 0.5 * (tanh(arg) + 1) with arg = (w/2 - |dx|) / tw.
         # d(env)/dx = 0.5 * sech^2(arg) * d(arg)/dx, d(arg)/dx = -sign(dx)/tw,
         # so d(env)/dx = -0.5 * sech^2(arg) * sign(dx) / tw.

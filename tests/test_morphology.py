@@ -9,7 +9,6 @@ from wrinklefe.core.morphology import (
     WrinkleConfiguration,
     WrinklePlacement,
 )
-from wrinklefe.core.wrinkle import GaussianSinusoidal
 
 
 class TestPhaseFromOffset:
