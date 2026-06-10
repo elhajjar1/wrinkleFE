@@ -560,7 +560,7 @@ _VALID_K_N_INTERFACE = [
 ]
 
 
-class TestIssue17_18DefaultDecayBC:
+class TestIssue1718DefaultDecayBC:
     """Regression tests pinning the contract from issues #17 and #18.
 
     Issue #17: in default decay mode the through-thickness displacement
