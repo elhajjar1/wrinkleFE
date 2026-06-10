@@ -38,11 +38,9 @@ from matplotlib.figure import Figure
 from wrinklefe.viz.style import (
     ACCENT_GRAY,
     FIGSIZE_DOUBLE_COLUMN,
-    FIGSIZE_SINGLE_COLUMN,
     FIGSIZE_SINGLE_TALL,
     MORPHOLOGY_COLORS,
     MORPHOLOGY_LABELS,
-    MORPHOLOGY_LINESTYLES,
     colorbar_setup,
     ensure_axes,
     get_morphology_style,
@@ -164,7 +162,6 @@ def plot_dual_wrinkle_profiles(
     ax.plot(x, z_lower, color=MORPHOLOGY_COLORS["concave"], linewidth=1.5, label="Lower wrinkle")
 
     if show_gap:
-        gap = z_upper - z_lower
         ax.fill_between(
             x, z_lower, z_upper,
             alpha=0.15, color=MORPHOLOGY_COLORS["convex"], label="Interface gap",

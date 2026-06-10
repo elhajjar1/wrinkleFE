@@ -51,7 +51,7 @@ def _suppress_assembly_warnings():
         yield
 
 if TYPE_CHECKING:
-    from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
+    from wrinklefe.solver.boundary import BoundaryCondition
 
 
 class StaticSolver:
@@ -238,7 +238,6 @@ class StaticSolver:
         FieldResults
             Complete solution data.
         """
-        from wrinklefe.solver.boundary import BoundaryCondition
 
         bcs = self._load_state_to_bcs(load)
         return self.solve(bcs, solver=solver, verbose=verbose)

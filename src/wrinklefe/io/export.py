@@ -184,7 +184,7 @@ def export_abaqus_inp(
             elem_ids = mesh.elements_in_ply(ply_idx)
             if elem_ids.size == 0:
                 continue
-            f.write(f"**\n")
+            f.write("**\n")
             f.write(f"*ELEMENT, TYPE=C3D8, ELSET=PLY_{ply_idx}\n")
             for eid in elem_ids:
                 conn = mesh.elements[eid] + 1  # Convert to 1-based

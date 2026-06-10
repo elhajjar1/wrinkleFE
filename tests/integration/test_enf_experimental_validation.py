@@ -140,7 +140,6 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for CI/test runs.
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-import pytest  # noqa: E402
 
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface  # noqa: E402
 from wrinklefe.core.laminate import Laminate, Ply  # noqa: E402

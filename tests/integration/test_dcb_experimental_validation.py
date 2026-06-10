@@ -770,7 +770,6 @@ def test_dcb_experimental_validation_nasa_tm():
         delta_max=DELTA_MAX,
         sample_deltas=sample_deltas,
     )
-    deltas = res["deltas"]
     P_arr = res["P"]
     cd = res["converged_deltas"]
     cP = res["converged_P"]

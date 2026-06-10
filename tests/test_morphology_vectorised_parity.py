@@ -126,7 +126,6 @@ def _structured_mesh(nx=12, ny=6, nz=24):
     """Build a tensor-product mesh with shape (nx, ny, nz) flattened."""
     xs = np.linspace(-20.0, 20.0, nx)
     ys = np.linspace(0.0, 10.0, ny)
-    n_nodes_per_ply = nx * ny
     nodes = []
     ply_ids = []
     for p in range(nz):

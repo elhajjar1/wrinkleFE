@@ -807,7 +807,6 @@ class WrinkleMesh:
         """
         nxp = self.nx + 1
         nyp = self.ny + 1
-        nzp = self.nz + 1
 
         # Build 1-D coordinate arrays
         x1d = np.linspace(0.0, self.Lx, nxp)
@@ -909,8 +908,6 @@ class WrinkleMesh:
         ply_angles : np.ndarray
             Shape ``(n_elements,)`` — nominal ply orientation (degrees).
         """
-        n_elem = self.nx * self.ny * self.nz
-
         # Element k-indices in the same ravel order used by _create_hex_connectivity
         ek = np.arange(self.nz)
         # Repeat for all (j, i) in each k-layer

@@ -295,8 +295,7 @@ class TestWrinkledMesh:
         silently dropped nodes whose perturbed z deviated from the global
         minimum z, leaving only the trough nodes.
         """
-        nx, ny, nz_per_ply = 4, 3, 1
-        nz = small_laminate.n_plies * nz_per_ply
+        nx, ny = 4, 3
         face_nodes = wrinkled_mesh.nodes_on_face("z_min")
         assert len(face_nodes) == (nx + 1) * (ny + 1)
         # The k=0 plane is the first (nx+1)*(ny+1) nodes in canonical order.

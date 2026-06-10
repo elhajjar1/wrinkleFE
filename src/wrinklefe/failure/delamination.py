@@ -31,7 +31,7 @@ actual CZM physics lives in
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Sequence
+from typing import Mapping
 
 import numpy as np
 

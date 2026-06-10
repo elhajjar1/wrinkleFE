@@ -18,7 +18,6 @@ the same data as ``MaterialLibrary().get("IM7_8552")``).
 
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
 
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.base import FailureResult
@@ -201,7 +200,6 @@ class TestLaRC05MatrixCompression:
     ):
         """The fracture-plane search must select the angle |alpha| = alpha_0
         (~53 deg for CFRP) for pure transverse compression."""
-        stress = np.array([0.0, -material.Yc, 0.0, 0.0, 0.0, 0.0])
         Yt_is, S12_is = criterion._in_situ_strengths(material)
         mu_L, mu_T = LaRC05Criterion._friction_coefficients(material)
 
@@ -210,7 +208,6 @@ class TestLaRC05MatrixCompression:
         S_T = material.Yc * np.cos(alpha_0_rad) * (
             np.sin(alpha_0_rad) + np.cos(alpha_0_rad) / tan_2a
         )
-        S_L = S12_is
 
         thetas = np.linspace(-np.pi / 2, np.pi / 2, criterion.n_theta)
         ct, st = np.cos(thetas), np.sin(thetas)

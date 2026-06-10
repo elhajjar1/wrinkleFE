@@ -617,7 +617,6 @@ class BoundaryHandler:
         """
         bcs: list[BoundaryCondition] = []
         Lx, Ly, Lz = mesh.domain_size
-        h = Lz  # laminate thickness
 
         # ------ Rigid body suppression ------
         # Fix one corner node on x_min face to prevent rigid body motion.

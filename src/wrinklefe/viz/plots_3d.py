@@ -51,7 +51,6 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # type: ignore[import-u
 
 from wrinklefe.viz.style import (
     FIGSIZE_DOUBLE_COLUMN,
-    colorbar_setup,
     ensure_axes,
     set_axes_equal_aspect,
     set_publication_style,

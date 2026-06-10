@@ -117,11 +117,6 @@ class LaRC05Criterion(FailureCriterion):
         cos_a2 = np.cos(alpha_0_rad) ** 2
         tan_2a = np.tan(2.0 * alpha_0_rad)
 
-        # Transverse shear strength on fracture plane
-        S_T = material.Yc * np.cos(alpha_0_rad) * (
-            np.sin(alpha_0_rad) + np.cos(alpha_0_rad) / tan_2a
-        )
-
         # Friction coefficients (Pinho et al. 2005, Eq. 12-13)
         mu_T = -1.0 / tan_2a
         mu_L = -material.S12 * cos_2a / (material.Yc * cos_a2)

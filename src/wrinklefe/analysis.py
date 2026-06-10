@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, fields, replace
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -55,7 +55,6 @@ from wrinklefe.core.morphology import (
 )
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
-    WrinkleProfile,
 )
 from wrinklefe.elements.cohesive8 import (
     Cohesive8Element,
@@ -64,7 +63,7 @@ from wrinklefe.elements.cohesive8 import (
 from wrinklefe.failure.delamination import build_delamination_report
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
 from wrinklefe.solver.assembler import GlobalAssembler
-from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
+from wrinklefe.solver.boundary import BoundaryHandler
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
 from wrinklefe.solver.results import FieldResults
 from wrinklefe.solver.static import StaticSolver
@@ -1852,7 +1851,6 @@ class WrinkleAnalysis:
             # the two interfaces straddle the laminate midplane; for
             # single-wrinkle modes there is one wrinkle interface.
             ply_z = laminate.z_coords()  # length n_plies + 1
-            interface_z = 0.5 * (ply_z[1:n_plies] + ply_z[2:n_plies + 1])
             # Note: interface_z[i] is the midpoint between plies i+1 and
             # i+2; we want a z value associated with the boundary
             # between plies i and i+1, i.e. ply_z[i+1].  Use that
@@ -2539,7 +2537,6 @@ class WrinkleAnalysis:
             kd_matrix = 1.0
 
         # --- Mechanism 3: Out-of-plane delamination (curved-beam) ---
-        lam_thickness = len(angles) * cfg.ply_thickness
         amplitude = cfg.amplitude
         wavelength = cfg.wavelength
 

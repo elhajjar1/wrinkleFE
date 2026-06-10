@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from wrinklefe.core.laminate import Laminate, LoadState, Ply
+from wrinklefe.core.laminate import Laminate, LoadState
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.mesh import MeshData, WrinkleMesh
+from wrinklefe.core.mesh import WrinkleMesh
 from wrinklefe.solver.assembler import GlobalAssembler
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
 from wrinklefe.solver.results import FieldResults
