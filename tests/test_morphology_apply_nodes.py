@@ -261,8 +261,10 @@ class TestGradedDecayParity:
     """Regression for the asymmetric clamp-order drift flagged in
     #32 / #40: with a *fully spanning* ply_ids array, the decay implicit
     in ``apply_to_nodes`` (dz / profile(x)) must equal the decay implicit
-    in ``fiber_angles_at_nodes`` (angle / arctan|slope|) across a sweep of
-    ``decay_floor`` and ply index."""
+    in ``fiber_angles_at_nodes`` across a sweep of ``decay_floor`` and
+    ply index. Since #252 the angle is the slope of the composed field
+    (``arctan(decay * |slope|)``), so the angle-side decay is recovered
+    in slope space: ``tan(angle) / |slope|``."""
 
     @pytest.mark.parametrize("decay_floor", [0.0, 0.25, 0.5, 1.0])
     @pytest.mark.parametrize("n_plies", [4, 7, 8])
@@ -278,7 +280,7 @@ class TestGradedDecayParity:
         )
         x = 2.0  # non-zero slope and non-zero displacement here
         prof_val = prof.displacement(np.array([x]))[0]
-        ang_base = np.arctan(np.abs(prof.slope(np.array([x]))[0]))
+        slope_base = np.abs(prof.slope(np.array([x]))[0])
 
         # ply_ids spans the full laminate so fiber_angles_at_nodes infers
         # the same n_plies that apply_to_nodes is given (see issue #146).
@@ -287,9 +289,9 @@ class TestGradedDecayParity:
         ang = cfg.fiber_angles_at_nodes(nodes, ply)
 
         decay_from_disp = dz / prof_val
-        decay_from_angle = ang / ang_base
+        decay_from_slope = np.tan(ang) / slope_base
         npt.assert_allclose(
-            decay_from_disp, decay_from_angle, rtol=1e-12, atol=1e-14
+            decay_from_disp, decay_from_slope, rtol=1e-12, atol=1e-14
         )
 
 
@@ -375,12 +377,13 @@ class TestFiberAnglesSlopeMagnitude:
 # fiber_angles_at_nodes -- dual-wrinkle RSS combination
 # ----------------------------------------------------------------------
 
-class TestFiberAnglesDualWrinkleRSS:
-    """Two identical co-located wrinkles (phase=0) combine as
-    root-sum-square -> sqrt(2) x the single-wrinkle angle. With phase=pi
-    the displacement fields partly cancel."""
+class TestFiberAnglesDualWrinkleComposed:
+    """Angles derive from the composed displacement field (#252):
+    two identical co-located wrinkles (phase=0) double the slope, so
+    the dual angle is ``arctan(2 * tan(single))``. With phase=pi the
+    displacement fields partly cancel."""
 
-    def test_phase0_rss_is_sqrt2_times_single(self, gaussian_wrinkle):
+    def test_phase0_doubles_the_slope(self, gaussian_wrinkle):
         single = _single_config(gaussian_wrinkle, ply_interface=2)
         dual = WrinkleConfiguration.dual_wrinkle(
             gaussian_wrinkle, interface1=2, interface2=2, phase=0.0
@@ -388,7 +391,9 @@ class TestFiberAnglesDualWrinkleRSS:
         nodes, ply = _strip(np.array([2.0]), n_plies=6)
         a_single = single.fiber_angles_at_nodes(nodes, ply)[ply == 2][0]
         a_dual = dual.fiber_angles_at_nodes(nodes, ply)[ply == 2][0]
-        npt.assert_allclose(a_dual, np.sqrt(2.0) * a_single, rtol=1e-12)
+        npt.assert_allclose(
+            a_dual, np.arctan(2.0 * np.tan(a_single)), rtol=1e-12
+        )
 
     def test_phase_pi_partially_cancels_displacement(self, gaussian_wrinkle):
         """Anti-stack (phase=pi) shifts the 2nd wrinkle by lambda/2, so the
@@ -524,7 +529,8 @@ def test_partial_ply_ids_decay_stays_synced():
     ang = cfg.fiber_angles_at_nodes(nodes, ply, n_plies=8)
 
     decay_from_disp = dz / prof_val
-    decay_from_angle = ang / ang_base
+    # Slope-space decay recovery (composed-field angles since #252).
+    decay_from_angle = np.tan(ang) / np.tan(ang_base)
     # Once #146 is fixed these two decay fields will match.
     npt.assert_allclose(
         decay_from_disp, decay_from_angle, rtol=1e-12, atol=1e-14
@@ -620,7 +626,10 @@ class TestIssue17_18DefaultDecayBC:
         ang = cfg.fiber_angles_at_nodes(nodes, ply, n_plies=n_plies)
 
         decay_from_disp = dz / prof_val
-        decay_from_angle = ang / ang_base
+        # Since #252 the angle is the slope of the composed field
+        # (arctan(decay * |slope|)), so the angle-side decay is
+        # recovered in slope space.
+        decay_from_angle = np.tan(ang) / np.tan(ang_base)
         npt.assert_allclose(
             decay_from_disp,
             decay_from_angle,

@@ -878,14 +878,21 @@ class WrinkleConfiguration:
     ) -> np.ndarray:
         """Compute local fiber misalignment angle at each node.
 
-        For nodes within the wrinkle zone, the angle is computed as
-        arctan(dz/dx) from the wrinkle profile slope. Each node receives
-        the angle contribution from the wrinkle affecting its ply
-        interface. Nodes outside any wrinkle zone receive angle = 0.
+        The angle is the slope of the **composed** displacement field —
+        the same field :meth:`apply_to_nodes` applies to the mesh
+        (issue #252, "compose then differentiate"): per-wrinkle signed
+        slopes, scaled by the same through-thickness decay and amplitude
+        modulation as the displacement, are summed and the angle is
+        ``arctan(|dz_total/dx|)``. Nodes outside every wrinkle zone
+        receive angle = 0.
 
-        When multiple wrinkles affect the same ply (via through-thickness
-        decay), the angles are combined as the root-sum-square, reflecting
-        independent misalignment contributions.
+        Because displacement and angle derive from one field, two
+        coincident half-amplitude wrinkles are exactly equivalent to a
+        single full-amplitude wrinkle, and phase-opposed wrinkles cancel
+        consistently in both fields. (The pre-#252 convention combined
+        per-wrinkle *angles* root-sum-square and scaled the angle — not
+        the slope — by the decay, which broke that identity and let the
+        angle field disagree with the geometry the mesh actually sees.)
 
         Parameters
         ----------
@@ -911,16 +918,21 @@ class WrinkleConfiguration:
 
         Notes
         -----
-        The fiber angle at a point is determined by the local slope of
-        the wrinkle profile (Jin et al., 2026, Eq. 3):
+        The fiber angle at a point is the slope of the deformed surface
+        the node actually sits on (Jin et al., 2026, Eq. 3):
 
         .. math::
 
-            \\theta(x) = \\arctan\\left|\\frac{dz}{dx}\\right|
+            \\theta(x) = \\arctan\\left|\\frac{dz_{total}}{dx}\\right|,
+            \\qquad
+            \\frac{dz_{total}}{dx}
+            = \\sum_w \\frac{dz_w}{dx}\\,\\Phi_w(p)\\,s_w(x, y)
 
-        For multi-wrinkle configurations, the effective local angle uses
-        root-sum-square combination to avoid double-counting while capturing
-        the aggregate misalignment.
+        with :math:`\\Phi_w` the through-thickness decay and :math:`s_w`
+        the in-plane amplitude modulation — the identical factors used
+        by the displacement composition in :meth:`apply_to_nodes`
+        (their slow in-plane variation is treated as locally constant,
+        as before).
         """
         n_nodes = len(nodes)
         if n_plies is None:
@@ -929,7 +941,7 @@ class WrinkleConfiguration:
             # array must pass the explicit n_plies (the same value given
             # to apply_to_nodes) so both decay fields stay synced (#146).
             n_plies = int(ply_ids.max()) + 1 if len(ply_ids) > 0 else 1
-        angle_sq = np.zeros(n_nodes, dtype=np.float64)
+        slope_total = np.zeros(n_nodes, dtype=np.float64)
 
         x = nodes[:, 0]
         y = nodes[:, 1] if nodes.shape[1] >= 2 else np.zeros(n_nodes)
@@ -948,10 +960,9 @@ class WrinkleConfiguration:
             amp_scale = self._amplitude_scale_vec(wrinkle, x, y)
             decay = self._through_thickness_decay(ply_ids, k, n_plies) * amp_scale
 
-            angle = np.arctan(np.abs(slope)) * decay
-            angle_sq += angle * angle
+            slope_total += slope * decay
 
-        return np.sqrt(angle_sq)
+        return np.arctan(np.abs(slope_total))
 
     # ------------------------------------------------------------------
     # Convenience constructors
