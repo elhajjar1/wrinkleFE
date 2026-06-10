@@ -50,7 +50,7 @@ References
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -134,7 +134,7 @@ class LaRC05Criterion(FailureCriterion):
     def _in_situ_strengths(
         self,
         material: OrthotropicMaterial,
-        ply_thickness: Optional[float] = None,
+        ply_thickness: float | None = None,
     ) -> tuple[float, float]:
         """Compute in-situ transverse tensile and shear strengths.
 
@@ -422,7 +422,7 @@ class LaRC05Criterion(FailureCriterion):
         self,
         stress_local: np.ndarray,
         material: OrthotropicMaterial,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> FailureResult:
         """Evaluate the LaRC04/05 criterion at a single material point.
 

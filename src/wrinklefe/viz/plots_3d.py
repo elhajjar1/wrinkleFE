@@ -42,7 +42,7 @@ Elhajjar, R. (2025). Scientific Reports, 15, 25977.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -95,7 +95,7 @@ _HEX_FACE_SIDE = np.array([0, 1, 0, 1, 0, 1], dtype=np.int64)  # 0 = min, 1 = ma
 # Helper functions
 # ======================================================================
 
-def _sample_elements(mesh: "MeshData", max_elements: int = 2000) -> np.ndarray:
+def _sample_elements(mesh: MeshData, max_elements: int = 2000) -> np.ndarray:
     """Select a subset of element indices for rendering.
 
     For large meshes, rendering every element is prohibitively slow.
@@ -120,7 +120,7 @@ def _sample_elements(mesh: "MeshData", max_elements: int = 2000) -> np.ndarray:
     return np.arange(0, n_elem, step)
 
 
-def _is_full_structured_set(mesh: "MeshData", elem_indices: np.ndarray) -> bool:
+def _is_full_structured_set(mesh: MeshData, elem_indices: np.ndarray) -> bool:
     """Return True if ``elem_indices`` covers the full structured mesh.
 
     The fast structured-mesh boundary-culling shortcut is only valid when
@@ -146,7 +146,7 @@ def _is_full_structured_set(mesh: "MeshData", elem_indices: np.ndarray) -> bool:
     return bool(np.array_equal(elem_indices, np.arange(expected)))
 
 
-def _structured_boundary_mask(mesh: "MeshData") -> np.ndarray:
+def _structured_boundary_mask(mesh: MeshData) -> np.ndarray:
     """Boolean mask over ``(n_elements, 6)`` marking boundary faces.
 
     Uses the structured-grid rule: face ``f`` of element ``(i, j, k)`` is
@@ -182,7 +182,7 @@ def _structured_boundary_mask(mesh: "MeshData") -> np.ndarray:
 
 
 def _general_boundary_mask(
-    mesh: "MeshData", elem_indices: np.ndarray
+    mesh: MeshData, elem_indices: np.ndarray
 ) -> np.ndarray:
     """Boolean mask over ``(len(elem_indices), 6)`` for arbitrary subsets.
 
@@ -210,11 +210,11 @@ def _general_boundary_mask(
 
 
 def _gather_boundary_faces(
-    mesh: "MeshData",
+    mesh: MeshData,
     elem_indices: np.ndarray,
     nodes: np.ndarray,
-    elem_scalar: Optional[np.ndarray] = None,
-) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    elem_scalar: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray | None]:
     """Return boundary-face vertices (and optional per-face scalars).
 
     Combines structured-mesh culling (when the full mesh is selected) with
@@ -261,7 +261,7 @@ def _gather_boundary_faces(
 
     face_verts = face_verts_all[mask]                 # (n_bnd, 4, 3)
 
-    face_scalar: Optional[np.ndarray] = None
+    face_scalar: np.ndarray | None = None
     if elem_scalar is not None:
         if _is_full_structured_set(mesh, elem_indices):
             elem_vals = elem_scalar
@@ -281,8 +281,8 @@ def _gather_boundary_faces(
 # ======================================================================
 
 def plot_mesh_3d(
-    mesh: "MeshData",
-    ax: Optional[Axes] = None,
+    mesh: MeshData,
+    ax: Axes | None = None,
     max_elements: int = 2000,
     show_edges: bool = True,
     face_alpha: float = 0.15,
@@ -352,12 +352,12 @@ def plot_mesh_3d(
 # ======================================================================
 
 def plot_displacement_3d(
-    field_results: "FieldResults",
+    field_results: FieldResults,
     component: int = 2,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     max_elements: int = 2000,
     scale: float = 1.0,
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
 ) -> Axes:
     """Plot the deformed mesh colored by a displacement component.
 
@@ -469,12 +469,12 @@ def plot_displacement_3d(
 # ======================================================================
 
 def plot_stress_contour_3d(
-    field_results: "FieldResults",
+    field_results: FieldResults,
     component: int = 0,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     max_elements: int = 2000,
     coord: str = "global",
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
 ) -> Axes:
     """Plot stress contour on the deformed mesh.
 
@@ -589,12 +589,12 @@ def plot_stress_contour_3d(
 # ======================================================================
 
 def plot_buckling_mode(
-    buckling_result: "BucklingResult",
+    buckling_result: BucklingResult,
     mode: int = 0,
     scale: float = 1.0,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     max_elements: int = 2000,
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
 ) -> Axes:
     """Plot a buckling mode shape on the deformed mesh.
 

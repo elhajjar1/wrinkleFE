@@ -32,7 +32,7 @@ References
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
 
@@ -42,7 +42,7 @@ from wrinklefe.core.wrinkle import WrinkleProfile, WrinkleSurface3D
 # Predefined morphology phases
 # ======================================================================
 
-MORPHOLOGY_PHASES: Dict[str, float] = {
+MORPHOLOGY_PHASES: dict[str, float] = {
     "stack": 0.0,
     "convex": np.pi / 2,
     "concave": -np.pi / 2,
@@ -65,7 +65,7 @@ Table 3 and the analytical model in Elhajjar (2025) Eq. 8.
 # Loading-dependent model parameters
 # ======================================================================
 
-_LOADING_PARAMS: Dict[str, Dict[str, float]] = {
+_LOADING_PARAMS: dict[str, dict[str, float]] = {
     "compression": {"alpha_asym": 0.288, "alpha_offset": 0.0},
     "tension": {"alpha_asym": 0.033, "alpha_offset": 0.183},
 }
@@ -120,7 +120,7 @@ class WrinklePlacement:
     Delta_x and lambda are in millimetres, phi is dimensionless.
     """
 
-    profile: Union[WrinkleProfile, WrinkleSurface3D]
+    profile: WrinkleProfile | WrinkleSurface3D
     ply_interface: int
     phase_offset: float = 0.0
 
@@ -252,7 +252,7 @@ class WrinkleConfiguration:
         decay_mode: str = "default",
         decay_floor: float = 0.0,
         amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
-        amplitude_profile_decay_length: Optional[float] = None,
+        amplitude_profile_decay_length: float | None = None,
         amplitude_profile_axis: Literal["x", "y"] = "x",
     ) -> None:
         if not wrinkles:
@@ -295,7 +295,7 @@ class WrinkleConfiguration:
                 f"got {amplitude_profile_decay_length}"
             )
         self.amplitude_profile: str = amplitude_profile
-        self.amplitude_profile_decay_length: Optional[float] = (
+        self.amplitude_profile_decay_length: float | None = (
             amplitude_profile_decay_length
         )
         self.amplitude_profile_axis: str = amplitude_profile_axis
@@ -970,12 +970,12 @@ class WrinkleConfiguration:
     @classmethod
     def dual_wrinkle(
         cls,
-        profile: Union[WrinkleProfile, WrinkleSurface3D],
+        profile: WrinkleProfile | WrinkleSurface3D,
         interface1: int,
         interface2: int,
         phase: float = 0.0,
         amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
-        amplitude_profile_decay_length: Optional[float] = None,
+        amplitude_profile_decay_length: float | None = None,
         amplitude_profile_axis: Literal["x", "y"] = "x",
     ) -> WrinkleConfiguration:
         """Create a standard dual-wrinkle configuration.
@@ -1040,12 +1040,12 @@ class WrinkleConfiguration:
     def from_morphology_name(
         cls,
         name: str,
-        profile: Union[WrinkleProfile, WrinkleSurface3D],
+        profile: WrinkleProfile | WrinkleSurface3D,
         interface1: int,
         interface2: int,
         decay_floor: float = 0.0,
         amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
-        amplitude_profile_decay_length: Optional[float] = None,
+        amplitude_profile_decay_length: float | None = None,
         amplitude_profile_axis: Literal["x", "y"] = "x",
     ) -> WrinkleConfiguration:
         """Create a dual-wrinkle configuration from a morphology name.

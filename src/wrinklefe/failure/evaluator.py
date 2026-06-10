@@ -25,8 +25,8 @@ References
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence, Union
 
 import numpy as np
 
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Type alias for per-ply context input.  Either a sequence indexable by
 # integer ply index, or a mapping from ply index to a context dict.
-PlyContexts = Union[Sequence[Union[dict, None]], Mapping[int, Union[dict, None]], None]
+PlyContexts = Sequence[dict | None] | Mapping[int, dict | None] | None
 
 
 def _ply_context(ply_contexts: PlyContexts, k: int) -> dict | None:

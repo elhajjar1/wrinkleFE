@@ -25,8 +25,8 @@ from __future__ import annotations
 import logging
 import math
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -42,7 +42,7 @@ __all__ = [
 
 #: Default geometric-ish refinement multipliers applied to the selected
 #: mesh axes, level by level.
-DEFAULT_FACTORS: Tuple[float, ...] = (1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
+DEFAULT_FACTORS: tuple[float, ...] = (1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
 
 
 def _qoi_max_fi(results: AnalysisResults) -> float:
@@ -99,7 +99,7 @@ class ConvergenceLevel:
     nz_per_ply: int
     n_dof: int
     qoi: float
-    delta_pct: Optional[float]
+    delta_pct: float | None
     """Relative change vs the previous level, in percent
     (``100 * |q_k - q_{k-1}| / |q_k|``); ``None`` for the first level."""
     runtime_s: float
@@ -109,15 +109,15 @@ class ConvergenceLevel:
 class ConvergenceStudy:
     """Result of :func:`mesh_convergence_study`."""
 
-    levels: List[ConvergenceLevel]
+    levels: list[ConvergenceLevel]
     qoi_name: str
     tolerance: float
-    recommended_config: Optional[AnalysisConfig]
+    recommended_config: AnalysisConfig | None
     """Coarsest level whose QoI agrees with the finest level within
     ``tolerance`` (relative). ``None`` if only the finest level
     satisfies the tolerance — refine further."""
-    recommended_level: Optional[int]
-    observed_rate: Optional[float]
+    recommended_level: int | None
+    observed_rate: float | None
     """Richardson-style observed convergence rate from the last three
     levels; ``None`` when the refinement ratio is not constant or the
     QoI differences do not allow it."""
@@ -167,7 +167,7 @@ class ConvergenceStudy:
 
 def _observed_rate(
     qois: Sequence[float], ratios: Sequence[float]
-) -> Optional[float]:
+) -> float | None:
     """Richardson-style rate from the last three QoIs, if the sequence allows."""
     if len(qois) < 3 or len(ratios) < 2:
         return None
@@ -185,9 +185,9 @@ def mesh_convergence_study(
     base_config: AnalysisConfig,
     levels: int = 4,
     refine: Sequence[str] = ("nx", "nz_per_ply"),
-    qoi: Union[str, Callable[[AnalysisResults], float]] = "max_fi",
+    qoi: str | Callable[[AnalysisResults], float] = "max_fi",
     tolerance: float = 0.01,
-    factors: Optional[Sequence[float]] = None,
+    factors: Sequence[float] | None = None,
 ) -> ConvergenceStudy:
     """Run the analysis at successively refined meshes and tabulate a QoI.
 
@@ -253,8 +253,8 @@ def mesh_convergence_study(
         )
     factors = tuple(float(f) for f in factors[:levels])
 
-    rows: List[ConvergenceLevel] = []
-    qois: List[float] = []
+    rows: list[ConvergenceLevel] = []
+    qois: list[float] = []
     for k, f in enumerate(factors):
         overrides = {
             axis: max(1, int(round(getattr(base_config, axis) * f)))
@@ -286,12 +286,12 @@ def mesh_convergence_study(
 
     # Recommendation: coarsest level within tolerance of the finest.
     q_ref = qois[-1]
-    recommended_level: Optional[int] = None
+    recommended_level: int | None = None
     for k in range(len(qois) - 1):
         if abs(qois[k] - q_ref) <= tolerance * max(abs(q_ref), 1e-30):
             recommended_level = k
             break
-    recommended_config: Optional[AnalysisConfig] = None
+    recommended_config: AnalysisConfig | None = None
     if recommended_level is not None:
         lv = rows[recommended_level]
         recommended_config = replace(

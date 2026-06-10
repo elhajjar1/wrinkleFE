@@ -17,8 +17,9 @@ Elhajjar, R. (2025). Scientific Reports, 15, 25977.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional, Union
+from typing import Any
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -236,9 +237,9 @@ def get_morphology_style(morph: str) -> dict:
 
 
 def ensure_axes(
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = FIGSIZE_SINGLE_COLUMN,
-    projection: Optional[str] = None,
+    projection: str | None = None,
 ) -> Axes:
     """Return the given Axes or create a new figure with one.
 
@@ -266,8 +267,8 @@ def ensure_axes(
 
 def set_axes_equal_aspect(
     ax: Axes,
-    mins: "np.ndarray",
-    maxs: "np.ndarray",
+    mins: np.ndarray,
+    maxs: np.ndarray,
 ) -> None:
     """Set a 3D axes box aspect to match physical data extents.
 
@@ -299,8 +300,8 @@ def set_axes_equal_aspect(
 
 
 def save_figure(
-    ax_or_fig: Union[Axes, Figure],
-    path: Union[str, "os.PathLike[str]"],
+    ax_or_fig: Axes | Figure,
+    path: str | os.PathLike[str],
     *,
     close: bool = True,
     dpi: int = 300,
@@ -340,7 +341,7 @@ def save_figure(
 
 
 @contextmanager
-def figure_context(ax_or_fig: Union[Axes, Figure]) -> Iterator[Figure]:
+def figure_context(ax_or_fig: Axes | Figure) -> Iterator[Figure]:
     """Context manager that closes an internally-created figure on exit.
 
     Use this to wrap a ``plot_*`` call in leak-prone batch loops when you are

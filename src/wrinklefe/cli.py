@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -533,7 +533,7 @@ def _build_parser() -> argparse.ArgumentParser:
 # Subcommand handlers
 # ====================================================================== #
 
-def _parse_czm_interfaces(value: Optional[str]):
+def _parse_czm_interfaces(value: str | None):
     """Parse --czm-interfaces into the form ``AnalysisConfig`` expects.
 
     Accepts the two sentinel strings ``"near_crest"`` / ``"all"`` (passed
@@ -567,7 +567,7 @@ def _parse_czm_interfaces(value: Optional[str]):
         sys.exit(2)
 
 
-def _parse_angles(angles_str: Optional[str]) -> Optional[List[float]]:
+def _parse_angles(angles_str: str | None) -> list[float] | None:
     """Parse a layup string into a list of ply angles (degrees).
 
     Accepts both an explicit comma/semicolon/newline-separated list
@@ -919,7 +919,7 @@ def _configure_logging(verbose: bool) -> None:
     pkg_logger.setLevel(logging.DEBUG)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     """Main CLI entry point.
 
     Parameters

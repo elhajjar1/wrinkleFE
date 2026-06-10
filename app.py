@@ -19,7 +19,6 @@ import sys
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Optional
 
 import matplotlib
 
@@ -707,7 +706,7 @@ with st.sidebar:
         # back-compat behaviour where the wrinkle's own ``width`` is the
         # effective decay length.
         if not _profile_active:
-            amplitude_profile_decay_length: Optional[float] = None
+            amplitude_profile_decay_length: float | None = None
         else:
             amplitude_profile_decay_length = float(
                 amplitude_profile_decay_length_ui
@@ -1153,7 +1152,7 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
     # actually drove the FE solve down the Newton-Raphson path. Kept in
     # a sub-dict so the Results tab can quickly check ``results.get("czm")``
     # without juggling None-checks on a flat top-level structure.
-    czm_payload: Optional[dict] = None
+    czm_payload: dict | None = None
     if cfg_dict.get("enable_czm", False) and result.czm_damage is not None:
         damage_arr = np.asarray(result.czm_damage)
         if damage_arr.size:
@@ -2177,7 +2176,7 @@ with tab_export:
         _ply_fi = (fe or {}).get("ply_failure_indices") or {}
         for _k, _ang in enumerate(_angles_export):
             _row_fi = -float("inf")
-            _row_crit: Optional[str] = None
+            _row_crit: str | None = None
             for _crit_name, _arr in _ply_fi.items():
                 if _k < len(_arr) and _arr[_k] > _row_fi:
                     _row_fi = float(_arr[_k])
