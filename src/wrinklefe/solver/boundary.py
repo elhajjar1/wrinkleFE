@@ -25,9 +25,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import sparse
 
-from wrinklefe.core.mesh import MeshData
 from wrinklefe.core.laminate import LoadState
-
+from wrinklefe.core.mesh import MeshData
 
 # ======================================================================
 # Penalty method for displacement BCs

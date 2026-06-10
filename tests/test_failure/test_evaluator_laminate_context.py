@@ -11,8 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.evaluator import FailureEvaluator
 from wrinklefe.failure.larc05 import LaRC05Criterion
 

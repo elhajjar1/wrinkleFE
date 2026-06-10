@@ -154,7 +154,6 @@ from wrinklefe.solver.assembler import GlobalAssembler  # noqa: E402
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler  # noqa: E402
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver  # noqa: E402
 
-
 # ----------------------------------------------------------------------
 # Experimental data (NASA/TM-2020-220498 Section 4.15)
 # ----------------------------------------------------------------------

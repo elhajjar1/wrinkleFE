@@ -30,15 +30,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Mapping, Optional, Sequence
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from wrinklefe.viz.style import (
     ACCENT_GRAY,
-    FIGSIZE_SINGLE_COLUMN,
     FIGSIZE_DOUBLE_COLUMN,
+    FIGSIZE_SINGLE_COLUMN,
     FIGSIZE_SINGLE_TALL,
     MORPHOLOGY_COLORS,
     MORPHOLOGY_LABELS,
@@ -208,7 +208,7 @@ def plot_morphology_factor(
     Axes
         The axes with the morphology factor curve.
     """
-    from wrinklefe.core.morphology import WrinkleConfiguration, MORPHOLOGY_PHASES
+    from wrinklefe.core.morphology import MORPHOLOGY_PHASES, WrinkleConfiguration
 
     set_publication_style()
     ax = ensure_axes(ax)
@@ -454,7 +454,8 @@ def plot_strength_distribution(
             from scipy.stats import gaussian_kde
             kde = gaussian_kde(strengths)
             x_kde = np.linspace(strengths.min(), strengths.max(), 300)
-            ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"], linewidth=1.5, label="KDE")
+            ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"],
+                    linewidth=1.5, label="KDE")
         except ImportError:
             pass
 

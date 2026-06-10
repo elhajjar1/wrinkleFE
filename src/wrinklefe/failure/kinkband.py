@@ -105,7 +105,11 @@ class BudianskyFleckKinkBand(FailureCriterion):
     # Knockdown factors
     # ------------------------------------------------------------------
 
-    def knockdown(self, gamma_Y: float | None = None, material: OrthotropicMaterial | None = None) -> float:
+    def knockdown(
+        self,
+        gamma_Y: float | None = None,
+        material: OrthotropicMaterial | None = None,
+    ) -> float:
         """Kink-band knockdown factor.
 
         .. math::
@@ -148,7 +152,11 @@ class BudianskyFleckKinkBand(FailureCriterion):
         """
         return (1.0 - self.damage_index) ** 1.5
 
-    def combined_knockdown(self, gamma_Y: float | None = None, material: OrthotropicMaterial | None = None) -> float:
+    def combined_knockdown(
+        self,
+        gamma_Y: float | None = None,
+        material: OrthotropicMaterial | None = None,
+    ) -> float:
         """Combined kink-band and delamination knockdown.
 
         .. math::

@@ -10,8 +10,8 @@ Usage::
 """
 
 from wrinklefe.sweep.parametric_sweep import (
-    run_sweep,
     plot_sweep_results,
+    run_sweep,
     save_sweep_results,
 )
 

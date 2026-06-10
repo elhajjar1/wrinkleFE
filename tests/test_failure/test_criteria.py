@@ -8,7 +8,6 @@ from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.base import FailureResult
 from wrinklefe.failure.larc05 import LaRC05Criterion
 
-
 # ======================================================================
 # Fixtures
 # ======================================================================

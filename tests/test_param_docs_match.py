@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from wrinklefe.analysis import AnalysisConfig
 
-
 # Mirror of the "Default" column in the README "Wrinkle geometry
 # parameters" table. Keep this dict in lockstep with README.md and the
 # dataclass; any drift is a real bug, not a test flake.

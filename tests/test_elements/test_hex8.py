@@ -8,9 +8,8 @@ patch test.
 import numpy as np
 import pytest
 
-from wrinklefe.elements.hex8 import Hex8Element
 from wrinklefe.core.material import OrthotropicMaterial
-
+from wrinklefe.elements.hex8 import Hex8Element
 
 # ======================================================================
 # Fixtures

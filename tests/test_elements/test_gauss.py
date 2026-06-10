@@ -9,7 +9,6 @@ import pytest
 
 from wrinklefe.elements.gauss import gauss_points_1d, gauss_points_hex
 
-
 # ======================================================================
 # gauss_points_1d
 # ======================================================================

@@ -34,10 +34,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from wrinklefe.elements.gauss import gauss_points_hex
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.transforms import rotate_stiffness_3d
-
+from wrinklefe.elements.gauss import gauss_points_hex
 
 # Natural coordinates of the 8 hex nodes in (xi, eta, zeta)
 _NODE_COORDS = np.array([
@@ -368,7 +367,8 @@ class Hex8Element:
            shape functions.
 
         .. math::
-            \\bar{C} = T_y^{-1}(\\phi) \\; T_z^{-1}(\\theta) \\; C \\; T_z^\\varepsilon(\\theta) \\; T_y^\\varepsilon(\\phi)
+            \\bar{C} = T_y^{-1}(\\phi) \\; T_z^{-1}(\\theta) \\; C
+            \\; T_z^\\varepsilon(\\theta) \\; T_y^\\varepsilon(\\phi)
 
         Parameters
         ----------

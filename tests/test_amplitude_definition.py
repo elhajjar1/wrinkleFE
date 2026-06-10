@@ -27,7 +27,6 @@ from wrinklefe.core.wrinkle import (
     TriangularSinusoidal,
 )
 
-
 # Canonical test point: A = 1.0 mm, lambda = 10.0 mm.
 # Under the half-amplitude convention the peak |z| of the displaced
 # surface equals exactly 1.0 (the full peak-to-trough height is 2.0).

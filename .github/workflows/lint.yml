@@ -27,11 +27,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # Starter scope: only the bug-catching rules that are clean on `main` today.
-      # Full ruff config in pyproject.toml currently has ~840 violations across the
-      # repo; that will be addressed in a follow-up cleanup PR (see issue #87).
-      - name: Ruff (starter scope - E9,F63,F7,F82)
-        run: ruff check --select E9,F63,F7,F82 .
+      # Enforced scope: E (pycodestyle errors), W (warnings), I (isort),
+      # plus the F syntax-level starter rules. The remaining families from
+      # pyproject.toml's full config still carry violations and are being
+      # expanded incrementally (issue #87): F ~87 (mostly F401/F841
+      # unused imports/variables), UP ~498 (pyupgrade), N ~1343
+      # (scientific naming -- needs a per-file noqa policy first).
+      - name: Ruff (enforced scope - E,W,I + F starter rules)
+        run: ruff check --select E,W,I,F63,F7,F82 .
 
       # Starter scope: package `__init__` only. Broader src/wrinklefe has ~102
       # mypy errors today (mostly numpy `Any` returns + missing stubs); fixing

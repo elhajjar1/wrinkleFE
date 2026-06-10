@@ -25,9 +25,9 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless backend; required on Streamlit Cloud
 
-import matplotlib.pyplot as plt
-import numpy as np
-import streamlit as st
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import streamlit as st  # noqa: E402
 
 # Make the src-layout package importable on Streamlit Cloud, which does not
 # pip-install the local repo.
@@ -35,23 +35,21 @@ _SRC = Path(__file__).resolve().parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
-from wrinklefe.core.layup import parse_layup
-from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
-from wrinklefe.core.mesh import mesh_shear_diagnostics
-from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.io.export import (
+import streamlit_viz  # noqa: E402
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
+from wrinklefe.core.layup import parse_layup  # noqa: E402
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
+from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
+from wrinklefe.core.wrinkle import GaussianSinusoidal  # noqa: E402
+from wrinklefe.io.export import (  # noqa: E402
     build_analysis_summary,
     render_summary_markdown,
     render_summary_pdf,
 )
-from wrinklefe.viz.style import (
+from wrinklefe.viz.style import (  # noqa: E402
     MORPHOLOGY_COLORS,
     TENSION_MECHANISM_COLORS,
 )
-
-import streamlit_viz
-
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -526,7 +524,8 @@ with st.sidebar:
             "`s` for symmetry:\n\n"
             "| Input | Expanded plies |\n"
             "|---|---|\n"
-            "| `[0/45/-45/90]_3s` | `0/45/-45/90` × 3 then mirrored — **24 plies** (default quasi-isotropic) |\n"
+            "| `[0/45/-45/90]_3s` | `0/45/-45/90` × 3 then mirrored — "
+            "**24 plies** (default quasi-isotropic) |\n"
             "| `[0/±45/90]s` | `0,45,-45,90` mirrored — **8 plies** |\n"
             "| `[0_2/90]_2` | `0,0,90` × 2 — **6 plies** |\n"
             "| `[±30]_2` | `30,-30` × 2 — **4 plies** |\n\n"
@@ -1290,7 +1289,8 @@ def _render_czm_results(czm: dict) -> None:
 
         st.caption(
             f"Converged: **{czm.get('converged')}**  ·  "
-            f"Interfaces: **{', '.join(str(i) for i in czm.get('interfaces_used', [])) or '(none)'}**"
+            f"Interfaces: "
+            f"**{', '.join(str(i) for i in czm.get('interfaces_used', [])) or '(none)'}**"
         )
 
         # Per-interface crack-length table

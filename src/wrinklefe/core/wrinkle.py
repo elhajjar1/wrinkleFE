@@ -31,7 +31,6 @@ from typing import Tuple
 import numpy as np
 from scipy.optimize import minimize_scalar
 
-
 # ---------------------------------------------------------------------------
 # Abstract base class
 # ---------------------------------------------------------------------------

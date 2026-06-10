@@ -4,11 +4,11 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate
-from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.core.morphology import WrinkleConfiguration
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.mesh import MeshData, MeshValidationError, WrinkleMesh
+from wrinklefe.core.morphology import WrinkleConfiguration
+from wrinklefe.core.wrinkle import GaussianSinusoidal
 
 
 @pytest.fixture

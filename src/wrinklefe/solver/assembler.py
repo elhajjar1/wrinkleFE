@@ -30,8 +30,8 @@ import logging
 import numpy as np
 from scipy import sparse
 
-from wrinklefe.core.mesh import MeshData
 from wrinklefe.core.laminate import Laminate
+from wrinklefe.core.mesh import MeshData
 from wrinklefe.elements.cohesive8 import (
     Cohesive8Element,
     CohesiveState,

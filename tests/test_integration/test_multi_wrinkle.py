@@ -20,7 +20,6 @@ from wrinklefe.analysis import (
 )
 from wrinklefe.core.material import MaterialLibrary
 
-
 # ---------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------

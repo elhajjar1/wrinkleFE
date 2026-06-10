@@ -25,7 +25,6 @@ import pytest
 
 from wrinklefe.core.material import MaterialLibrary
 
-
 # Frozen built-in roster as of issue #88 closure. Update only if the
 # library intentionally adds or removes a material.
 EXPECTED_BUILTIN_NAMES = frozenset({

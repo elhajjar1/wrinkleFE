@@ -9,7 +9,6 @@ import pytest
 
 import wrinklefe
 
-
 PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 
 

@@ -17,7 +17,6 @@ import plotly.graph_objects as go
 
 from wrinklefe.viz.style import MORPHOLOGY_COLORS
 
-
 # Local node indices for the 6 faces of a hex element following the
 # CGNS / VTK_HEXAHEDRON convention used by wrinklefe.core.mesh:
 #   nodes 0-3: bottom face (z low) CCW from below

@@ -28,7 +28,6 @@ from matplotlib.colorbar import Colorbar
 from matplotlib.figure import Figure
 from matplotlib.image import AxesImage
 
-
 # ======================================================================
 # Morphology visual encoding
 # ======================================================================

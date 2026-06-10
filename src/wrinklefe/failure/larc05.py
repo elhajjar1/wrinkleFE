@@ -50,8 +50,9 @@ References
 
 from __future__ import annotations
 
-import numpy as np
 from typing import Any, Dict, Optional
+
+import numpy as np
 
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.base import FailureCriterion, FailureResult

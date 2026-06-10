@@ -11,7 +11,6 @@ import wrinklefe.convergence as conv
 from wrinklefe.analysis import AnalysisConfig
 from wrinklefe.convergence import mesh_convergence_study
 
-
 # --------------------------------------------------------------------------- #
 # Logic tests against a stubbed analysis (fast, deterministic)
 # --------------------------------------------------------------------------- #

@@ -30,9 +30,9 @@ from typing import Mapping, Sequence, Union
 
 import numpy as np
 
-from wrinklefe.failure.base import FailureCriterion, FailureResult
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.material import OrthotropicMaterial
+from wrinklefe.failure.base import FailureCriterion, FailureResult
 
 logger = logging.getLogger(__name__)
 
