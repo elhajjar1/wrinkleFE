@@ -738,9 +738,9 @@ class StaticSolver:
             matches = np.flatnonzero(sign_match)
             if matches.size != 1:
                 raise RuntimeError(
-                    "Failed to pair hex8 VTK node {} with a unique 2x2x2 "
-                    "Gauss point (matches={}). Did the GP or node ordering "
-                    "convention change?".format(j, matches.tolist())
+                    f"Failed to pair hex8 VTK node {j} with a unique 2x2x2 "
+                    f"Gauss point (matches={matches.tolist()}). Did the GP or node ordering "
+                    "convention change?"
                 )
             node_to_gp[j] = int(matches[0])
 

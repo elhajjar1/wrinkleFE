@@ -26,7 +26,6 @@ laminates under multidirectional static loading. Thin-Walled Structures,
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Tuple
 
 import numpy as np
 from scipy.optimize import minimize_scalar
@@ -129,7 +128,7 @@ class WrinkleProfile(ABC):
 
     # ---- concrete helpers --------------------------------------------------
 
-    def domain(self) -> Tuple[float, float]:
+    def domain(self) -> tuple[float, float]:
         """Effective longitudinal extent covering 99.7 % of the Gaussian envelope.
 
         Returns ``(center - 3*width, center + 3*width)``.
@@ -367,7 +366,7 @@ class RectangularSinusoidal(WrinkleProfile):
             - env * k ** 2 * cos_term
         )
 
-    def domain(self) -> Tuple[float, float]:
+    def domain(self) -> tuple[float, float]:
         half = self.width / 2.0 + self.width / 4.0  # extend slightly beyond taper
         return (self.center - half, self.center + half)
 
@@ -471,7 +470,7 @@ class PureSinusoidal(WrinkleProfile):
         k = 2.0 * np.pi / self.wavelength
         return -self.amplitude * k ** 2 * np.cos(k * dx)
 
-    def domain(self) -> Tuple[float, float]:
+    def domain(self) -> tuple[float, float]:
         """Default domain: 3 wavelengths on each side of center."""
         return (self.center - 3.0 * self.wavelength, self.center + 3.0 * self.wavelength)
 
@@ -661,7 +660,7 @@ class WrinkleSurface3D:
         y = np.asarray(y, dtype=float)
         return self.profile.displacement(x) * self._f_y(y)
 
-    def gradient(self, x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def gradient(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Surface gradient (dz/dx, dz/dy).
 
         Parameters

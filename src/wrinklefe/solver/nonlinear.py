@@ -82,9 +82,9 @@ class NewtonRaphsonSolver:
 
     def __init__(
         self,
-        assembler: "GlobalAssembler",
-        bc_handler: "BoundaryHandler",
-        boundary_conditions: "list[BoundaryCondition] | None" = None,
+        assembler: GlobalAssembler,
+        bc_handler: BoundaryHandler,
+        boundary_conditions: list[BoundaryCondition] | None = None,
         n_increments: int = 10,
         max_newton_iter: int = 25,
         tol_residual: float = 1e-4,

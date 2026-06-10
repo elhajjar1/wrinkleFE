@@ -28,12 +28,11 @@ jobs:
           pip install -e ".[dev]"
 
       # Enforced scope: E (pycodestyle errors), W (warnings), I (isort),
-      # F (pyflakes). The remaining families from pyproject.toml's full
-      # config still carry violations and are being expanded
-      # incrementally (issue #87): UP ~498 (pyupgrade), N ~1343
-      # (scientific naming -- needs a per-file noqa policy first).
-      - name: Ruff (enforced scope - E,W,I,F)
-        run: ruff check --select E,W,I,F .
+      # F (pyflakes), UP (pyupgrade). The one remaining family from
+      # pyproject.toml's full config is N (~1343, scientific naming --
+      # needs a per-file noqa policy before any renaming); see issue #87.
+      - name: Ruff (enforced scope - E,W,I,F,UP)
+        run: ruff check --select E,W,I,F,UP .
 
       # Starter scope: package `__init__` only. Broader src/wrinklefe has ~102
       # mypy errors today (mostly numpy `Any` returns + missing stubs); fixing

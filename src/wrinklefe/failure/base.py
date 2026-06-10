@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -86,7 +86,7 @@ class FailureCriterion(ABC):
         self,
         stress_local: np.ndarray,
         material: OrthotropicMaterial,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> FailureResult:
         """Evaluate the failure criterion at a single material point.
 
@@ -124,7 +124,7 @@ class FailureCriterion(ABC):
         self,
         stress_field: np.ndarray,
         material: OrthotropicMaterial,
-        contexts: Optional[list] = None,
+        contexts: list | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Evaluate the failure criterion over an array of stress states.
 

@@ -113,9 +113,9 @@ class ArcLengthSolver:
 
     def __init__(
         self,
-        assembler: "GlobalAssembler",
-        bc_handler: "BoundaryHandler",
-        boundary_conditions: "list[BoundaryCondition] | None" = None,
+        assembler: GlobalAssembler,
+        bc_handler: BoundaryHandler,
+        boundary_conditions: list[BoundaryCondition] | None = None,
         n_arc_steps: int = 50,
         arc_length: float = 0.1,
         max_newton_iter: int = 25,

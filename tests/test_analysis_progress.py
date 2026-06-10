@@ -11,8 +11,6 @@ identically.
 
 from __future__ import annotations
 
-from typing import List, Tuple
-
 import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
@@ -61,7 +59,7 @@ def _tiny_fe_config() -> AnalysisConfig:
     )
 
 
-def _assert_progress_trace_valid(trace: List[Tuple[str, float]]) -> None:
+def _assert_progress_trace_valid(trace: list[tuple[str, float]]) -> None:
     """Common invariants every progress trace must satisfy."""
     assert len(trace) >= 2, (
         f"progress_callback should fire at least twice (got {len(trace)}): {trace}"
@@ -93,7 +91,7 @@ def _assert_progress_trace_valid(trace: List[Tuple[str, float]]) -> None:
 
 def test_progress_callback_analytical_only():
     """Callback fires through the analytical-only path and ends at 1.0."""
-    trace: List[Tuple[str, float]] = []
+    trace: list[tuple[str, float]] = []
 
     def cb(label: str, fraction: float) -> None:
         trace.append((label, fraction))
@@ -106,7 +104,7 @@ def test_progress_callback_analytical_only():
 
 def test_progress_callback_full_fe_path():
     """Callback fires through every FE phase boundary and ends at 1.0."""
-    trace: List[Tuple[str, float]] = []
+    trace: list[tuple[str, float]] = []
 
     def cb(label: str, fraction: float) -> None:
         trace.append((label, fraction))

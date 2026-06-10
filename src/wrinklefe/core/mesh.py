@@ -658,7 +658,7 @@ class WrinkleMesh:
     def __init__(
         self,
         laminate: Laminate,
-        wrinkle_config: "WrinkleConfiguration | None" = None,
+        wrinkle_config: WrinkleConfiguration | None = None,
         Lx: float = 48.0,
         Ly: float = 20.0,
         nx: int = 50,
@@ -742,8 +742,8 @@ class WrinkleMesh:
         return mesh_data
 
     def _augment_inversion_error(
-        self, err: "MeshValidationError"
-    ) -> "MeshValidationError":
+        self, err: MeshValidationError
+    ) -> MeshValidationError:
         """Attach wrinkle parameters and tuning suggestions to an inversion error.
 
         Delegates to :func:`mesh_shear_diagnostics` so the post-failure

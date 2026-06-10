@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 # ====================================================================== #
 
 def export_results_json(
-    results: "AnalysisResults",
-    filepath: Union[str, Path],
+    results: AnalysisResults,
+    filepath: str | Path,
 ) -> None:
     """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON.
 
@@ -138,9 +138,9 @@ def export_results_json(
 # ====================================================================== #
 
 def export_abaqus_inp(
-    mesh: "MeshData",
-    laminate: "Laminate",
-    filepath: Union[str, Path],
+    mesh: MeshData,
+    laminate: Laminate,
+    filepath: str | Path,
 ) -> None:
     """Export mesh and laminate data to Abaqus ``.inp`` format.
 
@@ -211,9 +211,9 @@ def export_abaqus_inp(
 # ====================================================================== #
 
 def export_vtk(
-    mesh: "MeshData",
-    field_results: Optional["FieldResults"],
-    filepath: Union[str, Path],
+    mesh: MeshData,
+    field_results: FieldResults | None,
+    filepath: str | Path,
 ) -> None:
     """Export mesh and field data to VTK legacy format for ParaView.
 
@@ -402,7 +402,7 @@ def recommend_disposition(
     knockdown: float,
     damage_index: float,
     *,
-    loading: Optional[str] = None,
+    loading: str | None = None,
 ) -> dict:
     """Classify wrinkle severity and recommend a (non-binding) MRB path.
 
@@ -493,10 +493,10 @@ def build_analysis_summary(
     *,
     defect: dict,
     engineering: dict,
-    reference: Optional[str] = None,
-    prepared_by: Optional[str] = None,
-    notes: Optional[str] = None,
-    tool_version: Optional[str] = None,
+    reference: str | None = None,
+    prepared_by: str | None = None,
+    notes: str | None = None,
+    tool_version: str | None = None,
 ) -> dict:
     """Assemble a wrinkle-analysis validation summary for an NCR.
 
@@ -535,7 +535,7 @@ def build_analysis_summary(
         The structured validation summary.  JSON-serialisable.
     """
 
-    def _clean(val: Optional[str], default: str) -> str:
+    def _clean(val: str | None, default: str) -> str:
         if val is None or (isinstance(val, str) and not val.strip()):
             return default
         return str(val).strip()
@@ -549,7 +549,7 @@ def build_analysis_summary(
     disposition = recommend_disposition(kd, di, loading=loading)
 
     fe = engineering.get("fe") or None
-    fe_block: Optional[dict] = None
+    fe_block: dict | None = None
     criteria = [
         "WrinkleFE closed-form knockdown model (effective fibre-"
         "misalignment / morphology-factor formulation) — analytical "
@@ -648,7 +648,7 @@ def build_analysis_summary(
     return summary
 
 
-def _contracted_or_none(layup: Any) -> Optional[str]:
+def _contracted_or_none(layup: Any) -> str | None:
     """Contracted notation for an angle list, or ``None`` if unavailable."""
     if not layup:
         return None
@@ -932,7 +932,7 @@ def render_summary_pdf(summary: dict) -> bytes:
             )
 
     buf = _io.BytesIO()
-    fig: Optional[Any] = None
+    fig: Any | None = None
     cursor = 0.0  # inches consumed from the top of the usable area
 
     def _new_page(pdf: Any) -> Any:
@@ -982,7 +982,7 @@ def render_summary_pdf(summary: dict) -> bytes:
 
 def export_summary(
     summary: dict,
-    filepath: Union[str, Path],
+    filepath: str | Path,
     *,
     fmt: str = "md",
 ) -> None:

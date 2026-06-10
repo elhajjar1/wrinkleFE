@@ -28,7 +28,8 @@ Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -62,8 +63,8 @@ if TYPE_CHECKING:
 # ======================================================================
 
 def plot_wrinkle_profile(
-    profile: "WrinkleProfile",
-    ax: Optional[Axes] = None,
+    profile: WrinkleProfile,
+    ax: Axes | None = None,
     n_points: int = 500,
 ) -> Axes:
     """Plot the out-of-plane displacement z(x) of a single wrinkle profile.
@@ -99,8 +100,8 @@ def plot_wrinkle_profile(
 
 
 def plot_dual_wrinkle_profiles(
-    config: "WrinkleConfiguration",
-    ax: Optional[Axes] = None,
+    config: WrinkleConfiguration,
+    ax: Axes | None = None,
     n_points: int = 500,
     show_gap: bool = True,
 ) -> Axes:
@@ -182,7 +183,7 @@ def plot_dual_wrinkle_profiles(
 
 def plot_morphology_factor(
     loading: str = "compression",
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     n_points: int = 361,
 ) -> Axes:
     """Plot morphology factor M_f as a function of phase offset phi.
@@ -242,7 +243,7 @@ def plot_morphology_factor(
 
 def plot_kinkband_concavity(
     gamma_Y: float = 0.02,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     theta_max_deg: float = 25.0,
     n_points: int = 500,
 ) -> Axes:
@@ -319,7 +320,7 @@ def plot_kinkband_concavity(
 
 def plot_strength_vs_amplitude(
     results_list: Sequence[dict],
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot predicted strength versus wrinkle amplitude from a parametric sweep.
 
@@ -384,8 +385,8 @@ def plot_strength_vs_amplitude(
 
 
 def plot_strength_distribution(
-    mc_results: "MonteCarloResults",
-    ax: Optional[Axes] = None,
+    mc_results: MonteCarloResults,
+    ax: Axes | None = None,
     n_bins: int = 50,
     show_kde: bool = True,
     by_morphology: bool = False,
@@ -474,8 +475,8 @@ def plot_strength_distribution(
 
 
 def plot_jensen_gap(
-    jensen_result: "JensenGapResult",
-    ax: Optional[Axes] = None,
+    jensen_result: JensenGapResult,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a bar chart of the Jensen gap broken down by morphology.
 
@@ -539,7 +540,7 @@ def plot_jensen_gap(
 
 def plot_failure_envelope(
     envelope_data: Sequence[dict],
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a 2D failure envelope (e.g., amplitude vs. wavelength).
 
@@ -619,11 +620,11 @@ def plot_failure_envelope(
 # ======================================================================
 
 def plot_stress_through_thickness(
-    field_results: "FieldResults",
+    field_results: FieldResults,
     x: float,
     y: float,
     component: int = 0,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a stress component through the laminate thickness.
 
@@ -677,9 +678,9 @@ def plot_stress_through_thickness(
 
 
 def plot_damage_contour(
-    mesh: "MeshData",
+    mesh: MeshData,
     damage_field: np.ndarray,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a 2D contour of damage at the laminate midplane.
 
@@ -777,8 +778,8 @@ def plot_damage_contour(
 def plot_traction_separation(
     separation_history: np.ndarray,
     traction_history: np.ndarray,
-    ax: Optional[Axes] = None,
-    label: Optional[str] = None,
+    ax: Axes | None = None,
+    label: str | None = None,
     beta: float = 1.0,
 ) -> Axes:
     """Plot the traction-separation trajectory at a single cohesive Gauss point.
@@ -858,8 +859,8 @@ def plot_traction_separation(
 
 def plot_load_displacement(
     load_displacement: np.ndarray,
-    ax: Optional[Axes] = None,
-    label: Optional[str] = None,
+    ax: Axes | None = None,
+    label: str | None = None,
 ) -> Axes:
     """Plot the load-displacement response from a CZM Newton-Raphson run.
 
@@ -921,7 +922,7 @@ def plot_load_displacement(
 
 def plot_damage_histogram(
     damage: np.ndarray,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     bins: int = 20,
 ) -> Axes:
     """Plot a histogram of the cohesive damage variable.
@@ -981,7 +982,7 @@ def plot_damage_histogram(
 def plot_interface_damage_field(
     damage_per_elem: np.ndarray,
     xy_centroids: np.ndarray,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     cmap: str = "viridis",
 ) -> Axes:
     """Scatter the per-element damage on the interface (x, y) plane.
@@ -1048,7 +1049,7 @@ def plot_interface_damage_field(
 
 def plot_energy_per_interface(
     energy_per_interface: Mapping[int, float],
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Bar chart of cohesive energy dissipated, broken down by interface.
 
@@ -1107,7 +1108,7 @@ def plot_energy_per_interface(
     return ax
 
 
-def czm_overview_figure(results: "AnalysisResults") -> Figure:
+def czm_overview_figure(results: AnalysisResults) -> Figure:
     """Build a 2x2 dashboard of CZM outputs from an ``AnalysisResults``.
 
     Panels:

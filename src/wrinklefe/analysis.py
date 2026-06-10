@@ -38,8 +38,8 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields, replace
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -99,7 +99,7 @@ _BETA_BLOCK = 0.010   # per-extra-ply block penalty on gamma_Y_eff
 _GAMMA_Y_FLOOR = _GAMMA_Y_UD / 2.0  # = 0.016 (UD half-strain floor)
 
 
-def _confined_fraction(angles: List[float], tol: float = 5.0) -> float:
+def _confined_fraction(angles: list[float], tol: float = 5.0) -> float:
     """Weighted confinement fraction for 0-degree plies.
 
     Each 0-degree ply is scored by how many of its neighbors are off-axis:
@@ -134,7 +134,7 @@ def _confined_fraction(angles: List[float], tol: float = 5.0) -> float:
     return score / n_0
 
 
-def _effective_gamma_Y(angles: List[float]) -> float:
+def _effective_gamma_Y(angles: list[float]) -> float:
     """Compute layup-dependent effective matrix yield strain.
 
     Three-parameter model::
@@ -214,7 +214,7 @@ def _profile_proportional_kd(
     morphology_factor: float = 1.0,
     through_thickness_decay: bool = True,
     z_position_fraction: float = 0.5,
-    decay_scale: Optional[float] = None,
+    decay_scale: float | None = None,
     decay_floor: float = 0.0,
     kink_band_quadratic_coeff: float = 0.0,
 ) -> float:
@@ -372,7 +372,7 @@ def _profile_proportional_kd(
     return kd_sum / n_plies
 
 
-def _check_multi_wrinkle_fe_support(cfg: "AnalysisConfig") -> None:
+def _check_multi_wrinkle_fe_support(cfg: AnalysisConfig) -> None:
     """Reject multi-wrinkle FE configs the pipeline cannot represent yet.
 
     Issue #252: arbitrary N-wrinkle layouts — including longitudinally
@@ -391,7 +391,7 @@ def _check_multi_wrinkle_fe_support(cfg: "AnalysisConfig") -> None:
         )
 
 
-def _max_consecutive_zero_plies(angles: List[float], tol: float = 5.0) -> int:
+def _max_consecutive_zero_plies(angles: list[float], tol: float = 5.0) -> int:
     """Find maximum number of consecutive 0-degree plies in a layup.
 
     Used by the tension OOP model to determine the effective curved-beam
@@ -722,7 +722,7 @@ class AnalysisConfig:
     # `morphology` (stack=0, convex=+pi/2, concave=-pi/2). A float
     # overrides the named-morphology phase so arbitrary phases can be
     # analysed/swept. Ignored for single-wrinkle modes (uniform/graded).
-    phase: Optional[float] = None
+    phase: float | None = None
     decay_floor: float = 0.0  # graded mode: min amplitude fraction at surfaces (0–1)
     # Single-wrinkle through-thickness position as a fraction of the laminate
     # thickness (0 = bottom surface, 0.5 = midplane, 1 = top surface). Only
@@ -734,15 +734,15 @@ class AnalysisConfig:
     # mirror WrinkleConfiguration so the legacy "constant" behaviour is
     # preserved when callers leave them unset.
     amplitude_profile: str = "constant"
-    amplitude_profile_decay_length: Optional[float] = None
+    amplitude_profile_decay_length: float | None = None
     amplitude_profile_axis: str = "x"
 
     # Loading
     loading: str = "compression"
 
     # Material & laminate
-    material: Optional[OrthotropicMaterial] = None
-    angles: Optional[List[float]] = None
+    material: OrthotropicMaterial | None = None
+    angles: list[float] | None = None
 
     # Ply thickness
     ply_thickness: float = 0.183  # mm (1 ply thickness for CYCOM X850/T800)
@@ -751,15 +751,15 @@ class AnalysisConfig:
     # ``__post_init__`` from ``len(angles)`` so small laminates work out
     # of the box (issues #154/#156). For the default 24-ply layup the
     # auto-derived pair is (11, 12), preserving backwards compatibility.
-    interface_1: Optional[int] = None
-    interface_2: Optional[int] = None
+    interface_1: int | None = None
+    interface_2: int | None = None
 
     # Multi-wrinkle override. When non-empty, this overrides the named
     # single/dual-wrinkle dispatch in WrinkleAnalysis.run, allowing
     # arbitrary N-wrinkle configurations (Li et al. 2025 Dataset F).
     # Each spec contributes one WrinklePlacement; FE solve is currently
     # out of scope for this path (set analytical_only=True).
-    wrinkles: Optional[List["WrinkleSpec"]] = None
+    wrinkles: list[WrinkleSpec] | None = None
 
     # Mesh
     nx: int = 12
@@ -787,7 +787,7 @@ class AnalysisConfig:
     # its (much smaller) amplitude.  Provide an explicit positive float
     # to pin the decay scale (e.g. to reproduce the pre-PR amplitude-
     # based behaviour for regression testing).  Must be > 0 when set.
-    through_thickness_decay_scale: Optional[float] = None
+    through_thickness_decay_scale: float | None = None
 
     # Argon-Fleck quadratic coefficient ``c_AF`` (dimensionless) for the
     # extended Budiansky-Fleck closed form ``KD = 1/(1 + r + c_AF*r^2)``
@@ -814,12 +814,12 @@ class AnalysisConfig:
     #     is closest to the wrinkle peak amplitude,
     #   * ``list[int]`` — explicit list of interface indices in
     #     ``[0, n_plies-1)`` (0 = bottom-most interior interface).
-    czm_interfaces: Union[List[int], str] = "near_crest"
+    czm_interfaces: list[int] | str = "near_crest"
     czm_law: str = "bilinear"
-    czm_GIc: Optional[float] = None      # N/mm; None -> material default
-    czm_GIIc: Optional[float] = None
-    czm_sigma_max: Optional[float] = None  # MPa; None -> material default
-    czm_tau_max: Optional[float] = None
+    czm_GIc: float | None = None      # N/mm; None -> material default
+    czm_GIIc: float | None = None
+    czm_sigma_max: float | None = None  # MPa; None -> material default
+    czm_tau_max: float | None = None
     czm_penalty: float = 1.0e6           # N/mm^3 initial interface stiffness
     czm_BK_eta: float = 1.45
     # Default bumped 20 -> 100 after the Phase 7 NASA TM DCB validation
@@ -1279,9 +1279,9 @@ class AnalysisResults:
     """
 
     config: AnalysisConfig
-    mesh: Optional[MeshData] = None
-    wrinkle_config: Optional[WrinkleConfiguration] = None
-    laminate: Optional[Laminate] = None
+    mesh: MeshData | None = None
+    wrinkle_config: WrinkleConfiguration | None = None
+    laminate: Laminate | None = None
 
     # Analytical predictions
     morphology_factor: float = 1.0
@@ -1290,70 +1290,70 @@ class AnalysisResults:
     mesh_max_angle_rad: float = 0.0  # max fiber angle from FE mesh (accounts for decay)
     damage_index: float = 0.0
     analytical_knockdown: float = 1.0
-    analytical_onset_knockdown: Optional[float] = None
+    analytical_onset_knockdown: float | None = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
-    tension_mechanisms: Optional[dict] = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
+    tension_mechanisms: dict | None = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
 
     # FE results
-    field_results: Optional[FieldResults] = None
-    failure_report: Optional[LaminateFailureReport] = None
-    failure_indices: Optional[dict] = None
-    failure_modes: Optional[dict] = None  # {criterion: (n_elem, n_gauss) str array}
+    field_results: FieldResults | None = None
+    failure_report: LaminateFailureReport | None = None
+    failure_indices: dict | None = None
+    failure_modes: dict | None = None  # {criterion: (n_elem, n_gauss) str array}
 
     # Retention factor (wrinkled / pristine)
-    retention_factors: Optional[dict] = None  # {criterion_name: float}
-    baseline_fi: Optional[dict] = None  # {criterion_name: float} pristine max FI
+    retention_factors: dict | None = None  # {criterion_name: float}
+    baseline_fi: dict | None = None  # {criterion_name: float} pristine max FI
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
     modulus_retention: float = 1.0
 
     # Tension mechanism decomposition (only for tension loading)
-    tension_mechanisms: Optional[dict] = None  # {kd_fiber, kd_matrix, kd_oop, ...}
+    tension_mechanisms: dict | None = None  # {kd_fiber, kd_matrix, kd_oop, ...}
 
     # ------------------------------------------------------------------
     # CZM results — only populated when AnalysisConfig.enable_czm = True.
     # ------------------------------------------------------------------
-    czm_damage: Optional[np.ndarray] = None
+    czm_damage: np.ndarray | None = None
     """Cohesive damage variable per (interface element, Gauss point).
     Shape ``(n_iface_elems, n_gauss)``."""
 
-    czm_separation: Optional[np.ndarray] = None
+    czm_separation: np.ndarray | None = None
     """Displacement jump in the local cohesive frame per (interface
     element, Gauss point, component).  Shape ``(n_iface_elems, n_gauss,
     3)`` with components ``(delta_n, delta_s, delta_t)``."""
 
-    czm_traction: Optional[np.ndarray] = None
+    czm_traction: np.ndarray | None = None
     """Cohesive traction in the local frame at each Gauss point.  Shape
     ``(n_iface_elems, n_gauss, 3)``."""
 
-    czm_energy_dissipated: Optional[float] = None
+    czm_energy_dissipated: float | None = None
     """Total cohesive energy dissipated across all interfaces (N*mm)."""
 
-    czm_energy_per_interface: Optional[Dict[int, float]] = None
+    czm_energy_per_interface: dict[int, float] | None = None
     """Per-interface dissipated energy keyed by ply-interface index."""
 
-    czm_crack_length_per_interface: Optional[Dict[int, float]] = None
+    czm_crack_length_per_interface: dict[int, float] | None = None
     """Per-interface crack length (in mm) keyed by ply-interface index.
     Computed as the in-plane area of elements with ``damage > 0.99``,
     divided by the mesh width (so the reported quantity has units of
     length along the wrinkle/crack direction)."""
 
-    czm_load_displacement: Optional[np.ndarray] = None
+    czm_load_displacement: np.ndarray | None = None
     """``(n_inc, 2)`` array of ``(lambda, ||u||)`` samples from the
     incremental Newton-Raphson run."""
 
-    czm_converged: Optional[bool] = None
+    czm_converged: bool | None = None
     """Whether every load increment converged."""
 
-    czm_interfaces_used: Optional[List[int]] = None
+    czm_interfaces_used: list[int] | None = None
     """Ply-interface indices that actually received cohesive elements."""
 
-    czm_delamination_report: Optional[LaminateFailureReport] = None
+    czm_delamination_report: LaminateFailureReport | None = None
     """Delamination failure report shaped like the other failure
     criteria, populated by :mod:`wrinklefe.failure.delamination`."""
 
-    czm_element_centroids: Optional[np.ndarray] = None
+    czm_element_centroids: np.ndarray | None = None
     """``(n_iface_elems, 2)`` array of in-plane ``(x, y)`` centroids of the
     cohesive interface elements, in the reference (undeformed) configuration.
 
@@ -1475,8 +1475,8 @@ class WrinkleAnalysis:
 
     def run(
         self,
-        analytical_only: Optional[bool] = None,
-        progress_callback: Optional[Callable[[str, float], None]] = None,
+        analytical_only: bool | None = None,
+        progress_callback: Callable[[str, float], None] | None = None,
     ) -> AnalysisResults:
         """Execute the complete analysis pipeline.
 
@@ -1703,7 +1703,7 @@ class WrinkleAnalysis:
         base_config: AnalysisConfig,
         morphologies: Sequence[str] = ("stack", "convex", "concave"),
         analytical_only: bool = False,
-    ) -> Dict[str, AnalysisResults]:
+    ) -> dict[str, AnalysisResults]:
         """Run the full FE analysis for multiple morphologies and compare.
 
         Parameters
@@ -1722,7 +1722,7 @@ class WrinkleAnalysis:
         dict[str, AnalysisResults]
             Mapping from morphology name to its results.
         """
-        all_results: Dict[str, AnalysisResults] = {}
+        all_results: dict[str, AnalysisResults] = {}
 
         for morph in morphologies:
             cfg = replace(base_config, morphology=morph)
@@ -1742,7 +1742,7 @@ class WrinkleAnalysis:
         parameter: str,
         values: Sequence[float],
         analytical_only: bool = False,
-    ) -> List[AnalysisResults]:
+    ) -> list[AnalysisResults]:
         """Sweep a single parameter over a range of values.
 
         Parameters
@@ -1775,7 +1775,7 @@ class WrinkleAnalysis:
                 f"AnalysisConfig has no field '{parameter}'"
             )
 
-        results_list: List[AnalysisResults] = []
+        results_list: list[AnalysisResults] = []
 
         # If domain_length was auto-derived from wavelength in the base
         # config (i.e. user left it at the sentinel 0.0), we must reset
@@ -1819,7 +1819,7 @@ class WrinkleAnalysis:
 
     def _resolve_cohesive_interfaces(
         self, laminate: Laminate, wrinkle_config: WrinkleConfiguration,
-    ) -> List[int]:
+    ) -> list[int]:
         """Resolve ``cfg.czm_interfaces`` to an explicit ply-interface list.
 
         Parameters
@@ -1904,7 +1904,7 @@ class WrinkleAnalysis:
         # matches the v1 spec).
         mat = laminate.plies[0].material
 
-        def _coalesce(cfg_val: Optional[float], mat_val) -> float:
+        def _coalesce(cfg_val: float | None, mat_val) -> float:
             if cfg_val is not None:
                 return float(cfg_val)
             if mat_val is None:
@@ -1931,9 +1931,9 @@ class WrinkleAnalysis:
         self,
         laminate: Laminate,
         wrinkle_config: WrinkleConfiguration,
-        iface_indices: List[int],
+        iface_indices: list[int],
         cohesive_props: CohesiveProperties,
-    ) -> Tuple[MeshData, List[Tuple[int, Cohesive8Element]], Dict[int, range]]:
+    ) -> tuple[MeshData, list[tuple[int, Cohesive8Element]], dict[int, range]]:
         """Build a wrinkled mesh with cohesive elements inserted.
 
         The flat (un-deformed) mesh is built first so that ply-interface
@@ -1980,8 +1980,8 @@ class WrinkleAnalysis:
         ply_z = laminate.z_coords()  # length n_plies + 1
         # ply-interface index ``i`` corresponds to the boundary between
         # plies ``i`` and ``i + 1`` => z = ply_z[i + 1].
-        elem_ranges: Dict[int, range] = {}
-        cohesive_elements: List[Tuple[int, Cohesive8Element]] = []
+        elem_ranges: dict[int, range] = {}
+        cohesive_elements: list[tuple[int, Cohesive8Element]] = []
         next_global_id = 0
         for iface_idx in iface_indices:
             z_iface = float(ply_z[iface_idx + 1])
@@ -2026,7 +2026,7 @@ class WrinkleAnalysis:
 
         # --- Step 4: refresh cohesive node_coords against the deformed
         # node array so the GlobalAssembler equality check passes -----
-        refreshed: List[Tuple[int, Cohesive8Element]] = []
+        refreshed: list[tuple[int, Cohesive8Element]] = []
         for gid, c_elem in cohesive_elements:
             new_coords = mesh.nodes[c_elem.node_ids]
             new_elem = Cohesive8Element(
@@ -2210,9 +2210,9 @@ class WrinkleAnalysis:
         # delta_f is mode-dependent.  We use the simpler bound
         # GIc * area * d_avg which is accurate for mode-I-dominated
         # failure and gives the right total in the fully-failed limit.
-        energy_per_iface: Dict[int, float] = {}
-        crack_len_per_iface: Dict[int, float] = {}
-        damage_per_iface: Dict[int, np.ndarray] = {}
+        energy_per_iface: dict[int, float] = {}
+        crack_len_per_iface: dict[int, float] = {}
+        damage_per_iface: dict[int, np.ndarray] = {}
 
         # Mesh width in y for crack-length estimation.  Use the bounding
         # box of the *original* (flat) coordinates which the cohesive
@@ -2466,9 +2466,9 @@ class WrinkleAnalysis:
 
     @staticmethod
     def _tension_knockdown_analytical(
-        theta: float, cfg: "AnalysisConfig",
+        theta: float, cfg: AnalysisConfig,
         _return_kd0_only: bool = False,
-    ) -> Tuple[float, dict]:
+    ) -> tuple[float, dict]:
         """Three-mechanism tension knockdown (LaRC04 + curved-beam OOP).
 
         Computes the laminate-level retention factor for tension loading
@@ -2693,7 +2693,7 @@ class WrinkleAnalysis:
         # whenever the raw energy-based onset is not already below it.
         # This guarantees the spec's requirement that onset KD < KD_oop
         # and onset KD < analytical_knockdown.
-        kd_onset_lam: Optional[float] = None
+        kd_onset_lam: float | None = None
         if kd_onset is not None:
             kd_onset_lam_raw = f_0 * kd_onset + (1.0 - f_0) * 1.0
             kd_onset_lam = min(kd_onset_lam_raw, float(kd_lam) * 0.999)
