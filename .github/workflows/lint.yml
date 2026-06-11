@@ -36,8 +36,9 @@ jobs:
         run: ruff check .
 
       # Walking outward module-by-module (expand-mypy-coverage skill):
-      # core/ and elements/ are clean; failure/, solver/, viz/, sweep/,
-      # io/, analysis.py, and cli.py still carry errors (mostly numpy
-      # `Any` returns) and are the next passes.
-      - name: Mypy (scope - package init + core + elements)
-        run: mypy src/wrinklefe/__init__.py src/wrinklefe/core src/wrinklefe/elements
+      # core/, elements/, failure/, and solver/ are clean; viz/, sweep/,
+      # io/, analysis.py, and cli.py are the next passes.
+      - name: Mypy (scope - init + core + elements + failure + solver)
+        run: >-
+          mypy src/wrinklefe/__init__.py src/wrinklefe/core
+          src/wrinklefe/elements src/wrinklefe/failure src/wrinklefe/solver

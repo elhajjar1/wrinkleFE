@@ -223,7 +223,7 @@ class LaRC05Criterion(FailureCriterion):
         fi = (s1 / material.Xt) ** 2 + (t12 / material.S12) ** 2
         if material.S13 > 0:
             fi += (t13 / material.S13) ** 2
-        return np.sqrt(max(fi, 0.0))
+        return float(np.sqrt(max(fi, 0.0)))
 
     # ------------------------------------------------------------------
     # Fibre kinking with misalignment frame + nonlinear shear

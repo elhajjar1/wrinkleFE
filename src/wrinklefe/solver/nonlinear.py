@@ -28,7 +28,7 @@ definiteness once damage starts accumulating.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy import sparse
@@ -316,6 +316,7 @@ class NewtonRaphsonSolver:
                     return u, it, True
 
             try:
+                assert K_bc is not None  # only_residual=False above
                 du = spla.spsolve(K_bc, -R_bc)
             except RuntimeError:
                 self._revert_state()
@@ -469,7 +470,7 @@ class NewtonRaphsonSolver:
     def _assemble_tangent(self, u: np.ndarray) -> sparse.csc_matrix:
         tan = getattr(self.assembler, "assemble_tangent", None)
         if callable(tan):
-            return tan(u)
+            return cast(sparse.csc_matrix, tan(u))
         # Fall back to linear stiffness only when the assembler has no
         # cohesive elements registered; otherwise the linear path is
         # silently wrong for nonlinear CZM problems.
@@ -498,7 +499,9 @@ class NewtonRaphsonSolver:
             self.assembler, "assemble_residual_and_tangent", None
         )
         if callable(combined):
-            return combined(u)
+            return cast(
+                "tuple[sparse.csc_matrix, np.ndarray]", combined(u)
+            )
         # This IS the fallback for assemblers without the combined API
         # — calling through :meth:`_assemble_internal_force` here would
         # infinitely recurse (that shim routes back through the combined
@@ -517,13 +520,13 @@ class NewtonRaphsonSolver:
         """
         direct = getattr(self.assembler, "assemble_internal_force", None)
         if callable(direct):
-            return direct(u)
+            return cast(np.ndarray, direct(u))
         combined = getattr(
             self.assembler, "assemble_residual_and_tangent", None
         )
         if callable(combined):
             _K, F_int = combined(u)
-            return F_int
+            return cast(np.ndarray, F_int)
         raise AttributeError(
             "Assembler must implement either assemble_internal_force(u) "
             "or assemble_residual_and_tangent(u); neither found."

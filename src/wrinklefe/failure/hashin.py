@@ -191,7 +191,7 @@ class HashinCriterion(FailureCriterion):
             "matrix_tension": fi_mt,
             "matrix_compression": fi_mc,
         }
-        dominant = max(modes, key=modes.get)
+        dominant = max(modes, key=lambda m: modes[m])
         fi_max = modes[dominant]
 
         if fi_max <= 0:
@@ -395,4 +395,4 @@ def _quadratic_reserve_factor(A: float, B: float) -> float:
     candidates = [r for r in (r_plus, r_minus) if r > 0.0]
     if not candidates:
         return float("inf")
-    return min(candidates)
+    return float(min(candidates))

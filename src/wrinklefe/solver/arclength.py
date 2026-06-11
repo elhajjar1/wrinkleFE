@@ -66,7 +66,7 @@ and buckling problems."  Int. J. Solids Struct. 15: 529-551.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy import sparse
@@ -524,7 +524,7 @@ class ArcLengthSolver:
     def _assemble_tangent(self, u: np.ndarray) -> sparse.csc_matrix:
         tan = getattr(self.assembler, "assemble_tangent", None)
         if callable(tan):
-            return tan(u)
+            return cast(sparse.csc_matrix, tan(u))
         cohesive = getattr(self.assembler, "cohesive_elements", None)
         if cohesive:
             raise RuntimeError(
@@ -540,7 +540,9 @@ class ArcLengthSolver:
             self.assembler, "assemble_residual_and_tangent", None
         )
         if callable(combined):
-            return combined(u)
+            return cast(
+                "tuple[sparse.csc_matrix, np.ndarray]", combined(u)
+            )
         F_int = self.assembler.assemble_internal_force(u)
         K_t = self._assemble_tangent(u)
         return K_t, F_int
@@ -559,4 +561,6 @@ class ArcLengthSolver:
         n_dof = K.shape[0]
         diag_data = np.zeros(n_dof, dtype=np.float64)
         diag_data[dofs_arr] = alpha
-        return (K + sparse.diags(diag_data, 0, format="csc")).tocsc()
+        return sparse.csc_matrix(
+            (K + sparse.diags(diag_data, 0, format="csc")).tocsc()
+        )
