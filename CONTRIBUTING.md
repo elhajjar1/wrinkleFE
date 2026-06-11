@@ -44,7 +44,10 @@ pytest
 2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes
 4. Run the test suite (`pytest`) and ensure all tests pass
-5. Submit a pull request with a clear description
+5. For user-visible changes, add an entry to the `[Unreleased]` section
+   of [`CHANGELOG.md`](CHANGELOG.md) — and call out anything that shifts
+   predictions under its **Numerical results** category
+6. Submit a pull request with a clear description
 
 ## Code Style
 
