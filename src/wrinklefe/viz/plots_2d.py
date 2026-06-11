@@ -36,6 +36,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from wrinklefe.core.wrinkle import WrinkleSurface3D
 from wrinklefe.viz.style import (
     ACCENT_GRAY,
     FIGSIZE_DOUBLE_COLUMN,
@@ -54,13 +55,29 @@ if TYPE_CHECKING:
     from wrinklefe.core.morphology import WrinkleConfiguration
     from wrinklefe.core.wrinkle import WrinkleProfile
     from wrinklefe.solver.results import FieldResults
-    from wrinklefe.statistics.jensen import JensenGapResult
-    from wrinklefe.statistics.montecarlo import MonteCarloResults
+
+    # The wrinklefe.statistics package does not exist yet; these
+    # annotation-only imports document the intended result types for
+    # plot_strength_distribution / plot_jensen_gap.
+    from wrinklefe.statistics.jensen import JensenGapResult  # type: ignore[import-not-found]
+    from wrinklefe.statistics.montecarlo import MonteCarloResults  # type: ignore[import-not-found]
 
 
 # ======================================================================
 # Wrinkle geometry plots
 # ======================================================================
+
+def _base_profile(profile: WrinkleProfile | WrinkleSurface3D) -> WrinkleProfile:
+    """Return the underlying 1-D profile, unwrapping a 3-D surface.
+
+    The 2-D profile plots draw the longitudinal section z(x); for a
+    :class:`WrinkleSurface3D` that is its inner 1-D ``profile`` (the
+    same convention as :mod:`wrinklefe.core.morphology`).
+    """
+    if isinstance(profile, WrinkleSurface3D):
+        return profile.profile
+    return profile
+
 
 def plot_wrinkle_profile(
     profile: WrinkleProfile,
@@ -133,7 +150,7 @@ def plot_dual_wrinkle_profiles(
     if config.n_wrinkles() < 2:
         # Fall back to single profile
         wrinkle = config.wrinkles[0]
-        profile = wrinkle.profile
+        profile = _base_profile(wrinkle.profile)
         xlo, xhi = profile.domain()
         x = np.linspace(xlo, xhi, n_points)
         z = profile.displacement(x)
@@ -146,8 +163,8 @@ def plot_dual_wrinkle_profiles(
 
     w_upper = config.wrinkles[0]
     w_lower = config.wrinkles[1]
-    p_upper = w_upper.profile
-    p_lower = w_lower.profile
+    p_upper = _base_profile(w_upper.profile)
+    p_lower = _base_profile(w_lower.profile)
 
     # Use union of domains
     xlo_u, xhi_u = p_upper.domain()
