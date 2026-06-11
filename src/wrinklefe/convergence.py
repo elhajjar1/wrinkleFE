@@ -27,6 +27,7 @@ import math
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
 import numpy as np
 
@@ -256,7 +257,7 @@ def mesh_convergence_study(
     rows: list[ConvergenceLevel] = []
     qois: list[float] = []
     for k, f in enumerate(factors):
-        overrides = {
+        overrides: dict[str, Any] = {
             axis: max(1, int(round(getattr(base_config, axis) * f)))
             for axis in refine
         }
@@ -277,7 +278,9 @@ def mesh_convergence_study(
             ConvergenceLevel(
                 level=k,
                 nx=cfg.nx, ny=cfg.ny, nz_per_ply=cfg.nz_per_ply,
-                n_dof=int(results.mesh.n_dof),
+                n_dof=(
+                    int(results.mesh.n_dof) if results.mesh is not None else 0
+                ),
                 qoi=q,
                 delta_pct=delta,
                 runtime_s=runtime,

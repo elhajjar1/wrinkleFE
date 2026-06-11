@@ -19,15 +19,16 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
+from matplotlib.cm import ScalarMappable
 from matplotlib.colorbar import Colorbar
 from matplotlib.figure import Figure
-from matplotlib.image import AxesImage
+from mpl_toolkits.mplot3d.axes3d import Axes3D  # type: ignore[import-untyped]
 
 # ======================================================================
 # Morphology visual encoding
@@ -184,7 +185,7 @@ def set_publication_style() -> None:
 
 def colorbar_setup(
     ax: Axes,
-    mappable: AxesImage,
+    mappable: ScalarMappable,
     label: str,
     orientation: str = "vertical",
 ) -> Colorbar:
@@ -194,8 +195,9 @@ def colorbar_setup(
     ----------
     ax : matplotlib.axes.Axes
         The axes containing the mappable.
-    mappable : matplotlib.image.AxesImage
-        The image or contour set to create the colorbar for.
+    mappable : matplotlib.cm.ScalarMappable
+        The image, scatter collection, or contour set to create the
+        colorbar for.
     label : str
         Colorbar label text.
     orientation : str, optional
@@ -207,6 +209,7 @@ def colorbar_setup(
         The created colorbar instance.
     """
     fig = ax.get_figure()
+    assert fig is not None  # an Axes always belongs to a figure
     cbar = fig.colorbar(mappable, ax=ax, orientation=orientation, pad=0.02)
     cbar.set_label(label, fontsize=9)
     cbar.ax.tick_params(labelsize=8)
@@ -296,7 +299,9 @@ def set_axes_equal_aspect(
     # Guard against zero (or negative due to numerical noise) extents that
     # would make set_box_aspect crash.
     safe = np.where(extents > 0, extents, 1.0)
-    ax.set_box_aspect(tuple(safe))
+    # The tuple overload of set_box_aspect only exists on the 3-D axes
+    # subclass, which the base-Axes stubs do not know about.
+    cast(Axes3D, ax).set_box_aspect(tuple(safe))
 
 
 def save_figure(
@@ -334,6 +339,9 @@ def save_figure(
         :meth:`~matplotlib.figure.Figure.savefig` (e.g. ``bbox_inches='tight'``).
     """
     fig = ax_or_fig if isinstance(ax_or_fig, Figure) else ax_or_fig.figure
+    # The plot_* functions always draw on a top-level Figure (never a
+    # SubFigure), so the Axes.figure union narrows to Figure here.
+    assert isinstance(fig, Figure)
     savefig_kwargs.setdefault("bbox_inches", "tight")
     fig.savefig(path, dpi=dpi, **savefig_kwargs)
     if close:
@@ -367,6 +375,8 @@ def figure_context(ax_or_fig: Axes | Figure) -> Iterator[Figure]:
         The parent figure, guaranteed closed when the ``with`` block exits.
     """
     fig = ax_or_fig if isinstance(ax_or_fig, Figure) else ax_or_fig.figure
+    # See save_figure: plot_* axes always live on a top-level Figure.
+    assert isinstance(fig, Figure)
     try:
         yield fig
     finally:

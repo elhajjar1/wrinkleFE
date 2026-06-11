@@ -803,7 +803,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
     results = WrinkleAnalysis.parametric_sweep(
         config,
         parameter=args.parameter,
-        values=values,
+        values=values.tolist(),
         analytical_only=args.analytical_only,
     )
 

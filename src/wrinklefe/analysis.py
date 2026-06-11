@@ -40,6 +40,7 @@ import logging
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields, replace
+from typing import Any, Literal, cast
 
 import numpy as np
 
@@ -59,6 +60,7 @@ from wrinklefe.core.wrinkle import (
 from wrinklefe.elements.cohesive8 import (
     Cohesive8Element,
     CohesiveProperties,
+    make_initial_state,
 )
 from wrinklefe.failure.delamination import build_delamination_report
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
@@ -856,7 +858,7 @@ class AnalysisConfig:
             self.material = MaterialLibrary().get("IM7_8552")
         if self.angles is None:
             # Quasi-isotropic [0/45/-45/90]_3s → 24 plies
-            base = [0, 45, -45, 90]
+            base: list[float] = [0, 45, -45, 90]
             self.angles = (base * 3) + list(reversed(base * 3))
 
         # Auto-derive interior interface indices when the user did not
@@ -885,6 +887,8 @@ class AnalysisConfig:
         misconfiguration surfaces at construction time rather than as an
         obscure traceback deep in the solver/mesh path.
         """
+        # ``angles`` is filled in __post_init__ before _validate runs.
+        assert self.angles is not None
         # --- Wrinkle geometry -----------------------------------------
         # amplitude == 0 is a legitimate "no wrinkle" (flat) case: the
         # mid-surface profile z(x) = A * envelope reduces to 0, so the
@@ -1293,6 +1297,7 @@ class AnalysisResults:
     analytical_onset_knockdown: float | None = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
+    # Tension mechanism decomposition (only for tension loading)
     tension_mechanisms: dict | None = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
 
     # FE results
@@ -1307,9 +1312,6 @@ class AnalysisResults:
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
     modulus_retention: float = 1.0
-
-    # Tension mechanism decomposition (only for tension loading)
-    tension_mechanisms: dict | None = None  # {kd_fiber, kd_matrix, kd_oop, ...}
 
     # ------------------------------------------------------------------
     # CZM results — only populated when AnalysisConfig.enable_czm = True.
@@ -1511,6 +1513,14 @@ class WrinkleAnalysis:
             Complete results from all analysis steps.
         """
         cfg = self.config
+        # interface_1 / interface_2 are filled in __post_init__.
+        assert cfg.interface_1 is not None and cfg.interface_2 is not None
+        # _validate constrained these to the literal sets that
+        # WrinkleConfiguration expects.
+        amp_profile = cast(
+            Literal["constant", "gaussian", "linear"], cfg.amplitude_profile
+        )
+        amp_axis = cast(Literal["x", "y"], cfg.amplitude_profile_axis)
         if analytical_only is None:
             analytical_only = cfg.analytical_only
 
@@ -1580,9 +1590,9 @@ class WrinkleAnalysis:
                 placements,
                 decay_mode="graded" if is_graded else "default",
                 decay_floor=cfg.decay_floor if is_graded else 0.0,
-                amplitude_profile=cfg.amplitude_profile,
+                amplitude_profile=amp_profile,
                 amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
-                amplitude_profile_axis=cfg.amplitude_profile_axis,
+                amplitude_profile_axis=amp_axis,
             )
             results.wrinkle_config = wrinkle_config
         else:
@@ -1602,9 +1612,9 @@ class WrinkleAnalysis:
                     interface1=cfg.interface_1,
                     interface2=cfg.interface_2,
                     phase=float(cfg.phase),
-                    amplitude_profile=cfg.amplitude_profile,
+                    amplitude_profile=amp_profile,
                     amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
-                    amplitude_profile_axis=cfg.amplitude_profile_axis,
+                    amplitude_profile_axis=amp_axis,
                 )
                 wrinkle_config.decay_floor = max(0.0, min(1.0, cfg.decay_floor))
             else:
@@ -1613,9 +1623,9 @@ class WrinkleAnalysis:
                     interface1=cfg.interface_1,
                     interface2=cfg.interface_2,
                     decay_floor=cfg.decay_floor,
-                    amplitude_profile=cfg.amplitude_profile,
+                    amplitude_profile=amp_profile,
                     amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
-                    amplitude_profile_axis=cfg.amplitude_profile_axis,
+                    amplitude_profile_axis=amp_axis,
                 )
             results.wrinkle_config = wrinkle_config
 
@@ -1790,7 +1800,7 @@ class WrinkleAnalysis:
         )
 
         for val in values:
-            overrides = {parameter: val}
+            overrides: dict[str, Any] = {parameter: val}
             if reset_domain_length:
                 overrides["domain_length"] = 0.0
             cfg = replace(base_config, **overrides)
@@ -1807,6 +1817,9 @@ class WrinkleAnalysis:
 
     def _build_laminate(self) -> Laminate:
         """Build the Laminate from config."""
+        # material / angles are filled in __post_init__.
+        assert self.config.angles is not None
+        assert self.config.material is not None
         return Laminate.from_angles(
             self.config.angles,
             self.config.material,
@@ -2173,13 +2186,15 @@ class WrinkleAnalysis:
         u = outcome["displacement"]
         # Iterate in the same order as `cohesive_elements` was built.
         for row, (gid, c_elem) in enumerate(cohesive_elements):
-            # Damage from the assembler-committed state.
+            # Damage from the assembler-committed state.  Fall back to
+            # virgin Gauss-point states (d = 0) for elements the
+            # assembler never committed; ``_law_local`` requires a real
+            # ``CohesiveState`` (a ``None`` entry would crash it).
             state = assembler.cohesive_state.get(
-                gid, [None] * c_elem.n_gp
+                gid, make_initial_state(c_elem.n_gp)
             )
             for g in range(c_elem.n_gp):
-                s = state[g]
-                damage[row, g] = float(s.d) if s is not None else 0.0
+                damage[row, g] = float(state[g].d)
 
             # Recompute the local separation and traction at each GP
             # from the final displacement.  ``tangent_and_force`` returns
@@ -2290,13 +2305,16 @@ class WrinkleAnalysis:
         theta_eff = theta_max * mf
 
         # Compute layup-dependent effective gamma_Y from confinement
-        angles = cfg.angles if cfg.angles else [0, 45, -45, 90] * 6
+        angles: list[float] = (
+            cfg.angles if cfg.angles else [0.0, 45.0, -45.0, 90.0] * 6
+        )
         gamma_Y_eff = _effective_gamma_Y(angles)
 
         # Compression KD (CLT-weighted Budiansky-Fleck) — computed for
         # both loading modes: used directly for compression, and as a
         # physical floor for tension (tension cannot be worse than compression).
         mat = cfg.material
+        assert mat is not None  # filled in __post_init__
         E11 = mat.E1
         E22 = mat.E2
         G12 = mat.G12
@@ -2404,11 +2422,11 @@ class WrinkleAnalysis:
                 if kd < kd_compression:
                     kd = kd_compression
                     mechanisms["mode"] = mechanisms["mode"] + " (capped)"
-                ref_strength = cfg.material.Xt
+                ref_strength = mat.Xt
                 results.tension_mechanisms = mechanisms
             else:
                 kd = kd_compression
-                ref_strength = cfg.material.Xc
+                ref_strength = mat.Xc
                 results.tension_mechanisms = None
         else:
             # Non-graded: peak-angle BF at the critical cross-section,
@@ -2422,11 +2440,11 @@ class WrinkleAnalysis:
                 if kd < kd_compression:
                     kd = kd_compression
                     mechanisms["mode"] = mechanisms["mode"] + " (capped)"
-                ref_strength = cfg.material.Xt
+                ref_strength = mat.Xt
                 results.tension_mechanisms = mechanisms
             else:
                 kd = kd_compression
-                ref_strength = cfg.material.Xc
+                ref_strength = mat.Xc
                 results.tension_mechanisms = None
         results.gamma_Y_eff = gamma_Y_eff
 
@@ -2492,10 +2510,15 @@ class WrinkleAnalysis:
         - Timoshenko & Gere (1961), Theory of Elastic Stability (curved beam)
         - Elhajjar (2025) Scientific Reports 15:25977 (experimental data)
         """
+        # Filled in __post_init__.  (The previous ``if mat is None:
+        # return 1.0`` guard returned a bare float from a function whose
+        # callers always unpack a (kd, mechanisms) tuple, so it could
+        # never have worked anyway.)
         mat = cfg.material
-        if mat is None:
-            return 1.0
-        angles = cfg.angles if cfg.angles else [0, 45, -45, 90] * 6
+        assert mat is not None
+        angles: list[float] = (
+            cfg.angles if cfg.angles else [0.0, 45.0, -45.0, 90.0] * 6
+        )
 
         E11 = mat.E1
         E22 = mat.E2
@@ -2765,6 +2788,8 @@ class WrinkleAnalysis:
         A retention of 1.0 means no knockdown; 0.5 means 50% strength retained.
         """
         cfg = self.config
+        # interface_1 / interface_2 are filled in __post_init__.
+        assert cfg.interface_1 is not None and cfg.interface_2 is not None
 
         if results.failure_indices is None:
             return
@@ -2848,6 +2873,9 @@ class WrinkleAnalysis:
             if applied_strain == 0.0:
                 results.modulus_retention = 1.0
             else:
+                # Set by the FE path before retention factors run; if it
+                # were ever None the except below restores the default.
+                assert results.field_results is not None
                 stress_w = results.field_results.stress_local  # (n_elem, n_gauss, 6)
                 stress_p = flat_field.stress_local
 
