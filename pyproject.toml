@@ -97,3 +97,11 @@ addopts = "-v --tb=short"
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+
+# streamlit and plotly ship no type stubs (and none exist on PyPI), so
+# the Streamlit entry points (app.py, streamlit_viz.py) cannot resolve
+# their imports under mypy. Scope the missing-imports allowance to
+# exactly those packages — everything else stays strictly checked.
+[[tool.mypy.overrides]]
+module = ["streamlit", "streamlit.*", "plotly", "plotly.*"]
+ignore_missing_imports = true

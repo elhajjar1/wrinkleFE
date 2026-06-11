@@ -35,8 +35,9 @@ jobs:
       - name: Ruff (full pyproject config)
         run: ruff check .
 
-      # The whole src/wrinklefe package is mypy-clean (expand-mypy-coverage
-      # skill, issue #87 follow-up). app.py and streamlit_viz.py at the
-      # repo root remain for a later pass.
-      - name: Mypy (scope - src/wrinklefe)
-        run: mypy src/wrinklefe
+      # Whole-tree mypy: the src/wrinklefe package plus the repo-root
+      # Streamlit entry points (app.py, streamlit_viz.py). Completes the
+      # mypy-coverage walk tracked as a follow-up to issue #87; streamlit
+      # and plotly are unstubbed and ignored via pyproject [tool.mypy].
+      - name: Mypy (whole tree)
+        run: mypy src/wrinklefe app.py streamlit_viz.py
