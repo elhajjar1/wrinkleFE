@@ -61,6 +61,7 @@ wrinklefe = "wrinklefe.cli:main"
 Documentation = "https://wrinklefe.readthedocs.io"
 Repository = "https://github.com/elhajjar1/wrinkleFE"
 Issues = "https://github.com/elhajjar1/wrinkleFE/issues"
+Changelog = "https://github.com/elhajjar1/wrinkleFE/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

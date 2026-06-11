@@ -384,6 +384,12 @@ For graded morphology, the BF knockdown is averaged over the wrinkle profile in 
 
 MIT - see [LICENSE](LICENSE)
 
+## Changelog
+
+Notable changes between versions — including any that shift predictions,
+flagged under a **Numerical results** heading — are recorded in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
