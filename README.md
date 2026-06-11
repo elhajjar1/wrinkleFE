@@ -230,6 +230,14 @@ compact. The CSV is one row per ply with columns `ply_index,
 angle_deg, max_FI, min_RF, critical_mode, critical_criterion`, suitable
 for `pandas.read_csv` or `csv.DictReader`.
 
+Every JSON export carries a `provenance` block recording the installed
+WrinkleFE version (never a hardcoded literal), the Python/numpy/scipy
+versions, the platform, a UTC timestamp, and a solver snapshot — so a
+result file can be audited and reproduced against the validation
+ledger. The NCR validation summary (`build_analysis_summary`) embeds
+the same block, and the top-level `wrinklefe_version` field reflects
+the real installed version.
+
 The Streamlit web app exposes the same exports as **Download results as
 JSON** and **Download per-ply results as CSV** buttons on the Export
 tab.

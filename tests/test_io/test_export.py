@@ -97,6 +97,34 @@ class TestJSONExport:
         assert "configuration" in data
         assert "analytical_predictions" in data
 
+    def test_version_is_real_not_hardcoded(self, analysis_result, tmp_path):
+        """Issue #261: the stamped version is the installed one, never
+        the old hardcoded '0.1.0' literal."""
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _md_version
+
+        out = tmp_path / "results.json"
+        export_results_json(analysis_result, out)
+        data = json.loads(out.read_text())
+        assert data["wrinklefe_version"] != "0.1.0"
+        try:
+            expected = _md_version("wrinklefe")
+        except PackageNotFoundError:  # running from source, not installed
+            from wrinklefe import __version__ as expected
+        assert data["wrinklefe_version"] == expected
+        assert data["provenance"]["wrinklefe"] == expected
+
+    def test_provenance_block(self, analysis_result, tmp_path):
+        """Issue #261: provenance block carries the full env, typed."""
+        out = tmp_path / "results.json"
+        export_results_json(analysis_result, out)
+        prov = json.loads(out.read_text())["provenance"]
+        for key in ("wrinklefe", "python", "numpy", "scipy",
+                    "platform", "timestamp_utc"):
+            assert key in prov and isinstance(prov[key], str) and prov[key]
+        # The solver snapshot reflects the analysis config.
+        assert prov["solver"]["type"] == analysis_result.config.solver
+
     def test_configuration_fields(self, analysis_result, tmp_path):
         """Configuration section has expected fields."""
         out = tmp_path / "results.json"
@@ -475,6 +503,27 @@ class TestBuildAnalysisSummary:
             "disclaimer",
         ):
             assert key in s
+
+    def test_provenance_matches_json_export(self, summary_inputs):
+        """Issue #261: NCR summary and JSON export share one provenance
+        helper, so their blocks agree on keys and version."""
+        from wrinklefe.io.export import build_provenance
+
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        ref = build_provenance()
+        assert set(s["provenance"]) == set(ref)
+        assert s["provenance"]["wrinklefe"] == ref["wrinklefe"]
+        # tool_version defaults to the real version, not "(unspecified)".
+        assert s["header"]["tool_version"] == ref["wrinklefe"]
+
+    def test_tool_version_override_still_honored(self, summary_inputs):
+        """The explicit override path (used by tests) still wins."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect, engineering=engineering, tool_version="9.9.9-rc1"
+        )
+        assert s["header"]["tool_version"] == "9.9.9-rc1"
 
     def test_no_qms_admin_or_mrb_signoff(self, summary_inputs):
         """The attachment must not carry NCR/part admin or sign-off."""
