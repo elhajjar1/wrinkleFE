@@ -231,6 +231,68 @@ def test_sweep_no_analytical_only_runs_full_fe():
 
 
 # --------------------------------------------------------------------------- #
+# sweep: input validation and error handling (issue #298)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_unknown_parameter_exits_cleanly(capsys):
+    """A bad --parameter prints a one-line error and exits non-zero —
+    no raw traceback (the AttributeError from parametric_sweep is
+    caught)."""
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "sweep", "--parameter", "not_a_field",
+            "--min", "0.1", "--max", "0.5",
+        ])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "error:" in err and "not_a_field" in err
+    assert "Traceback" not in err
+
+
+def test_sweep_min_not_less_than_max_rejected(capsys):
+    for lo, hi in (("0.5", "0.1"), ("0.2", "0.2")):
+        with pytest.raises(SystemExit) as exc:
+            cli_main([
+                "sweep", "--parameter", "amplitude",
+                "--min", lo, "--max", hi,
+            ])
+        assert exc.value.code == 2
+        assert "--min" in capsys.readouterr().err
+
+
+def test_sweep_steps_below_two_rejected(capsys):
+    for steps in ("1", "0", "-3"):
+        with pytest.raises(SystemExit) as exc:
+            cli_main([
+                "sweep", "--parameter", "amplitude",
+                "--min", "0.1", "--max", "0.5", "--steps", steps,
+            ])
+        assert exc.value.code == 2
+        assert "--steps" in capsys.readouterr().err
+
+
+def test_sweep_validation_runs_before_solve():
+    """A degenerate range is rejected before parametric_sweep is ever
+    called (no compute burned)."""
+    called = {"n": 0}
+
+    def fake_sweep(*a, **k):
+        called["n"] += 1
+        return []
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+        new=staticmethod(fake_sweep),
+    ), pytest.raises(SystemExit):
+        cli_main([
+            "sweep", "--parameter", "amplitude",
+            "--min", "0.5", "--max", "0.1",
+        ])
+    assert called["n"] == 0
+
+
+# --------------------------------------------------------------------------- #
 # argparse exit codes for invalid input
 # --------------------------------------------------------------------------- #
 
