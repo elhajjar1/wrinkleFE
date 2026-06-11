@@ -1,0 +1,13 @@
+# Keep the blank-issue option: the maintainer's own detailed Where/What/
+# Acceptance write-ups should not be forced through a form.
+blank_issues_enabled: true
+contact_links:
+  - name: Try the hosted Streamlit app
+    url: https://wrinklefe.streamlit.app/
+    about: Run an analysis in the browser before filing — no install required.
+  - name: Documentation
+    url: https://wrinklefe.readthedocs.io
+    about: API reference, user guide, and the validation ledger.
+  - name: Usage question
+    url: https://github.com/elhajjar1/wrinkleFE/discussions
+    about: For "how do I…" questions about the science or the API, start a discussion.

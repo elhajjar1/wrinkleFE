@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in WrinkleFE behaves incorrectly or crashes.
+title: "bug: <short summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please include enough to reproduce — a
+        results JSON's `provenance` block (added in #261) has the
+        version and environment fields if you have one.
+  - type: input
+    id: version
+    attributes:
+      label: WrinkleFE version
+      description: "`python -c \"import wrinklefe; print(wrinklefe.__version__)\"`, or the version shown in the app footer / a results JSON `provenance.wrinklefe`."
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - PyPI install (pip install wrinklefe)
+        - From source (cloned repo)
+        - Hosted Streamlit app
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What did you run?
+      description: The exact CLI command, the Python/`AnalysisConfig` snippet, or the Streamlit inputs (material, layup, amplitude/wavelength/width, loading).
+      placeholder: |
+        wrinklefe analyze --amplitude 0.5 --wavelength 12 --morphology concave
+        # or
+        AnalysisConfig(amplitude=0.5, wavelength=12.0, width=8.0, morphology="concave")
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual
+      description: What you expected to happen, and what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / traceback
+      description: Paste the full traceback or error message, if any. Re-run with `-v` for the CLI to capture pipeline logs.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and Python version (and numpy/scipy if known — all in a results JSON `provenance` block).
+      placeholder: "Linux x86_64, Python 3.12, numpy 2.1, scipy 1.14"
+    validations:
+      required: false

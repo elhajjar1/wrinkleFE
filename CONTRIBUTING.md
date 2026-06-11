@@ -4,10 +4,21 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 
 ## Reporting Issues
 
-- Use the [GitHub Issues](https://github.com/elhajjar1/wrinkleFE/issues) tracker
-- Include a minimal reproducible example when reporting bugs
-- Describe your environment (OS, Python version, package versions)
-- For feature requests, describe the use case and expected behavior
+Open a new issue and pick the form that fits — the
+[**New issue**](https://github.com/elhajjar1/wrinkleFE/issues/new/choose)
+chooser offers three:
+
+- **Bug report** — for incorrect behavior or crashes (asks for version
+  and a reproduction).
+- **Enhancement** — pre-seeded with the project's
+  Where / What / Suggested approach / Acceptance criteria skeleton.
+- **Validation / physics discrepancy** — when a predicted knockdown or
+  strength disagrees with experiment or another model (material, layup,
+  wrinkle geometry, measured vs. predicted, data source).
+
+Blank issues stay enabled for anything that doesn't fit a form. A
+results JSON's `provenance` block carries the version and environment
+fields a bug report needs.
 
 ## Development Setup
 
