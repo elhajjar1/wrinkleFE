@@ -113,7 +113,7 @@ def _detJ_at_centroid_batch(elem_coords: np.ndarray) -> np.ndarray:
         )
     # J has shape (n_elem, 3, 3); broadcast _DN_CENTROID across n_elem.
     J = np.einsum("ij,njk->nik", _DN_CENTROID, elem_coords)
-    return np.linalg.det(J)
+    return np.asarray(np.linalg.det(J))
 
 
 class Hex8Element:
@@ -296,7 +296,7 @@ class Hex8Element:
             Shape ``(3, 3)`` — the Jacobian matrix ``dx/d(xi)``.
         """
         dN = self.shape_derivatives(xi, eta, zeta)  # (3, 8)
-        return dN @ self.node_coords  # (3, 8) @ (8, 3) = (3, 3)
+        return np.asarray(dN @ self.node_coords)  # (3, 8) @ (8, 3) = (3, 3)
 
     def B_matrix(self, xi: float, eta: float, zeta: float) -> np.ndarray:
         """Strain-displacement matrix (6 x 24) in Voigt notation.

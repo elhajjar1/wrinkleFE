@@ -536,7 +536,13 @@ class WrinkleConfiguration:
         float
             Maximum misalignment angle theta_max [radians].
         """
-        return max(w.profile.max_angle() for w in self.wrinkles)
+        angles = []
+        for w in self.wrinkles:
+            profile = w.profile
+            if isinstance(profile, WrinkleSurface3D):
+                profile = profile.profile
+            angles.append(profile.max_angle())
+        return max(angles)
 
     def effective_angle(self, loading: str = "compression") -> float:
         """Effective fiber misalignment angle accounting for morphology.
@@ -769,7 +775,7 @@ class WrinkleConfiguration:
             p_mid = (n_plies - 1) / 2.0
             raw = 1.0 - np.abs(p - p_mid) / p_mid  # 1 at mid, 0 at surface
             decay = self.decay_floor + (1.0 - self.decay_floor) * raw
-            return np.maximum(0.0, decay)
+            return np.asarray(np.maximum(0.0, decay))
 
         # Default per-ply linear decay shared with ``_ply_decay``.
         if n_plies <= 1:
@@ -867,7 +873,7 @@ class WrinkleConfiguration:
 
             deformed[:, 2] += dz
 
-        return deformed
+        return np.asarray(deformed)
 
     def fiber_angles_at_nodes(
         self,
@@ -950,11 +956,20 @@ class WrinkleConfiguration:
             k = wrinkle.ply_interface
 
             # Convert phase offset to geometric longitudinal shift
-            delta_x = wrinkle.phase_offset * profile.wavelength / (2.0 * np.pi)
+            if isinstance(profile, WrinkleSurface3D):
+                wavelength = profile.profile.wavelength
+            else:
+                wavelength = profile.wavelength
+            delta_x = wrinkle.phase_offset * wavelength / (2.0 * np.pi)
             x_shifted = x - delta_x
 
-            # 1-D profile slope is broadcast over all nodes in C.
-            slope = profile.slope(x_shifted)
+            # 1-D profile slope is broadcast over all nodes in C; a 3-D
+            # surface contributes the x-gradient of its own displacement
+            # field (mirrors the apply_to_nodes composition).
+            if isinstance(profile, WrinkleSurface3D):
+                slope = profile.gradient(x_shifted, y)[0]
+            else:
+                slope = profile.slope(x_shifted)
 
             amp_scale = self._amplitude_scale_vec(wrinkle, x, y)
             decay = self._through_thickness_decay(ply_ids, k, n_plies) * amp_scale
