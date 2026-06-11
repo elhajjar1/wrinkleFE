@@ -810,5 +810,5 @@ class StaticSolver:
             )
 
         N_inv, _node_to_gp = self._build_hex8_extrapolation()
-        nodal = N_inv @ gauss_values
+        nodal = np.asarray(N_inv @ gauss_values)
         return nodal[:, 0] if squeeze else nodal

@@ -386,7 +386,9 @@ class ContinuumDamage(ProgressiveDamageModel):
     @property
     def is_damaged(self) -> bool:
         """Whether any damage variable is non-zero."""
-        return self.d_fiber > 0.0 or self.d_matrix > 0.0 or self.d_shear > 0.0
+        return bool(
+            self.d_fiber > 0.0 or self.d_matrix > 0.0 or self.d_shear > 0.0
+        )
 
     def reset(self) -> None:
         """Reset all damage variables to zero (undamaged state)."""

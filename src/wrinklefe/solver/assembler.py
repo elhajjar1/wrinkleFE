@@ -313,11 +313,11 @@ class GlobalAssembler:
         coo_vals = np.empty(total_entries, dtype=np.float64)
 
         # Local row/col index pairs for a 24x24 matrix (reused every element)
-        local_ii, local_jj = np.meshgrid(
+        local_ii_g, local_jj_g = np.meshgrid(
             np.arange(24), np.arange(24), indexing="ij"
         )
-        local_ii = local_ii.ravel()  # (576,)
-        local_jj = local_jj.ravel()  # (576,)
+        local_ii = local_ii_g.ravel()  # (576,)
+        local_jj = local_jj_g.ravel()  # (576,)
 
         for e in range(n_elem):
             if e % 1000 == 0:
@@ -410,7 +410,7 @@ class GlobalAssembler:
             ),
             shape=(n_dof, n_dof),
         ).tocsc()
-        return (K + K_coh).tocsc()
+        return sparse.csc_matrix((K + K_coh).tocsc())
 
     def assemble_residual_and_tangent(
         self, u: np.ndarray

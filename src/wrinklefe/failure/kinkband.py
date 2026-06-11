@@ -150,7 +150,7 @@ class BudianskyFleckKinkBand(FailureCriterion):
         float
             Knockdown factor in (0, 1].
         """
-        return (1.0 - self.damage_index) ** 1.5
+        return float((1.0 - self.damage_index) ** 1.5)
 
     def combined_knockdown(
         self,

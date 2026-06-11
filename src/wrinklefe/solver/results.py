@@ -20,6 +20,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+
+try:  # numpy >= 2.0
+    from numpy import trapezoid as _trapezoid
+except ImportError:  # pragma: no cover — numpy 1.x fallback
+    from numpy import trapz as _trapezoid  # type: ignore[attr-defined, no-redef]
 from scipy import sparse
 
 from wrinklefe.core.laminate import Laminate
@@ -322,8 +327,8 @@ class FieldResults:
             if z_vals.size < 2:
                 continue
             # Trapezoidal integration
-            N[idx] = np.trapz(s_vals, z_vals)
-            M[idx] = np.trapz(s_vals * z_vals, z_vals)
+            N[idx] = _trapezoid(s_vals, z_vals)
+            M[idx] = _trapezoid(s_vals * z_vals, z_vals)
 
         return N, M
 
