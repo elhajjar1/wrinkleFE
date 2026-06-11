@@ -15,12 +15,15 @@ VTK File Formats, Kitware (legacy unstructured grid format).
 from __future__ import annotations
 
 import json
+import platform
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import scipy
 
+from wrinklefe import __version__ as _wrinklefe_version
 from wrinklefe.core.layup import to_contracted_layup
 
 if TYPE_CHECKING:
@@ -28,6 +31,43 @@ if TYPE_CHECKING:
     from wrinklefe.core.laminate import Laminate
     from wrinklefe.core.mesh import MeshData
     from wrinklefe.solver.results import FieldResults
+
+
+# ====================================================================== #
+# Provenance — shared by every export path so they can't drift
+# ====================================================================== #
+
+def build_provenance(solver: dict | None = None) -> dict:
+    """Environment/reproducibility block stamped onto exported results.
+
+    Records the installed WrinkleFE version (never a hardcoded literal —
+    issue #261) alongside the numerics stack and platform, so a results
+    file can support a reproducibility claim against the validation
+    ledger. Shared by :func:`export_results_json` and
+    :func:`build_analysis_summary` so the two paths can never disagree.
+
+    Parameters
+    ----------
+    solver : dict, optional
+        Solver settings snapshot (e.g. ``{"type": "direct"}``) folded
+        into the block under the ``"solver"`` key when provided.
+
+    Returns
+    -------
+    dict
+        JSON-serialisable provenance block.
+    """
+    prov: dict[str, Any] = {
+        "wrinklefe": _wrinklefe_version,
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "scipy": scipy.__version__,
+        "platform": platform.platform(aliased=True, terse=True),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if solver is not None:
+        prov["solver"] = solver
+    return prov
 
 
 # ====================================================================== #
@@ -53,7 +93,11 @@ def export_results_json(
     """
     cfg = results.config
     data: dict = {
-        "wrinklefe_version": "0.1.0",
+        # Real installed version, not a literal (issue #261). Retained
+        # as a top-level key for backward compatibility; the full
+        # environment lives in "provenance" below.
+        "wrinklefe_version": _wrinklefe_version,
+        "provenance": build_provenance(solver={"type": cfg.solver}),
         "configuration": {
             "amplitude_mm": cfg.amplitude,
             "wavelength_mm": cfg.wavelength,
@@ -527,7 +571,9 @@ def build_analysis_summary(
     notes : str, optional
         Free-text engineering notes.
     tool_version : str, optional
-        WrinkleFE version string, recorded for traceability.
+        WrinkleFE version string, recorded for traceability. Defaults to
+        the real installed version (``wrinklefe.__version__``); pass an
+        explicit value only to override it (e.g. in tests).
 
     Returns
     -------
@@ -592,8 +638,11 @@ def build_analysis_summary(
             "date": date,
             "reference": _clean(reference, "(not specified)"),
             "prepared_by": _clean(prepared_by, "(not specified)"),
-            "tool_version": _clean(tool_version, "(unspecified)"),
+            # Default to the real installed version; the parameter is
+            # kept as an explicit override (e.g. for tests) — issue #261.
+            "tool_version": _clean(tool_version, _wrinklefe_version),
         },
+        "provenance": build_provenance(),
         "wrinkle_geometry": {
             "amplitude_mm": defect.get("amplitude_mm"),
             "wavelength_mm": defect.get("wavelength_mm"),
