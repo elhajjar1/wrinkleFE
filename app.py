@@ -1077,6 +1077,9 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             }
         mesh = result.mesh
         fr = result.field_results
+        # The FE path populates mesh and field_results together; the
+        # outer guard checked field_results, so mesh is non-None here.
+        assert mesh is not None
         nodes_arr = np.asarray(mesh.nodes, dtype=np.float64)
         elements_arr = np.asarray(mesh.elements, dtype=np.int64)
         stress_per_elem = np.asarray(fr.stress_local).mean(axis=1)
@@ -1311,6 +1314,8 @@ def _render_czm_results(czm: dict) -> None:
         try:
             from wrinklefe.viz import czm_overview_figure as _czm_fig
 
+            # damage_missing above guarantees result_obj is not None here.
+            assert result_obj is not None
             fig = _czm_fig(result_obj)
             st.pyplot(fig, clear_figure=True)
         except Exception as exc:
@@ -1921,11 +1926,13 @@ with tab_results:
                     """
                     if y_unique.size <= 1:
                         return None
-                    return st.select_slider(
-                        "y-station [mm]",
-                        options=[float(y) for y in y_unique],
-                        value=float(y_unique[len(y_unique) // 2]),
-                        key="viz_y_station",
+                    return float(
+                        st.select_slider(
+                            "y-station [mm]",
+                            options=[float(y) for y in y_unique],
+                            value=float(y_unique[len(y_unique) // 2]),
+                            key="viz_y_station",
+                        )
                     )
 
                 if view_mode == "Stress contour":
