@@ -73,5 +73,10 @@ joss/*.fls
 docs/superpowers/
 joss/
 docs/_build/
-validation/*.png
-validation/
+validation/*
+# ... except the predicted-vs-experimental validation driver and its
+# committed outputs (Datasets A-F knockdown validation)
+!validation/plot_predicted_vs_experimental.py
+!validation/predicted_vs_experimental.csv
+!validation/fig_predicted_vs_experimental_compression.png
+!validation/fig_predicted_vs_experimental_tension.png
