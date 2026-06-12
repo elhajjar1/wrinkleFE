@@ -176,7 +176,10 @@ def set_publication_style() -> None:
         "savefig.bbox": "tight",
         "savefig.pad_inches": 0.05,
     }
-    mpl.rcParams.update(params)
+    # matplotlib>=3.11 stubs type rcParams.update() with Literal rc-key keys,
+    # which a plain dict[str, object] literal can't satisfy. The mapping is
+    # valid at runtime; suppress the stub-only key mismatch.
+    mpl.rcParams.update(params)  # type: ignore[arg-type]
 
 
 # ======================================================================
