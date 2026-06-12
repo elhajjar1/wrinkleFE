@@ -364,7 +364,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_sweep.add_argument(
         "--parameter", type=str, required=True,
-        help="Parameter to sweep: amplitude, wavelength, or width",
+        help=(
+            "Numeric AnalysisConfig field to sweep "
+            "(e.g. amplitude, wavelength, width, applied_strain)"
+        ),
     )
     p_sweep.add_argument(
         "--min", type=float, required=True, dest="sweep_min",
@@ -790,6 +793,21 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
     """Handle the ``sweep`` subcommand."""
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
+    # Validate the range/steps before burning any compute (issue #298).
+    if args.sweep_min >= args.sweep_max:
+        print(
+            f"error: --min ({args.sweep_min}) must be less than --max "
+            f"({args.sweep_max})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if args.steps < 2:
+        print(
+            f"error: --steps must be >= 2 (got {args.steps})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     values = np.linspace(args.sweep_min, args.sweep_max, args.steps)
 
     config = AnalysisConfig(
@@ -800,12 +818,19 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
         verbose=args.verbose,
     )
 
-    results = WrinkleAnalysis.parametric_sweep(
-        config,
-        parameter=args.parameter,
-        values=values.tolist(),
-        analytical_only=args.analytical_only,
-    )
+    # parametric_sweep raises AttributeError for an unknown field name;
+    # catch it (and any config/solve error) and exit cleanly with a
+    # message instead of a raw traceback, matching _cmd_analyze.
+    try:
+        results = WrinkleAnalysis.parametric_sweep(
+            config,
+            parameter=args.parameter,
+            values=values.tolist(),
+            analytical_only=args.analytical_only,
+        )
+    except (AttributeError, ValueError, NotImplementedError) as exc:
+        print(f"error: sweep failed: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     print("=" * 60)
     print(f"  WrinkleFE Parametric Sweep: {args.parameter}")

@@ -35,6 +35,11 @@ version produced a given file.
 - GitHub issue forms, pull-request template, and this changelog.
 
 ### Fixed
+- `wrinklefe sweep` now validates its inputs: an unknown `--parameter`,
+  `--min >= --max`, or `--steps < 2` print a one-line error and exit
+  non-zero (code 2) before any solve, instead of a raw traceback or a
+  silently degenerate sweep. The `--parameter` help no longer implies
+  only amplitude/wavelength/width are accepted.
 - Graded-morphology compression knockdown now honours `decay_floor`
   (previously inert in compression while honoured in tension).
 - JSON export stamps the real installed version instead of a hardcoded
