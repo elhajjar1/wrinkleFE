@@ -49,20 +49,16 @@ _SCOPES = (
 REPO_URL = "https://github.com/elhajjar1/wrinklefe"
 
 
-def _running_in_streamlit() -> bool:
-    """True only inside a live ``streamlit run`` script execution.
+def _running_in_served_app() -> bool:
+    """True only when a real Streamlit *server* Runtime is active.
 
-    Returns ``False`` during bare imports (pytest importing ``app.py``,
-    ``python app.py``), so :func:`render_gate` — and its unconditional
-    ``st.stop()`` — never fire at import time and can't break test collection.
+    Uses ``streamlit.runtime.exists()``, which is ``True`` under a live
+    ``streamlit run`` but ``False`` both for a bare ``import app`` (pytest
+    importing the module) and under ``streamlit.testing`` ``AppTest`` — the
+    latter runs the script with a ``ScriptRunContext`` but never starts a
+    server Runtime. That keeps the gate, and its ``st.stop()``, out of every
+    test context while still firing for end users.
     """
-    try:
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-
-        if get_script_run_ctx(suppress_warning=True) is not None:
-            return True
-    except Exception:
-        pass
     try:
         from streamlit.runtime import exists
 
@@ -167,10 +163,11 @@ def render_gate() -> None:
     Once the visitor agrees, an ``_wf_acknowledged`` flag is set in
     ``session_state`` so the gate is skipped for the rest of the session.
     Calls :func:`streamlit.stop` while the gate is showing so nothing below
-    it in ``app.py`` renders. No-op outside a live ``streamlit run`` (e.g. a
-    bare ``import app`` under pytest), so it never halts test collection.
+    it in ``app.py`` renders. No-op outside a live ``streamlit run`` server
+    (bare ``import app`` under pytest, or an ``AppTest`` harness), so it never
+    halts test collection or the testing API.
     """
-    if not _running_in_streamlit():
+    if not _running_in_served_app():
         return
     if st.session_state.get("_wf_acknowledged"):
         return
