@@ -7,7 +7,7 @@ plot and analysis results.
 Run locally:
     streamlit run app.py
 
-Deploy: see DEPLOYMENT_STREAMLIT.md.
+Deploy: see docs/internal/DEPLOYMENT_STREAMLIT.md.
 """
 
 from __future__ import annotations
