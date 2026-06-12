@@ -135,7 +135,7 @@ To also capture signups + run events in a **Google Sheet**:
    (`.../spreadsheets/d/<SHEET_KEY>/edit`).
 4. **Share** that Sheet with the service account's `client_email` as **Editor**.
 5. Paste the credentials into Streamlit secrets. Locally, copy
-   [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) to
+   [`.streamlit/secrets.toml.example`](../../.streamlit/secrets.toml.example) to
    `.streamlit/secrets.toml` (gitignored — never commit it). On Streamlit
    Cloud, paste the same content into **Manage app → Settings → Secrets**.
 
@@ -222,4 +222,4 @@ inherited from the seed material. The custom material is named via a
 free-text **Material name** field and used for the current run only;
 **custom materials do not persist across sessions** (the app's filesystem
 is ephemeral on Streamlit Cloud and the session state resets on reload).
-For permanent additions to the library see [CONTRIBUTING.md](CONTRIBUTING.md).
+For permanent additions to the library see [CONTRIBUTING.md](../../CONTRIBUTING.md).

@@ -1,4 +1,4 @@
-```{include} ../CZM_PLAN.md
+```{include} internal/CZM_PLAN.md
 :relative-docs: docs/
 :relative-images:
 ```

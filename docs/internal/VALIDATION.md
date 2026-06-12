@@ -3,7 +3,7 @@
 This file tracks every external paper assessed for inclusion in the
 WrinkleFE knockdown validation database, with the decision and rationale.
 The active validation dataset (data points, pass counts, MAE) lives in the
-**Validation** section of [README.md](README.md); this file is the
+**Validation** section of [README.md](../../README.md); this file is the
 evaluation history behind it.
 
 ## Inclusion methodology
@@ -42,7 +42,7 @@ case data are not yet in the repository (Elhajjar 2025, Mukhopadhyay
 
 ## Included datasets
 
-See the table in [README.md](README.md). Current sources:
+See the table in [README.md](../../README.md). Current sources:
 
 - Elhajjar (2025), *Scientific Reports* 15:25977 — compression + tension.
 - Mukhopadhyay, Jones & Hallett (2015), *Compos. A* 73:132–142

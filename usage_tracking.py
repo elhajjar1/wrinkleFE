@@ -1,7 +1,7 @@
 """Soft-gate acknowledgment + optional usage logging for the WrinkleFE app.
 
 The hosted Streamlit app is public and runs on an *ephemeral* filesystem
-(see ``DEPLOYMENT_STREAMLIT.md``), so this module does two things:
+(see ``docs/internal/DEPLOYMENT_STREAMLIT.md``), so this module does two things:
 
 1. :func:`render_gate` shows a one-time acknowledgment screen (cite + star
    the repo) before the rest of the app renders, capturing an optional

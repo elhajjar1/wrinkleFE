@@ -69,7 +69,7 @@ allowables), enter a layup in contracted notation (e.g. `[0/45/-45/90]_3s`),
 set the wrinkle geometry, and click **Run analysis**. The app ships with
 per-morphology schematic cartoons, a live wrinkle preview, and the same
 analytical + FE pipeline as the Python API. See
-[`DEPLOYMENT_STREAMLIT.md`](DEPLOYMENT_STREAMLIT.md) for the full feature
+[`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for the full feature
 tour and instructions for self-hosting.
 
 To run the app locally:
