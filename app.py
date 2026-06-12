@@ -35,6 +35,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 import streamlit_viz  # noqa: E402
+import usage_tracking  # noqa: E402
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
 from wrinklefe.core.layup import parse_layup  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
@@ -59,6 +60,11 @@ st.set_page_config(
     page_icon=":dna:",
     layout="wide",
 )
+
+# Soft acknowledgment gate: shows a one-time cite/star screen and halts the
+# app (via st.stop) until the visitor agrees. No-op on later reruns once the
+# session is acknowledged. See usage_tracking.py.
+usage_tracking.render_gate()
 
 st.title("WrinkleFE — Composite Laminate Wrinkle Analysis")
 st.caption(
@@ -1469,6 +1475,21 @@ if run_clicked or _demo_pending:
 
     st.session_state["results"] = results
     st.session_state["cfg_payload"] = cfg_payload
+
+    # Best-effort usage log of the completed run (fail-soft; see usage_tracking).
+    _cfg_logged = dict(cfg_payload)
+    _angles_logged = _cfg_logged.get("angles_tuple", ())
+    usage_tracking.log_event(
+        "run",
+        props={
+            "morphology": _cfg_logged.get("morphology"),
+            "loading": _cfg_logged.get("loading"),
+            "analytical_only": _cfg_logged.get("analytical_only"),
+            "n_plies": len(_angles_logged) if isinstance(_angles_logged, (tuple, list)) else 0,
+            "demo": bool(_demo_pending),
+        },
+    )
+
     if _demo_pending:
         st.success(
             "✓ Demo analysis complete with sensible defaults "

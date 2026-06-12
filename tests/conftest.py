@@ -1,6 +1,14 @@
 """Shared pytest fixtures for WrinkleFE Phase 1 core module tests."""
 
+import os
+
 import pytest
+
+# Disable the app's acknowledgment gate for the whole suite. The gate halts
+# app.py with st.stop() until a visitor acknowledges, which is True even under
+# streamlit.testing AppTest (it starts a Runtime), so without this every
+# AppTest-driven test would see an empty page. See usage_tracking.render_gate.
+os.environ.setdefault("WRINKLEFE_DISABLE_GATE", "1")
 
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.material import OrthotropicMaterial
