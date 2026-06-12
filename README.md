@@ -1,6 +1,14 @@
 # WrinkleFE
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41598--025--25977--3-blue.svg)](https://doi.org/10.1038/s41598-025-25977-3)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![GitHub stars](https://img.shields.io/github/stars/elhajjar1/wrinkleFE?style=social)](https://github.com/elhajjar1/wrinkleFE)
+
 An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fiber waviness defects.
+
+> ⭐ **Found WrinkleFE useful?** Please [star the repository](https://github.com/elhajjar1/wrinkleFE) and [cite it](#citation) — it's a free academic project, and stars and citations are what keep it supported.
 
 ## Try it in your browser
 
@@ -396,7 +404,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Citation
 
-If you use WrinkleFE in your research, please cite:
+If you use WrinkleFE in your research, please cite it. The quickest way is the
+**"Cite this repository"** button on the
+[GitHub page](https://github.com/elhajjar1/wrinkleFE) — it's generated from
+[`CITATION.cff`](CITATION.cff) and exports APA or BibTeX. The full software
+citation:
 
 > Elhajjar, R. (2025). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.0.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/WrinkleFE
 
