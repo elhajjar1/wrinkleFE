@@ -21,8 +21,12 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from wrinklefe.analysis import AnalysisResults
 
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
@@ -347,6 +351,22 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_compare.add_argument(
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the comparison results to a JSON file (array of "
+            "per-run objects matching 'analyze --output-json'); the "
+            "stdout table is still printed"
+        ),
+    )
+    p_compare.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write the comparison results to a tidy CSV (one row per "
+            "morphology, full float precision); the stdout table is "
+            "still printed"
+        ),
+    )
+    p_compare.add_argument(
         "-v", "--verbose", action="store_true", default=False,
         help=(
             "Show detailed pipeline progress (sets the 'wrinklefe' "
@@ -380,6 +400,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sweep.add_argument(
         "--steps", type=int, default=10,
         help="Number of sweep steps (default: 10)",
+    )
+    p_sweep.add_argument(
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the sweep results to a JSON file (array of per-run "
+            "objects matching 'analyze --output-json'); the stdout "
+            "table is still printed"
+        ),
+    )
+    p_sweep.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write the sweep results to a tidy CSV (one row per run, "
+            "full float precision); the stdout table is still printed"
+        ),
     )
     p_sweep.add_argument(
         "--morphology", type=str, default="stack",
@@ -788,6 +823,87 @@ def _cmd_compare(args: argparse.Namespace) -> None:
         print(f"    {i}. {morph:<10} {r.analytical_strength_MPa:.1f} MPa")
     print()
 
+    _write_batch_outputs(
+        [
+            ("morphology", morph, morph, all_results[morph])
+            for morph in ("stack", "convex", "concave")
+        ],
+        args.output_json,
+        args.output_csv,
+    )
+
+
+def _write_batch_outputs(
+    rows: list[tuple[str, float | str, str, AnalysisResults]],
+    output_json: str | None,
+    output_csv: str | None,
+) -> None:
+    """Write sweep/compare batch results to JSON and/or CSV (issue #266).
+
+    Parameters
+    ----------
+    rows : list of (parameter_name, parameter_value, morphology, results)
+        One entry per run, in output order.
+    output_json : str or None
+        Path for a JSON array of per-run objects, each matching the
+        ``analyze --output-json`` schema (:func:`analysis_results_to_dict`).
+    output_csv : str or None
+        Path for a tidy CSV (one row per run, full float precision):
+        ``parameter_name, parameter_value, morphology, knockdown,
+        predicted_strength_MPa, max_failure_index, governing_criterion``.
+    """
+    if output_json is None and output_csv is None:
+        return
+
+    import csv
+    import json
+    from pathlib import Path
+
+    from wrinklefe.io.export import analysis_results_to_dict
+
+    if output_json is not None:
+        payload = [analysis_results_to_dict(r) for _, _, _, r in rows]
+        path = Path(output_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"\nResults written to: {path}")
+
+    if output_csv is not None:
+        fieldnames = [
+            "parameter_name", "parameter_value", "morphology",
+            "knockdown", "predicted_strength_MPa",
+            "max_failure_index", "governing_criterion",
+        ]
+        path = Path(output_csv)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for name, value, morphology, r in rows:
+                fi = None
+                if r.failure_indices:
+                    fi = max(
+                        float(np.max(arr))
+                        for arr in r.failure_indices.values()
+                    )
+                crit = getattr(
+                    r.failure_report, "critical_criterion", None
+                ) if r.failure_report is not None else None
+                writer.writerow({
+                    "parameter_name": name,
+                    "parameter_value": value,
+                    "morphology": morphology,
+                    # repr() keeps full float precision; rounding stays a
+                    # display-only concern of the stdout table.
+                    "knockdown": repr(float(r.analytical_knockdown)),
+                    "predicted_strength_MPa": repr(
+                        float(r.analytical_strength_MPa)
+                    ),
+                    "max_failure_index": "" if fi is None else repr(fi),
+                    "governing_criterion": crit or "",
+                })
+        print(f"\nResults written to: {path}")
+
 
 def _cmd_sweep(args: argparse.Namespace) -> None:
     """Handle the ``sweep`` subcommand."""
@@ -847,6 +963,15 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
         )
 
     print("=" * 60)
+
+    _write_batch_outputs(
+        [
+            (args.parameter, float(val), args.morphology, r)
+            for val, r in zip(values, results)
+        ],
+        args.output_json,
+        args.output_csv,
+    )
 
 
 def _cmd_materials(args: argparse.Namespace) -> None:

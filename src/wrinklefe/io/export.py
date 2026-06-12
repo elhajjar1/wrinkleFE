@@ -74,22 +74,24 @@ def build_provenance(solver: dict | None = None) -> dict:
 # JSON export
 # ====================================================================== #
 
-def export_results_json(
-    results: AnalysisResults,
-    filepath: str | Path,
-) -> None:
-    """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON.
+def analysis_results_to_dict(results: AnalysisResults) -> dict:
+    """Serialise an :class:`~wrinklefe.analysis.AnalysisResults` to a dict.
 
-    Serialises the configuration, analytical predictions, and summary
-    statistics.  Large array data (FE fields, Monte Carlo samples) is
-    summarised rather than written in full.
+    The per-run schema used by :func:`export_results_json` — shared so
+    batch consumers (the CLI ``sweep``/``compare`` ``--output-json``
+    arrays, issue #266) stay schema-identical with single-run exports.
+    Large array data (FE fields, Monte Carlo samples) is summarised
+    rather than written in full.
 
     Parameters
     ----------
     results : AnalysisResults
-        The analysis results to export.
-    filepath : str or Path
-        Output JSON file path.
+        The analysis results to serialise.
+
+    Returns
+    -------
+    dict
+        JSON-serialisable per-run dictionary.
     """
     cfg = results.config
     data: dict = {
@@ -172,6 +174,25 @@ def export_results_json(
             "mean_angle_rad": float(jg.mean_angle),
         }
 
+    return data
+
+
+def export_results_json(
+    results: AnalysisResults,
+    filepath: str | Path,
+) -> None:
+    """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON.
+
+    Thin writer over :func:`analysis_results_to_dict`.
+
+    Parameters
+    ----------
+    results : AnalysisResults
+        The analysis results to export.
+    filepath : str or Path
+        Output JSON file path.
+    """
+    data = analysis_results_to_dict(results)
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(json.dumps(data, indent=2), encoding="utf-8")

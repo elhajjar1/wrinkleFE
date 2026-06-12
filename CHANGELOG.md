@@ -15,6 +15,11 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- `wrinklefe sweep` and `wrinklefe compare` gained `--output-json` and
+  `--output-csv`: machine-readable batch results (a JSON array of
+  per-run objects matching `analyze --output-json`, and a tidy
+  one-row-per-run CSV with full float precision). The stdout tables are
+  unchanged.
 - `examples/` directory of runnable workflow scripts (basic knockdown,
   parametric sweep, morphology comparison, CZM delamination, export
   round-trip, custom material, mesh convergence), executed in CI.
