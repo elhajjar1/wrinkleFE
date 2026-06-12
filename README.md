@@ -2,7 +2,7 @@
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41598--025--25977--3-blue.svg)](https://doi.org/10.1038/s41598-025-25977-3)
+[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![GitHub stars](https://img.shields.io/github/stars/elhajjar1/wrinkleFE?style=social)](https://github.com/elhajjar1/wrinkleFE)
 
@@ -282,7 +282,7 @@ data is documented in the accompanying paper:
 
 - Elhajjar, R. (2025). *Fat-tailed failure strength distributions and
   manufacturing defects in advanced composites.* Scientific Reports,
-  15:25977. https://doi.org/10.1038/s41598-025-25977-3
+  15:25977. https://doi.org/10.1038/s41598-025-06693-4
 
 Additional datasets referenced by the model calibration (Mukhopadhyay
 et al., 2015; Li et al., 2026) are cited in [References](#references)
@@ -427,4 +427,4 @@ citation:
 
 Please also cite the underlying experimental validation data:
 
-> Elhajjar, R. (2025). Fat-tailed failure strength distributions and manufacturing defects in advanced composites. *Scientific Reports*, 15, 25977. https://doi.org/10.1038/s41598-025-25977-3
+> Elhajjar, R. (2025). Fat-tailed failure strength distributions and manufacturing defects in advanced composites. *Scientific Reports*, 15, 25977. https://doi.org/10.1038/s41598-025-06693-4
