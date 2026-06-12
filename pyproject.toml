@@ -106,3 +106,10 @@ warn_unused_configs = true
 [[tool.mypy.overrides]]
 module = ["streamlit", "streamlit.*", "plotly", "plotly.*"]
 ignore_missing_imports = true
+
+# Optional usage-logging deps in usage_tracking.py (imported lazily). They are
+# not installed in the lint job ([dev] only) and ship no stubs, so allow the
+# missing-import resolution exactly like streamlit/plotly above.
+[[tool.mypy.overrides]]
+module = ["gspread", "gspread.*", "google.oauth2", "google.oauth2.*"]
+ignore_missing_imports = true

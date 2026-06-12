@@ -109,6 +109,49 @@ Implications for WrinkleFE:
 - Configure a custom domain in Streamlit Cloud's settings.
 - Add CI to run `streamlit run --headless` smoke tests on every PR.
 
+## 10. Acknowledgment gate + usage logging (optional)
+
+The app opens with a one-time **acknowledgment gate** (`usage_tracking.py`):
+visitors are asked to cite / star the repo and may optionally leave an email
+before the tool unlocks. Acknowledgment is remembered per browser session via
+`st.session_state`, so repeat users see it only once.
+
+This is a **soft gate** by design. The app is public and MIT-licensed, so it
+can't *enforce* citation (anyone can `git clone` and run locally) — the gate
+makes the request visible and captures interested users. It works with **no
+configuration**: with no secrets set, the gate still shows and the rest of the
+app runs; only the logging is skipped.
+
+To also capture signups + run events in a **Google Sheet**:
+
+1. In Google Cloud Console, create a project and enable the **Google Sheets
+   API** and **Google Drive API**.
+2. Create a **Service Account**, add a **JSON key**, and download it.
+3. Create a Google Sheet to collect rows. Copy its id from the URL
+   (`.../spreadsheets/d/<SHEET_KEY>/edit`).
+4. **Share** that Sheet with the service account's `client_email` as **Editor**.
+5. Paste the credentials into Streamlit secrets. Locally, copy
+   [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) to
+   `.streamlit/secrets.toml` (gitignored — never commit it). On Streamlit
+   Cloud, paste the same content into **Manage app → Settings → Secrets**.
+
+The sheet gets one row per event with columns
+`timestamp_utc, event, email, session_id, props`:
+
+| event    | when                              | useful columns                              |
+|----------|-----------------------------------|---------------------------------------------|
+| `signup` | visitor clicks **Enter the app**  | `email` (blank if they skipped it)          |
+| `run`    | an analysis completes             | `props` → morphology, loading, n_plies, …   |
+
+`session_id` is a random per-session token (no identity, no IP) so you can
+tell repeat runs from distinct visits. Logging is **fail-soft**: a missing
+dependency, unshared sheet, or network blip is swallowed and never interrupts
+an analysis. The required `gspread` / `google-auth` packages are already in
+`requirements.txt`.
+
+> **Privacy:** you're storing emails and basic usage. The gate shows a short
+> notice, keeps email optional, and collects nothing else — keep it that way.
+
 ## App features
 
 Once the app is running, the sidebar offers three features worth calling out
