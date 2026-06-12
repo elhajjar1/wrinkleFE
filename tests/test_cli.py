@@ -293,6 +293,81 @@ def test_sweep_validation_runs_before_solve():
 
 
 # --------------------------------------------------------------------------- #
+# sweep/compare: --output-json / --output-csv (issue #266)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_output_csv_and_json(tmp_path, capsys):
+    """A coarse analytical sweep writes a tidy CSV and a JSON array of
+    per-run objects matching the analyze --output-json schema; the
+    stdout table is still printed."""
+    import csv
+    import json
+
+    csv_path = tmp_path / "sweep.csv"
+    json_path = tmp_path / "sweep.json"
+    cli_main([
+        "sweep", "--parameter", "amplitude",
+        "--min", "0.1", "--max", "0.3", "--steps", "3",
+        "--output-csv", str(csv_path),
+        "--output-json", str(json_path),
+    ])
+
+    # stdout table unchanged by default.
+    out = capsys.readouterr().out
+    assert "WrinkleFE Parametric Sweep" in out
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert [r["parameter_name"] for r in rows] == ["amplitude"] * 3
+    assert [float(r["parameter_value"]) for r in rows] == [0.1, 0.2, 0.3]
+    assert all(0.0 < float(r["knockdown"]) <= 1.0 for r in rows)
+    # Full precision in files (more digits than the 4dp stdout table).
+    assert len(rows[0]["knockdown"].split(".")[-1]) > 4
+    # Analytical-only: FE-derived columns are empty, not bogus.
+    assert rows[0]["max_failure_index"] == ""
+
+    arr = json.loads(json_path.read_text())
+    assert len(arr) == 3
+    # Per-run schema parity with analyze --output-json.
+    for entry in arr:
+        assert {"wrinklefe_version", "provenance", "configuration",
+                "analytical_predictions"} <= set(entry)
+    assert [e["configuration"]["amplitude_mm"] for e in arr] == [0.1, 0.2, 0.3]
+
+
+def test_compare_output_csv_and_json(tmp_path):
+    import csv
+    import json
+
+    csv_path = tmp_path / "cmp.csv"
+    json_path = tmp_path / "cmp.json"
+    cli_main([
+        "compare",
+        "--output-csv", str(csv_path),
+        "--output-json", str(json_path),
+    ])
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert [r["morphology"] for r in rows] == ["stack", "convex", "concave"]
+    assert all(r["parameter_name"] == "morphology" for r in rows)
+
+    arr = json.loads(json_path.read_text())
+    assert [e["configuration"]["morphology"] for e in arr] == [
+        "stack", "convex", "concave"
+    ]
+
+
+def test_sweep_without_output_flags_writes_nothing(tmp_path, monkeypatch):
+    """Default behaviour (stdout only) is preserved: no files appear."""
+    monkeypatch.chdir(tmp_path)
+    cli_main([
+        "sweep", "--parameter", "amplitude",
+        "--min", "0.1", "--max", "0.2", "--steps", "2",
+    ])
+    assert list(tmp_path.iterdir()) == []
+
+
+# --------------------------------------------------------------------------- #
 # argparse exit codes for invalid input
 # --------------------------------------------------------------------------- #
 
