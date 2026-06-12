@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import warnings
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -28,7 +27,6 @@ from wrinklefe.io.export import (
     render_summary_markdown,
     render_summary_pdf,
 )
-
 
 # ======================================================================
 # Fixtures
@@ -98,6 +96,34 @@ class TestJSONExport:
         assert "wrinklefe_version" in data
         assert "configuration" in data
         assert "analytical_predictions" in data
+
+    def test_version_is_real_not_hardcoded(self, analysis_result, tmp_path):
+        """Issue #261: the stamped version is the installed one, never
+        the old hardcoded '0.1.0' literal."""
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _md_version
+
+        out = tmp_path / "results.json"
+        export_results_json(analysis_result, out)
+        data = json.loads(out.read_text())
+        assert data["wrinklefe_version"] != "0.1.0"
+        try:
+            expected = _md_version("wrinklefe")
+        except PackageNotFoundError:  # running from source, not installed
+            from wrinklefe import __version__ as expected
+        assert data["wrinklefe_version"] == expected
+        assert data["provenance"]["wrinklefe"] == expected
+
+    def test_provenance_block(self, analysis_result, tmp_path):
+        """Issue #261: provenance block carries the full env, typed."""
+        out = tmp_path / "results.json"
+        export_results_json(analysis_result, out)
+        prov = json.loads(out.read_text())["provenance"]
+        for key in ("wrinklefe", "python", "numpy", "scipy",
+                    "platform", "timestamp_utc"):
+            assert key in prov and isinstance(prov[key], str) and prov[key]
+        # The solver snapshot reflects the analysis config.
+        assert prov["solver"]["type"] == analysis_result.config.solver
 
     def test_configuration_fields(self, analysis_result, tmp_path):
         """Configuration section has expected fields."""
@@ -478,6 +504,27 @@ class TestBuildAnalysisSummary:
         ):
             assert key in s
 
+    def test_provenance_matches_json_export(self, summary_inputs):
+        """Issue #261: NCR summary and JSON export share one provenance
+        helper, so their blocks agree on keys and version."""
+        from wrinklefe.io.export import build_provenance
+
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        ref = build_provenance()
+        assert set(s["provenance"]) == set(ref)
+        assert s["provenance"]["wrinklefe"] == ref["wrinklefe"]
+        # tool_version defaults to the real version, not "(unspecified)".
+        assert s["header"]["tool_version"] == ref["wrinklefe"]
+
+    def test_tool_version_override_still_honored(self, summary_inputs):
+        """The explicit override path (used by tests) still wins."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect, engineering=engineering, tool_version="9.9.9-rc1"
+        )
+        assert s["header"]["tool_version"] == "9.9.9-rc1"
+
     def test_no_qms_admin_or_mrb_signoff(self, summary_inputs):
         """The attachment must not carry NCR/part admin or sign-off."""
         defect, engineering = summary_inputs
@@ -529,6 +576,24 @@ class TestBuildAnalysisSummary:
         # Must not raise.
         json.dumps(s)
 
+    def test_layup_contracted_field(self, summary_inputs):
+        """Issue #241: JSON summary carries contracted layup notation."""
+        defect, engineering = summary_inputs
+        defect = dict(defect)
+        defect["layup"] = [0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0]
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        lam = s["laminate"]
+        assert lam["layup_contracted"] == "[0/±45/90]s"
+        from wrinklefe.core.layup import parse_layup
+        assert parse_layup(lam["layup_contracted"]) == lam["layup_deg"]
+
+    def test_layup_contracted_none_when_layup_missing(self, summary_inputs):
+        _, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect={"loading": "compression"}, engineering=engineering
+        )
+        assert s["laminate"]["layup_contracted"] is None
+
     def test_fe_block_cited_when_present(self, summary_inputs):
         defect, engineering = summary_inputs
         eng = dict(engineering)
@@ -566,6 +631,19 @@ class TestRenderAndExportSummary:
             build_analysis_summary(defect=defect, engineering=engineering)
         )
         assert "do not constitute a final material disposition" in md
+
+    def test_markdown_shows_contracted_and_expanded_layup(
+        self, summary_inputs
+    ):
+        """Issue #241: NCR shows shorthand alongside the expanded list."""
+        defect, engineering = summary_inputs
+        defect = dict(defect)
+        defect["layup"] = [0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0]
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
+        assert "- Layup: [0/±45/90]s" in md
+        assert "- Layup (deg, expanded): [0.0, 45.0, -45.0, 90.0" in md
 
     def test_export_md(self, summary_inputs, tmp_path):
         defect, engineering = summary_inputs

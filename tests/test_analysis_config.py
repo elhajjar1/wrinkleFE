@@ -17,7 +17,6 @@ import pytest
 from wrinklefe.analysis import AnalysisConfig
 from wrinklefe.core.material import MaterialLibrary
 
-
 # ----------------------------------------------------------------------
 # Valid configurations must still construct unchanged
 # ----------------------------------------------------------------------

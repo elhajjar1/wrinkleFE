@@ -110,7 +110,7 @@ class TsaiHillCriterion(FailureCriterion):
             "shear_13": term_s13,
             "shear_23": term_s23,
         }
-        mode = max(mode_terms, key=mode_terms.get)
+        mode = max(mode_terms, key=lambda m: mode_terms[m])
 
         # ``fi`` is the quadratic Tsai-Hill invariant (FI=1 at failure, paper
         # convention).  Every contributing term is purely quadratic in stress,

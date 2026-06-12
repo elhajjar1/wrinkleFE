@@ -164,7 +164,6 @@ from wrinklefe.solver.assembler import GlobalAssembler  # noqa: E402
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler  # noqa: E402
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver  # noqa: E402
 
-
 # ----------------------------------------------------------------------
 # Experimental data (NASA/TM-2020-220498 Figure 32)
 # ----------------------------------------------------------------------
@@ -771,7 +770,6 @@ def test_dcb_experimental_validation_nasa_tm():
         delta_max=DELTA_MAX,
         sample_deltas=sample_deltas,
     )
-    deltas = res["deltas"]
     P_arr = res["P"]
     cd = res["converged_deltas"]
     cP = res["converged_P"]

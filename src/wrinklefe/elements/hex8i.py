@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from wrinklefe.elements.hex8 import Hex8Element
-from wrinklefe.elements.gauss import gauss_points_hex
 from wrinklefe.core.material import OrthotropicMaterial
+from wrinklefe.elements.gauss import gauss_points_hex
+from wrinklefe.elements.hex8 import Hex8Element
 
 
 class Hex8IElement(Hex8Element):
@@ -383,7 +383,7 @@ class Hex8IElement(Hex8Element):
         self._K_aa_inv = K_aa_inv
         self._K_au = K_au
 
-        return K_condensed
+        return np.asarray(K_condensed)
 
     # ------------------------------------------------------------------
     # Internal DOF recovery

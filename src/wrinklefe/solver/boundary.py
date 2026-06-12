@@ -25,9 +25,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import sparse
 
-from wrinklefe.core.mesh import MeshData
 from wrinklefe.core.laminate import LoadState
-
+from wrinklefe.core.mesh import MeshData
 
 # ======================================================================
 # Penalty method for displacement BCs
@@ -169,7 +168,7 @@ def _quad_areas(nodes: np.ndarray, quads: np.ndarray) -> np.ndarray:
     cross2 = np.cross(p2 - p0, p3 - p0)
     a1 = 0.5 * np.linalg.norm(cross1, axis=1)
     a2 = 0.5 * np.linalg.norm(cross2, axis=1)
-    return a1 + a2
+    return np.asarray(a1 + a2)
 
 
 # ======================================================================
@@ -260,6 +259,11 @@ class BoundaryCondition:
         """
         if self.node_ids is not None:
             return np.asarray(self.node_ids, dtype=np.intp)
+        if self.face is None:
+            raise ValueError(
+                "BoundaryCondition needs either node_ids or face to "
+                "resolve its node set"
+            )
         return mesh.nodes_on_face(self.face)
 
     def effective_dofs(self) -> list[int]:
@@ -567,8 +571,10 @@ class BoundaryHandler:
         # Extract sub-matrices using sparse indexing
         # K_ff: free x free, K_fc: free x constrained
         K_csr = K.tocsr()
-        K_ff = K_csr[np.ix_(free_dofs, free_dofs)].tocsc()
-        K_fc = K_csr[np.ix_(free_dofs, c_dofs_sorted)]
+        # scipy-stubs does not model ndarray fancy indexing on sparse
+        # matrices; the runtime supports it.
+        K_ff = K_csr[np.ix_(free_dofs, free_dofs)].tocsc()  # type: ignore[index]
+        K_fc = K_csr[np.ix_(free_dofs, c_dofs_sorted)]  # type: ignore[index]
 
         # Build reduced RHS: F_f - K_fc * u_c
         F_free = F[free_dofs].copy()
@@ -618,7 +624,6 @@ class BoundaryHandler:
         """
         bcs: list[BoundaryCondition] = []
         Lx, Ly, Lz = mesh.domain_size
-        h = Lz  # laminate thickness
 
         # ------ Rigid body suppression ------
         # Fix one corner node on x_min face to prevent rigid body motion.

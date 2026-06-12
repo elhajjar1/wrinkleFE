@@ -19,15 +19,14 @@ import sys
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Optional
 
 import matplotlib
 
 matplotlib.use("Agg")  # headless backend; required on Streamlit Cloud
 
-import matplotlib.pyplot as plt
-import numpy as np
-import streamlit as st
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import streamlit as st  # noqa: E402
 
 # Make the src-layout package importable on Streamlit Cloud, which does not
 # pip-install the local repo.
@@ -35,23 +34,21 @@ _SRC = Path(__file__).resolve().parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
-from wrinklefe.core.layup import parse_layup
-from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
-from wrinklefe.core.mesh import mesh_shear_diagnostics
-from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.io.export import (
+import streamlit_viz  # noqa: E402
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
+from wrinklefe.core.layup import parse_layup  # noqa: E402
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
+from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
+from wrinklefe.core.wrinkle import GaussianSinusoidal  # noqa: E402
+from wrinklefe.io.export import (  # noqa: E402
     build_analysis_summary,
     render_summary_markdown,
     render_summary_pdf,
 )
-from wrinklefe.viz.style import (
+from wrinklefe.viz.style import (  # noqa: E402
     MORPHOLOGY_COLORS,
     TENSION_MECHANISM_COLORS,
 )
-
-import streamlit_viz
-
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -526,7 +523,8 @@ with st.sidebar:
             "`s` for symmetry:\n\n"
             "| Input | Expanded plies |\n"
             "|---|---|\n"
-            "| `[0/45/-45/90]_3s` | `0/45/-45/90` × 3 then mirrored — **24 plies** (default quasi-isotropic) |\n"
+            "| `[0/45/-45/90]_3s` | `0/45/-45/90` × 3 then mirrored — "
+            "**24 plies** (default quasi-isotropic) |\n"
             "| `[0/±45/90]s` | `0,45,-45,90` mirrored — **8 plies** |\n"
             "| `[0_2/90]_2` | `0,0,90` × 2 — **6 plies** |\n"
             "| `[±30]_2` | `30,-30` × 2 — **4 plies** |\n\n"
@@ -708,7 +706,7 @@ with st.sidebar:
         # back-compat behaviour where the wrinkle's own ``width`` is the
         # effective decay length.
         if not _profile_active:
-            amplitude_profile_decay_length: Optional[float] = None
+            amplitude_profile_decay_length: float | None = None
         else:
             amplitude_profile_decay_length = float(
                 amplitude_profile_decay_length_ui
@@ -1079,6 +1077,9 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             }
         mesh = result.mesh
         fr = result.field_results
+        # The FE path populates mesh and field_results together; the
+        # outer guard checked field_results, so mesh is non-None here.
+        assert mesh is not None
         nodes_arr = np.asarray(mesh.nodes, dtype=np.float64)
         elements_arr = np.asarray(mesh.elements, dtype=np.int64)
         stress_per_elem = np.asarray(fr.stress_local).mean(axis=1)
@@ -1154,7 +1155,7 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
     # actually drove the FE solve down the Newton-Raphson path. Kept in
     # a sub-dict so the Results tab can quickly check ``results.get("czm")``
     # without juggling None-checks on a flat top-level structure.
-    czm_payload: Optional[dict] = None
+    czm_payload: dict | None = None
     if cfg_dict.get("enable_czm", False) and result.czm_damage is not None:
         damage_arr = np.asarray(result.czm_damage)
         if damage_arr.size:
@@ -1290,7 +1291,8 @@ def _render_czm_results(czm: dict) -> None:
 
         st.caption(
             f"Converged: **{czm.get('converged')}**  ·  "
-            f"Interfaces: **{', '.join(str(i) for i in czm.get('interfaces_used', [])) or '(none)'}**"
+            f"Interfaces: "
+            f"**{', '.join(str(i) for i in czm.get('interfaces_used', [])) or '(none)'}**"
         )
 
         # Per-interface crack-length table
@@ -1312,6 +1314,8 @@ def _render_czm_results(czm: dict) -> None:
         try:
             from wrinklefe.viz import czm_overview_figure as _czm_fig
 
+            # damage_missing above guarantees result_obj is not None here.
+            assert result_obj is not None
             fig = _czm_fig(result_obj)
             st.pyplot(fig, clear_figure=True)
         except Exception as exc:
@@ -1922,11 +1926,13 @@ with tab_results:
                     """
                     if y_unique.size <= 1:
                         return None
-                    return st.select_slider(
-                        "y-station [mm]",
-                        options=[float(y) for y in y_unique],
-                        value=float(y_unique[len(y_unique) // 2]),
-                        key="viz_y_station",
+                    return float(
+                        st.select_slider(
+                            "y-station [mm]",
+                            options=[float(y) for y in y_unique],
+                            value=float(y_unique[len(y_unique) // 2]),
+                            key="viz_y_station",
+                        )
                     )
 
                 if view_mode == "Stress contour":
@@ -2177,7 +2183,7 @@ with tab_export:
         _ply_fi = (fe or {}).get("ply_failure_indices") or {}
         for _k, _ang in enumerate(_angles_export):
             _row_fi = -float("inf")
-            _row_crit: Optional[str] = None
+            _row_crit: str | None = None
             for _crit_name, _arr in _ply_fi.items():
                 if _k < len(_arr) and _arr[_k] > _row_fi:
                     _row_fi = float(_arr[_k])

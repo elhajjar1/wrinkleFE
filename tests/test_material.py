@@ -1,11 +1,11 @@
 """Tests for wrinklefe.core.material module."""
 
-import json
+
 import numpy as np
 import numpy.testing as npt
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial, MaterialLibrary
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 
 
 class TestOrthotropicMaterialDefaults:
@@ -273,7 +273,7 @@ class TestMaterialSerialization:
     def test_json_roundtrip(self, tmp_path):
         lib = MaterialLibrary()
         json_path = tmp_path / "materials.json"
-        json_str = lib.to_json(path=json_path)
+        lib.to_json(path=json_path)
 
         # Verify file was written
         assert json_path.exists()

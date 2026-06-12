@@ -28,8 +28,8 @@ import os
 import sys
 import time
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
@@ -148,13 +148,13 @@ def run_sweep(sweep_config, fine_mesh=False):
     grid = list(itertools.product(*param_arrays))
     total = len(grid)
 
-    print(f"\nParametric Sweep Configuration:")
+    print("\nParametric Sweep Configuration:")
     print(f"  Parameters: {', '.join(swept_params)}")
     for p in swept_params:
         vals = sweep_config[p]
         print(f"    {p}: {vals[0]:.4f} to {vals[-1]:.4f} ({len(vals)} points)")
     if is_phase_sweep:
-        print(f"  Mode: phase sweep (single morphology per point, arbitrary phase)")
+        print("  Mode: phase sweep (single morphology per point, arbitrary phase)")
     else:
         print(f"  Total configurations: {total} x {len(MORPHOLOGIES)} morphologies"
               f" = {total * len(MORPHOLOGIES)} runs")
@@ -261,10 +261,8 @@ def _plot_1d_sweep(sweep_results, output_dir):
     values = sweep_results['param_values'][param]
     results = sweep_results['results']
 
-    # Detect if this is a phase sweep (single 'custom' key) or standard (3 morphologies)
     first_result = results[values[0]]
     morphs = list(first_result.keys())
-    is_phase = morphs == ['custom']
 
     colors = {'stack': '#666666', 'convex': '#2196F3', 'concave': '#F44336', 'custom': '#9C27B0'}
     markers = {'stack': 's', 'convex': '^', 'concave': 'v', 'custom': 'o'}

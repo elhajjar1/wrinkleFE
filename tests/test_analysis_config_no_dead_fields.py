@@ -21,7 +21,6 @@ import pytest
 
 from wrinklefe.analysis import AnalysisConfig
 
-
 # --------------------------------------------------------------------------- #
 # AnalysisConfig: removed kwargs now raise TypeError
 # --------------------------------------------------------------------------- #

@@ -203,7 +203,7 @@ def strain_transformation_3d(angle_rad: float, axis: str = 'z') -> np.ndarray:
     R = np.diag([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
     R_inv = np.diag([1.0, 1.0, 1.0, 0.5, 0.5, 0.5])
 
-    return R @ T_sigma @ R_inv
+    return np.asarray(R @ T_sigma @ R_inv)
 
 
 def rotate_stiffness_3d(
@@ -249,7 +249,7 @@ def rotate_stiffness_3d(
     T_epsilon = strain_transformation_3d(angle_rad, axis=axis)
     T_sigma_inv = np.linalg.inv(T_sigma)
 
-    return T_sigma_inv @ C @ T_epsilon
+    return np.asarray(T_sigma_inv @ C @ T_epsilon)
 
 
 def reduced_stiffness_matrix(

@@ -24,19 +24,22 @@ References
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence, Union
 
 import numpy as np
 
-from wrinklefe.failure.base import FailureCriterion, FailureResult
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.material import OrthotropicMaterial
+from wrinklefe.failure.base import FailureCriterion, FailureResult
+
+logger = logging.getLogger(__name__)
 
 
 # Type alias for per-ply context input.  Either a sequence indexable by
 # integer ply index, or a mapping from ply index to a context dict.
-PlyContexts = Union[Sequence[Union[dict, None]], Mapping[int, Union[dict, None]], None]
+PlyContexts = Sequence[dict | None] | Mapping[int, dict | None] | None
 
 
 def _ply_context(ply_contexts: PlyContexts, k: int) -> dict | None:
@@ -482,6 +485,17 @@ class FailureEvaluator:
                 mode_fields[criterion.name][elem_mask] = modes.reshape(
                     n_e_group, n_gauss
                 )
+
+        if logger.isEnabledFor(logging.INFO):
+            peaks = ", ".join(
+                f"{name}={float(arr.max()):.3f}" if arr.size else f"{name}=n/a"
+                for name, arr in fi_fields.items()
+            )
+            logger.info(
+                "Evaluated %d criteria over %d elements x %d Gauss points "
+                "(max FI: %s)",
+                len(self.criteria), n_elements, n_gauss, peaks,
+            )
 
         return fi_fields, mode_fields
 

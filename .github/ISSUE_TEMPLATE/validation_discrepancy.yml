@@ -1,0 +1,64 @@
+name: Validation / physics discrepancy
+description: A predicted knockdown/strength disagrees with experiment or another model.
+title: "validation: <material/system> — <short summary>"
+labels: ["validation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These reports produce the project's most valuable issues. The
+        more of the wrinkle geometry and measured data you can give, the
+        more likely it lands in the validation ledger (`VALIDATION.md`).
+  - type: input
+    id: material
+    attributes:
+      label: Material system
+      description: Fibre/matrix and, if it maps to a built-in, the `MaterialLibrary` name.
+      placeholder: "S-glass/epoxy (AC318_S6C10)"
+    validations:
+      required: true
+  - type: input
+    id: layup
+    attributes:
+      label: Layup
+      description: Stacking sequence (contracted notation accepted) and ply thickness.
+      placeholder: "[0]_14, ply 0.44 mm"
+    validations:
+      required: true
+  - type: input
+    id: geometry
+    attributes:
+      label: Wrinkle geometry
+      description: Amplitude A, wavelength λ, and peak angle θ_max (and width/morphology if known).
+      placeholder: "A = 1.5 mm, λ = 12.9 mm, θ_max ≈ 20°, mid-plane embedded"
+    validations:
+      required: true
+  - type: dropdown
+    id: loading
+    attributes:
+      label: Loading
+      options:
+        - Compression
+        - Tension
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: values
+    attributes:
+      label: Measured vs. predicted
+      description: The experimental strength/knockdown and what WrinkleFE predicted (analytical and/or FE), ideally as a small table.
+      placeholder: |
+        | quantity        | measured | WrinkleFE |
+        |-----------------|----------|-----------|
+        | strength (MPa)  | 211.1    | ...       |
+        | knockdown       | 0.629    | ...       |
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Data source / reference
+      description: Paper DOI, dataset, or test report the measured values come from.
+    validations:
+      required: true

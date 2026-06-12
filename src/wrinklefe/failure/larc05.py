@@ -50,8 +50,9 @@ References
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
-from typing import Any, Dict, Optional
 
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.failure.base import FailureCriterion, FailureResult
@@ -116,11 +117,6 @@ class LaRC05Criterion(FailureCriterion):
         cos_a2 = np.cos(alpha_0_rad) ** 2
         tan_2a = np.tan(2.0 * alpha_0_rad)
 
-        # Transverse shear strength on fracture plane
-        S_T = material.Yc * np.cos(alpha_0_rad) * (
-            np.sin(alpha_0_rad) + np.cos(alpha_0_rad) / tan_2a
-        )
-
         # Friction coefficients (Pinho et al. 2005, Eq. 12-13)
         mu_T = -1.0 / tan_2a
         mu_L = -material.S12 * cos_2a / (material.Yc * cos_a2)
@@ -138,7 +134,7 @@ class LaRC05Criterion(FailureCriterion):
     def _in_situ_strengths(
         self,
         material: OrthotropicMaterial,
-        ply_thickness: Optional[float] = None,
+        ply_thickness: float | None = None,
     ) -> tuple[float, float]:
         """Compute in-situ transverse tensile and shear strengths.
 
@@ -227,7 +223,7 @@ class LaRC05Criterion(FailureCriterion):
         fi = (s1 / material.Xt) ** 2 + (t12 / material.S12) ** 2
         if material.S13 > 0:
             fi += (t13 / material.S13) ** 2
-        return np.sqrt(max(fi, 0.0))
+        return float(np.sqrt(max(fi, 0.0)))
 
     # ------------------------------------------------------------------
     # Fibre kinking with misalignment frame + nonlinear shear
@@ -426,7 +422,7 @@ class LaRC05Criterion(FailureCriterion):
         self,
         stress_local: np.ndarray,
         material: OrthotropicMaterial,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> FailureResult:
         """Evaluate the LaRC04/05 criterion at a single material point.
 

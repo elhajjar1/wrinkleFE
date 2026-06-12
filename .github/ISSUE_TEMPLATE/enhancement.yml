@@ -1,0 +1,45 @@
+name: Enhancement
+description: Propose a new capability or improvement.
+title: "<area>: <short summary>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project's issues follow a **Where / What / Suggested
+        approach / Acceptance criteria** structure with file:line
+        evidence. The fields below pre-seed that skeleton.
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: The module(s), function(s), and `file.py:line` the change touches or relates to.
+      placeholder: |
+        - `src/wrinklefe/analysis.py:1472` — the single/dual dispatch in `WrinkleAnalysis.run`.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: The capability or improvement, and why it matters for this tool's users (composites engineers, validation work).
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Suggested approach
+      description: A sketch of the implementation — APIs, data flow, staging. Optional but speeds triage.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist of what "done" looks like (tests, behavior, docs).
+      placeholder: |
+        - [ ] ...
+        - [ ] Unit test covering ...
+        - [ ] README/docs updated.
+    validations:
+      required: true

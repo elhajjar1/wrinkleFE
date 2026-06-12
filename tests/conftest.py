@@ -1,12 +1,11 @@
 """Shared pytest fixtures for WrinkleFE Phase 1 core module tests."""
 
-import numpy as np
 import pytest
 
+from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.laminate import Laminate, Ply
+from wrinklefe.core.morphology import WrinkleConfiguration
 from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.core.morphology import WrinkleConfiguration, WrinklePlacement
 
 
 @pytest.fixture

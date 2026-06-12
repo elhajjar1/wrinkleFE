@@ -33,18 +33,17 @@ from __future__ import annotations
 import pytest
 
 from wrinklefe.analysis import (
-    AnalysisConfig,
-    WrinkleAnalysis,
     _BETA_BLOCK,
     _GAMMA_Y_FLOOR,
     _GAMMA_Y_UD,
+    AnalysisConfig,
+    WrinkleAnalysis,
     _confined_fraction,
     _effective_gamma_Y,
     _max_consecutive_zero_plies,
 )
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary
-
 
 _MUKHOPADHYAY_LAYUP_STR = "[45_2/90_2/-45_2/0_2]_3s"
 _ELHAJJAR_LAYUP_STR = "[0/45/90/-45/0/45/-45/0]_s"

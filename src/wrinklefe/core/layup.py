@@ -19,9 +19,9 @@ Two notations are accepted:
 from __future__ import annotations
 
 import re
-from typing import List
+from collections.abc import Sequence
 
-__all__ = ["parse_layup"]
+__all__ = ["parse_layup", "to_contracted_layup"]
 
 
 _PLY_TOKEN_RE = re.compile(
@@ -34,7 +34,7 @@ _PLY_TOKEN_RE = re.compile(
 )
 
 
-def _expand_ply_token(token: str) -> List[float]:
+def _expand_ply_token(token: str) -> list[float]:
     """Expand a single ply entry like ``0``, ``45_2``, ``±45``, or ``±30_2``."""
     token = token.strip()
     if not token:
@@ -49,7 +49,7 @@ def _expand_ply_token(token: str) -> List[float]:
     return [angle] * rep
 
 
-def _parse_contracted_layup(s: str) -> List[float]:
+def _parse_contracted_layup(s: str) -> list[float]:
     """Parse contracted notation like ``[0/45/-45/90]_3s`` or ``[0/±45/90]s``."""
     m = re.fullmatch(
         r"\s*\[\s*(?P<inner>[^\[\]]*)\]\s*_?\s*(?P<rep>\d+)?\s*(?P<sym>[sS])?\s*",
@@ -60,7 +60,7 @@ def _parse_contracted_layup(s: str) -> List[float]:
             f"Could not parse contracted layup {s!r}. "
             "Expected a form like '[0/45/-45/90]_3s'."
         )
-    plies: List[float] = []
+    plies: list[float] = []
     for tok in m.group("inner").split("/"):
         plies.extend(_expand_ply_token(tok))
     if not plies:
@@ -72,7 +72,7 @@ def _parse_contracted_layup(s: str) -> List[float]:
     return plies
 
 
-def parse_layup(s: str) -> List[float]:
+def parse_layup(s: str) -> list[float]:
     """Parse a layup string into a flat list of ply angles (degrees).
 
     Two notations are accepted:
@@ -89,9 +89,84 @@ def parse_layup(s: str) -> List[float]:
         raise ValueError("Layup is empty.")
     if "[" in s or "]" in s:
         return _parse_contracted_layup(s)
-    out: List[float] = []
+    out: list[float] = []
     for tok in s.replace(";", ",").replace("\n", ",").split(","):
         out.extend(_expand_ply_token(tok))
     if not out:
         raise ValueError("Layup is empty.")
     return out
+
+
+def _fmt_angle(angle: float) -> str:
+    """Format an angle for contracted notation (45.0 -> '45')."""
+    return f"{angle:g}"
+
+
+def _render_bracket(base: Sequence[float]) -> str:
+    """Render a sublaminate as ``[a/b/...]``, collapsing ``a, -a`` to ``±a``."""
+    tokens: list[str] = []
+    i = 0
+    while i < len(base):
+        a = base[i]
+        if a > 0 and i + 1 < len(base) and base[i + 1] == -a:
+            tokens.append(f"±{_fmt_angle(a)}")
+            i += 2
+        else:
+            tokens.append(_fmt_angle(a))
+            i += 1
+    return "[" + "/".join(tokens) + "]"
+
+
+def _smallest_repeat(seq: list[float]) -> tuple[list[float], int]:
+    """Return the shortest base ``b`` and count ``k`` with ``seq == b * k``."""
+    n = len(seq)
+    for size in range(1, n + 1):
+        if n % size == 0 and seq == seq[:size] * (n // size):
+            return seq[:size], n // size
+    return seq, 1
+
+
+def to_contracted_layup(angles: Sequence[float]) -> str:
+    """Render a flat ply-angle list in contracted layup notation.
+
+    The inverse of :func:`parse_layup` for the notations it accepts:
+    symmetry (``s`` suffix), sublaminate repeats (``_k``), and ``±``
+    pair collapse. The most compact representation found is returned;
+    when no contraction applies the full bracketed angle list is
+    returned, so the output is never ambiguous.
+
+    Round-trip property: ``parse_layup(to_contracted_layup(a)) == a``
+    for any non-empty list of angles.
+
+    Examples
+    --------
+    >>> to_contracted_layup([0, 45, -45, 90, 90, -45, 45, 0])
+    '[0/±45/90]s'
+    >>> to_contracted_layup([0] * 8)
+    '[0]_8'
+    >>> to_contracted_layup([0, 45, 90])
+    '[0/45/90]'
+    """
+    plies = [float(a) for a in angles]
+    if not plies:
+        raise ValueError("Layup is empty.")
+
+    candidates: list[str] = []
+    n = len(plies)
+    if n % 2 == 0 and plies == plies[::-1]:
+        half_base, half_rep = _smallest_repeat(plies[: n // 2])
+        candidates.append(
+            _render_bracket(half_base)
+            + (f"_{half_rep}" if half_rep > 1 else "")
+            + "s"
+        )
+    base, rep = _smallest_repeat(plies)
+    if rep > 1:
+        candidates.append(_render_bracket(base) + f"_{rep}")
+    full = _render_bracket(plies)
+    candidates.append(full)
+
+    for cand in sorted(candidates, key=len):
+        if parse_layup(cand) == plies:
+            return cand
+    return full

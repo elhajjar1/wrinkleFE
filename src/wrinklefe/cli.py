@@ -18,11 +18,15 @@ Usage
 from __future__ import annotations
 
 import argparse
-import json
+import logging
 import sys
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from wrinklefe.analysis import AnalysisResults
 
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
@@ -192,8 +196,11 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_analyze.add_argument(
-        "--verbose", action="store_true", default=False,
-        help="Print detailed progress information",
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
     )
     p_analyze.add_argument(
         "--output-json", type=str, default=None,
@@ -344,8 +351,27 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_compare.add_argument(
-        "--verbose", action="store_true", default=False,
-        help="Print detailed progress information",
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the comparison results to a JSON file (array of "
+            "per-run objects matching 'analyze --output-json'); the "
+            "stdout table is still printed"
+        ),
+    )
+    p_compare.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write the comparison results to a tidy CSV (one row per "
+            "morphology, full float precision); the stdout table is "
+            "still printed"
+        ),
+    )
+    p_compare.add_argument(
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
     )
 
     # ------------------------------------------------------------------ #
@@ -358,7 +384,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_sweep.add_argument(
         "--parameter", type=str, required=True,
-        help="Parameter to sweep: amplitude, wavelength, or width",
+        help=(
+            "Numeric AnalysisConfig field to sweep "
+            "(e.g. amplitude, wavelength, width, applied_strain)"
+        ),
     )
     p_sweep.add_argument(
         "--min", type=float, required=True, dest="sweep_min",
@@ -371,6 +400,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sweep.add_argument(
         "--steps", type=int, default=10,
         help="Number of sweep steps (default: 10)",
+    )
+    p_sweep.add_argument(
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the sweep results to a JSON file (array of per-run "
+            "objects matching 'analyze --output-json'); the stdout "
+            "table is still printed"
+        ),
+    )
+    p_sweep.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write the sweep results to a tidy CSV (one row per run, "
+            "full float precision); the stdout table is still printed"
+        ),
     )
     p_sweep.add_argument(
         "--morphology", type=str, default="stack",
@@ -413,8 +457,102 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_sweep.add_argument(
-        "--verbose", action="store_true", default=False,
-        help="Print detailed progress information",
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # converge
+    # ------------------------------------------------------------------ #
+    p_converge = subparsers.add_parser(
+        "converge",
+        help="Run a mesh-convergence study",
+        description=(
+            "Run the FE analysis at successively refined meshes, report "
+            "the per-level QoI table, and recommend the coarsest mesh "
+            "within a tolerance of the finest level."
+        ),
+    )
+    p_converge.add_argument(
+        "--amplitude", type=float, default=0.366,
+        help="Wrinkle half-amplitude A in mm (default: 0.366)",
+    )
+    p_converge.add_argument(
+        "--wavelength", type=float, default=16.0,
+        help="Wrinkle wavelength lambda in mm (default: 16.0)",
+    )
+    p_converge.add_argument(
+        "--width", type=float, default=12.0,
+        help="Wrinkle envelope width w in mm (default: 12.0)",
+    )
+    p_converge.add_argument(
+        "--morphology", type=str, default="stack",
+        choices=MORPHOLOGY_CHOICES,
+        help="Wrinkle morphology (default: stack)",
+    )
+    p_converge.add_argument(
+        "--loading", type=str, default="compression",
+        choices=["compression", "tension"],
+        help="Loading condition (default: compression)",
+    )
+    p_converge.add_argument(
+        "--material", type=str, default=None,
+        help="Material name from MaterialLibrary (default: IM7/8552)",
+    )
+    p_converge.add_argument(
+        "--angles", "--layup", type=str, default=None, dest="angles",
+        help="Layup, contracted (e.g. '[0/45/-45/90]s') or comma-separated",
+    )
+    p_converge.add_argument(
+        "--nx", type=int, default=12,
+        help="Level-0 elements along the length (default: 12)",
+    )
+    p_converge.add_argument(
+        "--ny", type=int, default=6,
+        help="Level-0 elements across the width (default: 6)",
+    )
+    p_converge.add_argument(
+        "--nz-per-ply", type=int, default=1, dest="nz_per_ply",
+        help="Level-0 elements per ply through-thickness (default: 1)",
+    )
+    p_converge.add_argument(
+        "--strain", type=float, default=-0.01,
+        help="Applied strain (default: -0.01)",
+    )
+    p_converge.add_argument(
+        "--levels", type=int, default=4,
+        help="Number of refinement levels (default: 4)",
+    )
+    p_converge.add_argument(
+        "--tolerance", type=float, default=0.01,
+        help="Relative QoI tolerance for the recommendation (default: 0.01)",
+    )
+    p_converge.add_argument(
+        "--refine", type=str, default="nx,nz_per_ply",
+        help=(
+            "Comma-separated mesh axes to refine, from nx, ny, "
+            "nz_per_ply (default: nx,nz_per_ply)"
+        ),
+    )
+    p_converge.add_argument(
+        "--qoi", type=str, default="max_fi",
+        choices=["max_fi", "modulus_retention", "strength_retention",
+                 "max_damage"],
+        help="Quantity of interest per level (default: max_fi)",
+    )
+    p_converge.add_argument(
+        "--save-plot", type=str, default=None,
+        help="Save the QoI-vs-DOF convergence plot to this path",
+    )
+    p_converge.add_argument(
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
     )
 
     # ------------------------------------------------------------------ #
@@ -433,7 +571,7 @@ def _build_parser() -> argparse.ArgumentParser:
 # Subcommand handlers
 # ====================================================================== #
 
-def _parse_czm_interfaces(value: Optional[str]):
+def _parse_czm_interfaces(value: str | None):
     """Parse --czm-interfaces into the form ``AnalysisConfig`` expects.
 
     Accepts the two sentinel strings ``"near_crest"`` / ``"all"`` (passed
@@ -467,7 +605,7 @@ def _parse_czm_interfaces(value: Optional[str]):
         sys.exit(2)
 
 
-def _parse_angles(angles_str: Optional[str]) -> Optional[List[float]]:
+def _parse_angles(angles_str: str | None) -> list[float] | None:
     """Parse a layup string into a list of ply angles (degrees).
 
     Accepts both an explicit comma/semicolon/newline-separated list
@@ -685,10 +823,106 @@ def _cmd_compare(args: argparse.Namespace) -> None:
         print(f"    {i}. {morph:<10} {r.analytical_strength_MPa:.1f} MPa")
     print()
 
+    _write_batch_outputs(
+        [
+            ("morphology", morph, morph, all_results[morph])
+            for morph in ("stack", "convex", "concave")
+        ],
+        args.output_json,
+        args.output_csv,
+    )
+
+
+def _write_batch_outputs(
+    rows: list[tuple[str, float | str, str, AnalysisResults]],
+    output_json: str | None,
+    output_csv: str | None,
+) -> None:
+    """Write sweep/compare batch results to JSON and/or CSV (issue #266).
+
+    Parameters
+    ----------
+    rows : list of (parameter_name, parameter_value, morphology, results)
+        One entry per run, in output order.
+    output_json : str or None
+        Path for a JSON array of per-run objects, each matching the
+        ``analyze --output-json`` schema (:func:`analysis_results_to_dict`).
+    output_csv : str or None
+        Path for a tidy CSV (one row per run, full float precision):
+        ``parameter_name, parameter_value, morphology, knockdown,
+        predicted_strength_MPa, max_failure_index, governing_criterion``.
+    """
+    if output_json is None and output_csv is None:
+        return
+
+    import csv
+    import json
+    from pathlib import Path
+
+    from wrinklefe.io.export import analysis_results_to_dict
+
+    if output_json is not None:
+        payload = [analysis_results_to_dict(r) for _, _, _, r in rows]
+        path = Path(output_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"\nResults written to: {path}")
+
+    if output_csv is not None:
+        fieldnames = [
+            "parameter_name", "parameter_value", "morphology",
+            "knockdown", "predicted_strength_MPa",
+            "max_failure_index", "governing_criterion",
+        ]
+        path = Path(output_csv)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for name, value, morphology, r in rows:
+                fi = None
+                if r.failure_indices:
+                    fi = max(
+                        float(np.max(arr))
+                        for arr in r.failure_indices.values()
+                    )
+                crit = getattr(
+                    r.failure_report, "critical_criterion", None
+                ) if r.failure_report is not None else None
+                writer.writerow({
+                    "parameter_name": name,
+                    "parameter_value": value,
+                    "morphology": morphology,
+                    # repr() keeps full float precision; rounding stays a
+                    # display-only concern of the stdout table.
+                    "knockdown": repr(float(r.analytical_knockdown)),
+                    "predicted_strength_MPa": repr(
+                        float(r.analytical_strength_MPa)
+                    ),
+                    "max_failure_index": "" if fi is None else repr(fi),
+                    "governing_criterion": crit or "",
+                })
+        print(f"\nResults written to: {path}")
+
 
 def _cmd_sweep(args: argparse.Namespace) -> None:
     """Handle the ``sweep`` subcommand."""
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+
+    # Validate the range/steps before burning any compute (issue #298).
+    if args.sweep_min >= args.sweep_max:
+        print(
+            f"error: --min ({args.sweep_min}) must be less than --max "
+            f"({args.sweep_max})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if args.steps < 2:
+        print(
+            f"error: --steps must be >= 2 (got {args.steps})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     values = np.linspace(args.sweep_min, args.sweep_max, args.steps)
 
@@ -700,12 +934,19 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
         verbose=args.verbose,
     )
 
-    results = WrinkleAnalysis.parametric_sweep(
-        config,
-        parameter=args.parameter,
-        values=values,
-        analytical_only=args.analytical_only,
-    )
+    # parametric_sweep raises AttributeError for an unknown field name;
+    # catch it (and any config/solve error) and exit cleanly with a
+    # message instead of a raw traceback, matching _cmd_analyze.
+    try:
+        results = WrinkleAnalysis.parametric_sweep(
+            config,
+            parameter=args.parameter,
+            values=values.tolist(),
+            analytical_only=args.analytical_only,
+        )
+    except (AttributeError, ValueError, NotImplementedError) as exc:
+        print(f"error: sweep failed: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     print("=" * 60)
     print(f"  WrinkleFE Parametric Sweep: {args.parameter}")
@@ -722,6 +963,15 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
         )
 
     print("=" * 60)
+
+    _write_batch_outputs(
+        [
+            (args.parameter, float(val), args.morphology, r)
+            for val, r in zip(values, results)
+        ],
+        args.output_json,
+        args.output_csv,
+    )
 
 
 def _cmd_materials(args: argparse.Namespace) -> None:
@@ -755,7 +1005,71 @@ def _cmd_materials(args: argparse.Namespace) -> None:
 # Entry point
 # ====================================================================== #
 
-def main(argv: Optional[Sequence[str]] = None) -> None:
+def _cmd_converge(args: argparse.Namespace) -> None:
+    """Handle the ``converge`` subcommand."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.convergence import mesh_convergence_study
+    from wrinklefe.core.material import MaterialLibrary
+
+    material = None
+    if args.material is not None:
+        material = MaterialLibrary().get(args.material)
+
+    config = AnalysisConfig(
+        amplitude=args.amplitude,
+        wavelength=args.wavelength,
+        width=args.width,
+        morphology=args.morphology,
+        loading=args.loading,
+        material=material,
+        angles=_parse_angles(args.angles),
+        nx=args.nx,
+        ny=args.ny,
+        nz_per_ply=args.nz_per_ply,
+        applied_strain=args.strain,
+    )
+
+    refine = tuple(a.strip() for a in args.refine.split(",") if a.strip())
+    try:
+        study = mesh_convergence_study(
+            config,
+            levels=args.levels,
+            refine=refine,
+            qoi=args.qoi,
+            tolerance=args.tolerance,
+        )
+    except (ValueError, NotImplementedError) as exc:
+        print(f"error: convergence study failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print(study.summary())
+
+    if args.save_plot is not None:
+        ax = study.plot()
+        ax.figure.savefig(args.save_plot)
+        print(f"\nConvergence plot saved to: {args.save_plot}")
+
+
+def _configure_logging(verbose: bool) -> None:
+    """Attach a stderr handler to the package logger for ``--verbose``.
+
+    The library itself never configures handlers (standard logging
+    etiquette); the CLI is the application, so handler setup lives here.
+    Without ``--verbose`` the logger is left untouched and the default
+    output is unchanged.
+    """
+    if not verbose:
+        return
+    pkg_logger = logging.getLogger("wrinklefe")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("%(levelname)s %(name)s: %(message)s")
+    )
+    pkg_logger.addHandler(handler)
+    pkg_logger.setLevel(logging.DEBUG)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
     """Main CLI entry point.
 
     Parameters
@@ -770,10 +1084,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         parser.print_help()
         sys.exit(0)
 
+    _configure_logging(getattr(args, "verbose", False))
+
     handlers = {
         "analyze": _cmd_analyze,
         "compare": _cmd_compare,
         "sweep": _cmd_sweep,
+        "converge": _cmd_converge,
         "materials": _cmd_materials,
     }
 

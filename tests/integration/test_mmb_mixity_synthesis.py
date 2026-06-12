@@ -9,14 +9,14 @@ mode-mixity assertions.
 Per-test sources (commit SHAs on branch claude/czm-phase7-dcb-validation)
 -------------------------------------------------------------------------
 
-| Test               | B    | P_exp [N] | P_FE [N] | Gc_exp [N/mm] | Gc_BK [N/mm] | Source commit |
-|--------------------|------|-----------|----------|---------------|--------------|---------------|
-| DCB  (Mode I)      | 0.00 | 75.6      | 84.8     | 0.324         | 0.324        | afcb3bc / b5fdac1 |
-| MMB  25 % MMR      | 0.25 | 222.0     | 389.0    | 0.392         | 0.385        | 37c4549       |
-| MMB  50 % MMR      | 0.50 | 543.0     | 530.0    | 0.611         | 0.490        | 65000ae       |
-| MMB  75 % MMR      | 0.75 | 1224.0    | 603.0    | 1.235         | 0.622        | 20bef2e       |
-| ENF  (Mode II)     | 1.00 | 712.0     | 749.0    | 0.777         | 0.777        | 7caafce       |
-| 4PB  (Mode II)     | 1.00 | 1645.0    | 1552.0   | 0.720         | 0.777        | 3e77274       |
+| Test            | B    | P_exp [N] | P_FE [N] | Gc_exp [N/mm] | Gc_BK [N/mm] | Source commit |
+|-----------------|------|-----------|----------|---------------|--------------|---------------|
+| DCB  (Mode I)   | 0.00 | 75.6      | 84.8     | 0.324         | 0.324        | afcb3bc / b5fdac1 |
+| MMB  25 % MMR   | 0.25 | 222.0     | 389.0    | 0.392         | 0.385        | 37c4549       |
+| MMB  50 % MMR   | 0.50 | 543.0     | 530.0    | 0.611         | 0.490        | 65000ae       |
+| MMB  75 % MMR   | 0.75 | 1224.0    | 603.0    | 1.235         | 0.622        | 20bef2e       |
+| ENF  (Mode II)  | 1.00 | 712.0     | 749.0    | 0.777         | 0.777        | 7caafce       |
+| 4PB  (Mode II)  | 1.00 | 1645.0    | 1552.0   | 0.720         | 0.777        | 3e77274       |
 
 (The Gc value used for the BK envelope at B = 1 is GIIc = 0.777, the
 ENF-measured value.  4PB's slightly lower measured Gc = 0.720 is shown
@@ -91,9 +91,7 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend.
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-import pytest  # noqa: E402
 from scipy.optimize import minimize_scalar  # noqa: E402
-
 
 # ----------------------------------------------------------------------
 # Hard-coded synthesis data

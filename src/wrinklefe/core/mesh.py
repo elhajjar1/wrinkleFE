@@ -53,7 +53,17 @@ class MeshValidationError(ValueError):
     centroid).  Catching ``ValueError`` also catches this exception
     for backwards compatibility with callers that previously relied on
     ``WrinkleMesh.generate()`` only ever raising ``ValueError``.
+
+    Attributes
+    ----------
+    inverted_element_indices : np.ndarray or None
+        Indices of the inverted/degenerate elements, attached at raise.
+    detJ : np.ndarray or None
+        Per-element centroid Jacobian determinants, attached at raise.
     """
+
+    inverted_element_indices: np.ndarray | None = None
+    detJ: np.ndarray | None = None
 
 
 # Through-thickness wrinkle-decay ratio (``nz_per_ply * amplitude /
@@ -215,12 +225,12 @@ class MeshData:
     @property
     def n_nodes(self) -> int:
         """Total number of nodes."""
-        return self.nodes.shape[0]
+        return int(self.nodes.shape[0])
 
     @property
     def n_elements(self) -> int:
         """Total number of elements."""
-        return self.elements.shape[0]
+        return int(self.elements.shape[0])
 
     @property
     def n_dof(self) -> int:
@@ -250,7 +260,7 @@ class MeshData:
         np.ndarray
             Shape ``(8, 3)`` coordinate array.
         """
-        return self.nodes[self.elements[elem_idx]]
+        return np.asarray(self.nodes[self.elements[elem_idx]])
 
     def element_center(self, elem_idx: int) -> np.ndarray:
         """Return the ``(3,)`` centroid of an element.
@@ -265,7 +275,7 @@ class MeshData:
         np.ndarray
             Shape ``(3,)`` centroid coordinates (mm).
         """
-        return self.element_nodes(elem_idx).mean(axis=0)
+        return np.asarray(self.element_nodes(elem_idx).mean(axis=0))
 
     def element_fiber_angle(self, elem_idx: int) -> float:
         """Return the average fiber misalignment angle for an element (radians).
@@ -293,7 +303,7 @@ class MeshData:
         np.ndarray
             Shape ``(n_elements,)`` array of mean fiber angles (radians).
         """
-        return self.fiber_angles[self.elements].mean(axis=1)
+        return np.asarray(self.fiber_angles[self.elements].mean(axis=1))
 
     # ---- boundary / set queries --------------------------------------------
 
@@ -391,15 +401,15 @@ class MeshData:
         nyp = self.ny + 1
 
         def node_id(i: np.ndarray, j: np.ndarray, k: np.ndarray) -> np.ndarray:
-            return k * (nyp * nxp) + j * nxp + i
+            return np.asarray(k * (nyp * nxp) + j * nxp + i)
 
         if face in ("x_min", "x_max"):
             i_fix = 0 if face == "x_min" else self.nx
             ej = np.arange(self.ny)
             ek = np.arange(self.nz)
-            kk, jj = np.meshgrid(ek, ej, indexing="ij")
-            kk = kk.ravel()
-            jj = jj.ravel()
+            kk_g, jj_g = np.meshgrid(ek, ej, indexing="ij")
+            kk = kk_g.ravel()
+            jj = jj_g.ravel()
             ii = np.full_like(jj, i_fix)
             # CCW viewed from outside (+x or -x normal)
             n0 = node_id(ii, jj, kk)
@@ -410,9 +420,9 @@ class MeshData:
             j_fix = 0 if face == "y_min" else self.ny
             ei = np.arange(self.nx)
             ek = np.arange(self.nz)
-            kk, ii = np.meshgrid(ek, ei, indexing="ij")
-            kk = kk.ravel()
-            ii = ii.ravel()
+            kk_g, ii_g = np.meshgrid(ek, ei, indexing="ij")
+            kk = kk_g.ravel()
+            ii = ii_g.ravel()
             jj = np.full_like(ii, j_fix)
             n0 = node_id(ii, jj, kk)
             n1 = node_id(ii + 1, jj, kk)
@@ -422,9 +432,9 @@ class MeshData:
             k_fix = 0 if face == "z_min" else self.nz
             ei = np.arange(self.nx)
             ej = np.arange(self.ny)
-            jj, ii = np.meshgrid(ej, ei, indexing="ij")
-            jj = jj.ravel()
-            ii = ii.ravel()
+            jj_g, ii_g = np.meshgrid(ej, ei, indexing="ij")
+            jj = jj_g.ravel()
+            ii = ii_g.ravel()
             kk = np.full_like(ii, k_fix)
             n0 = node_id(ii, jj, kk)
             n1 = node_id(ii + 1, jj, kk)
@@ -658,7 +668,7 @@ class WrinkleMesh:
     def __init__(
         self,
         laminate: Laminate,
-        wrinkle_config: "WrinkleConfiguration | None" = None,
+        wrinkle_config: WrinkleConfiguration | None = None,
         Lx: float = 48.0,
         Ly: float = 20.0,
         nx: int = 50,
@@ -742,8 +752,8 @@ class WrinkleMesh:
         return mesh_data
 
     def _augment_inversion_error(
-        self, err: "MeshValidationError"
-    ) -> "MeshValidationError":
+        self, err: MeshValidationError
+    ) -> MeshValidationError:
         """Attach wrinkle parameters and tuning suggestions to an inversion error.
 
         Delegates to :func:`mesh_shear_diagnostics` so the post-failure
@@ -754,11 +764,18 @@ class WrinkleMesh:
         ):
             return err  # Flat mesh — nothing wrinkle-specific to add.
 
-        w0 = self.wrinkle_config.wrinkles[0]
-        profile = w0.profile
-        inner = getattr(profile, "profile", profile)  # unwrap WrinkleSurface3D
-        amplitude = float(getattr(inner, "amplitude", 0.0))
-        wavelength = float(getattr(inner, "wavelength", 0.0))
+        # Use the most shear-severe wrinkle (largest A/lambda slope) so
+        # multi-wrinkle configurations get diagnostics for the wrinkle
+        # that actually drives the inversion.
+        amplitude = wavelength = 0.0
+        worst = -1.0
+        for w in self.wrinkle_config.wrinkles:
+            inner = getattr(w.profile, "profile", w.profile)
+            a = float(getattr(inner, "amplitude", 0.0))
+            lam = float(getattr(inner, "wavelength", 0.0))
+            if a > 0.0 and lam > 0.0 and a / lam > worst:
+                worst = a / lam
+                amplitude, wavelength = a, lam
         if amplitude <= 0.0 or wavelength <= 0.0:
             return err
 
@@ -800,7 +817,6 @@ class WrinkleMesh:
         """
         nxp = self.nx + 1
         nyp = self.ny + 1
-        nzp = self.nz + 1
 
         # Build 1-D coordinate arrays
         x1d = np.linspace(0.0, self.Lx, nxp)
@@ -869,14 +885,14 @@ class WrinkleMesh:
         ek = np.arange(self.nz)
 
         # 3-D index arrays — shape (nz, ny, nx) with k slowest, j middle, i fastest
-        ki, ji, ii = np.meshgrid(ek, ej, ei, indexing="ij")
-        ki = ki.ravel()
-        ji = ji.ravel()
-        ii = ii.ravel()
+        ki_g, ji_g, ii_g = np.meshgrid(ek, ej, ei, indexing="ij")
+        ki = ki_g.ravel()
+        ji = ji_g.ravel()
+        ii = ii_g.ravel()
 
         def node_id(i: np.ndarray, j: np.ndarray, k: np.ndarray) -> np.ndarray:
             """Convert (i, j, k) grid indices to flat node index."""
-            return k * (nyp * nxp) + j * nxp + i
+            return np.asarray(k * (nyp * nxp) + j * nxp + i)
 
         n0 = node_id(ii, ji, ki)
         n1 = node_id(ii + 1, ji, ki)
@@ -902,8 +918,6 @@ class WrinkleMesh:
         ply_angles : np.ndarray
             Shape ``(n_elements,)`` — nominal ply orientation (degrees).
         """
-        n_elem = self.nx * self.ny * self.nz
-
         # Element k-indices in the same ravel order used by _create_hex_connectivity
         ek = np.arange(self.nz)
         # Repeat for all (j, i) in each k-layer
