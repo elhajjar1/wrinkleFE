@@ -122,6 +122,10 @@ makes the request visible and captures interested users. It works with **no
 configuration**: with no secrets set, the gate still shows and the rest of the
 app runs; only the logging is skipped.
 
+To turn the gate **off** (e.g. a self-hosted internal deploy), set the env var
+`WRINKLEFE_DISABLE_GATE=1` — on Streamlit Cloud, add it under *Manage app →
+Settings*. The test suite sets the same switch so `AppTest` can drive the app.
+
 To also capture signups + run events in a **Google Sheet**:
 
 1. In Google Cloud Console, create a project and enable the **Google Sheets

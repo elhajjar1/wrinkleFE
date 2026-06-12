@@ -34,6 +34,7 @@ Share the target Google Sheet with the service account's ``client_email``
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -49,15 +50,27 @@ _SCOPES = (
 REPO_URL = "https://github.com/elhajjar1/wrinklefe"
 
 
-def _running_in_served_app() -> bool:
-    """True only when a real Streamlit *server* Runtime is active.
+_DISABLE_ENV = "WRINKLEFE_DISABLE_GATE"
 
-    Uses ``streamlit.runtime.exists()``, which is ``True`` under a live
-    ``streamlit run`` but ``False`` both for a bare ``import app`` (pytest
-    importing the module) and under ``streamlit.testing`` ``AppTest`` — the
-    latter runs the script with a ``ScriptRunContext`` but never starts a
-    server Runtime. That keeps the gate, and its ``st.stop()``, out of every
-    test context while still firing for end users.
+
+def _gate_disabled() -> bool:
+    """True when the gate is explicitly switched off via env var.
+
+    Set ``WRINKLEFE_DISABLE_GATE=1`` to suppress the gate entirely — used by
+    the test suite (``tests/conftest.py``) so ``AppTest`` can drive the app,
+    and available to operators self-hosting the app who don't want the gate.
+    """
+    return os.environ.get(_DISABLE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _running_in_served_app() -> bool:
+    """True when a Streamlit script-run context is active.
+
+    ``False`` for a bare ``import app`` (pytest importing the module for its
+    constants), so :func:`render_gate` can't call ``st.stop()`` at import
+    time. NOTE: this is ``True`` under ``streamlit.testing`` ``AppTest`` too
+    (it starts a Runtime), so it does not gate out the test harness on its
+    own — :func:`_gate_disabled` (set by ``tests/conftest.py``) does that.
     """
     try:
         from streamlit.runtime import exists
@@ -163,10 +176,12 @@ def render_gate() -> None:
     Once the visitor agrees, an ``_wf_acknowledged`` flag is set in
     ``session_state`` so the gate is skipped for the rest of the session.
     Calls :func:`streamlit.stop` while the gate is showing so nothing below
-    it in ``app.py`` renders. No-op outside a live ``streamlit run`` server
-    (bare ``import app`` under pytest, or an ``AppTest`` harness), so it never
-    halts test collection or the testing API.
+    it in ``app.py`` renders. No-op when disabled via ``WRINKLEFE_DISABLE_GATE``
+    (how the test suite drives the app) or for a bare ``import app`` outside a
+    Streamlit run, so it never halts test collection or the testing API.
     """
+    if _gate_disabled():
+        return
     if not _running_in_served_app():
         return
     if st.session_state.get("_wf_acknowledged"):
