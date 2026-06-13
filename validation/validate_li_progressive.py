@@ -53,7 +53,7 @@ OUT_DIR = Path(__file__).resolve().parent
 ML = MaterialLibrary()
 
 # Minimum hex columns per wavelength for longitudinal wrinkle resolution.
-MIN_ELEMS_PER_WAVE = 8
+MIN_ELEMS_PER_WAVE = 0  # 0 = fixed nx (auto-refine off by default)
 
 # Dataset E (Li 2024) single wrinkle: measured crest A1 -> half-amp A=A1/2.
 # (case, n_plies, A1, L, KD_exp)  KD_exp = X_Test / 830 (indicative).
@@ -94,7 +94,14 @@ def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
     # columns per wavelength, so short-wavelength inserts (e.g. Li
     # 6.3-s-3, L=3.6 mm) are not under-meshed (which over-concentrates the
     # kink and over-predicts the knockdown).
-    nx_eff = max(nx, int(np.ceil(MIN_ELEMS_PER_WAVE * Lx / wavelength)))
+    # Auto longitudinal refinement is opt-in: finer nx sharpens the
+    # resolved wrinkle slope and *increases* the predicted knockdown (no
+    # regularizing length scale), so forcing it shifts the calibration.
+    # MIN_ELEMS_PER_WAVE = 0 (default) keeps the requested fixed nx.
+    if MIN_ELEMS_PER_WAVE > 0:
+        nx_eff = max(nx, int(np.ceil(MIN_ELEMS_PER_WAVE * Lx / wavelength)))
+    else:
+        nx_eff = nx
     profile = GaussianSinusoidal(
         amplitude=amplitude, wavelength=wavelength,
         width=wavelength / 2.0, center=center_x,
