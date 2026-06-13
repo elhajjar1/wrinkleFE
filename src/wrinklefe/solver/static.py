@@ -579,6 +579,11 @@ class StaticSolver:
             if resin_material is not None
             else None
         )
+        # Per-element material override (progressive damage): degraded
+        # materials keyed by element index, taking precedence over the
+        # resin pocket and host ply.  Stiffness cached by material id.
+        override = self.mesh.element_material_override
+        override_C_cache: dict[int, np.ndarray] = {}
 
         # Reusable scratch B-matrix template (zeros are stable between GPs
         # at the slots we never touch; we overwrite the populated slots
@@ -627,12 +632,23 @@ class StaticSolver:
 
             # Rotated stiffness per GP: ply rotation (about z) once per
             # element, then wrinkle rotation (about y) per GP.
+            override_mat = (
+                override.get(e) if override is not None else None
+            )
             is_resin_e = (
                 resin_C is not None
                 and mesh_resin_mask is not None
                 and bool(mesh_resin_mask[e])
             )
-            if is_resin_e:
+            if override_mat is not None:
+                # Progressive-damage override wins over resin / ply.  Keep
+                # the wrinkle angle unless the override is the (fibre-free)
+                # resin material at a lens element.
+                oid = id(override_mat)
+                if oid not in override_C_cache:
+                    override_C_cache[oid] = override_mat.stiffness_matrix
+                C_material = override_C_cache[oid]
+            elif is_resin_e:
                 # Isotropic resin: stiffness is rotation-invariant, so the
                 # ply/wrinkle rotations are identities and the wrinkle angle
                 # is zeroed (no fibres to kink).
@@ -651,7 +667,7 @@ class StaticSolver:
             else:
                 C_ply = C_material
 
-            if is_resin_e:
+            if is_resin_e and override_mat is None:
                 wrinkle_angles_gp = np.zeros(n_gp)
             else:
                 fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)

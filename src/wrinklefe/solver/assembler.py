@@ -207,6 +207,25 @@ class GlobalAssembler:
             wrinkle_angles=wrinkle_angles,
         )
 
+    def update_element(self, elem_idx: int) -> None:
+        """Rebuild one element's cached object and stiffness after a material
+        change.
+
+        The progressive-damage solver mutates
+        ``mesh.element_material_override`` as elements fail; calling this
+        for each changed element refreshes the cached ``Hex8Element`` and
+        its 24x24 stiffness so the next :meth:`assemble_stiffness` picks up
+        the degraded material without rebuilding the whole assembler.
+
+        Parameters
+        ----------
+        elem_idx : int
+            Element index (0-based) to refresh.
+        """
+        elem = self.create_element(elem_idx)
+        self._hex8_elements[elem_idx] = elem
+        self._hex8_Ke[elem_idx] = elem.stiffness_matrix()
+
     # ------------------------------------------------------------------
     # DOF mapping
     # ------------------------------------------------------------------

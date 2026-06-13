@@ -221,6 +221,13 @@ class MeshData:
     resin_mask: np.ndarray | None = None
     resin_material: "OrthotropicMaterial | None" = None
 
+    # ---- per-element material override (progressive damage) ----------------
+    # Maps element index -> material, taking precedence over both the
+    # resin pocket and the host ply.  The progressive-damage solver
+    # populates this with degraded materials as elements fail; it is
+    # ``None`` for ordinary (undamaged) analyses.
+    element_material_override: "dict[int, OrthotropicMaterial] | None" = None
+
     # ---- derived quantities ------------------------------------------------
 
     @property
@@ -325,12 +332,17 @@ class MeshData:
     def element_material(
         self, elem_idx: int, ply_material: "OrthotropicMaterial"
     ) -> "OrthotropicMaterial":
-        """Resolve an element's material, honouring the resin pocket.
+        """Resolve an element's material, honouring overrides and the pocket.
 
-        Returns ``resin_material`` for elements inside the resin lens
-        (when one is attached) and ``ply_material`` otherwise.  Callers
-        pass the host-ply material they would otherwise have used so this
-        method stays the single decision point.
+        Resolution precedence (highest first):
+
+        1. ``element_material_override[elem_idx]`` — per-element degraded
+           material from the progressive-damage solver, when present.
+        2. ``resin_material`` — for elements inside the resin lens.
+        3. ``ply_material`` — the host-ply material (the supplied fallback).
+
+        Callers pass the host-ply material they would otherwise have used
+        so this method stays the single decision point.
 
         Parameters
         ----------
@@ -339,6 +351,10 @@ class MeshData:
         ply_material : OrthotropicMaterial
             The host-ply material (fallback).
         """
+        if self.element_material_override is not None:
+            override = self.element_material_override.get(elem_idx)
+            if override is not None:
+                return override
         if self.is_resin(elem_idx) and self.resin_material is not None:
             return self.resin_material
         return ply_material

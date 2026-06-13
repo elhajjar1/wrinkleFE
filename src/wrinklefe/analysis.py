@@ -787,6 +787,24 @@ class AnalysisConfig:
     resin_pocket_length_scale: float = 1.0
 
     # ------------------------------------------------------------------
+    # Progressive-damage FE path (load-stepping ply-discount to ultimate
+    # load).  When ``enable_progressive_damage`` is True the FE solve runs
+    # the :class:`~wrinklefe.solver.progressive_damage.ProgressiveDamageSolver`
+    # on the wrinkled mesh and a pristine baseline, populating
+    # ``progressive_strength_MPa`` and ``progressive_knockdown`` on the
+    # result.  This is the only path that carries UD compression past
+    # first-ply failure (the linear LaRC05 index never activates for
+    # pristine UD).  No effect on ``analytical_only`` runs; not combinable
+    # with ``enable_czm``.
+    enable_progressive_damage: bool = False
+    progressive_n_increments: int = 15
+    progressive_residual_factor: float = 0.1
+    # Target nominal strain magnitude for the load-stepping ramp.  ``None``
+    # auto-sizes it to ~1.8x the fibre failure strain (Xc / E1) so the
+    # ramp brackets the peak load.  Must be > 0 when set.
+    progressive_max_strain: float | None = None
+
+    # ------------------------------------------------------------------
     # Cohesive zone modelling (delamination prediction).
     # ------------------------------------------------------------------
     # v1: bilinear intrinsic CZM with Benzeggagh-Kenane mode-mixity.
@@ -1073,6 +1091,46 @@ class AnalysisConfig:
                     f"float, got {val!r}"
                 )
 
+        # --- Progressive-damage path ----------------------------------
+        if not isinstance(self.enable_progressive_damage, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_progressive_damage must be a bool, "
+                f"got {self.enable_progressive_damage!r}"
+            )
+        if self.enable_progressive_damage and self.enable_czm:
+            raise ValueError(
+                "AnalysisConfig: enable_progressive_damage and enable_czm "
+                "cannot both be True (separate nonlinear FE paths)."
+            )
+        if (
+            not isinstance(self.progressive_n_increments, int)
+            or isinstance(self.progressive_n_increments, bool)
+            or self.progressive_n_increments < 1
+        ):
+            raise ValueError(
+                f"AnalysisConfig.progressive_n_increments must be an int "
+                f">= 1, got {self.progressive_n_increments!r}"
+            )
+        if not (
+            isinstance(self.progressive_residual_factor, (int, float))
+            and not isinstance(self.progressive_residual_factor, bool)
+            and 0.0 < self.progressive_residual_factor < 1.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.progressive_residual_factor must be in "
+                f"(0, 1), got {self.progressive_residual_factor!r}"
+            )
+        if self.progressive_max_strain is not None and not (
+            isinstance(self.progressive_max_strain, (int, float))
+            and not isinstance(self.progressive_max_strain, bool)
+            and math.isfinite(self.progressive_max_strain)
+            and self.progressive_max_strain > 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.progressive_max_strain must be a finite "
+                f"positive float when set, got {self.progressive_max_strain!r}"
+            )
+
         # --- Cohesive zone modelling ----------------------------------
         # All CZM fields are no-ops when ``enable_czm`` is False; we
         # still type-check them so misconfigurations surface at
@@ -1301,6 +1359,24 @@ class AnalysisResults:
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
     modulus_retention: float = 1.0
+
+    # ------------------------------------------------------------------
+    # Progressive-damage results — populated when
+    # AnalysisConfig.enable_progressive_damage = True.
+    # ------------------------------------------------------------------
+    progressive_strength_MPa: float = 0.0
+    """Predicted ultimate compressive strength of the wrinkled coupon
+    (peak carried nominal stress over the load history, MPa)."""
+
+    progressive_pristine_strength_MPa: float = 0.0
+    """Predicted ultimate strength of the pristine (flat) baseline, MPa."""
+
+    progressive_knockdown: float = 1.0
+    """Progressive-damage strength knockdown
+    ``progressive_strength_MPa / progressive_pristine_strength_MPa``."""
+
+    progressive_history: list | None = None
+    """``(applied_strain, nominal_stress)`` samples for the wrinkled run."""
 
     # Tension mechanism decomposition (only for tension loading)
     tension_mechanisms: Optional[dict] = None  # {kd_fiber, kd_matrix, kd_oop, ...}
@@ -1659,6 +1735,13 @@ class WrinkleAnalysis:
             self._run_czm_path(results, laminate, mesh, wrinkle_config)
             _report("Analysis complete", 1.0)
             return results
+
+        # Progressive-damage path: carries the solve to ultimate load and
+        # reports a strength knockdown (the only path that knocks down
+        # pristine UD compression).  Still runs the linear solve below so
+        # the usual field/failure/retention outputs remain populated.
+        if cfg.enable_progressive_damage:
+            self._run_progressive_path(results, laminate, mesh)
 
         # Linear (legacy) path.
         solver = StaticSolver(mesh, laminate)
@@ -2710,6 +2793,85 @@ class WrinkleAnalysis:
 
         return float(kd_lam), mechanisms
 
+    def _build_flat_mesh(self, laminate: Laminate) -> MeshData:
+        """Generate a pristine (zero-amplitude) mesh matching the config.
+
+        Shared by the retention-factor baseline and the progressive-damage
+        pristine reference so both compare against the same flat laminate.
+        """
+        cfg = self.config
+        flat_profile = GaussianSinusoidal(
+            amplitude=0.0,
+            wavelength=cfg.wavelength,
+            width=cfg.width,
+            center=cfg.domain_length / 2.0,
+        )
+        flat_config = WrinkleConfiguration.from_morphology_name(
+            "stack", flat_profile,
+            interface1=cfg.interface_1,
+            interface2=cfg.interface_2,
+        )
+        return WrinkleMesh(
+            laminate=laminate,
+            wrinkle_config=flat_config,
+            Lx=cfg.domain_length,
+            Ly=cfg.domain_width,
+            nx=cfg.nx,
+            ny=cfg.ny,
+            nz_per_ply=cfg.nz_per_ply,
+        ).generate()
+
+    def _run_progressive_path(
+        self, results: AnalysisResults, laminate: Laminate, mesh: MeshData
+    ) -> None:
+        """Run the load-stepping progressive-damage solver to ultimate load.
+
+        Solves the wrinkled mesh (with any resin pocket already attached)
+        and a pristine flat baseline, then records the ultimate strengths
+        and their ratio as the progressive-damage knockdown.  The wrinkled
+        mesh's per-element material override is cleared afterwards so the
+        subsequent linear field/failure/retention pass is unaffected.
+        """
+        from wrinklefe.solver.progressive_damage import ProgressiveDamageSolver
+
+        cfg = self.config
+        # Auto-size the strain ramp to bracket fibre failure (~1.8x the
+        # compressive failure strain Xc / E1 of the 0-degree material).
+        if cfg.progressive_max_strain is not None:
+            target = float(cfg.progressive_max_strain)
+        else:
+            mat0 = laminate.plies[0].material
+            eps_f = mat0.Xc / mat0.E1
+            target = 1.8 * eps_f
+        sign = -1.0 if cfg.applied_strain <= 0 else 1.0
+        applied = sign * abs(target)
+
+        def _run(m: MeshData) -> "object":
+            return ProgressiveDamageSolver(
+                m, laminate,
+                applied_strain=applied,
+                n_increments=cfg.progressive_n_increments,
+                residual_factor=cfg.progressive_residual_factor,
+                solver=cfg.solver,
+                verbose=cfg.verbose,
+            ).solve()
+
+        # Wrinkled run — snapshot/restore the override so the later linear
+        # pass sees the undamaged mesh.
+        saved_override = mesh.element_material_override
+        wr = _run(mesh)
+        mesh.element_material_override = saved_override
+
+        pristine = _run(self._build_flat_mesh(laminate))
+
+        results.progressive_strength_MPa = wr.peak_stress
+        results.progressive_pristine_strength_MPa = pristine.peak_stress
+        results.progressive_history = wr.history
+        if pristine.peak_stress > 0:
+            results.progressive_knockdown = (
+                wr.peak_stress / pristine.peak_stress
+            )
+
     def _attach_resin_pocket(
         self, mesh: MeshData, laminate: Laminate
     ) -> None:
@@ -2833,28 +2995,7 @@ class WrinkleAnalysis:
             return
 
         # Build a flat (no wrinkle) mesh with same dimensions
-        flat_profile = GaussianSinusoidal(
-            amplitude=0.0,
-            wavelength=cfg.wavelength,
-            width=cfg.width,
-            center=cfg.domain_length / 2.0,
-        )
-        flat_config = WrinkleConfiguration.from_morphology_name(
-            "stack", flat_profile,
-            interface1=cfg.interface_1,
-            interface2=cfg.interface_2,
-        )
-
-        flat_mesh_gen = WrinkleMesh(
-            laminate=laminate,
-            wrinkle_config=flat_config,
-            Lx=cfg.domain_length,
-            Ly=cfg.domain_width,
-            nx=cfg.nx,
-            ny=cfg.ny,
-            nz_per_ply=cfg.nz_per_ply,
-        )
-        flat_mesh = flat_mesh_gen.generate()
+        flat_mesh = self._build_flat_mesh(laminate)
 
         # Solve with same BCs
         flat_solver = StaticSolver(flat_mesh, laminate)
