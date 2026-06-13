@@ -69,5 +69,8 @@ joss/*.fls
 docs/superpowers/
 joss/
 examples/
-validation/*.png
-validation/
+validation/*
+# ... except the Li progressive-damage validation driver and its results
+!validation/validate_li_progressive.py
+!validation/li_progressive_E.csv
+!validation/li_progressive_EF.csv
