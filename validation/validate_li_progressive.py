@@ -131,9 +131,54 @@ def peak_strength(mesh, lam, *, n_increments, residual_factor):
     return res.peak_stress
 
 
-def run(dataset, *, nx, ny, nz, pocket, height_scale, length_scale,
-        n_increments, residual_factor):
-    pristine_cache: dict[tuple[int, float], float] = {}
+FIELDNAMES = ["dataset", "case", "kd_exp", "kd_pred", "sigma_w", "sigma0",
+              "err_pct"]
+
+
+def _load_checkpoint(csv_path: Path):
+    """Read completed case rows and the pristine cache from a checkpoint.
+
+    Returns ``(done_cases, pristine_cache)`` where ``done_cases`` maps a
+    case name to its stored record and ``pristine_cache`` maps a ply count
+    to the pristine baseline strength recovered from those rows (so a
+    resumed run does not recompute the slow baselines).
+    """
+    done: dict[str, dict] = {}
+    pristine_cache: dict[int, float] = {}
+    if not csv_path.exists():
+        return done, pristine_cache
+    with csv_path.open() as f:
+        for row in csv.DictReader(f):
+            row["kd_exp"] = float(row["kd_exp"])
+            row["kd_pred"] = float(row["kd_pred"])
+            row["sigma_w"] = float(row["sigma_w"])
+            row["sigma0"] = float(row["sigma0"])
+            row["err_pct"] = float(row["err_pct"])
+            done[row["case"]] = row
+    return done, pristine_cache
+
+
+def _append_row(csv_path: Path, record: dict) -> None:
+    """Append one completed-case row, writing the header if new."""
+    new_file = not csv_path.exists()
+    with csv_path.open("a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        if new_file:
+            w.writeheader()
+        w.writerow({k: record.get(k, "") for k in FIELDNAMES})
+
+
+def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
+        height_scale, length_scale, n_increments, residual_factor):
+    """Run (or resume) one dataset, checkpointing each case to ``csv_path``.
+
+    Cases already present in ``done`` are skipped (resume).  The pristine
+    baseline is recovered from a completed sibling row when available, so
+    a resumed run avoids recomputing it.
+    """
+    pristine_cache: dict[int, float] = {
+        # Seed from any completed row sharing the same ply count.
+    }
     records = []
     for row in dataset:
         if len(row) == 5 and isinstance(row[1], int):
@@ -145,20 +190,27 @@ def run(dataset, *, nx, ny, nz, pocket, height_scale, length_scale,
             case, A_pp, L, z_frac, kd_exp = row
             n_plies, t_ply, amplitude = N_PLIES_F, T_PLY_F, A_pp / 2.0
 
+        if case in done:
+            rec = done[case]
+            records.append(rec)
+            # Reuse this completed row's pristine baseline for siblings.
+            pristine_cache.setdefault(n_plies, rec["sigma0"])
+            print(f"  {case:9s} (resumed from checkpoint)", flush=True)
+            continue
+
         t0 = time.time()
-        # Pristine baseline (cached per (n_plies, t_ply)).
-        key = (n_plies, t_ply)
-        if key not in pristine_cache:
+        # Pristine baseline (cached per ply count; recomputed once).
+        if n_plies not in pristine_cache:
             pm, pl = build_mesh(
                 n_plies=n_plies, t_ply=t_ply, amplitude=0.0, wavelength=L,
                 z_frac=0.5, nx=nx, ny=ny, nz=nz, pocket=False,
                 height_scale=height_scale, length_scale=length_scale,
             )
-            pristine_cache[key] = peak_strength(
+            pristine_cache[n_plies] = peak_strength(
                 pm, pl, n_increments=n_increments,
                 residual_factor=residual_factor,
             )
-        sigma0 = pristine_cache[key]
+        sigma0 = pristine_cache[n_plies]
 
         wm, wl = build_mesh(
             n_plies=n_plies, t_ply=t_ply, amplitude=amplitude, wavelength=L,
@@ -170,11 +222,13 @@ def run(dataset, *, nx, ny, nz, pocket, height_scale, length_scale,
         )
         kd_pred = sigma_w / sigma0 if sigma0 > 0 else float("nan")
         err = abs(kd_pred - kd_exp) / kd_exp
-        records.append(dict(
-            case=case, kd_exp=kd_exp, kd_pred=round(kd_pred, 3),
-            sigma_w=round(sigma_w, 1), sigma0=round(sigma0, 1),
-            err_pct=round(100 * err, 1),
-        ))
+        rec = dict(
+            dataset=dataset_label, case=case, kd_exp=kd_exp,
+            kd_pred=round(kd_pred, 3), sigma_w=round(sigma_w, 1),
+            sigma0=round(sigma0, 1), err_pct=round(100 * err, 1),
+        )
+        records.append(rec)
+        _append_row(csv_path, rec)   # checkpoint immediately
         print(f"  {case:9s} exp={kd_exp:.3f} pred={kd_pred:.3f} "
               f"(sw={sigma_w:.0f} s0={sigma0:.0f}) err={100*err:+5.1f}% "
               f"[{time.time()-t0:.0f}s]", flush=True)
@@ -187,6 +241,8 @@ def main(argv=None) -> int:
                     help="also run Dataset F (Li 2025) single-wrinkle cases")
     ap.add_argument("--no-pocket", action="store_true",
                     help="disable the resin-pocket zone (ablation)")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip cases already present in the output CSV")
     ap.add_argument("--nx", type=int, default=16,
                     help="minimum hex columns in x (auto-raised for short "
                          "wavelengths to keep >=8 elements per wave)")
@@ -201,30 +257,33 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     pocket = not args.no_pocket
+    label = "EF" if args.with_f else "E"
+    csv_path = OUT_DIR / f"li_progressive_{label}.csv"
+
+    done: dict[str, dict] = {}
+    if args.resume:
+        done, _ = _load_checkpoint(csv_path)
+        print(f"resume: {len(done)} case(s) already in {csv_path.name}")
+    elif csv_path.exists():
+        csv_path.unlink()  # fresh run starts a clean checkpoint
+
     kw = dict(nx=args.nx, ny=args.ny, nz=args.nz, pocket=pocket,
               height_scale=args.height_scale, length_scale=args.length_scale,
-              n_increments=args.increments, residual_factor=args.residual)
+              n_increments=args.increments, residual_factor=args.residual,
+              csv_path=csv_path, done=done)
 
     print(f"=== Dataset E (Li 2024), pocket={pocket}, "
-          f"mesh nx={args.nx} nz={args.nz}, {args.increments} increments ===")
-    records = run(LI2024, **kw)
-    label = "E"
+          f"mesh nx>={args.nx} nz={args.nz}, {args.increments} increments ===")
+    records = run(LI2024, dataset_label="E", **kw)
     if args.with_f:
         print(f"=== Dataset F (Li 2025), pocket={pocket} ===")
-        records += [{**r, "dataset": "F"} for r in run(LI2025, **kw)]
-        label = "EF"
+        records += run(LI2025, dataset_label="F", **kw)
 
     errs = [r["err_pct"] for r in records]
     n_pass = sum(1 for e in errs if e <= 20.0)
     print(f"\nMAE = {np.mean(errs):.1f}%   "
           f"PASS (<=20%) = {n_pass}/{len(records)}")
-
-    out = OUT_DIR / f"li_progressive_{label}.csv"
-    with out.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(records[0].keys()))
-        w.writeheader()
-        w.writerows(records)
-    print(f"wrote {out}")
+    print(f"checkpointed to {csv_path}")
     return 0
 
 
