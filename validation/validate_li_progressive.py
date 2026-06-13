@@ -52,6 +52,9 @@ from wrinklefe.solver.progressive_damage import (  # noqa: E402
 OUT_DIR = Path(__file__).resolve().parent
 ML = MaterialLibrary()
 
+# Minimum hex columns per wavelength for longitudinal wrinkle resolution.
+MIN_ELEMS_PER_WAVE = 8
+
 # Dataset E (Li 2024) single wrinkle: measured crest A1 -> half-amp A=A1/2.
 # (case, n_plies, A1, L, KD_exp)  KD_exp = X_Test / 830 (indicative).
 LI2024 = [
@@ -87,6 +90,11 @@ def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
     lam = Laminate.from_angles([0.0] * n_plies, mat, ply_thickness=t_ply)
     Lx = max(3.0 * wavelength, 10.0)
     center_x = Lx / 2.0
+    # Resolve the wrinkle longitudinally: at least MIN_ELEMS_PER_WAVE hex
+    # columns per wavelength, so short-wavelength inserts (e.g. Li
+    # 6.3-s-3, L=3.6 mm) are not under-meshed (which over-concentrates the
+    # kink and over-predicts the knockdown).
+    nx_eff = max(nx, int(np.ceil(MIN_ELEMS_PER_WAVE * Lx / wavelength)))
     profile = GaussianSinusoidal(
         amplitude=amplitude, wavelength=wavelength,
         width=wavelength / 2.0, center=center_x,
@@ -100,7 +108,7 @@ def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
     wc.wrinkle_z_position = z_frac
     mesh = WrinkleMesh(
         laminate=lam, wrinkle_config=wc, Lx=Lx, Ly=10.0,
-        nx=nx, ny=ny, nz_per_ply=nz,
+        nx=nx_eff, ny=ny, nz_per_ply=nz,
     ).generate()
     if pocket and amplitude > 0:
         spec = ResinPocketSpec.from_wrinkle(
@@ -179,9 +187,13 @@ def main(argv=None) -> int:
                     help="also run Dataset F (Li 2025) single-wrinkle cases")
     ap.add_argument("--no-pocket", action="store_true",
                     help="disable the resin-pocket zone (ablation)")
-    ap.add_argument("--nx", type=int, default=16)
+    ap.add_argument("--nx", type=int, default=16,
+                    help="minimum hex columns in x (auto-raised for short "
+                         "wavelengths to keep >=8 elements per wave)")
     ap.add_argument("--ny", type=int, default=2)
-    ap.add_argument("--nz", type=int, default=1)
+    ap.add_argument("--nz", type=int, default=2,
+                    help="hex layers per ply; nz>=2 is required to capture "
+                         "the through-thickness penetration (D/T) trend")
     ap.add_argument("--height-scale", type=float, default=1.0)
     ap.add_argument("--length-scale", type=float, default=1.0)
     ap.add_argument("--increments", type=int, default=18)
