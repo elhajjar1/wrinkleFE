@@ -26,8 +26,10 @@ import pytest
 from wrinklefe.core.material import MaterialLibrary
 
 
-# Frozen built-in roster as of issue #88 closure. Update only if the
-# library intentionally adds or removes a material.
+# Frozen built-in roster. Update only if the library intentionally adds
+# or removes a material. The nine fibre/epoxy laminate prepregs are the
+# issue #88 roster; ``EPOXY_S6C10`` is the isotropic neat-epoxy card
+# added for the resin-pocket zone (Li 2024/2025 UD glass datasets).
 EXPECTED_BUILTIN_NAMES = frozenset({
     "AC318_S6C10",
     "AS4_3501_6",
@@ -38,6 +40,7 @@ EXPECTED_BUILTIN_NAMES = frozenset({
     "T300_914",
     "T700_2510",
     "T800S_M21",
+    "EPOXY_S6C10",
 })
 
 
@@ -75,7 +78,8 @@ REL_TOL = 0.05  # 5% — permits datasheet refresh, catches zero/order-of-mag dr
 
 
 def test_builtin_count_pinned():
-    """The library ships exactly 9 built-in materials (issue #88 roster)."""
+    """The library ships exactly the pinned built-in roster (9 prepregs
+    plus the EPOXY_S6C10 resin-pocket card)."""
     lib = MaterialLibrary()
     assert len(lib) == len(EXPECTED_BUILTIN_NAMES), (
         f"Built-in count drifted: got {len(lib)} "

@@ -765,6 +765,28 @@ class AnalysisConfig:
     kink_band_quadratic_coeff: float = 0.0
 
     # ------------------------------------------------------------------
+    # Resin-pocket material zone (Li et al. 2024/2025 UD glass datasets).
+    # ------------------------------------------------------------------
+    # When ``enable_resin_pocket`` is True, the FE path tags the hex
+    # elements inside the cosine resin lens at the wrinkle crest and
+    # assigns them an isotropic epoxy material (``resin_pocket_material``,
+    # default the built-in ``EPOXY_S6C10`` card) instead of the host ply's
+    # fibre-direction material, with the fibre-misalignment angle zeroed.
+    # This captures the soft, fibre-free inclusion the machined cosine
+    # insert leaves at the crest — a real compressive-knockdown mechanism
+    # the homogenised-ply mesh otherwise misses.  No effect on the
+    # analytical path or when ``analytical_only=True``.
+    enable_resin_pocket: bool = False
+    resin_pocket_material: OrthotropicMaterial | None = None
+    # Crest half-height of the lens as a multiple of the wrinkle
+    # half-amplitude A (mm at center, tapering to 0 at the longitudinal
+    # edges).  Must be > 0 when the pocket is enabled.
+    resin_pocket_height_scale: float = 1.0
+    # Longitudinal half-extent of the lens as a multiple of wavelength/2
+    # (the cosine insert support).  Must be > 0 when enabled.
+    resin_pocket_length_scale: float = 1.0
+
+    # ------------------------------------------------------------------
     # Cohesive zone modelling (delamination prediction).
     # ------------------------------------------------------------------
     # v1: bilinear intrinsic CZM with Benzeggagh-Kenane mode-mixity.
@@ -1029,6 +1051,27 @@ class AnalysisConfig:
                 f"finite float >= 0, "
                 f"got {self.kink_band_quadratic_coeff!r}"
             )
+
+        # --- Resin-pocket zone ----------------------------------------
+        # Fields are no-ops when ``enable_resin_pocket`` is False; still
+        # type-checked so misconfigurations surface at construction time.
+        if not isinstance(self.enable_resin_pocket, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_resin_pocket must be a bool, "
+                f"got {self.enable_resin_pocket!r}"
+            )
+        for name in ("resin_pocket_height_scale", "resin_pocket_length_scale"):
+            val = getattr(self, name)
+            if not (
+                isinstance(val, (int, float))
+                and not isinstance(val, bool)
+                and math.isfinite(val)
+                and val > 0.0
+            ):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be a finite positive "
+                    f"float, got {val!r}"
+                )
 
         # --- Cohesive zone modelling ----------------------------------
         # All CZM fields are no-ops when ``enable_czm`` is False; we
@@ -1599,6 +1642,11 @@ class WrinkleAnalysis:
             nz_per_ply=cfg.nz_per_ply,
         )
         mesh = mesh_gen.generate()
+
+        # 4a2. Resin-pocket material zone (Li et al. 2024/2025).
+        if cfg.enable_resin_pocket:
+            self._attach_resin_pocket(mesh, laminate)
+
         results.mesh = mesh
 
         # 4b. Mesh-based max fiber angle (accounts for decay mode)
@@ -2662,6 +2710,58 @@ class WrinkleAnalysis:
 
         return float(kd_lam), mechanisms
 
+    def _attach_resin_pocket(
+        self, mesh: MeshData, laminate: Laminate
+    ) -> None:
+        """Tag the resin-lens elements and attach the resin material.
+
+        Builds a :class:`~wrinklefe.core.resin_pocket.ResinPocketSpec`
+        from the wrinkle geometry and the configured scale knobs, flags
+        the hex elements whose centroids fall inside the lens, and stores
+        the boolean mask plus the resin material on *mesh* so the
+        assembler, stress-recovery and failure paths pick them up.
+
+        The resin material defaults to the built-in ``EPOXY_S6C10``
+        isotropic card when ``resin_pocket_material`` is unset.
+        """
+        from wrinklefe.core.resin_pocket import (
+            ResinPocketSpec,
+            compute_resin_mask,
+        )
+
+        cfg = self.config
+        n_plies = laminate.n_plies
+        T = cfg.ply_thickness * n_plies
+        z_center = float(cfg.wrinkle_z_position) * T
+        center_x = cfg.domain_length / 2.0
+
+        spec = ResinPocketSpec.from_wrinkle(
+            amplitude=cfg.amplitude,
+            wavelength=cfg.wavelength,
+            center_x=center_x,
+            z_center=z_center,
+            height_scale=cfg.resin_pocket_height_scale,
+            length_scale=cfg.resin_pocket_length_scale,
+        )
+        mask = compute_resin_mask(mesh, spec)
+
+        resin_material = cfg.resin_pocket_material
+        if resin_material is None:
+            resin_material = MaterialLibrary().get("EPOXY_S6C10")
+
+        mesh.resin_mask = mask
+        mesh.resin_material = resin_material
+
+        if cfg.verbose:
+            import logging
+            n_resin = int(mask.sum())
+            logging.getLogger(__name__).info(
+                "Resin pocket: %d/%d elements tagged "
+                "(half_length=%.3g mm, h_center=%.3g mm, z_center=%.3g mm)",
+                n_resin, mesh.n_elements, spec.half_length,
+                spec.h_center, z_center,
+            )
+
     def _evaluate_failure(
         self,
         results: AnalysisResults,
@@ -2678,11 +2778,28 @@ class WrinkleAnalysis:
         # Per-element fiber angles from wrinkle geometry (for LaRC05 kinking)
         elem_fiber_angles = mesh.element_fiber_angles_array()
 
+        # Resin-pocket zone (Li et al. 2024/2025): route flagged elements
+        # to the isotropic resin material (matrix-level strengths) and zero
+        # their fibre angle so the LaRC05 kink-band path does not fire on a
+        # fibre-free inclusion.  The resin material is appended to the
+        # per-ply list and an effective ply-id array points the lens
+        # elements at it.
+        eval_ply_ids = mesh.ply_ids
+        if mesh.resin_mask is not None and mesh.resin_material is not None:
+            resin_idx = len(materials)
+            materials = [*materials, mesh.resin_material]
+            eval_ply_ids = np.where(
+                mesh.resin_mask, resin_idx, mesh.ply_ids
+            )
+            elem_fiber_angles = np.where(
+                mesh.resin_mask, 0.0, elem_fiber_angles
+            )
+
         # Field-level evaluation
         fi_fields, mode_fields = evaluator.evaluate_field(
             field_results.stress_local,
             materials,
-            mesh.ply_ids,
+            eval_ply_ids,
             fiber_angles=elem_fiber_angles,
         )
         results.failure_indices = fi_fields

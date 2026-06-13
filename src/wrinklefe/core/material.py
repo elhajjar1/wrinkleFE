@@ -291,6 +291,66 @@ class OrthotropicMaterial:
         return asdict(self)
 
     @classmethod
+    def isotropic(
+        cls,
+        E: float,
+        nu: float,
+        *,
+        name: str = "isotropic",
+        St: float = 80.0,
+        Sc: float = 120.0,
+        Ss: float = 50.0,
+        GIc: float | None = 0.25,
+        GIIc: float | None = 0.75,
+    ) -> "OrthotropicMaterial":
+        """Build an isotropic material as a degenerate orthotropic card.
+
+        Used for the resin-pocket zone (bulk epoxy filling the lens the
+        machined cosine insert leaves at a wrinkle crest, Li et al. 2024):
+        a soft, fibre-free inclusion with matrix-level strengths.  All
+        three Young's moduli equal ``E``, all Poisson ratios equal ``nu``,
+        and the shear moduli follow the isotropic relation
+        ``G = E / (2 (1 + nu))``.
+
+        Parameters
+        ----------
+        E : float
+            Young's modulus (MPa).  Must be > 0.
+        nu : float
+            Poisson's ratio.  Must satisfy ``-1 < nu < 0.5`` for the
+            isotropic stiffness to stay positive-definite.
+        name : str, optional
+            Material identifier.  Default ``"isotropic"``.
+        St, Sc, Ss : float, optional
+            Tensile, compressive and shear strength allowables (MPa)
+            applied uniformly to every direction.  Defaults are typical
+            cured-epoxy values (80 / 120 / 50 MPa).
+        GIc, GIIc : float or None, optional
+            Mode I / II fracture toughnesses (N/mm).  Defaults 0.25 / 0.75.
+
+        Returns
+        -------
+        OrthotropicMaterial
+            Isotropic material card.
+        """
+        if not (E > 0):
+            raise ValueError(f"isotropic E must be > 0, got {E}")
+        if not (-1.0 < nu < 0.5):
+            raise ValueError(
+                f"isotropic nu must be in (-1, 0.5), got {nu}"
+            )
+        G = E / (2.0 * (1.0 + nu))
+        return cls(
+            E1=E, E2=E, E3=E,
+            G12=G, G13=G, G23=G,
+            nu12=nu, nu13=nu, nu23=nu,
+            Xt=St, Xc=Sc, Yt=St, Yc=Sc, Zt=St, Zc=Sc,
+            S12=Ss, S13=Ss, S23=Ss,
+            GIc=GIc, GIIc=GIIc,
+            name=name,
+        )
+
+    @classmethod
     def from_dict(cls, data: dict) -> "OrthotropicMaterial":
         """Construct an OrthotropicMaterial from a dictionary.
 
@@ -569,6 +629,22 @@ class MaterialLibrary:
             gamma_Y=0.02,
             GIc=0.25, GIIc=0.75, alpha_0=53.0,
             sigma_max=70.0, tau_max=90.0,
+        ))
+
+        # 5b. S6C10-800 neat epoxy (resin-pocket zone for Li 2024/2025
+        #     UD glass datasets).  The machined cosine resin insert that
+        #     creates the wrinkle is co-cured bulk epoxy, so the lens it
+        #     leaves at the crest is fibre-free matrix.  Isotropic:
+        #     E ≈ 3.5 GPa, nu ≈ 0.35 (typical cured aerospace epoxy),
+        #     matrix-level strengths consistent with the AC318 transverse
+        #     allowables (Yt 40 / Yc 150 / S 60 MPa).  Built via the
+        #     isotropic constructor so the degenerate-orthotropic card
+        #     stays positive-definite.
+        self.add(OrthotropicMaterial.isotropic(
+            3_500.0, 0.35,
+            name="EPOXY_S6C10",
+            St=40.0, Sc=150.0, Ss=60.0,
+            GIc=0.25, GIIc=0.75,
         ))
 
         # 6. T800S / M21  (Hexcel T800S fibre / M21 toughened epoxy).

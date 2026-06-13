@@ -570,6 +570,15 @@ class StaticSolver:
         # Material stiffness in the material frame — constant per ply.
         plies = self.laminate.plies
         material_C_by_ply: dict[int, np.ndarray] = {}
+        # Resin-pocket zone (Li et al. 2024/2025): elements inside the
+        # lens use the isotropic resin stiffness and a zero wrinkle angle.
+        mesh_resin_mask = self.mesh.resin_mask
+        resin_material = self.mesh.resin_material
+        resin_C = (
+            resin_material.stiffness_matrix
+            if resin_material is not None
+            else None
+        )
 
         # Reusable scratch B-matrix template (zeros are stable between GPs
         # at the slots we never touch; we overwrite the populated slots
@@ -618,10 +627,23 @@ class StaticSolver:
 
             # Rotated stiffness per GP: ply rotation (about z) once per
             # element, then wrinkle rotation (about y) per GP.
-            ply_idx = int(mesh_ply_ids[e])
-            if ply_idx not in material_C_by_ply:
-                material_C_by_ply[ply_idx] = plies[ply_idx].material.stiffness_matrix
-            C_material = material_C_by_ply[ply_idx]
+            is_resin_e = (
+                resin_C is not None
+                and mesh_resin_mask is not None
+                and bool(mesh_resin_mask[e])
+            )
+            if is_resin_e:
+                # Isotropic resin: stiffness is rotation-invariant, so the
+                # ply/wrinkle rotations are identities and the wrinkle angle
+                # is zeroed (no fibres to kink).
+                C_material = resin_C
+            else:
+                ply_idx = int(mesh_ply_ids[e])
+                if ply_idx not in material_C_by_ply:
+                    material_C_by_ply[ply_idx] = (
+                        plies[ply_idx].material.stiffness_matrix
+                    )
+                C_material = material_C_by_ply[ply_idx]
 
             ply_angle_rad = np.radians(float(mesh_ply_angles[e]))
             if abs(ply_angle_rad) > 1.0e-15:
@@ -629,9 +651,12 @@ class StaticSolver:
             else:
                 C_ply = C_material
 
-            fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)
-            # One matmul gives the interpolated wrinkle angle at every GP.
-            wrinkle_angles_gp = N_gp @ fiber_angles_local  # (n_gp,)
+            if is_resin_e:
+                wrinkle_angles_gp = np.zeros(n_gp)
+            else:
+                fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)
+                # One matmul gives the interpolated wrinkle angle per GP.
+                wrinkle_angles_gp = N_gp @ fiber_angles_local  # (n_gp,)
 
             T_ply = stress_transformation_3d(ply_angle_rad, axis='z')
             sig_g = np.empty((n_gp, 6))

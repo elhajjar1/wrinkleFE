@@ -39,6 +39,7 @@ from wrinklefe.elements.hex8 import _detJ_at_centroid_batch
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from wrinklefe.core.material import OrthotropicMaterial
     from wrinklefe.core.morphology import WrinkleConfiguration
 
 
@@ -210,6 +211,16 @@ class MeshData:
     nz: int
     laminate: Laminate | None = None
 
+    # ---- resin-pocket material zone (Li et al. 2024/2025) ------------------
+    # Optional fibre-free isotropic inclusion at a wrinkle crest.  When
+    # ``resin_mask`` is set, elements flagged ``True`` use ``resin_material``
+    # (an isotropic epoxy card) instead of their host ply's material, and
+    # their fibre-misalignment angle is treated as zero (resin has no
+    # fibres to kink).  Both the stiffness assembler and the stress-recovery
+    # path consult these via :meth:`element_material` / :meth:`is_resin`.
+    resin_mask: np.ndarray | None = None
+    resin_material: "OrthotropicMaterial | None" = None
+
     # ---- derived quantities ------------------------------------------------
 
     @property
@@ -294,6 +305,43 @@ class MeshData:
             Shape ``(n_elements,)`` array of mean fiber angles (radians).
         """
         return self.fiber_angles[self.elements].mean(axis=1)
+
+    # ---- resin-pocket queries ----------------------------------------------
+
+    def is_resin(self, elem_idx: int) -> bool:
+        """Whether an element belongs to the resin-pocket zone.
+
+        Returns ``False`` when no resin pocket is attached.
+
+        Parameters
+        ----------
+        elem_idx : int
+            Element index (0-based).
+        """
+        if self.resin_mask is None:
+            return False
+        return bool(self.resin_mask[elem_idx])
+
+    def element_material(
+        self, elem_idx: int, ply_material: "OrthotropicMaterial"
+    ) -> "OrthotropicMaterial":
+        """Resolve an element's material, honouring the resin pocket.
+
+        Returns ``resin_material`` for elements inside the resin lens
+        (when one is attached) and ``ply_material`` otherwise.  Callers
+        pass the host-ply material they would otherwise have used so this
+        method stays the single decision point.
+
+        Parameters
+        ----------
+        elem_idx : int
+            Element index (0-based).
+        ply_material : OrthotropicMaterial
+            The host-ply material (fallback).
+        """
+        if self.is_resin(elem_idx) and self.resin_material is not None:
+            return self.resin_material
+        return ply_material
 
     # ---- boundary / set queries --------------------------------------------
 
