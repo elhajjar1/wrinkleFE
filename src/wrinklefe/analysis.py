@@ -778,6 +778,13 @@ class AnalysisConfig:
     # analytical path or when ``analytical_only=True``.
     enable_resin_pocket: bool = False
     resin_pocket_material: OrthotropicMaterial | None = None
+    # Graded transition (default): the pocket modulus blends smoothly from
+    # neat resin at the lens centre to the host fibre material at the
+    # boundary, and the fibre-misalignment angle is scaled by (1 - weight),
+    # so the wrinkle defect is counted once.  A binary fibre/resin jump
+    # (``False``) over-weakens via a spurious stress concentration that
+    # double-counts the misaligned-fibre crest knockdown.
+    resin_pocket_graded: bool = True
     # Crest half-height of the lens as a multiple of the wrinkle
     # half-amplitude A (mm at center, tapering to 0 at the longitudinal
     # edges).  Must be > 0 when the pocket is enabled.
@@ -2888,6 +2895,7 @@ class WrinkleAnalysis:
         """
         from wrinklefe.core.resin_pocket import (
             ResinPocketSpec,
+            compute_resin_blend,
             compute_resin_mask,
         )
 
@@ -2905,21 +2913,37 @@ class WrinkleAnalysis:
             height_scale=cfg.resin_pocket_height_scale,
             length_scale=cfg.resin_pocket_length_scale,
         )
-        mask = compute_resin_mask(mesh, spec)
 
         resin_material = cfg.resin_pocket_material
         if resin_material is None:
             resin_material = MaterialLibrary().get("EPOXY_S6C10")
-
-        mesh.resin_mask = mask
         mesh.resin_material = resin_material
+
+        if cfg.resin_pocket_graded:
+            # Graded pocket: per-element blend weight + precomputed blended
+            # materials (host ply <-> resin), and the fibre angle scaled by
+            # (1 - weight) downstream via ``resin_angle_scale``.
+            weight = compute_resin_blend(mesh, spec)
+            mesh.resin_blend = weight
+            blend_mats: dict[int, OrthotropicMaterial] = {}
+            for e in np.flatnonzero(weight > 0.0):
+                e = int(e)
+                ply_mat = laminate.plies[int(mesh.ply_ids[e])].material
+                blend_mats[e] = ply_mat.blend(
+                    resin_material, float(weight[e])
+                )
+            mesh.resin_blend_materials = blend_mats
+            n_resin = int((weight > 0.0).sum())
+        else:
+            mesh.resin_mask = compute_resin_mask(mesh, spec)
+            n_resin = int(mesh.resin_mask.sum())
 
         if cfg.verbose:
             import logging
-            n_resin = int(mask.sum())
             logging.getLogger(__name__).info(
-                "Resin pocket: %d/%d elements tagged "
+                "Resin pocket (%s): %d/%d elements tagged "
                 "(half_length=%.3g mm, h_center=%.3g mm, z_center=%.3g mm)",
+                "graded" if cfg.resin_pocket_graded else "binary",
                 n_resin, mesh.n_elements, spec.half_length,
                 spec.h_center, z_center,
             )
@@ -2940,14 +2964,26 @@ class WrinkleAnalysis:
         # Per-element fiber angles from wrinkle geometry (for LaRC05 kinking)
         elem_fiber_angles = mesh.element_fiber_angles_array()
 
-        # Resin-pocket zone (Li et al. 2024/2025): route flagged elements
-        # to the isotropic resin material (matrix-level strengths) and zero
-        # their fibre angle so the LaRC05 kink-band path does not fire on a
-        # fibre-free inclusion.  The resin material is appended to the
-        # per-ply list and an effective ply-id array points the lens
-        # elements at it.
-        eval_ply_ids = mesh.ply_ids
-        if mesh.resin_mask is not None and mesh.resin_material is not None:
+        # Resin-pocket zone (Li et al. 2024/2025): route lens elements to
+        # their pocket material (graded blend, or the binary resin card)
+        # so failure is evaluated at the locally-softened strengths, and
+        # scale the fibre angle by the retention factor so the LaRC05
+        # kink-band path is not double-counted at the resin centre.
+        eval_ply_ids = np.asarray(mesh.ply_ids)
+        if mesh.resin_blend_materials:
+            # Graded pocket: each blended element gets its own material.
+            extra = list(mesh.resin_blend_materials.items())
+            base = len(materials)
+            mat_index = {e: base + i for i, (e, _m) in enumerate(extra)}
+            materials = [*materials, *(m for _e, m in extra)]
+            eval_ply_ids = eval_ply_ids.copy()
+            for e, idx in mat_index.items():
+                eval_ply_ids[e] = idx
+            if mesh.resin_blend is not None:
+                elem_fiber_angles = (
+                    elem_fiber_angles * (1.0 - mesh.resin_blend)
+                )
+        elif mesh.resin_mask is not None and mesh.resin_material is not None:
             resin_idx = len(materials)
             materials = [*materials, mesh.resin_material]
             eval_ply_ids = np.where(

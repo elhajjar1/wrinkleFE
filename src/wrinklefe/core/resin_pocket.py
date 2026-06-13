@@ -159,3 +159,59 @@ def compute_resin_mask(mesh: MeshData, spec: ResinPocketSpec) -> np.ndarray:
 
     within_z = np.abs(ze - spec.z_center) <= half_height
     return within_x & within_z
+
+
+def compute_resin_blend(mesh: MeshData, spec: ResinPocketSpec) -> np.ndarray:
+    """Graded resin-blend weight per element, in [0, 1].
+
+    A binary fibre/resin jump at the lens boundary produces a spurious
+    stress concentration that over-weakens the laminate (and double-counts
+    the wrinkle defect, since the misaligned-fibre crest elements already
+    carry the knockdown).  Grading the transition removes it: the weight
+    is ``1`` at the lens centre (full neat resin, fibres displaced) and
+    tapers smoothly to ``0`` at the lens boundary (host fibre material),
+    using the same raised-cosine envelope as :func:`compute_resin_mask`
+    for the longitudinal extent and a cosine taper through the thickness.
+
+    Element materials are blended ``(1 - w) * host + w * resin`` and the
+    fibre-misalignment angle is scaled by ``(1 - w)`` so the defect is
+    represented once.
+
+    Parameters
+    ----------
+    mesh : MeshData
+        Generated hex8 mesh.
+    spec : ResinPocketSpec
+        Pocket geometry.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(n_elements,)`` float array of blend weights in [0, 1];
+        ``0`` outside the lens.
+    """
+    centroids = mesh.nodes[mesh.elements].mean(axis=1)
+    xe = centroids[:, 0]
+    ze = centroids[:, 2]
+
+    dx = xe - spec.center_x
+    within_x = np.abs(dx) <= spec.half_length
+
+    arg = np.clip(dx / spec.half_length, -1.0, 1.0)
+    half_height = spec.h_center * 0.5 * (1.0 + np.cos(math.pi * arg))
+
+    # Through-thickness cosine taper: 1 at the lens centre-line, 0 at the
+    # local lens edge.  Guard the divide where half_height -> 0.
+    dz = np.abs(ze - spec.z_center)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        frac_z = np.where(half_height > 0, dz / half_height, 1.0)
+    frac_z = np.clip(frac_z, 0.0, 1.0)
+    w_z = 0.5 * (1.0 + np.cos(math.pi * frac_z))   # 1 at centre, 0 at edge
+
+    # Longitudinal taper reuses the raised-cosine envelope, normalised.
+    w_x = 0.5 * (1.0 + np.cos(math.pi * arg))       # 1 at crest, 0 at ends
+
+    weight = w_x * w_z
+    weight[~within_x] = 0.0
+    weight[dz > half_height] = 0.0
+    return weight

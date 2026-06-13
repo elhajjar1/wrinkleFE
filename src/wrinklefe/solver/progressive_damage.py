@@ -383,7 +383,12 @@ class ProgressiveDamageSolver:
         override = mesh.element_material_override or {}
 
         elem_fiber = mesh.element_fiber_angles_array().copy()
-        if mesh.resin_mask is not None:
+        # Scale the fibre angle by the resin retention factor (0 at a
+        # fibre-free resin centre, 1 in the bulk) so the kink-band path is
+        # not double-counted in the pocket.
+        if mesh.resin_blend is not None:
+            elem_fiber *= (1.0 - mesh.resin_blend)
+        elif mesh.resin_mask is not None:
             elem_fiber[mesh.resin_mask] = 0.0
 
         materials: list[OrthotropicMaterial] = []

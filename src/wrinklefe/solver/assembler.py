@@ -192,13 +192,12 @@ class GlobalAssembler:
         ply_material = self.laminate.plies[ply_idx].material
         material = self.mesh.element_material(elem_idx, ply_material)
 
-        # Wrinkle misalignment angles at the 8 element nodes (radians).
-        # Resin is isotropic and fibre-free, so the wrinkle angle is
-        # meaningless there — zero it so the misalignment frame collapses.
-        if self.mesh.is_resin(elem_idx):
-            wrinkle_angles = np.zeros(node_ids.shape[0])
-        else:
-            wrinkle_angles = self.mesh.fiber_angles[node_ids]
+        # Wrinkle misalignment angles at the 8 element nodes (radians),
+        # scaled by the resin-pocket retention factor: a fibre-free resin
+        # centre carries no misalignment (scale 0), the lens boundary the
+        # full angle (scale 1), so the wrinkle defect is counted once.
+        angle_scale = self.mesh.resin_angle_scale(elem_idx)
+        wrinkle_angles = angle_scale * self.mesh.fiber_angles[node_ids]
 
         return Hex8Element(
             node_coords=node_coords,

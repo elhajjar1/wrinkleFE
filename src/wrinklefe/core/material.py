@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import functools
-from dataclasses import dataclass, field, fields, asdict
+from dataclasses import dataclass, field, fields, asdict, replace
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -289,6 +289,43 @@ class OrthotropicMaterial:
     def to_dict(self) -> dict:
         """Convert material to a plain dictionary suitable for JSON serialisation."""
         return asdict(self)
+
+    def blend(self, other: "OrthotropicMaterial", w: float) -> "OrthotropicMaterial":
+        """Linear interpolation toward *other* by weight ``w`` in [0, 1].
+
+        Returns a new material whose elastic constants and strength
+        allowables are ``(1 - w) * self + w * other``.  Used for the
+        graded resin-pocket transition (host fibre material at the lens
+        boundary, ``w = 0``, smoothly to the neat resin at the lens
+        centre, ``w = 1``), which removes the spurious stress
+        concentration a binary fibre/resin jump produces.
+
+        Parameters
+        ----------
+        other : OrthotropicMaterial
+            Target material (reached at ``w = 1``).
+        w : float
+            Blend weight in [0, 1].
+
+        Returns
+        -------
+        OrthotropicMaterial
+            Interpolated material.  ``w = 0`` returns a copy of ``self``;
+            ``w = 1`` a copy of ``other``.
+        """
+        w = float(min(max(w, 0.0), 1.0))
+        if w <= 0.0:
+            return replace(self)
+        if w >= 1.0:
+            return replace(other)
+        a, b = self.to_dict(), other.to_dict()
+        blended = dict(a)
+        for k, av in a.items():
+            bv = b.get(k)
+            if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
+                blended[k] = (1.0 - w) * av + w * bv
+        blended["name"] = f"{self.name}~{other.name}@{w:.2f}"
+        return OrthotropicMaterial.from_dict(blended)
 
     @classmethod
     def isotropic(

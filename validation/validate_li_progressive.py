@@ -42,7 +42,7 @@ from wrinklefe.core.mesh import WrinkleMesh  # noqa: E402
 from wrinklefe.core.morphology import WrinkleConfiguration  # noqa: E402
 from wrinklefe.core.resin_pocket import (  # noqa: E402
     ResinPocketSpec,
-    compute_resin_mask,
+    compute_resin_blend,
 )
 from wrinklefe.core.wrinkle import GaussianSinusoidal  # noqa: E402
 from wrinklefe.solver.progressive_damage import (  # noqa: E402
@@ -116,8 +116,17 @@ def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
             center_x=center_x, z_center=z_frac * t_ply * n_plies,
             height_scale=height_scale, length_scale=length_scale,
         )
-        mesh.resin_mask = compute_resin_mask(mesh, spec)
-        mesh.resin_material = ML.get("EPOXY_S6C10")
+        resin = ML.get("EPOXY_S6C10")
+        mesh.resin_material = resin
+        # Graded pocket (modulus + fibre-angle blend) to avoid the
+        # binary-jump stress concentration that double-counts the defect.
+        weight = compute_resin_blend(mesh, spec)
+        mesh.resin_blend = weight
+        host = lam.plies[0].material
+        mesh.resin_blend_materials = {
+            int(e): host.blend(resin, float(weight[e]))
+            for e in np.flatnonzero(weight > 0.0)
+        }
     return mesh, lam
 
 

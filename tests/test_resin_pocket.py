@@ -115,11 +115,23 @@ class TestResinPocketFE:
         assert res.mesh.resin_mask is None
         assert res.mesh.resin_material is None
 
-    def test_enabled_tags_elements(self):
+    def test_enabled_tags_elements_graded(self):
+        # Graded is the default: blend weights + per-element blended
+        # materials are populated (not the binary mask).
         res = WrinkleAnalysis(_li_config(enable_resin_pocket=True)).run()
+        assert res.mesh.resin_blend is not None
+        assert (res.mesh.resin_blend > 0).sum() > 0
+        assert res.mesh.resin_blend.max() <= 1.0
+        assert len(res.mesh.resin_blend_materials) > 0
+        assert res.mesh.resin_material.name == "EPOXY_S6C10"
+
+    def test_enabled_tags_elements_binary(self):
+        res = WrinkleAnalysis(
+            _li_config(enable_resin_pocket=True, resin_pocket_graded=False)
+        ).run()
         assert res.mesh.resin_mask is not None
         assert res.mesh.resin_mask.sum() > 0
-        assert res.mesh.resin_material.name == "EPOXY_S6C10"
+        assert res.mesh.resin_blend is None
 
     def test_pocket_softens_laminate(self):
         # The soft isotropic inclusion must reduce the FE modulus

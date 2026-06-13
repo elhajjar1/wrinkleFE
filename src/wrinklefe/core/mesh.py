@@ -220,6 +220,15 @@ class MeshData:
     # path consult these via :meth:`element_material` / :meth:`is_resin`.
     resin_mask: np.ndarray | None = None
     resin_material: "OrthotropicMaterial | None" = None
+    # Graded resin pocket: per-element blend weight in [0, 1] (1 = neat
+    # resin at the lens centre, 0 = host fibre at the boundary) and the
+    # corresponding precomputed per-element blended materials.  When set,
+    # these supersede the binary ``resin_mask`` path: the element material
+    # is the blend and the fibre-misalignment angle is scaled by
+    # ``(1 - weight)`` so the wrinkle defect is counted once (no
+    # double-count with the misaligned-fibre crest elements).
+    resin_blend: np.ndarray | None = None
+    resin_blend_materials: "dict[int, OrthotropicMaterial] | None" = None
 
     # ---- per-element material override (progressive damage) ----------------
     # Maps element index -> material, taking precedence over both the
@@ -355,9 +364,28 @@ class MeshData:
             override = self.element_material_override.get(elem_idx)
             if override is not None:
                 return override
+        if self.resin_blend_materials is not None:
+            blended = self.resin_blend_materials.get(elem_idx)
+            if blended is not None:
+                return blended
         if self.is_resin(elem_idx) and self.resin_material is not None:
             return self.resin_material
         return ply_material
+
+    def resin_angle_scale(self, elem_idx: int) -> float:
+        """Fibre-misalignment retention factor for an element, in [0, 1].
+
+        Graded pocket: ``1 - blend_weight`` (the resin centre carries no
+        fibre angle; the boundary carries the full wrinkle angle).  Binary
+        pocket: ``0`` for lens elements (fibre-free), ``1`` elsewhere.
+        Used by the assembler and stress recovery so the wrinkle defect is
+        represented once.
+        """
+        if self.resin_blend is not None:
+            return float(1.0 - self.resin_blend[elem_idx])
+        if self.is_resin(elem_idx):
+            return 0.0
+        return 1.0
 
     # ---- boundary / set queries --------------------------------------------
 
