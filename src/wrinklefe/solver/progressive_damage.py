@@ -184,47 +184,54 @@ class ProgressiveDamageSolver:
 
         degraded_families: dict[int, set[str]] = {}
         history: list[tuple[float, float]] = []
+        # Per-increment pre-degradation (elastic) state for the
+        # increment-robust peak: (|strain|, elastic carried stress, global
+        # max failure index of the first solve at that strain).
+        elastic: list[tuple[float, float, float]] = []
         converged = True
+
+        def _sigma(field) -> float:
+            u = field.displacement.ravel()
+            K = static._K  # bare stiffness (keep_stiffness=True)
+            assert K is not None
+            reaction = float(np.sum((K @ u)[xmax_dofs]))
+            return abs(reaction) / area if area > 0 else 0.0
 
         for i in range(1, self.n_increments + 1):
             eps = self.applied_strain * (i / self.n_increments)
             bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=eps)
 
             field = None
-            for _it in range(self.max_equilibrium_iters):
+            first_sigma = 0.0
+            first_fi = 0.0
+            for it in range(self.max_equilibrium_iters):
                 field = static.solve(
                     bcs, solver=self.solver, keep_stiffness=True,
                     verbose=False,
                 )
-                new_failures = self._degrade_failed_elements(
+                new_failures, max_fi = self._degrade_failed_elements(
                     field.stress_local, override, degraded_families, static,
                 )
+                if it == 0:
+                    # Pre-(new-)degradation elastic state at this strain.
+                    first_sigma = _sigma(field)
+                    first_fi = max_fi
                 if not new_failures:
                     break
             else:
                 converged = False
 
-            # Nominal carried stress = reaction on x_max / area.
             assert field is not None
-            u = field.displacement.ravel()
-            K = static._K  # bare stiffness (keep_stiffness=True)
-            assert K is not None
-            f_int = K @ u
-            reaction = float(np.sum(f_int[xmax_dofs]))
-            sigma = abs(reaction) / area if area > 0 else 0.0
+            sigma = _sigma(field)
             history.append((eps, sigma))
+            elastic.append((abs(eps), first_sigma, first_fi))
 
             if self.verbose:
                 print(f"  [inc {i}/{self.n_increments}] eps={eps:.4f} "
-                      f"sigma={sigma:.1f} MPa  "
+                      f"sigma={sigma:.1f} MPa  fi={first_fi:.3f}  "
                       f"n_failed={len(degraded_families)}")
 
-        stresses = [s for _e, s in history]
-        peak = max(stresses) if stresses else 0.0
-        peak_idx = int(np.argmax(stresses)) if stresses else -1
-        failed_at = (
-            peak_idx + 1 if 0 <= peak_idx < len(stresses) - 1 else None
-        )
+        peak, failed_at = self._resolve_peak(elastic, history)
 
         return ProgressiveDamageResult(
             peak_stress=peak,
@@ -233,6 +240,60 @@ class ProgressiveDamageSolver:
             failed_at_increment=failed_at,
             converged=converged,
         )
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _resolve_peak(
+        elastic: list[tuple[float, float, float]],
+        history: list[tuple[float, float]],
+    ) -> tuple[float, int | None]:
+        """Increment-robust ultimate strength.
+
+        Combines two estimates and takes the larger:
+
+        1. **First-failure load** — interpolating the elastic carried
+           stress (``elastic`` = ``(|strain|, pre-degradation carried
+           stress, global max failure index)`` per increment) to the
+           strain where the global failure index first reaches 1.0.  For a
+           uniform (pristine) UD coupon this is the exact compressive
+           allowable ``Xc`` and is *independent of the increment count*,
+           removing the load-step-alignment artefact that otherwise makes
+           the pristine baseline — and hence every knockdown — swing with
+           the number of increments.
+
+        2. **Redistributed ultimate** — the largest *post-equilibrium*
+           carried stress over the history.  A wrinkled coupon develops a
+           stress concentration so one element reaches FI=1 early, but
+           progressive degradation redistributes load and the laminate
+           carries more before ultimate; this term captures that reserve.
+
+        For pristine UD the first-failure term (``Xc``) dominates; for a
+        wrinkled coupon the redistributed ultimate dominates.  The pair is
+        consistent across mesh / increment changes because the pristine
+        anchor is exact.
+
+        Returns ``(peak_stress, failed_at_increment)``.
+        """
+        # First-failure load via FI=1 interpolation.
+        first_failure = 0.0
+        failed_at: int | None = None
+        prev_fi = 0.0
+        prev_sigma = 0.0
+        for k, (_eps, sigma, fi) in enumerate(elastic):
+            if fi >= 1.0:
+                if k == 0 or fi == prev_fi:
+                    first_failure = sigma
+                else:
+                    frac = (1.0 - prev_fi) / (fi - prev_fi)
+                    first_failure = prev_sigma + frac * (sigma - prev_sigma)
+                failed_at = k + 1
+                break
+            prev_fi, prev_sigma = fi, sigma
+
+        # Redistributed ultimate = largest post-equilibrium carried stress.
+        redistributed = max((s for _e, s in history), default=0.0)
+
+        return max(first_failure, redistributed), failed_at
 
     # ------------------------------------------------------------------
     def _degrade_failed_elements(
@@ -299,7 +360,8 @@ class ProgressiveDamageSolver:
             static.assembler.update_element(e)
             n_new += 1
 
-        return n_new
+        global_max_fi = float(elem_max_fi.max()) if n_elem else 0.0
+        return n_new, global_max_fi
 
     # ------------------------------------------------------------------
     def _ply_material(self, elem_idx: int) -> OrthotropicMaterial:

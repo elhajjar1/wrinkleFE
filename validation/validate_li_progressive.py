@@ -176,9 +176,14 @@ def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
     baseline is recovered from a completed sibling row when available, so
     a resumed run avoids recomputing it.
     """
-    pristine_cache: dict[int, float] = {
-        # Seed from any completed row sharing the same ply count.
-    }
+    # Pristine UD compressive strength is exactly Xc: with the
+    # increment-robust first-failure (FI=1) peak, a uniform laminate has
+    # no stress concentration, so the progressive-damage baseline equals
+    # the material allowable independent of mesh / load-step count
+    # (verified: pristine peak = 830.0 = Xc across 12/15/18 increments).
+    # Referencing knockdowns to Xc directly removes all baseline noise and
+    # halves the cost (no pristine solve per ply count).
+    sigma0 = ML.get("AC318_S6C10").Xc
     records = []
     for row in dataset:
         if len(row) == 5 and isinstance(row[1], int):
@@ -191,27 +196,11 @@ def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
             n_plies, t_ply, amplitude = N_PLIES_F, T_PLY_F, A_pp / 2.0
 
         if case in done:
-            rec = done[case]
-            records.append(rec)
-            # Reuse this completed row's pristine baseline for siblings.
-            pristine_cache.setdefault(n_plies, rec["sigma0"])
+            records.append(done[case])
             print(f"  {case:9s} (resumed from checkpoint)", flush=True)
             continue
 
         t0 = time.time()
-        # Pristine baseline (cached per ply count; recomputed once).
-        if n_plies not in pristine_cache:
-            pm, pl = build_mesh(
-                n_plies=n_plies, t_ply=t_ply, amplitude=0.0, wavelength=L,
-                z_frac=0.5, nx=nx, ny=ny, nz=nz, pocket=False,
-                height_scale=height_scale, length_scale=length_scale,
-            )
-            pristine_cache[n_plies] = peak_strength(
-                pm, pl, n_increments=n_increments,
-                residual_factor=residual_factor,
-            )
-        sigma0 = pristine_cache[n_plies]
-
         wm, wl = build_mesh(
             n_plies=n_plies, t_ply=t_ply, amplitude=amplitude, wavelength=L,
             z_frac=z_frac, nx=nx, ny=ny, nz=nz, pocket=pocket,

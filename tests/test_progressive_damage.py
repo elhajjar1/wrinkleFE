@@ -66,14 +66,13 @@ def test_mode_family_maps_kinking_to_fiber():
 
 
 class TestProgressiveDamage:
-    def test_pristine_fails_near_Xc(self):
+    def test_pristine_equals_Xc(self):
         res = _solve(0.0)
-        # Pristine UD fibre compression should fail close to Xc = 830 MPa.
-        # The recorded peak is the last increment before the cross-section
-        # fails, so coarse load-stepping undershoots Xc by up to one stress
-        # increment (~145 MPa at 12 steps); a finer grid closes the gap
-        # (nx=16/15-step runs land at ~812).  Tolerance is set accordingly.
-        assert res.peak_stress == pytest.approx(MAT.Xc, rel=0.15)
+        # Pristine UD fibre compression fails exactly at Xc: the
+        # first-failure (FI=1) interpolation is increment-robust and a
+        # uniform laminate has no stress concentration, so the peak is the
+        # compressive allowable independent of the load-step count.
+        assert res.peak_stress == pytest.approx(MAT.Xc, rel=1e-3)
         assert res.n_failed_elements > 0
 
     def test_wrinkle_knocks_down_strength(self):
@@ -90,9 +89,10 @@ class TestProgressiveDamage:
         # Monotonically increasing |strain| over the increments.
         assert all(abs(strains[i]) < abs(strains[i + 1])
                    for i in range(len(strains) - 1))
-        assert res.peak_stress == pytest.approx(
-            max(s for _e, s in res.history)
-        )
+        # Peak is the larger of the interpolated first-failure load and
+        # the redistributed post-equilibrium maximum, so it is at least
+        # the discrete history max.
+        assert res.peak_stress >= max(s for _e, s in res.history) - 1e-6
         assert res.n_failed_elements > 0
 
     def test_rejects_bad_inputs(self):
