@@ -84,3 +84,4 @@ validation/*
 !validation/li_progressive_E_nx16.csv
 !validation/li_progressive_E_crackband.csv
 !validation/li_progressive_EF.csv
+!validation/li_progressive_EF_crackband.csv
