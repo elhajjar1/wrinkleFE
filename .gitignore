@@ -72,6 +72,7 @@ examples/
 validation/*
 # ... except the Li progressive-damage validation driver and its results
 !validation/validate_li_progressive.py
+!validation/viz_li_fe.py
 !validation/li_progressive_E.csv
 !validation/li_progressive_E_nz1.csv
 !validation/li_progressive_E_nx16.csv

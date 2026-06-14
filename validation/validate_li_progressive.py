@@ -119,9 +119,14 @@ def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
         nx=nx_eff, ny=ny, nz_per_ply=nz,
     ).generate()
     if pocket and amplitude > 0:
+        # Pocket z-centre relative to the mesh's actual (mid-plane-centred)
+        # z-extent, so a mid-plane wrinkle (z_frac=0.5) gets its pocket at
+        # the crest, not the surface.
+        z_lo = float(mesh.nodes[:, 2].min())
+        z_hi = float(mesh.nodes[:, 2].max())
         spec = ResinPocketSpec.from_wrinkle(
             amplitude=amplitude, wavelength=wavelength,
-            center_x=center_x, z_center=z_frac * t_ply * n_plies,
+            center_x=center_x, z_center=z_lo + z_frac * (z_hi - z_lo),
             height_scale=height_scale, length_scale=length_scale,
         )
         resin = ML.get("EPOXY_S6C10")

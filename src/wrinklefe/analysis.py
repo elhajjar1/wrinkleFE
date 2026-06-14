@@ -2900,9 +2900,16 @@ class WrinkleAnalysis:
         )
 
         cfg = self.config
-        n_plies = laminate.n_plies
-        T = cfg.ply_thickness * n_plies
-        z_center = float(cfg.wrinkle_z_position) * T
+        # Place the pocket relative to the mesh's ACTUAL z-extent, which
+        # is centred on the mid-plane (z in [-T/2, +T/2]) — not the
+        # bottom-referenced [0, T].  ``wrinkle_z_position`` maps 0 -> bottom
+        # surface, 0.5 -> mid-plane (where the graded morphology places the
+        # wrinkle crest), 1 -> top surface.  Using ``z_frac * T`` (the old
+        # form) put a mid-plane pocket at the top surface, mis-locating it
+        # away from the high-angle crest entirely.
+        z_lo = float(mesh.nodes[:, 2].min())
+        z_hi = float(mesh.nodes[:, 2].max())
+        z_center = z_lo + float(cfg.wrinkle_z_position) * (z_hi - z_lo)
         center_x = cfg.domain_length / 2.0
 
         spec = ResinPocketSpec.from_wrinkle(
