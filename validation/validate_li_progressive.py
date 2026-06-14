@@ -143,12 +143,14 @@ def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
     return mesh, lam
 
 
-def peak_strength(mesh, lam, *, n_increments, residual_factor):
+def peak_strength(mesh, lam, *, n_increments, residual_factor,
+                  crack_band=False, Gc_fiber=12.0):
     mat0 = lam.plies[0].material
     target = 1.8 * mat0.Xc / mat0.E1
     res = ProgressiveDamageSolver(
         mesh, lam, applied_strain=-target, n_increments=n_increments,
         residual_factor=residual_factor,
+        crack_band=crack_band, Gc_fiber=Gc_fiber,
     ).solve()
     return res.peak_stress
 
@@ -191,7 +193,8 @@ def _append_row(csv_path: Path, record: dict) -> None:
 
 
 def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
-        height_scale, length_scale, n_increments, residual_factor):
+        height_scale, length_scale, n_increments, residual_factor,
+        crack_band=False, Gc_fiber=12.0):
     """Run (or resume) one dataset, checkpointing each case to ``csv_path``.
 
     Cases already present in ``done`` are skipped (resume).  The pristine
@@ -236,6 +239,7 @@ def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
         )
         sigma_w = peak_strength(
             wm, wl, n_increments=n_increments, residual_factor=residual_factor,
+            crack_band=crack_band, Gc_fiber=Gc_fiber,
         )
         kd_pred = sigma_w / sigma0 if sigma0 > 0 else float("nan")
         err = abs(kd_pred - kd_exp) / kd_exp
@@ -271,6 +275,12 @@ def main(argv=None) -> int:
     ap.add_argument("--length-scale", type=float, default=1.0)
     ap.add_argument("--increments", type=int, default=18)
     ap.add_argument("--residual", type=float, default=0.1)
+    ap.add_argument("--crack-band", action="store_true",
+                    help="use crack-band (Bazant-Oh) regularized fibre damage")
+    ap.add_argument("--gf-e", type=float, default=12.0,
+                    help="fibre-kink fracture energy Gf (N/mm) for Dataset E")
+    ap.add_argument("--gf-f", type=float, default=12.0,
+                    help="fibre-kink fracture energy Gf (N/mm) for Dataset F")
     args = ap.parse_args(argv)
 
     pocket = not args.no_pocket
@@ -287,14 +297,16 @@ def main(argv=None) -> int:
     kw = dict(nx=args.nx, ny=args.ny, nz=args.nz, pocket=pocket,
               height_scale=args.height_scale, length_scale=args.length_scale,
               n_increments=args.increments, residual_factor=args.residual,
-              csv_path=csv_path, done=done)
+              crack_band=args.crack_band, csv_path=csv_path, done=done)
 
     print(f"=== Dataset E (Li 2024), pocket={pocket}, "
+          f"crack_band={args.crack_band} (Gf={args.gf_e}), "
           f"mesh nx>={args.nx} nz={args.nz}, {args.increments} increments ===")
-    records = run(LI2024, dataset_label="E", **kw)
+    records = run(LI2024, dataset_label="E", Gc_fiber=args.gf_e, **kw)
     if args.with_f:
-        print(f"=== Dataset F (Li 2025), pocket={pocket} ===")
-        records += run(LI2025, dataset_label="F", **kw)
+        print(f"=== Dataset F (Li 2025), crack_band={args.crack_band} "
+              f"(Gf={args.gf_f}) ===")
+        records += run(LI2025, dataset_label="F", Gc_fiber=args.gf_f, **kw)
 
     errs = [r["err_pct"] for r in records]
     n_pass = sum(1 for e in errs if e <= 20.0)

@@ -74,6 +74,7 @@ validation/*
 !validation/validate_li_progressive.py
 !validation/viz_li_fe.py
 !validation/probe_crackband_mesh.py
+!validation/tune_gf.py
 !validation/diag_crest_pocket.py
 !validation/li_load_displacement.png
 !validation/li_mesh_F.png
