@@ -41,6 +41,7 @@ EXPECTED_BUILTIN_NAMES = frozenset({
     "T700_2510",
     "T800S_M21",
     "EPOXY_S6C10",
+    "AC318_S6C10_vacbag",
 })
 
 

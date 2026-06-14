@@ -684,6 +684,33 @@ class MaterialLibrary:
             GIc=0.25, GIIc=0.75,
         ))
 
+        # 5c. AC318 S-glass / S6C10-800 — vacuum-bag realization (Li 2025,
+        #     Dataset F).  Same prepreg as the moulded AC318_S6C10 card
+        #     (Dataset E) but oven-cured under a 1 bar vacuum bag rather
+        #     than 2.9 MPa mould, giving lower consolidation: MEASURED
+        #     pristine modulus E1 = 50.8 GPa and MEASURED pristine
+        #     compressive strength Xc = 335.5 MPa (~half the moulded
+        #     value).  E2/G12/Yt/... are inherited from the base AC318 card
+        #     (no separate vacuum-bag measurements) and are approximate.
+        #     The two realizations cannot share a normalization — F's
+        #     335.5 plate gives KD > 1 for every E specimen (see
+        #     VALIDATION_DATA section 3).
+        self.add(OrthotropicMaterial(
+            name="AC318_S6C10_vacbag",
+            E1=50_800.0, E2=12_000.0, E3=12_000.0,
+            G12=5_500.0, G13=5_500.0, G23=4_000.0,
+            nu12=0.28, nu13=0.28, nu23=0.40,
+            Xt=1_200.0, Xc=335.5,
+            Yt=40.0, Yc=150.0,
+            Zt=40.0, Zc=150.0,
+            S12=60.0, S13=60.0, S23=45.0,
+            alpha1=5.0e-6, alpha2=25.0e-6, alpha3=25.0e-6,
+            beta1=0.0, beta2=0.3, beta3=0.3,
+            gamma_Y=0.02,
+            GIc=0.25, GIIc=0.75, alpha_0=53.0,
+            sigma_max=70.0, tau_max=90.0,
+        ))
+
         # 6. T800S / M21  (Hexcel T800S fibre / M21 toughened epoxy).
         #    Properties from Hexcel HexPly M21 product data sheet and the
         #    open characterisation in Catalanotti, Camanho & Marques (2013)

@@ -171,6 +171,8 @@ BUILTIN_NAMES = (
     "KEVLAR49_EPOXY",
     # Isotropic neat-epoxy card for the resin-pocket zone (Li 2024/2025).
     "EPOXY_S6C10",
+    # Vacuum-bag AC318 realization for Li 2025 Dataset F.
+    "AC318_S6C10_vacbag",
 )
 
 

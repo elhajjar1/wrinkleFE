@@ -85,8 +85,9 @@ N_PLIES_F = 14
 
 
 def build_mesh(*, n_plies, t_ply, amplitude, wavelength, z_frac,
-               nx, ny, nz, pocket, height_scale, length_scale):
-    mat = ML.get("AC318_S6C10")
+               nx, ny, nz, pocket, height_scale, length_scale,
+               material="AC318_S6C10"):
+    mat = ML.get(material)
     lam = Laminate.from_angles([0.0] * n_plies, mat, ply_thickness=t_ply)
     Lx = max(3.0 * wavelength, 10.0)
     center_x = Lx / 2.0
@@ -196,10 +197,15 @@ def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
     # increment-robust first-failure (FI=1) peak, a uniform laminate has
     # no stress concentration, so the progressive-damage baseline equals
     # the material allowable independent of mesh / load-step count
-    # (verified: pristine peak = 830.0 = Xc across 12/15/18 increments).
+    # (verified: pristine peak = Xc across 12/15/18 increments).
     # Referencing knockdowns to Xc directly removes all baseline noise and
-    # halves the cost (no pristine solve per ply count).
-    sigma0 = ML.get("AC318_S6C10").Xc
+    # halves the cost (no pristine solve per ply count).  E and F are
+    # DIFFERENT material realizations of the same prepreg: E (Li 2024) was
+    # moulded (Xc 830), F (Li 2025) vacuum-bagged (measured Xc 335.5), and
+    # each dataset normalises KD against its own pristine — so the baseline
+    # and material card are dataset-specific.
+    material = "AC318_S6C10" if dataset_label == "E" else "AC318_S6C10_vacbag"
+    sigma0 = ML.get(material).Xc
     records = []
     for row in dataset:
         if len(row) == 5 and isinstance(row[1], int):
@@ -221,6 +227,7 @@ def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
             n_plies=n_plies, t_ply=t_ply, amplitude=amplitude, wavelength=L,
             z_frac=z_frac, nx=nx, ny=ny, nz=nz, pocket=pocket,
             height_scale=height_scale, length_scale=length_scale,
+            material=material,
         )
         sigma_w = peak_strength(
             wm, wl, n_increments=n_increments, residual_factor=residual_factor,
