@@ -134,6 +134,8 @@ class ProgressiveDamageSolver:
         residual_factor: float = 0.1,
         max_equilibrium_iters: int = 10,
         fi_threshold: float = 1.0,
+        crack_band: bool = False,
+        Gc_fiber: float = 50.0,
         solver: str = "direct",
         verbose: bool = False,
     ) -> None:
@@ -143,6 +145,15 @@ class ProgressiveDamageSolver:
         self.n_increments = int(n_increments)
         self.max_equilibrium_iters = int(max_equilibrium_iters)
         self.fi_threshold = float(fi_threshold)
+        # Crack-band regularization (D.1): when enabled, the dominant
+        # fibre-compression (kink) mode softens gradually with a slope
+        # scaled by the element size so the energy dissipated per unit
+        # crack area equals the fibre-kink fracture energy ``Gc_fiber``
+        # (N/mm) regardless of mesh — making the predicted strength
+        # mesh-objective and replacing the arbitrary ``residual_factor`` +
+        # ``nx`` choices with one physical material parameter (Bažant-Oh).
+        self.crack_band = bool(crack_band)
+        self.Gc_fiber = float(Gc_fiber)
         self.solver = solver
         self.verbose = verbose
         self._discount = PlyDiscount(residual_factor=residual_factor)
@@ -182,6 +193,21 @@ class ProgressiveDamageSolver:
         _Lx, Ly, Lz = mesh.domain_size
         area = Ly * Lz
 
+        # Crack-band characteristic length per element: the kink crack for
+        # fibre compression is a band roughly normal to the fibre (x) axis,
+        # so it advances along x and the fracture energy is smeared over the
+        # element's x-extent.  Damage state is an irreversible per-element
+        # fibre-mode scalar.
+        char_len = (
+            self._element_x_extent() if self.crack_band else None
+        )
+        # Monotonic max-failure-index history per element (the crack-band
+        # loading variable); 1.0 = elastic, > 1 = damaging.
+        r_hist = np.ones(mesh.n_elements) if self.crack_band else None
+        # Per-element matrix/shear modes already ply-discounted (crack-band
+        # path only regularises the fibre mode).
+        self._matrix_degraded: dict[int, set[str]] = {}
+
         degraded_families: dict[int, set[str]] = {}
         history: list[tuple[float, float]] = []
         # Per-increment pre-degradation (elastic) state for the
@@ -209,9 +235,15 @@ class ProgressiveDamageSolver:
                     bcs, solver=self.solver, keep_stiffness=True,
                     verbose=False,
                 )
-                new_failures, max_fi = self._degrade_failed_elements(
-                    field.stress_local, override, degraded_families, static,
-                )
+                if self.crack_band:
+                    new_failures, max_fi = self._crack_band_update(
+                        field, override, r_hist, char_len, static,
+                    )
+                else:
+                    new_failures, max_fi = self._degrade_failed_elements(
+                        field.stress_local, override, degraded_families,
+                        static,
+                    )
                 if it == 0:
                     # Pre-(new-)degradation elastic state at this strain.
                     first_sigma = _sigma(field)
@@ -233,13 +265,119 @@ class ProgressiveDamageSolver:
 
         peak, failed_at = self._resolve_peak(elastic, history)
 
+        n_failed = (
+            int((r_hist > 1.0).sum()) if self.crack_band
+            else len(degraded_families)
+        )
         return ProgressiveDamageResult(
             peak_stress=peak,
             history=history,
-            n_failed_elements=len(degraded_families),
+            n_failed_elements=n_failed,
             failed_at_increment=failed_at,
             converged=converged,
         )
+
+    # ------------------------------------------------------------------
+    def _element_x_extent(self) -> np.ndarray:
+        """Per-element extent in x (mm) — the crack-band length for the
+        fibre-compression kink mode (band normal to the fibre/x axis)."""
+        xe = self.mesh.nodes[self.mesh.elements][:, :, 0]  # (n_elem, 8)
+        return xe.max(axis=1) - xe.min(axis=1)
+
+    def _crack_band_update(
+        self,
+        field,
+        override: dict[int, OrthotropicMaterial],
+        r_hist: np.ndarray,
+        char_len: np.ndarray,
+        static: StaticSolver,
+    ) -> tuple[int, float]:
+        """Crack-band fibre-failure damage update (Bažant-Oh, FI-driven).
+
+        Initiation and growth are driven by the **failure index** of the
+        combined MaxStress + LaRC05 criteria, so the misalignment-shear
+        coupling that triggers kinking at the wrinkle is included (driving
+        by the axial strain alone would miss it — the wrinkle reduces the
+        local fibre strain).  The monotonic loading variable is
+        ``r = max history of FI`` (1 at initiation).  Damage follows a
+        linear-softening law whose end point ``r_f`` is set by the
+        *energy* per unit crack area:
+
+            r_f = eps_f / eps_0 = 2 Gc_fiber E1 / (Xc^2 h),
+            d(r) = 1 - (r_f - r) / (r (r_f - 1)),   1 <= r <= r_f,
+
+        with ``h`` the element x-extent.  Because ``r_f`` scales as
+        ``1/h``, a finer mesh softens over a longer ``r`` range so the
+        dissipated energy stays ``Gc_fiber`` — i.e. mesh-objective.  Only
+        the dominant fibre mode is crack-band-regularised; matrix/shear
+        modes fall back to the (minor, for UD) ply-discount.  Returns
+        ``(n_newly_damaged, global max FI)`` for the peak detection.
+        """
+        from dataclasses import replace as _replace
+
+        mesh = self.mesh
+        materials, eval_ply_ids, fiber_angles = self._effective_materials()
+        with np.errstate(invalid="ignore", divide="ignore"):
+            fi_fields, mode_fields = self._evaluator.evaluate_field(
+                field.stress_local, materials, eval_ply_ids,
+                fiber_angles=fiber_angles,
+            )
+        n_elem, n_gp = next(iter(fi_fields.values())).shape
+        fi_stack = np.stack(list(fi_fields.values()), axis=0)
+        mode_stack = np.stack(list(mode_fields.values()), axis=0)
+        crit_arg = np.argmax(fi_stack, axis=0)
+        ee, gg = np.indices((n_elem, n_gp))
+        fi = fi_stack[crit_arg, ee, gg]
+        modes = mode_stack[crit_arg, ee, gg]
+        gp_max = np.argmax(fi, axis=1)
+        elem_fi = fi[np.arange(n_elem), gp_max]
+
+        n_new = 0
+        for e in range(n_elem):
+            fie = float(elem_fi[e])
+            if fie <= r_hist[e]:
+                continue  # no new loading beyond the stored maximum
+            family = _mode_family(str(modes[e, gp_max[e]]))
+            if "fiber" not in family:
+                # Matrix/shear: keep the instantaneous ply-discount.
+                seen = self._matrix_degraded.setdefault(e, set())
+                if family in seen:
+                    continue
+                seen.add(family)
+                base = mesh.element_material(e, self._ply_material(e))
+                override[e] = self._discount.degrade(
+                    base, FailureResult(index=fie, mode=family,
+                                        reserve_factor=1.0 / max(fie, 1e-12),
+                                        criterion_name="progressive"),
+                )
+                static.assembler.update_element(e)
+                n_new += 1
+                continue
+
+            # Fibre mode: crack-band softening driven by r = max FI.
+            r_hist[e] = fie
+            ply_mat = self._ply_material(e)
+            Xc, E1 = ply_mat.Xc, ply_mat.E1
+            h = float(char_len[e])
+            r_f = 2.0 * self.Gc_fiber * E1 / (Xc * Xc * h)
+            r_f = max(r_f, 1.001)  # snap-back guard (h too large for Gf/Xc)
+            if fie >= r_f:
+                d = 0.999
+            else:
+                d = 1.0 - (r_f - fie) / (fie * (r_f - 1.0))
+                d = min(max(d, 0.0), 0.999)
+            base = mesh.element_material(e, ply_mat)
+            override[e] = _replace(
+                base,
+                E1=max((1.0 - d) * base.E1, 1.0e-3 * base.E1),
+                nu12=(1.0 - d) * base.nu12,
+                nu13=(1.0 - d) * base.nu13,
+                name=f"{base.name}_cb{d:.3f}",
+            )
+            static.assembler.update_element(e)
+            n_new += 1
+
+        return n_new, float(elem_fi.max()) if n_elem else 0.0
 
     # ------------------------------------------------------------------
     @staticmethod
