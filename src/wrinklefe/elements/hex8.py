@@ -432,6 +432,75 @@ class Hex8Element:
 
         return Ke
 
+    def geometric_stiffness_matrix(self, u_elem: np.ndarray) -> np.ndarray:
+        """Geometric (initial-stress) stiffness matrix (24 x 24).
+
+        The geometric stiffness arises from the work done by the existing
+        stress field through the nonlinear (second-order) part of the
+        strain.  For a compressive pre-stress it is negative-definite, so
+        the tangent ``K_material + lambda * K_geo`` loses positive-
+        definiteness at the buckling load factor ``lambda`` — the basis of
+        the linearized microbuckling knockdown (geometric nonlinearity,
+        item D.4).
+
+        .. math::
+            K_{geo} = \\int_V G^T \\, \\Sigma \\, G \\; dV
+
+        where ``G`` (9 x 24) gathers the physical-coordinate gradients of
+        the three displacement components and ``\\Sigma`` (9 x 9) is the
+        block-diagonal Cauchy-stress matrix ``diag(S, S, S)`` evaluated
+        from ``u_elem`` in the global frame.
+
+        Parameters
+        ----------
+        u_elem : np.ndarray
+            Shape ``(24,)`` element nodal displacements that define the
+            pre-stress state.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(24, 24)`` symmetric geometric stiffness matrix.
+        """
+        u_elem = np.asarray(u_elem, dtype=float)
+        Kg = np.zeros((24, 24))
+
+        for gp_idx in range(len(self._gauss_weights)):
+            xi, eta, zeta = self._gauss_points[gp_idx]
+            w = self._gauss_weights[gp_idx]
+
+            dN_dxi = self.shape_derivatives(xi, eta, zeta)   # (3, 8)
+            J = dN_dxi @ self.node_coords                    # (3, 3)
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=gp_idx)
+            dN_dx = np.linalg.inv(J) @ dN_dxi                # (3, 8) physical
+
+            # Global-frame Cauchy stress at this GP: sigma = C_bar B u.
+            B = self.B_matrix(xi, eta, zeta)
+            C_bar = self.rotated_stiffness(xi, eta, zeta)
+            sig = C_bar @ (B @ u_elem)   # Voigt [11,22,33,23,13,12]
+            S = np.array([
+                [sig[0], sig[5], sig[4]],
+                [sig[5], sig[1], sig[3]],
+                [sig[4], sig[3], sig[2]],
+            ])
+
+            # G (9 x 24): rows 0-2 = grad(u), 3-5 = grad(v), 6-8 = grad(w).
+            G = np.zeros((9, 24))
+            for i in range(8):
+                c = 3 * i
+                G[0:3, c] = dN_dx[:, i]       # du/dx, du/dy, du/dz
+                G[3:6, c + 1] = dN_dx[:, i]   # dv/dx, dv/dy, dv/dz
+                G[6:9, c + 2] = dN_dx[:, i]   # dw/dx, dw/dy, dw/dz
+
+            Sigma = np.zeros((9, 9))
+            Sigma[0:3, 0:3] = S
+            Sigma[3:6, 3:6] = S
+            Sigma[6:9, 6:9] = S
+
+            Kg += (G.T @ Sigma @ G) * detJ * w
+
+        return 0.5 * (Kg + Kg.T)  # symmetrize against round-off
+
     def stress_at_gauss_points(self, u_elem: np.ndarray) -> np.ndarray:
         """Compute stress at all Gauss points from element nodal displacements.
 

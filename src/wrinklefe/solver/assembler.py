@@ -315,6 +315,54 @@ class GlobalAssembler:
             )
         return self._assemble_hex8_stiffness(verbose=verbose)
 
+    def assemble_geometric_stiffness(
+        self, displacement: np.ndarray
+    ) -> sparse.csc_matrix:
+        """Assemble the global geometric (initial-stress) stiffness K_geo.
+
+        Evaluates each hex8 element's geometric stiffness from the pre-
+        stress state implied by *displacement* (the linear-static
+        solution) and scatters into a global sparse matrix.  Used by the
+        linearized-buckling microbuckling knockdown (item D.4): the
+        buckling load factors solve ``K phi = -lambda K_geo phi``.
+
+        Parameters
+        ----------
+        displacement : np.ndarray
+            Global nodal displacement vector ``(n_dof,)`` defining the
+            pre-stress.
+
+        Returns
+        -------
+        scipy.sparse.csc_matrix
+            ``(n_dof, n_dof)`` geometric stiffness matrix.
+        """
+        u = np.asarray(displacement, dtype=float).ravel()
+        n_elem = self.mesh.n_elements
+        n_dof = self.mesh.n_dof
+        entries = 24 * 24
+        coo_rows = np.empty(n_elem * entries, dtype=np.intp)
+        coo_cols = np.empty(n_elem * entries, dtype=np.intp)
+        coo_vals = np.empty(n_elem * entries, dtype=np.float64)
+        local_ii, local_jj = np.meshgrid(
+            np.arange(24), np.arange(24), indexing="ij"
+        )
+        local_ii = local_ii.ravel()
+        local_jj = local_jj.ravel()
+
+        for e in range(n_elem):
+            dofs = self._hex8_dofs[e]
+            u_elem = u[dofs]
+            Kg = self._hex8_elements[e].geometric_stiffness_matrix(u_elem)
+            off = e * entries
+            coo_rows[off:off + entries] = dofs[local_ii]
+            coo_cols[off:off + entries] = dofs[local_jj]
+            coo_vals[off:off + entries] = Kg.ravel()
+
+        return sparse.coo_matrix(
+            (coo_vals, (coo_rows, coo_cols)), shape=(n_dof, n_dof)
+        ).tocsc()
+
     def _assemble_hex8_stiffness(
         self, verbose: bool = False
     ) -> sparse.csc_matrix:
