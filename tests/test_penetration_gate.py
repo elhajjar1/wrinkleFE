@@ -12,8 +12,16 @@ from wrinklefe.core.penetration_gate import (
     angle_floor,
     calibrate_gate,
     penetration_gate_kd,
+    position_factor,
     predict_from_geometry,
 )
+
+# Full F grid including the position case S-A-2 (theta, D/T, z, KD).
+F_GRID_POS = [
+    (10.3, 0.122, 0.5, 0.891), (20.1, 0.122, 0.5, 0.629),
+    (30.2, 0.122, 0.5, 0.472), (20.1, 0.081, 0.5, 0.943),
+    (20.1, 0.041, 0.5, 1.000), (20.1, 0.122, 10.0 / 14.0, 0.981),
+]
 
 # VALIDATION_DATA section 2.7 single-wrinkle grids (theta_deg, D/T, KD).
 F_GRID = [
@@ -132,3 +140,35 @@ class TestGeometryAndPipeline:
         from wrinklefe.analysis import AnalysisConfig
         with pytest.raises(ValueError):
             AnalysisConfig(penetration_gate="not a gate")
+
+
+class TestPositionFactor:
+    def test_factor_limits(self):
+        # 1 at mid-plane, 0 at either surface.
+        assert position_factor(0.5, GATE_LI2025_VACBAG) == pytest.approx(1.0)
+        assert position_factor(0.0, GATE_LI2025_VACBAG) == pytest.approx(0.0)
+        assert position_factor(1.0, GATE_LI2025_VACBAG) == pytest.approx(0.0)
+
+    def test_factor_one_when_unset(self):
+        # No position_q -> factor 1 everywhere (position-independent).
+        g = GateParameters(0.5, 0.1, 4.0)  # position_q is None
+        for z in (0.1, 0.5, 0.9):
+            assert position_factor(z, g) == pytest.approx(1.0)
+
+    def test_near_surface_is_milder(self):
+        # Moving the wrinkle off mid-plane raises the knockdown (milder).
+        mid = penetration_gate_kd(20.1, 0.122, GATE_LI2025_VACBAG, 0.5)
+        above = penetration_gate_kd(20.1, 0.122, GATE_LI2025_VACBAG,
+                                    10.0 / 14.0)
+        assert above > mid
+
+    def test_full_F_with_position(self):
+        # All 6 F cases (incl. S-A-2) within +/-20 %.
+        errs = [abs(penetration_gate_kd(th, dt, GATE_LI2025_VACBAG, z) - kd)
+                / kd for th, dt, z, kd in F_GRID_POS]
+        assert np.mean(errs) < 0.08
+        assert all(e <= 0.20 for e in errs)
+
+    def test_rejects_bad_position_q(self):
+        with pytest.raises(ValueError):
+            GateParameters(0.5, 0.1, 4.0, position_q=-1.0)

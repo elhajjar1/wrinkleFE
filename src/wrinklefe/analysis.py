@@ -1727,6 +1727,10 @@ class WrinkleAnalysis:
                 amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
                 amplitude_profile_axis=cfg.amplitude_profile_axis,
             )
+        # Through-thickness wrinkle position (item D.5): the graded decay
+        # is centred here (0.5 = mid-plane).  Off-mid values place the
+        # wrinkle nearer a surface (Li 2025 S-A-2).
+        wrinkle_config.wrinkle_z_position = float(cfg.wrinkle_z_position)
         results.wrinkle_config = wrinkle_config
 
         _report("Computing analytical predictions", 0.05)
@@ -2409,7 +2413,8 @@ class WrinkleAnalysis:
             T = cfg.ply_thickness * len(angles_g)
             dt = (cfg.amplitude / T) if T > 0 else 0.0
             kd_gate = penetration_gate_kd(
-                math.degrees(theta_max), dt, cfg.penetration_gate
+                math.degrees(theta_max), dt, cfg.penetration_gate,
+                z_position=float(cfg.wrinkle_z_position),
             )
             results.morphology_factor = mf
             results.max_angle_rad = theta_max
