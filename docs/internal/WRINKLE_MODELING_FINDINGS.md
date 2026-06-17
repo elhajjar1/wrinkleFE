@@ -90,11 +90,31 @@ D.4 showed the homogenised continuum cannot resolve.  Compressive kinking
 strength is, in the state of the art, a *calibrated* quantity; the gate
 is the appropriate modelling level.
 
+## D.5 — Through-thickness wrinkle position — **gate factor adopted; FE cannot capture it**
+
+The Li 2025 S-A-2 case is S-M-2's geometry (θ = 20°, D/T = 0.122) with the
+wrinkle near the surface instead of mid-plane; measured KD jumps from 0.63
+(Middle) to 0.98 (Above).  Two deliverables:
+
+- **FE movable interface (capability added).** The graded through-thickness
+  decay now centres at `wrinkle_z_position` (asymmetric taper to each
+  surface), so an off-mid wrinkle is genuinely placed off-mid.  *But the
+  continuum FE does not reproduce the position knockdown*: crack-band
+  gives S-A-2 (above) 0.76 vs S-M-2 (mid) 0.81 — slightly *more*
+  knockdown, opposite to measured.  The near-surface mildness is a
+  free-surface / local load-shedding mechanism the homogenised continuum
+  cannot represent (consistent with D.4).
+- **Gate position factor (adopted).** `P(z) = (2·min(z, 1−z))^position_q`
+  scales the gate's knockdown deficit (1 at mid-plane, 0 at a surface),
+  calibrated on the S-M-2/S-A-2 pair (`position_q = 5.26` for F; one
+  point, indicative).  With it the **full F dataset incl. S-A-2 is MAE
+  5.0 %, 6/6**.
+
 ## Net picture / recommended use
 
 | Need | Model | Accuracy (E / F) |
 |---|---|---|
-| UD knockdown prediction | **D.3 (θ, D/T) gate** | 2.8 % / 6.0 % |
+| UD knockdown prediction (incl. position) | **D.3+D.5 (θ, D/T, z) gate** | 2.8 % / **5.0 %, 6/6** |
 | Mesh-objective FE field, wavelength axis | D.1 crack-band FE | 10.3 % / 20.1 % |
 | Multidirectional (A–D) | existing BF / three-mechanism | (unchanged) |
 | Continuum / structural buckling | D.4 `K_geo` (correct, but not for kinking) | — |
@@ -104,12 +124,12 @@ fibre bending), which closed-form models capture (the gate) but the
 homogenised continuum FE cannot.  The gate (D.3) is the production UD
 predictor; the FE (D.1) gives mesh-objective field detail.
 
-## Open items (D.5 and beyond)
+## Open items
 
-- **Through-thickness wrinkle position** (Li F S-A-2, near-surface): not
-  represented (the FE keeps the wrinkle mid-plane; the gate has no
-  position term).  A movable wrinkle interface + a position factor is the
-  bounded next step.
 - **E/F unified calibration**: blocked by E's indicative ÷830
   normalization; needs E's measured moulded pristine from the authors.
-- **Multi-wrinkle** (Li D-/T- cases): separate capability.
+  Until then the gate parameters are material-realization specific.
+- **Position factor robustness**: `position_q` is fit to a single point
+  (S-A-2); more position data would firm it up.
+- **Multi-wrinkle** (Li D-/T- cases): separate capability (the gate is
+  single-wrinkle; the FE multi-wrinkle path exists but is uncalibrated).
