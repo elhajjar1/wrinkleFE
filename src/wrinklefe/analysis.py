@@ -43,6 +43,10 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 
 from wrinklefe.core.material import OrthotropicMaterial, MaterialLibrary
+from wrinklefe.core.penetration_gate import (
+    GateParameters,
+    penetration_gate_kd,
+)
 from wrinklefe.core.laminate import Laminate, LoadState
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
@@ -765,6 +769,20 @@ class AnalysisConfig:
     kink_band_quadratic_coeff: float = 0.0
 
     # ------------------------------------------------------------------
+    # Two-parameter (theta, D/T) penetration-gate knockdown (item D.3).
+    # ------------------------------------------------------------------
+    # When set, the analytical knockdown is computed from the
+    # penetration-gate model instead of the Budiansky-Fleck kink-band
+    # path: KD = 1 - (1 - KD_angle(theta)) * min(1, (D/T / dt0)**p), which
+    # reproduces both the angle and the through-thickness penetration
+    # dependence the Li UD grids expose (E MAE 2.8 %, F MAE 6.0 % vs the
+    # angle-only/FE models' ~20-30 %).  Material-realization specific —
+    # use ``wrinklefe.core.penetration_gate.GATE_LI2024_MOULDED`` /
+    # ``GATE_LI2025_VACBAG`` or calibrate your own.  UD-scoped: do NOT set
+    # for multidirectional/blocked laminates.
+    penetration_gate: GateParameters | None = None
+
+    # ------------------------------------------------------------------
     # Resin-pocket material zone (Li et al. 2024/2025 UD glass datasets).
     # ------------------------------------------------------------------
     # When ``enable_resin_pocket`` is True, the FE path tags the hex
@@ -1075,6 +1093,15 @@ class AnalysisConfig:
                 f"AnalysisConfig.kink_band_quadratic_coeff must be a "
                 f"finite float >= 0, "
                 f"got {self.kink_band_quadratic_coeff!r}"
+            )
+
+        # --- Penetration gate -----------------------------------------
+        if self.penetration_gate is not None and not isinstance(
+            self.penetration_gate, GateParameters
+        ):
+            raise ValueError(
+                "AnalysisConfig.penetration_gate must be a GateParameters "
+                f"or None, got {type(self.penetration_gate).__name__}"
             )
 
         # --- Resin-pocket zone ----------------------------------------
@@ -2369,6 +2396,30 @@ class WrinkleAnalysis:
         else:
             theta_max = 0.0
         theta_eff = theta_max * mf
+
+        # Penetration-gate path (item D.3): when a calibrated gate is
+        # configured, the analytical knockdown is the two-parameter
+        # (theta, D/T) gate value instead of Budiansky-Fleck.  Uses the
+        # peak angle and the penetration D/T = A / (t_ply * n_plies), both
+        # on the section-2.7 conventions (config amplitude is the
+        # half-amplitude).  Returns early — the BF / tension blocks below
+        # are bypassed.
+        if cfg.penetration_gate is not None:
+            angles_g = cfg.angles if cfg.angles else [0]
+            T = cfg.ply_thickness * len(angles_g)
+            dt = (cfg.amplitude / T) if T > 0 else 0.0
+            kd_gate = penetration_gate_kd(
+                math.degrees(theta_max), dt, cfg.penetration_gate
+            )
+            results.morphology_factor = mf
+            results.max_angle_rad = theta_max
+            results.effective_angle_rad = theta_eff
+            results.gamma_Y_eff = cfg.penetration_gate.gamma_Y
+            results.analytical_knockdown = float(kd_gate)
+            ref = (cfg.material.Xt if cfg.loading == "tension"
+                   else cfg.material.Xc)
+            results.analytical_strength_MPa = float(ref) * float(kd_gate)
+            return
 
         # Compute layup-dependent effective gamma_Y from confinement
         angles = cfg.angles if cfg.angles else [0, 45, -45, 90] * 6

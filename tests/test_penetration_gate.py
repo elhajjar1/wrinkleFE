@@ -12,6 +12,7 @@ from wrinklefe.core.penetration_gate import (
     angle_floor,
     calibrate_gate,
     penetration_gate_kd,
+    predict_from_geometry,
 )
 
 # VALIDATION_DATA section 2.7 single-wrinkle grids (theta_deg, D/T, KD).
@@ -97,3 +98,37 @@ class TestCalibration:
                                     dt0=1e-6, p=1.0)
         mae_angle, _ = _mae_pass(F_GRID, angle_only)
         assert mae_gate < mae_angle
+
+
+class TestGeometryAndPipeline:
+    def test_predict_from_geometry_matches_F_S_M_2(self):
+        # A=0.75, L=12.9, 14 plies x 0.44 -> theta~20deg, D/T~0.122.
+        kd = predict_from_geometry(0.75, 12.9, 14, 0.44, GATE_LI2025_VACBAG)
+        assert kd == pytest.approx(0.629, abs=0.05)
+
+    def test_pipeline_uses_gate(self):
+        from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+        from wrinklefe.core.material import MaterialLibrary
+        mat = MaterialLibrary().get("AC318_S6C10_vacbag")
+        common = dict(amplitude=0.75, wavelength=12.9, width=6.45,
+                      morphology="graded", loading="compression",
+                      material=mat, angles=[0.0] * 14, ply_thickness=0.44)
+        gated = WrinkleAnalysis(
+            AnalysisConfig(**common, penetration_gate=GATE_LI2025_VACBAG)
+        ).run(analytical_only=True)
+        baseline = WrinkleAnalysis(AnalysisConfig(**common)).run(
+            analytical_only=True)
+        # The gate result matches the standalone predictor and differs
+        # from the Budiansky-Fleck baseline.
+        assert gated.analytical_knockdown == pytest.approx(
+            predict_from_geometry(0.75, 12.9, 14, 0.44, GATE_LI2025_VACBAG),
+            abs=1e-6)
+        assert gated.analytical_knockdown != pytest.approx(
+            baseline.analytical_knockdown, abs=1e-3)
+        assert gated.analytical_strength_MPa == pytest.approx(
+            mat.Xc * gated.analytical_knockdown, rel=1e-6)
+
+    def test_pipeline_rejects_bad_gate(self):
+        from wrinklefe.analysis import AnalysisConfig
+        with pytest.raises(ValueError):
+            AnalysisConfig(penetration_gate="not a gate")

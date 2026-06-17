@@ -129,6 +129,48 @@ def penetration_gate_kd(theta_deg, dt, params: GateParameters):
     return kd
 
 
+def predict_from_geometry(
+    amplitude: float,
+    wavelength: float,
+    n_plies: int,
+    ply_thickness: float,
+    params: GateParameters,
+) -> float:
+    """Penetration-gate knockdown from wrinkle geometry.
+
+    Derives the two model inputs from the geometry on the conventions the
+    gate was calibrated with (VALIDATION_DATA section 2.7): the peak
+    misalignment ``theta_max = arctan(2*pi*A/lambda)`` and the penetration
+    ``D/T = A / (n_plies * ply_thickness)``, with ``A`` the wrinkle
+    half-amplitude.
+
+    Parameters
+    ----------
+    amplitude : float
+        Wrinkle half-amplitude *A* (mm).
+    wavelength : float
+        Wrinkle wavelength *lambda* (mm).
+    n_plies : int
+        Number of plies in the laminate.
+    ply_thickness : float
+        Ply thickness (mm).
+    params : GateParameters
+        Calibrated gate constants for the material realization.
+
+    Returns
+    -------
+    float
+        Predicted knockdown.
+    """
+    if wavelength <= 0 or ply_thickness <= 0 or n_plies <= 0:
+        raise ValueError(
+            "wavelength, ply_thickness, n_plies must all be > 0"
+        )
+    theta_deg = math.degrees(math.atan(2.0 * math.pi * amplitude / wavelength))
+    dt = amplitude / (n_plies * ply_thickness)
+    return float(penetration_gate_kd(theta_deg, dt, params))
+
+
 def calibrate_gate(theta_deg, dt, kd, *, name: str = "gate") -> GateParameters:
     """Least-squares-fit the gate parameters to measured (theta, D/T, KD).
 
