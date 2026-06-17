@@ -77,6 +77,7 @@ validation/*
 !validation/tune_gf.py
 !validation/diag_crest_pocket.py
 !validation/d3_two_parameter.py
+!validation/d2_kink_micromechanics.py
 !validation/li_load_displacement.png
 !validation/li_mesh_F.png
 !validation/li_mesh_E.png
