@@ -2495,8 +2495,10 @@ class WrinkleAnalysis:
             results.effective_angle_rad = theta_eff
             results.gamma_Y_eff = cfg.penetration_gate.gamma_Y
             results.analytical_knockdown = float(kd_gate)
-            ref = (cfg.material.Xt if cfg.loading == "tension"
-                   else cfg.material.Xc)
+            material = cfg.material
+            assert material is not None  # set by AnalysisConfig.__post_init__
+            ref = (material.Xt if cfg.loading == "tension"
+                   else material.Xc)
             results.analytical_strength_MPa = float(ref) * float(kd_gate)
             return
 
@@ -2951,6 +2953,8 @@ class WrinkleAnalysis:
             width=cfg.width,
             center=cfg.domain_length / 2.0,
         )
+        # Both interface indices are populated by AnalysisConfig.__post_init__.
+        assert cfg.interface_1 is not None and cfg.interface_2 is not None
         flat_config = WrinkleConfiguration.from_morphology_name(
             "stack", flat_profile,
             interface1=cfg.interface_1,
@@ -2977,7 +2981,10 @@ class WrinkleAnalysis:
         mesh's per-element material override is cleared afterwards so the
         subsequent linear field/failure/retention pass is unaffected.
         """
-        from wrinklefe.solver.progressive_damage import ProgressiveDamageSolver
+        from wrinklefe.solver.progressive_damage import (
+            ProgressiveDamageResult,
+            ProgressiveDamageSolver,
+        )
 
         cfg = self.config
         # Auto-size the strain ramp to bracket fibre failure (~1.8x the
@@ -2991,7 +2998,7 @@ class WrinkleAnalysis:
         sign = -1.0 if cfg.applied_strain <= 0 else 1.0
         applied = sign * abs(target)
 
-        def _run(m: MeshData) -> object:
+        def _run(m: MeshData) -> ProgressiveDamageResult:
             return ProgressiveDamageSolver(
                 m, laminate,
                 applied_strain=applied,
@@ -3071,8 +3078,8 @@ class WrinkleAnalysis:
             weight = compute_resin_blend(mesh, spec)
             mesh.resin_blend = weight
             blend_mats: dict[int, OrthotropicMaterial] = {}
-            for e in np.flatnonzero(weight > 0.0):
-                e = int(e)
+            for e_np in np.flatnonzero(weight > 0.0):
+                e = int(e_np)
                 ply_mat = laminate.plies[int(mesh.ply_ids[e])].material
                 blend_mats[e] = ply_mat.blend(
                     resin_material, float(weight[e])

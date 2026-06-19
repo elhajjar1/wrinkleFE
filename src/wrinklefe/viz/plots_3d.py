@@ -58,12 +58,27 @@ from wrinklefe.viz.style import (
 )
 
 if TYPE_CHECKING:
-    from wrinklefe.core.mesh import MeshData
+    from typing import Protocol
 
-    # wrinklefe.solver.buckling does not exist yet; the annotation-only
-    # import documents the intended result type for plot_buckling_mode.
-    from wrinklefe.solver.buckling import BucklingResult  # type: ignore[import-not-found]
+    from wrinklefe.core.mesh import MeshData
     from wrinklefe.solver.results import FieldResults
+
+    class BucklingModeResult(Protocol):
+        """Structural interface ``plot_buckling_mode_3d`` requires.
+
+        The shipped :class:`wrinklefe.solver.buckling.BucklingResult`
+        carries only load factors — the D.4 linearized solver runs with
+        ``return_eigenvectors=False`` and never extracts mode shapes.
+        This viz targets a richer result that also exposes the mesh and
+        per-mode displacement fields; the protocol documents that intended
+        contract without forcing the solver to compute eigenvectors.
+        """
+
+        mesh: MeshData
+        n_modes: int
+        eigenvalues: np.ndarray
+
+        def mode_displacement(self, mode: int, scale: float) -> np.ndarray: ...
 
 
 # ======================================================================
@@ -602,7 +617,7 @@ def plot_stress_contour_3d(
 # ======================================================================
 
 def plot_buckling_mode(
-    buckling_result: BucklingResult,
+    buckling_result: BucklingModeResult,
     mode: int = 0,
     scale: float = 1.0,
     ax: Axes | None = None,
@@ -617,8 +632,9 @@ def plot_buckling_mode(
 
     Parameters
     ----------
-    buckling_result : BucklingResult
-        Results from a linear buckling analysis.
+    buckling_result : BucklingModeResult
+        Results from a linear buckling analysis exposing the mesh, mode
+        count, eigenvalues, and per-mode displacement fields.
     mode : int, optional
         Mode index (0-based). Default is 0 (critical mode).
     scale : float, optional

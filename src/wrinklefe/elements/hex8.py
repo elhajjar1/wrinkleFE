@@ -499,7 +499,8 @@ class Hex8Element:
 
             Kg += (G.T @ Sigma @ G) * detJ * w
 
-        return 0.5 * (Kg + Kg.T)  # symmetrize against round-off
+        K_geo: np.ndarray = 0.5 * (Kg + Kg.T)  # symmetrize against round-off
+        return K_geo
 
     def stress_at_gauss_points(self, u_elem: np.ndarray) -> np.ndarray:
         """Compute stress at all Gauss points from element nodal displacements.

@@ -236,6 +236,8 @@ class ProgressiveDamageSolver:
                     verbose=False,
                 )
                 if self.crack_band:
+                    # Both arrays are allocated whenever crack_band is set.
+                    assert r_hist is not None and char_len is not None
                     new_failures, max_fi = self._crack_band_update(
                         field, override, r_hist, char_len, static,
                     )
@@ -265,10 +267,11 @@ class ProgressiveDamageSolver:
 
         peak, failed_at = self._resolve_peak(elastic, history)
 
-        n_failed = (
-            int((r_hist > 1.0).sum()) if self.crack_band
-            else len(degraded_families)
-        )
+        if self.crack_band:
+            assert r_hist is not None
+            n_failed = int((r_hist > 1.0).sum())
+        else:
+            n_failed = len(degraded_families)
         return ProgressiveDamageResult(
             peak_stress=peak,
             history=history,
@@ -282,7 +285,8 @@ class ProgressiveDamageSolver:
         """Per-element extent in x (mm) — the crack-band length for the
         fibre-compression kink mode (band normal to the fibre/x axis)."""
         xe = self.mesh.nodes[self.mesh.elements][:, :, 0]  # (n_elem, 8)
-        return xe.max(axis=1) - xe.min(axis=1)
+        extent: np.ndarray = xe.max(axis=1) - xe.min(axis=1)
+        return extent
 
     def _crack_band_update(
         self,
@@ -440,8 +444,11 @@ class ProgressiveDamageSolver:
         override: dict[int, OrthotropicMaterial],
         degraded_families: dict[int, set[str]],
         static: StaticSolver,
-    ) -> int:
-        """Detect and degrade newly-failed elements; return the count.
+    ) -> tuple[int, float]:
+        """Detect and degrade newly-failed elements.
+
+        Returns the number of newly-degraded elements and the global
+        maximum failure index of the current stress field.
 
         Evaluates LaRC05 on the current stress field using each element's
         *current* material (override -> resin -> ply), then for every
@@ -477,8 +484,8 @@ class ProgressiveDamageSolver:
         candidates = np.flatnonzero(elem_max_fi >= self.fi_threshold)
 
         n_new = 0
-        for e in candidates:
-            e = int(e)
+        for e_np in candidates:
+            e = int(e_np)
             family = _mode_family(str(modes[e, gp_max[e]]))
             seen = degraded_families.setdefault(e, set())
             if family in seen:

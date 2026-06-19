@@ -158,7 +158,8 @@ def compute_resin_mask(mesh: MeshData, spec: ResinPocketSpec) -> np.ndarray:
     half_height = spec.h_center * 0.5 * (1.0 + np.cos(math.pi * arg))
 
     within_z = np.abs(ze - spec.z_center) <= half_height
-    return within_x & within_z
+    mask: np.ndarray = within_x & within_z
+    return mask
 
 
 def compute_resin_blend(mesh: MeshData, spec: ResinPocketSpec) -> np.ndarray:
@@ -211,7 +212,7 @@ def compute_resin_blend(mesh: MeshData, spec: ResinPocketSpec) -> np.ndarray:
     # Longitudinal taper reuses the raised-cosine envelope, normalised.
     w_x = 0.5 * (1.0 + np.cos(math.pi * arg))       # 1 at crest, 0 at ends
 
-    weight = w_x * w_z
+    weight: np.ndarray = w_x * w_z
     weight[~within_x] = 0.0
     weight[dz > half_height] = 0.0
     return weight

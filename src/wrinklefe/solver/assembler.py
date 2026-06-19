@@ -348,11 +348,11 @@ class GlobalAssembler:
         coo_rows = np.empty(n_elem * entries, dtype=np.intp)
         coo_cols = np.empty(n_elem * entries, dtype=np.intp)
         coo_vals = np.empty(n_elem * entries, dtype=np.float64)
-        local_ii, local_jj = np.meshgrid(
+        grid_ii, grid_jj = np.meshgrid(
             np.arange(24), np.arange(24), indexing="ij"
         )
-        local_ii = local_ii.ravel()
-        local_jj = local_jj.ravel()
+        local_ii = grid_ii.ravel()
+        local_jj = grid_jj.ravel()
 
         for e in range(n_elem):
             dofs = self._hex8_dofs[e]
