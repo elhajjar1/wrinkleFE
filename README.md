@@ -1,6 +1,14 @@
 # WrinkleFE
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![GitHub stars](https://img.shields.io/github/stars/elhajjar1/wrinkleFE?style=social)](https://github.com/elhajjar1/wrinkleFE)
+
 An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fiber waviness defects.
+
+> ⭐ **Found WrinkleFE useful?** Please [star the repository](https://github.com/elhajjar1/wrinkleFE) and [cite it](#citation) — it's a free academic project, and stars and citations are what keep it supported.
 
 ## Try it in your browser
 
@@ -61,7 +69,7 @@ allowables), enter a layup in contracted notation (e.g. `[0/45/-45/90]_3s`),
 set the wrinkle geometry, and click **Run analysis**. The app ships with
 per-morphology schematic cartoons, a live wrinkle preview, and the same
 analytical + FE pipeline as the Python API. See
-[`DEPLOYMENT_STREAMLIT.md`](DEPLOYMENT_STREAMLIT.md) for the full feature
+[`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for the full feature
 tour and instructions for self-hosting.
 
 To run the app locally:
@@ -84,6 +92,15 @@ config = AnalysisConfig(
 result = WrinkleAnalysis(config).run()
 print(result.summary())
 ```
+
+Runnable scripts for the common workflows — parametric sweeps,
+morphology comparison, CZM delamination, export round-trips, custom
+materials — live in [`examples/`](examples/); each states its expected
+runtime and output, and CI executes them all so they stay current.
+The full API reference and user guide are built from [`docs/`](docs/)
+with Sphinx (`pip install -e ".[docs]" && sphinx-build -W docs
+docs/_build`) and published at
+<https://wrinklefe.readthedocs.io>.
 
 `amplitude` (`A`) is the **half-amplitude** [mm]: the peak displacement
 of the wrinkled mid-surface from the flat (unwrinkled) reference plane,
@@ -221,6 +238,14 @@ compact. The CSV is one row per ply with columns `ply_index,
 angle_deg, max_FI, min_RF, critical_mode, critical_criterion`, suitable
 for `pandas.read_csv` or `csv.DictReader`.
 
+Every JSON export carries a `provenance` block recording the installed
+WrinkleFE version (never a hardcoded literal), the Python/numpy/scipy
+versions, the platform, a UTC timestamp, and a solver snapshot — so a
+result file can be audited and reproduced against the validation
+ledger. The NCR validation summary (`build_analysis_summary`) embeds
+the same block, and the top-level `wrinklefe_version` field reflects
+the real installed version.
+
 The Streamlit web app exposes the same exports as **Download results as
 JSON** and **Download per-ply results as CSV** buttons on the Export
 tab.
@@ -257,7 +282,7 @@ data is documented in the accompanying paper:
 
 - Elhajjar, R. (2025). *Fat-tailed failure strength distributions and
   manufacturing defects in advanced composites.* Scientific Reports,
-  15:25977. https://doi.org/10.1038/s41598-025-25977-3
+  15:25977. https://doi.org/10.1038/s41598-025-06693-4
 
 Additional datasets referenced by the model calibration (Mukhopadhyay
 et al., 2015; Li et al., 2026) are cited in [References](#references)
@@ -367,13 +392,23 @@ For graded morphology, the BF knockdown is averaged over the wrinkle profile in 
 
 MIT - see [LICENSE](LICENSE)
 
+## Changelog
+
+Notable changes between versions — including any that shift predictions,
+flagged under a **Numerical results** heading — are recorded in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Citation
 
-If you use WrinkleFE in your research, please cite:
+If you use WrinkleFE in your research, please cite it. The quickest way is the
+**"Cite this repository"** button on the
+[GitHub page](https://github.com/elhajjar1/wrinkleFE) — it's generated from
+[`CITATION.cff`](CITATION.cff) and exports APA or BibTeX. The full software
+citation:
 
 > Elhajjar, R. (2025). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.0.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/WrinkleFE
 
@@ -392,4 +427,4 @@ If you use WrinkleFE in your research, please cite:
 
 Please also cite the underlying experimental validation data:
 
-> Elhajjar, R. (2025). Fat-tailed failure strength distributions and manufacturing defects in advanced composites. *Scientific Reports*, 15, 25977. https://doi.org/10.1038/s41598-025-25977-3
+> Elhajjar, R. (2025). Fat-tailed failure strength distributions and manufacturing defects in advanced composites. *Scientific Reports*, 15, 25977. https://doi.org/10.1038/s41598-025-06693-4

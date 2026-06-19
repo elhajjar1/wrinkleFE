@@ -20,13 +20,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.mesh import WrinkleMesh
 from wrinklefe.elements.gauss import gauss_points_hex
 from wrinklefe.elements.hex8 import _NODE_COORDS
 from wrinklefe.solver.static import StaticSolver
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

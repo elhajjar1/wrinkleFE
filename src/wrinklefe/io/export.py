@@ -15,11 +15,16 @@ VTK File Formats, Kitware (legacy unstructured grid format).
 from __future__ import annotations
 
 import json
+import platform
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import scipy
+
+from wrinklefe import __version__ as _wrinklefe_version
+from wrinklefe.core.layup import to_contracted_layup
 
 if TYPE_CHECKING:
     from wrinklefe.analysis import AnalysisResults
@@ -29,29 +34,72 @@ if TYPE_CHECKING:
 
 
 # ====================================================================== #
+# Provenance — shared by every export path so they can't drift
+# ====================================================================== #
+
+def build_provenance(solver: dict | None = None) -> dict:
+    """Environment/reproducibility block stamped onto exported results.
+
+    Records the installed WrinkleFE version (never a hardcoded literal —
+    issue #261) alongside the numerics stack and platform, so a results
+    file can support a reproducibility claim against the validation
+    ledger. Shared by :func:`export_results_json` and
+    :func:`build_analysis_summary` so the two paths can never disagree.
+
+    Parameters
+    ----------
+    solver : dict, optional
+        Solver settings snapshot (e.g. ``{"type": "direct"}``) folded
+        into the block under the ``"solver"`` key when provided.
+
+    Returns
+    -------
+    dict
+        JSON-serialisable provenance block.
+    """
+    prov: dict[str, Any] = {
+        "wrinklefe": _wrinklefe_version,
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "scipy": scipy.__version__,
+        "platform": platform.platform(aliased=True, terse=True),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if solver is not None:
+        prov["solver"] = solver
+    return prov
+
+
+# ====================================================================== #
 # JSON export
 # ====================================================================== #
 
-def export_results_json(
-    results: "AnalysisResults",
-    filepath: Union[str, Path],
-) -> None:
-    """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON.
+def analysis_results_to_dict(results: AnalysisResults) -> dict:
+    """Serialise an :class:`~wrinklefe.analysis.AnalysisResults` to a dict.
 
-    Serialises the configuration, analytical predictions, and summary
-    statistics.  Large array data (FE fields, Monte Carlo samples) is
-    summarised rather than written in full.
+    The per-run schema used by :func:`export_results_json` — shared so
+    batch consumers (the CLI ``sweep``/``compare`` ``--output-json``
+    arrays, issue #266) stay schema-identical with single-run exports.
+    Large array data (FE fields, Monte Carlo samples) is summarised
+    rather than written in full.
 
     Parameters
     ----------
     results : AnalysisResults
-        The analysis results to export.
-    filepath : str or Path
-        Output JSON file path.
+        The analysis results to serialise.
+
+    Returns
+    -------
+    dict
+        JSON-serialisable per-run dictionary.
     """
     cfg = results.config
     data: dict = {
-        "wrinklefe_version": "0.1.0",
+        # Real installed version, not a literal (issue #261). Retained
+        # as a top-level key for backward compatibility; the full
+        # environment lives in "provenance" below.
+        "wrinklefe_version": _wrinklefe_version,
+        "provenance": build_provenance(solver={"type": cfg.solver}),
         "configuration": {
             "amplitude_mm": cfg.amplitude,
             "wavelength_mm": cfg.wavelength,
@@ -126,6 +174,25 @@ def export_results_json(
             "mean_angle_rad": float(jg.mean_angle),
         }
 
+    return data
+
+
+def export_results_json(
+    results: AnalysisResults,
+    filepath: str | Path,
+) -> None:
+    """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON.
+
+    Thin writer over :func:`analysis_results_to_dict`.
+
+    Parameters
+    ----------
+    results : AnalysisResults
+        The analysis results to export.
+    filepath : str or Path
+        Output JSON file path.
+    """
+    data = analysis_results_to_dict(results)
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -136,9 +203,9 @@ def export_results_json(
 # ====================================================================== #
 
 def export_abaqus_inp(
-    mesh: "MeshData",
-    laminate: "Laminate",
-    filepath: Union[str, Path],
+    mesh: MeshData,
+    laminate: Laminate,
+    filepath: str | Path,
 ) -> None:
     """Export mesh and laminate data to Abaqus ``.inp`` format.
 
@@ -182,7 +249,7 @@ def export_abaqus_inp(
             elem_ids = mesh.elements_in_ply(ply_idx)
             if elem_ids.size == 0:
                 continue
-            f.write(f"**\n")
+            f.write("**\n")
             f.write(f"*ELEMENT, TYPE=C3D8, ELSET=PLY_{ply_idx}\n")
             for eid in elem_ids:
                 conn = mesh.elements[eid] + 1  # Convert to 1-based
@@ -209,9 +276,9 @@ def export_abaqus_inp(
 # ====================================================================== #
 
 def export_vtk(
-    mesh: "MeshData",
-    field_results: Optional["FieldResults"],
-    filepath: Union[str, Path],
+    mesh: MeshData,
+    field_results: FieldResults | None,
+    filepath: str | Path,
 ) -> None:
     """Export mesh and field data to VTK legacy format for ParaView.
 
@@ -400,7 +467,7 @@ def recommend_disposition(
     knockdown: float,
     damage_index: float,
     *,
-    loading: Optional[str] = None,
+    loading: str | None = None,
 ) -> dict:
     """Classify wrinkle severity and recommend a (non-binding) MRB path.
 
@@ -491,10 +558,10 @@ def build_analysis_summary(
     *,
     defect: dict,
     engineering: dict,
-    reference: Optional[str] = None,
-    prepared_by: Optional[str] = None,
-    notes: Optional[str] = None,
-    tool_version: Optional[str] = None,
+    reference: str | None = None,
+    prepared_by: str | None = None,
+    notes: str | None = None,
+    tool_version: str | None = None,
 ) -> dict:
     """Assemble a wrinkle-analysis validation summary for an NCR.
 
@@ -525,7 +592,9 @@ def build_analysis_summary(
     notes : str, optional
         Free-text engineering notes.
     tool_version : str, optional
-        WrinkleFE version string, recorded for traceability.
+        WrinkleFE version string, recorded for traceability. Defaults to
+        the real installed version (``wrinklefe.__version__``); pass an
+        explicit value only to override it (e.g. in tests).
 
     Returns
     -------
@@ -533,7 +602,7 @@ def build_analysis_summary(
         The structured validation summary.  JSON-serialisable.
     """
 
-    def _clean(val: Optional[str], default: str) -> str:
+    def _clean(val: str | None, default: str) -> str:
         if val is None or (isinstance(val, str) and not val.strip()):
             return default
         return str(val).strip()
@@ -547,7 +616,7 @@ def build_analysis_summary(
     disposition = recommend_disposition(kd, di, loading=loading)
 
     fe = engineering.get("fe") or None
-    fe_block: Optional[dict] = None
+    fe_block: dict | None = None
     criteria = [
         "WrinkleFE closed-form knockdown model (effective fibre-"
         "misalignment / morphology-factor formulation) — analytical "
@@ -590,8 +659,11 @@ def build_analysis_summary(
             "date": date,
             "reference": _clean(reference, "(not specified)"),
             "prepared_by": _clean(prepared_by, "(not specified)"),
-            "tool_version": _clean(tool_version, "(unspecified)"),
+            # Default to the real installed version; the parameter is
+            # kept as an explicit override (e.g. for tests) — issue #261.
+            "tool_version": _clean(tool_version, _wrinklefe_version),
         },
+        "provenance": build_provenance(),
         "wrinkle_geometry": {
             "amplitude_mm": defect.get("amplitude_mm"),
             "wavelength_mm": defect.get("wavelength_mm"),
@@ -604,6 +676,7 @@ def build_analysis_summary(
             "ply_thickness_mm": defect.get("ply_thickness_mm"),
             "n_plies": defect.get("n_plies"),
             "layup_deg": defect.get("layup"),
+            "layup_contracted": _contracted_or_none(defect.get("layup")),
         },
         "engineering_analysis": {
             "analytical_knockdown": kd,
@@ -643,6 +716,16 @@ def build_analysis_summary(
         ),
     }
     return summary
+
+
+def _contracted_or_none(layup: Any) -> str | None:
+    """Contracted notation for an angle list, or ``None`` if unavailable."""
+    if not layup:
+        return None
+    try:
+        return to_contracted_layup(layup)
+    except (ValueError, TypeError):
+        return None
 
 
 def _fmt(value: Any, default: str = "—") -> str:
@@ -705,7 +788,12 @@ def render_summary_markdown(summary: dict) -> str:
         f"- Ply thickness: {_fmt(lam['ply_thickness_mm'])} mm  "
         f"·  Plies: {_fmt(lam['n_plies'])}"
     )
-    lines.append(f"- Layup (deg): {_fmt(lam['layup_deg'])}")
+    contracted = lam.get("layup_contracted")
+    if contracted:
+        lines.append(f"- Layup: {contracted}")
+        lines.append(f"- Layup (deg, expanded): {_fmt(lam['layup_deg'])}")
+    else:
+        lines.append(f"- Layup (deg): {_fmt(lam['layup_deg'])}")
     lines.append("")
     lines.append("## 3. Engineering analysis (WrinkleFE)")
     lines.append("")
@@ -914,7 +1002,7 @@ def render_summary_pdf(summary: dict) -> bytes:
             )
 
     buf = _io.BytesIO()
-    fig: Optional[Any] = None
+    fig: Any | None = None
     cursor = 0.0  # inches consumed from the top of the usable area
 
     def _new_page(pdf: Any) -> Any:
@@ -964,7 +1052,7 @@ def render_summary_pdf(summary: dict) -> bytes:
 
 def export_summary(
     summary: dict,
-    filepath: Union[str, Path],
+    filepath: str | Path,
     *,
     fmt: str = "md",
 ) -> None:

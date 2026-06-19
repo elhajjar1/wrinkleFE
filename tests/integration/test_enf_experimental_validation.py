@@ -140,7 +140,6 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for CI/test runs.
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-import pytest  # noqa: E402
 
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface  # noqa: E402
 from wrinklefe.core.laminate import Laminate, Ply  # noqa: E402
@@ -153,7 +152,6 @@ from wrinklefe.elements.cohesive8 import (  # noqa: E402
 from wrinklefe.solver.assembler import GlobalAssembler  # noqa: E402
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler  # noqa: E402
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver  # noqa: E402
-
 
 # ----------------------------------------------------------------------
 # Experimental data (NASA/TM-2020-220498 Section 4.15)

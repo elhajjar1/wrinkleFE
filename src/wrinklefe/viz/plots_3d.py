@@ -42,16 +42,16 @@ Elhajjar, R. (2025). Scientific Reports, 15, 25977.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, cast
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.axes import Axes
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # type: ignore[import-untyped]
+from mpl_toolkits.mplot3d.axes3d import Axes3D  # type: ignore[import-untyped]
 
 from wrinklefe.viz.style import (
     FIGSIZE_DOUBLE_COLUMN,
-    colorbar_setup,
     ensure_axes,
     set_axes_equal_aspect,
     set_publication_style,
@@ -59,7 +59,10 @@ from wrinklefe.viz.style import (
 
 if TYPE_CHECKING:
     from wrinklefe.core.mesh import MeshData
-    from wrinklefe.solver.buckling import BucklingResult
+
+    # wrinklefe.solver.buckling does not exist yet; the annotation-only
+    # import documents the intended result type for plot_buckling_mode.
+    from wrinklefe.solver.buckling import BucklingResult  # type: ignore[import-not-found]
     from wrinklefe.solver.results import FieldResults
 
 
@@ -96,7 +99,7 @@ _HEX_FACE_SIDE = np.array([0, 1, 0, 1, 0, 1], dtype=np.int64)  # 0 = min, 1 = ma
 # Helper functions
 # ======================================================================
 
-def _sample_elements(mesh: "MeshData", max_elements: int = 2000) -> np.ndarray:
+def _sample_elements(mesh: MeshData, max_elements: int = 2000) -> np.ndarray:
     """Select a subset of element indices for rendering.
 
     For large meshes, rendering every element is prohibitively slow.
@@ -121,7 +124,7 @@ def _sample_elements(mesh: "MeshData", max_elements: int = 2000) -> np.ndarray:
     return np.arange(0, n_elem, step)
 
 
-def _is_full_structured_set(mesh: "MeshData", elem_indices: np.ndarray) -> bool:
+def _is_full_structured_set(mesh: MeshData, elem_indices: np.ndarray) -> bool:
     """Return True if ``elem_indices`` covers the full structured mesh.
 
     The fast structured-mesh boundary-culling shortcut is only valid when
@@ -147,7 +150,7 @@ def _is_full_structured_set(mesh: "MeshData", elem_indices: np.ndarray) -> bool:
     return bool(np.array_equal(elem_indices, np.arange(expected)))
 
 
-def _structured_boundary_mask(mesh: "MeshData") -> np.ndarray:
+def _structured_boundary_mask(mesh: MeshData) -> np.ndarray:
     """Boolean mask over ``(n_elements, 6)`` marking boundary faces.
 
     Uses the structured-grid rule: face ``f`` of element ``(i, j, k)`` is
@@ -179,11 +182,11 @@ def _structured_boundary_mask(mesh: "MeshData") -> np.ndarray:
         coord_on_axis == 0,
         coord_on_axis == max_on_axis[np.newaxis, :],
     )
-    return boundary
+    return np.asarray(boundary)
 
 
 def _general_boundary_mask(
-    mesh: "MeshData", elem_indices: np.ndarray
+    mesh: MeshData, elem_indices: np.ndarray
 ) -> np.ndarray:
     """Boolean mask over ``(len(elem_indices), 6)`` for arbitrary subsets.
 
@@ -207,15 +210,15 @@ def _general_boundary_mask(
         flat_keys, axis=0, return_inverse=True, return_counts=True
     )
     boundary_flat = counts[inverse] == 1
-    return boundary_flat.reshape(elem_indices.size, 6)
+    return np.asarray(boundary_flat.reshape(elem_indices.size, 6))
 
 
 def _gather_boundary_faces(
-    mesh: "MeshData",
+    mesh: MeshData,
     elem_indices: np.ndarray,
     nodes: np.ndarray,
-    elem_scalar: Optional[np.ndarray] = None,
-) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    elem_scalar: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray | None]:
     """Return boundary-face vertices (and optional per-face scalars).
 
     Combines structured-mesh culling (when the full mesh is selected) with
@@ -262,7 +265,7 @@ def _gather_boundary_faces(
 
     face_verts = face_verts_all[mask]                 # (n_bnd, 4, 3)
 
-    face_scalar: Optional[np.ndarray] = None
+    face_scalar: np.ndarray | None = None
     if elem_scalar is not None:
         if _is_full_structured_set(mesh, elem_indices):
             elem_vals = elem_scalar
@@ -282,8 +285,8 @@ def _gather_boundary_faces(
 # ======================================================================
 
 def plot_mesh_3d(
-    mesh: "MeshData",
-    ax: Optional[Axes] = None,
+    mesh: MeshData,
+    ax: Axes | None = None,
     max_elements: int = 2000,
     show_edges: bool = True,
     face_alpha: float = 0.15,
@@ -313,6 +316,9 @@ def plot_mesh_3d(
     """
     set_publication_style()
     ax = ensure_axes(ax, figsize=FIGSIZE_DOUBLE_COLUMN, projection="3d")
+    # ``ax`` is a 3-D axes (projection="3d"); the cast exposes the
+    # 3-D-only API that the base-Axes stubs do not cover.
+    ax3d = cast(Axes3D, ax)
 
     if mesh.n_elements == 0:
         return ax
@@ -328,7 +334,7 @@ def plot_mesh_3d(
         edgecolors=edge_color,
         linewidths=0.2,
     )
-    ax.add_collection3d(poly)
+    ax3d.add_collection3d(poly)
 
     # Set axis limits from node extents
     mins = mesh.nodes.min(axis=0)
@@ -336,14 +342,14 @@ def plot_mesh_3d(
     pad = 0.05 * (maxs - mins + 1e-10)
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
-    ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    ax3d.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
     set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
-    ax.set_zlabel("$z$ (mm)", labelpad=8)
+    ax3d.set_zlabel("$z$ (mm)", labelpad=8)
     ax.set_title("3D Mesh")
-    ax.view_init(elev=25, azim=-60)
+    ax3d.view_init(elev=25, azim=-60)
 
     return ax
 
@@ -353,12 +359,12 @@ def plot_mesh_3d(
 # ======================================================================
 
 def plot_displacement_3d(
-    field_results: "FieldResults",
+    field_results: FieldResults,
     component: int = 2,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     max_elements: int = 2000,
     scale: float = 1.0,
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
 ) -> Axes:
     """Plot the deformed mesh colored by a displacement component.
 
@@ -385,6 +391,8 @@ def plot_displacement_3d(
     """
     set_publication_style()
     ax = ensure_axes(ax, figsize=FIGSIZE_DOUBLE_COLUMN, projection="3d")
+    # See plot_mesh_3d: cast exposes the 3-D-only Axes3D API.
+    ax3d = cast(Axes3D, ax)
 
     mesh = field_results.mesh
     disp = field_results.displacement
@@ -434,7 +442,7 @@ def plot_displacement_3d(
         edgecolors="0.5",
         linewidths=0.1,
     )
-    ax.add_collection3d(poly)
+    ax3d.add_collection3d(poly)
 
     # Axis limits from deformed mesh
     mins = deformed_nodes.min(axis=0)
@@ -442,12 +450,12 @@ def plot_displacement_3d(
     pad = 0.05 * (maxs - mins + 1e-10)
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
-    ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    ax3d.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
     set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
-    ax.set_zlabel("$z$ (mm)", labelpad=8)
+    ax3d.set_zlabel("$z$ (mm)", labelpad=8)
 
     scale_str = f" (x{scale:.0f})" if scale != 1.0 else ""
     ax.set_title(f"Displacement {comp_label}{scale_str}")
@@ -456,11 +464,12 @@ def plot_displacement_3d(
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
     sm.set_array([])
     fig = ax.get_figure()
+    assert fig is not None  # an Axes always belongs to a figure
     cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
     cbar.set_label(f"{comp_label} (mm)", fontsize=9)
     cbar.ax.tick_params(labelsize=8)
 
-    ax.view_init(elev=25, azim=-60)
+    ax3d.view_init(elev=25, azim=-60)
 
     return ax
 
@@ -470,12 +479,12 @@ def plot_displacement_3d(
 # ======================================================================
 
 def plot_stress_contour_3d(
-    field_results: "FieldResults",
+    field_results: FieldResults,
     component: int = 0,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     max_elements: int = 2000,
     coord: str = "global",
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
 ) -> Axes:
     """Plot stress contour on the deformed mesh.
 
@@ -506,6 +515,8 @@ def plot_stress_contour_3d(
     """
     set_publication_style()
     ax = ensure_axes(ax, figsize=FIGSIZE_DOUBLE_COLUMN, projection="3d")
+    # See plot_mesh_3d: cast exposes the 3-D-only Axes3D API.
+    ax3d = cast(Axes3D, ax)
 
     mesh = field_results.mesh
 
@@ -558,29 +569,30 @@ def plot_stress_contour_3d(
         edgecolors="0.5",
         linewidths=0.1,
     )
-    ax.add_collection3d(poly)
+    ax3d.add_collection3d(poly)
 
     mins = deformed_nodes.min(axis=0)
     maxs = deformed_nodes.max(axis=0)
     pad = 0.05 * (maxs - mins + 1e-10)
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
-    ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    ax3d.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
     set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
-    ax.set_zlabel("$z$ (mm)", labelpad=8)
+    ax3d.set_zlabel("$z$ (mm)", labelpad=8)
     ax.set_title(f"Stress {comp_label} ({coord})")
 
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
     sm.set_array([])
     fig = ax.get_figure()
+    assert fig is not None  # an Axes always belongs to a figure
     cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
     cbar.set_label(f"{comp_label} (MPa)", fontsize=9)
     cbar.ax.tick_params(labelsize=8)
 
-    ax.view_init(elev=25, azim=-60)
+    ax3d.view_init(elev=25, azim=-60)
 
     return ax
 
@@ -590,12 +602,12 @@ def plot_stress_contour_3d(
 # ======================================================================
 
 def plot_buckling_mode(
-    buckling_result: "BucklingResult",
+    buckling_result: BucklingResult,
     mode: int = 0,
     scale: float = 1.0,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     max_elements: int = 2000,
-    cmap: Optional[str] = None,
+    cmap: str | None = None,
 ) -> Axes:
     """Plot a buckling mode shape on the deformed mesh.
 
@@ -626,11 +638,13 @@ def plot_buckling_mode(
     """
     set_publication_style()
     ax = ensure_axes(ax, figsize=FIGSIZE_DOUBLE_COLUMN, projection="3d")
+    # See plot_mesh_3d: cast exposes the 3-D-only Axes3D API.
+    ax3d = cast(Axes3D, ax)
 
     mesh = buckling_result.mesh
 
     if mesh.n_elements == 0 or buckling_result.n_modes == 0:
-        ax.text2D(
+        ax3d.text2D(
             0.5, 0.5, "No buckling modes available",
             transform=ax.transAxes, ha="center", va="center",
             fontsize=10, color="0.5",
@@ -638,7 +652,7 @@ def plot_buckling_mode(
         return ax
 
     if mode < 0 or mode >= buckling_result.n_modes:
-        ax.text2D(
+        ax3d.text2D(
             0.5, 0.5, f"Mode {mode} out of range (0-{buckling_result.n_modes - 1})",
             transform=ax.transAxes, ha="center", va="center",
             fontsize=10, color="0.5",
@@ -683,19 +697,19 @@ def plot_buckling_mode(
         edgecolors="0.5",
         linewidths=0.1,
     )
-    ax.add_collection3d(poly)
+    ax3d.add_collection3d(poly)
 
     mins = deformed_nodes.min(axis=0)
     maxs = deformed_nodes.max(axis=0)
     pad = 0.05 * (maxs - mins + 1e-10)
     ax.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
-    ax.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    ax3d.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
     set_axes_equal_aspect(ax, mins, maxs)
 
     ax.set_xlabel("$x$ (mm)", labelpad=8)
     ax.set_ylabel("$y$ (mm)", labelpad=8)
-    ax.set_zlabel("$z$ (mm)", labelpad=8)
+    ax3d.set_zlabel("$z$ (mm)", labelpad=8)
 
     eigenvalue = buckling_result.eigenvalues[mode]
     ax.set_title(
@@ -705,11 +719,12 @@ def plot_buckling_mode(
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
     sm.set_array([])
     fig = ax.get_figure()
+    assert fig is not None  # an Axes always belongs to a figure
     cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
     cbar.set_label("$u_z$ (mm, scaled)", fontsize=9)
     cbar.ax.tick_params(labelsize=8)
 
-    ax.view_init(elev=25, azim=-60)
+    ax3d.view_init(elev=25, azim=-60)
 
     return ax
 
@@ -738,7 +753,9 @@ def _require_pyvista():
         If PyVista is not installed.
     """
     try:
-        import pyvista as pv  # type: ignore[import-untyped]
+        # Both ignore codes are needed: pyvista ships no stubs where it
+        # is installed (CI) and may be absent entirely (pared-down envs).
+        import pyvista as pv  # type: ignore[import-untyped, import-not-found]
     except ImportError as exc:  # pragma: no cover - exercised in sparse envs
         raise ImportError(
             "PyVista is required for 3D cohesive-zone visualizations. "

@@ -12,14 +12,10 @@ References
 
 from __future__ import annotations
 
-import warnings
-
-import numpy as np
 import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
-
 
 # ======================================================================
 # Fixtures

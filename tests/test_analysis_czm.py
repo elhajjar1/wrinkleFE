@@ -16,11 +16,9 @@ from __future__ import annotations
 import dataclasses
 
 import numpy as np
-import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
-
 
 # ----------------------------------------------------------------------
 # Shared fixtures
@@ -79,7 +77,7 @@ class TestEnableCzmEndToEnd:
             f"NR solver did not converge "
             f"(czm_converged={result.czm_converged}); "
             f"load_displacement shape="
-            f"{None if result.czm_load_displacement is None else result.czm_load_displacement.shape}"
+            f"{getattr(result.czm_load_displacement, 'shape', None)}"
         )
 
         # CZM fields populated with non-trivial damage.
@@ -205,8 +203,8 @@ class TestCzmInterfaceResolution:
         analysis = WrinkleAnalysis(cfg)
         # Don't run the full solve — just inspect the resolver.
         laminate = analysis._build_laminate()
-        from wrinklefe.core.wrinkle import GaussianSinusoidal
         from wrinklefe.core.morphology import WrinkleConfiguration
+        from wrinklefe.core.wrinkle import GaussianSinusoidal
 
         profile = GaussianSinusoidal(
             amplitude=cfg.amplitude,
@@ -246,8 +244,8 @@ class TestCzmInterfaceResolution:
         cfg = _czm_config(czm_interfaces="all")
         analysis = WrinkleAnalysis(cfg)
         laminate = analysis._build_laminate()
-        from wrinklefe.core.wrinkle import GaussianSinusoidal
         from wrinklefe.core.morphology import WrinkleConfiguration
+        from wrinklefe.core.wrinkle import GaussianSinusoidal
 
         profile = GaussianSinusoidal(
             amplitude=cfg.amplitude, wavelength=cfg.wavelength,
@@ -269,8 +267,8 @@ class TestCzmInterfaceResolution:
         cfg = _czm_config(czm_interfaces=[2, 5, 9])
         analysis = WrinkleAnalysis(cfg)
         laminate = analysis._build_laminate()
-        from wrinklefe.core.wrinkle import GaussianSinusoidal
         from wrinklefe.core.morphology import WrinkleConfiguration
+        from wrinklefe.core.wrinkle import GaussianSinusoidal
 
         profile = GaussianSinusoidal(
             amplitude=cfg.amplitude, wavelength=cfg.wavelength,

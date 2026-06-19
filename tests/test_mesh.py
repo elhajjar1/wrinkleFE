@@ -4,11 +4,11 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.laminate import Laminate
-from wrinklefe.core.wrinkle import GaussianSinusoidal
-from wrinklefe.core.morphology import WrinkleConfiguration
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.mesh import MeshData, MeshValidationError, WrinkleMesh
+from wrinklefe.core.morphology import WrinkleConfiguration
+from wrinklefe.core.wrinkle import GaussianSinusoidal
 
 
 @pytest.fixture
@@ -295,8 +295,7 @@ class TestWrinkledMesh:
         silently dropped nodes whose perturbed z deviated from the global
         minimum z, leaving only the trough nodes.
         """
-        nx, ny, nz_per_ply = 4, 3, 1
-        nz = small_laminate.n_plies * nz_per_ply
+        nx, ny = 4, 3
         face_nodes = wrinkled_mesh.nodes_on_face("z_min")
         assert len(face_nodes) == (nx + 1) * (ny + 1)
         # The k=0 plane is the first (nx+1)*(ny+1) nodes in canonical order.

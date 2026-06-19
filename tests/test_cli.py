@@ -9,13 +9,11 @@ the configs/kwargs the CLI hands them.
 from __future__ import annotations
 
 import functools
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from wrinklefe.cli import main as cli_main
-
 
 # --------------------------------------------------------------------------- #
 # Helpers
@@ -31,8 +29,6 @@ def _stub_analysis_run():
     :meth:`WrinkleAnalysis.run`).
     """
     captured: dict = {}
-
-    real_init = None  # filled in below
 
     def fake_run(self, analytical_only=None):
         captured["analytical_only"] = analytical_only
@@ -232,6 +228,143 @@ def test_sweep_no_analytical_only_runs_full_fe():
         ])
 
     assert captured["analytical_only"] is False
+
+
+# --------------------------------------------------------------------------- #
+# sweep: input validation and error handling (issue #298)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_unknown_parameter_exits_cleanly(capsys):
+    """A bad --parameter prints a one-line error and exits non-zero —
+    no raw traceback (the AttributeError from parametric_sweep is
+    caught)."""
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "sweep", "--parameter", "not_a_field",
+            "--min", "0.1", "--max", "0.5",
+        ])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "error:" in err and "not_a_field" in err
+    assert "Traceback" not in err
+
+
+def test_sweep_min_not_less_than_max_rejected(capsys):
+    for lo, hi in (("0.5", "0.1"), ("0.2", "0.2")):
+        with pytest.raises(SystemExit) as exc:
+            cli_main([
+                "sweep", "--parameter", "amplitude",
+                "--min", lo, "--max", hi,
+            ])
+        assert exc.value.code == 2
+        assert "--min" in capsys.readouterr().err
+
+
+def test_sweep_steps_below_two_rejected(capsys):
+    for steps in ("1", "0", "-3"):
+        with pytest.raises(SystemExit) as exc:
+            cli_main([
+                "sweep", "--parameter", "amplitude",
+                "--min", "0.1", "--max", "0.5", "--steps", steps,
+            ])
+        assert exc.value.code == 2
+        assert "--steps" in capsys.readouterr().err
+
+
+def test_sweep_validation_runs_before_solve():
+    """A degenerate range is rejected before parametric_sweep is ever
+    called (no compute burned)."""
+    called = {"n": 0}
+
+    def fake_sweep(*a, **k):
+        called["n"] += 1
+        return []
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+        new=staticmethod(fake_sweep),
+    ), pytest.raises(SystemExit):
+        cli_main([
+            "sweep", "--parameter", "amplitude",
+            "--min", "0.5", "--max", "0.1",
+        ])
+    assert called["n"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# sweep/compare: --output-json / --output-csv (issue #266)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_output_csv_and_json(tmp_path, capsys):
+    """A coarse analytical sweep writes a tidy CSV and a JSON array of
+    per-run objects matching the analyze --output-json schema; the
+    stdout table is still printed."""
+    import csv
+    import json
+
+    csv_path = tmp_path / "sweep.csv"
+    json_path = tmp_path / "sweep.json"
+    cli_main([
+        "sweep", "--parameter", "amplitude",
+        "--min", "0.1", "--max", "0.3", "--steps", "3",
+        "--output-csv", str(csv_path),
+        "--output-json", str(json_path),
+    ])
+
+    # stdout table unchanged by default.
+    out = capsys.readouterr().out
+    assert "WrinkleFE Parametric Sweep" in out
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert [r["parameter_name"] for r in rows] == ["amplitude"] * 3
+    assert [float(r["parameter_value"]) for r in rows] == [0.1, 0.2, 0.3]
+    assert all(0.0 < float(r["knockdown"]) <= 1.0 for r in rows)
+    # Full precision in files (more digits than the 4dp stdout table).
+    assert len(rows[0]["knockdown"].split(".")[-1]) > 4
+    # Analytical-only: FE-derived columns are empty, not bogus.
+    assert rows[0]["max_failure_index"] == ""
+
+    arr = json.loads(json_path.read_text())
+    assert len(arr) == 3
+    # Per-run schema parity with analyze --output-json.
+    for entry in arr:
+        assert {"wrinklefe_version", "provenance", "configuration",
+                "analytical_predictions"} <= set(entry)
+    assert [e["configuration"]["amplitude_mm"] for e in arr] == [0.1, 0.2, 0.3]
+
+
+def test_compare_output_csv_and_json(tmp_path):
+    import csv
+    import json
+
+    csv_path = tmp_path / "cmp.csv"
+    json_path = tmp_path / "cmp.json"
+    cli_main([
+        "compare",
+        "--output-csv", str(csv_path),
+        "--output-json", str(json_path),
+    ])
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert [r["morphology"] for r in rows] == ["stack", "convex", "concave"]
+    assert all(r["parameter_name"] == "morphology" for r in rows)
+
+    arr = json.loads(json_path.read_text())
+    assert [e["configuration"]["morphology"] for e in arr] == [
+        "stack", "convex", "concave"
+    ]
+
+
+def test_sweep_without_output_flags_writes_nothing(tmp_path, monkeypatch):
+    """Default behaviour (stdout only) is preserved: no files appear."""
+    monkeypatch.chdir(tmp_path)
+    cli_main([
+        "sweep", "--parameter", "amplitude",
+        "--min", "0.1", "--max", "0.2", "--steps", "2",
+    ])
+    assert list(tmp_path.iterdir()) == []
 
 
 # --------------------------------------------------------------------------- #

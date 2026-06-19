@@ -17,3 +17,10 @@ matplotlib>=3.9,<4
 # Keep versions in sync with the `streamlit` extra in pyproject.toml.
 streamlit>=1.57.0
 plotly>=6.7.0
+
+# --- Optional: acknowledgment-gate usage logging to Google Sheets ---
+# Used by usage_tracking.py. Import is fail-soft: if these are absent or no
+# gcp_service_account secret is configured, the app still runs and logging is
+# silently skipped (see usage_tracking.py and docs/internal/DEPLOYMENT_STREAMLIT.md).
+gspread>=6.0
+google-auth>=2.0

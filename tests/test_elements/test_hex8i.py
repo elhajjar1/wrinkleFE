@@ -9,10 +9,9 @@ import warnings
 import numpy as np
 import pytest
 
+from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.elements.hex8 import Hex8Element
 from wrinklefe.elements.hex8i import Hex8IElement
-from wrinklefe.core.material import OrthotropicMaterial
-
 
 # ======================================================================
 # Fixtures

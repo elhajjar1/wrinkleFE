@@ -18,7 +18,6 @@ import pytest
 from wrinklefe.core.morphology import WrinkleConfiguration, WrinklePlacement
 from wrinklefe.core.wrinkle import GaussianSinusoidal, WrinkleSurface3D
 
-
 # ----------------------------------------------------------------------
 # Legacy reference implementations (verbatim port of the pre-vectorised
 # Python loops). Kept here so the production class can stay clean.
@@ -83,7 +82,10 @@ def _legacy_fiber_angles_at_nodes(
     n_plies: int,
 ) -> np.ndarray:
     n_nodes = len(nodes)
-    angle_sq = np.zeros(n_nodes, dtype=np.float64)
+    # Per-node scalar loop mirroring the composed-field semantics of
+    # fiber_angles_at_nodes (issue #252, "compose then differentiate"):
+    # sum the decayed signed slopes, then take arctan of the magnitude.
+    slope_total = np.zeros(n_nodes, dtype=np.float64)
 
     for wrinkle in cfg.wrinkles:
         profile = wrinkle.profile
@@ -111,11 +113,9 @@ def _legacy_fiber_angles_at_nodes(
             else:
                 decay = cfg._ply_decay(p, k, n_plies)
 
-            decay = decay * amp_scale
-            angle = np.arctan(np.abs(slope)) * decay
-            angle_sq[node_idx] += angle ** 2
+            slope_total[node_idx] += slope * decay * amp_scale
 
-    return np.sqrt(angle_sq)
+    return np.arctan(np.abs(slope_total))
 
 
 # ----------------------------------------------------------------------
@@ -126,7 +126,6 @@ def _structured_mesh(nx=12, ny=6, nz=24):
     """Build a tensor-product mesh with shape (nx, ny, nz) flattened."""
     xs = np.linspace(-20.0, 20.0, nx)
     ys = np.linspace(0.0, 10.0, ny)
-    n_nodes_per_ply = nx * ny
     nodes = []
     ply_ids = []
     for p in range(nz):

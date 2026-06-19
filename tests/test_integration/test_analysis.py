@@ -6,14 +6,11 @@ material, laminate, wrinkle, mesh, solver, failure, and statistics modules.
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import pytest
 
-from wrinklefe.analysis import AnalysisConfig, AnalysisResults, WrinkleAnalysis
-from wrinklefe.core.material import OrthotropicMaterial, MaterialLibrary
-
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+from wrinklefe.core.material import MaterialLibrary
 
 # ======================================================================
 # Fixtures

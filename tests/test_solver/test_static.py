@@ -13,14 +13,13 @@ import numpy as np
 import pytest
 from scipy import sparse
 
+from wrinklefe.core.laminate import Laminate, LoadState
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.laminate import Laminate, Ply, LoadState
-from wrinklefe.core.mesh import WrinkleMesh, MeshData
+from wrinklefe.core.mesh import WrinkleMesh
 from wrinklefe.solver.assembler import GlobalAssembler
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
-from wrinklefe.solver.static import StaticSolver
 from wrinklefe.solver.results import FieldResults
-
+from wrinklefe.solver.static import StaticSolver
 
 # ======================================================================
 # Fixtures
@@ -155,12 +154,19 @@ class TestGlobalAssembler:
         K = assembler.assemble_stiffness()
         assert K.nnz > 0
 
-    def test_assemble_verbose(self, small_mesh, single_ply_laminate, capsys):
-        """Verbose assembly prints progress information."""
+    def test_assembly_logs_progress(
+        self, small_mesh, single_ply_laminate, caplog
+    ):
+        """Assembly reports progress through the module logger."""
+        import logging
+
         assembler = GlobalAssembler(small_mesh, single_ply_laminate)
-        K = assembler.assemble_stiffness(verbose=True)
-        captured = capsys.readouterr()
-        assert "Assembling" in captured.out
+        with caplog.at_level(
+            logging.DEBUG, logger="wrinklefe.solver.assembler"
+        ):
+            assembler.assemble_stiffness()
+        assert "Assembling" in caplog.text
+        assert "Assembled global stiffness" in caplog.text
 
 
 # ======================================================================
@@ -381,9 +387,9 @@ class TestBoundaryHandler:
         # face node is either at a quad corner (touched by 1 quad) or
         # at the shared edge (touched by 2 quads).  Use a denser face
         # by inflating ny, nz.
-        from wrinklefe.core.mesh import WrinkleMesh
-        from wrinklefe.core.material import OrthotropicMaterial
         from wrinklefe.core.laminate import Laminate
+        from wrinklefe.core.material import OrthotropicMaterial
+        from wrinklefe.core.mesh import WrinkleMesh
 
         mat = OrthotropicMaterial()
         lam = Laminate.from_angles([0.0], material=mat, ply_thickness=1.0)
@@ -441,10 +447,10 @@ class TestBoundaryHandler:
         the prescribed total, and corners now get less than the
         legacy 1/N share.
         """
-        from wrinklefe.core.mesh import WrinkleMesh
         from wrinklefe.core.laminate import Laminate
-        from wrinklefe.core.wrinkle import GaussianSinusoidal
+        from wrinklefe.core.mesh import WrinkleMesh
         from wrinklefe.core.morphology import WrinkleConfiguration
+        from wrinklefe.core.wrinkle import GaussianSinusoidal
 
         lam = Laminate.from_angles(
             [0.0, 0.0, 0.0, 0.0],
@@ -597,6 +603,7 @@ class TestBoundaryHandler:
         condition number drifted past ~1e16.
         """
         from scipy.sparse.linalg import spsolve
+
         from wrinklefe.solver.boundary import (
             _PENALTY_SCALE,
             apply_penalty_bcs,

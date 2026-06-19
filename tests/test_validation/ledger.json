@@ -1,0 +1,92 @@
+{
+  "_comment": [
+    "WrinkleFE validation ledger — machine-readable companion to VALIDATION.md.",
+    "Each case carries the full AnalysisConfig recipe (the 'harness reference",
+    "configuration'), the measured experimental knockdown, and a pinned",
+    "expected_analytical_kd computed by the current code. The pinned values are",
+    "REGRESSION BASELINES, not claims of experimental agreement: scripts/validate.py",
+    "recomputes them and fails if they move beyond rel_tolerance, which is the",
+    "reproducible-harness precondition named in issue #254 (and the revert of",
+    "00584b4) for re-landing the graded compression decay fix. Re-pin deliberately",
+    "with 'python scripts/validate.py --update' after an intentional model change.",
+    "NOTE: the 'KD analytical' column published in VALIDATION.md for Li (2025) was",
+    "produced by an uncommitted script whose configuration could not be reproduced",
+    "from a clean checkout — exactly the gap this ledger closes going forward.",
+    "Elhajjar (2025), Mukhopadhyay (2015) and Li (2026) case-level data are not in",
+    "the repository (see README 'Validation'); add their datasets here when the",
+    "raw points land (tracked by issue #22's follow-ups)."
+  ],
+  "rel_tolerance": 0.001,
+  "datasets": [
+    {
+      "name": "li_2025_multi_wrinkle_compression",
+      "reference": "Li, Li, Ge & Liang (2025), Polymer Composites 46(16):15176-15187, DOI 10.1002/pc.30121",
+      "status": "deferred — pending issue #161 (amplitude effect at constant peak angle); see VALIDATION.md",
+      "material": "AC318_S6C10",
+      "layup": "[0]_14",
+      "ply_thickness_mm": 0.44,
+      "loading": "compression",
+      "morphology": "graded",
+      "amplitude_convention": "config amplitude = peak-to-peak A / 2 (crest height)",
+      "width_convention": "config width = wavelength (Gaussian 1/e length of one period)",
+      "pristine_strength_MPa": 335.52,
+      "cases": [
+        {
+          "case": "S-M-1",
+          "amplitude_p2p_mm": 1.5,
+          "wavelength_mm": 26.0,
+          "peak_angle_deg": 10,
+          "measured_strength_MPa": 298.81,
+          "measured_kd": 0.891,
+          "expected_analytical_kd": 0.428859
+        },
+        {
+          "case": "S-M-2",
+          "amplitude_p2p_mm": 1.5,
+          "wavelength_mm": 12.9,
+          "peak_angle_deg": 20,
+          "measured_strength_MPa": 211.1,
+          "measured_kd": 0.629,
+          "expected_analytical_kd": 0.308699
+        },
+        {
+          "case": "S-M-3",
+          "amplitude_p2p_mm": 1.5,
+          "wavelength_mm": 8.1,
+          "peak_angle_deg": 30,
+          "measured_strength_MPa": 158.41,
+          "measured_kd": 0.472,
+          "expected_analytical_kd": 0.247616
+        },
+        {
+          "case": "S-M-4",
+          "amplitude_p2p_mm": 1.0,
+          "wavelength_mm": 8.6,
+          "peak_angle_deg": 20,
+          "measured_strength_MPa": 316.34,
+          "measured_kd": 0.943,
+          "expected_analytical_kd": 0.316646
+        },
+        {
+          "case": "S-M-5",
+          "amplitude_p2p_mm": 0.5,
+          "wavelength_mm": 4.3,
+          "peak_angle_deg": 20,
+          "measured_strength_MPa": 335.63,
+          "measured_kd": 1.0,
+          "expected_analytical_kd": 0.36273
+        },
+        {
+          "case": "S-A-2",
+          "amplitude_p2p_mm": 1.5,
+          "wavelength_mm": 12.9,
+          "peak_angle_deg": 20,
+          "measured_strength_MPa": 329.29,
+          "measured_kd": 0.981,
+          "expected_analytical_kd": 0.308699,
+          "note": "S-M-2 geometry at a near-surface interface; the model has no through-thickness wrinkle-position parameter, so the harness runs the mid-plane configuration (prediction identical to S-M-2 by construction)."
+        }
+      ]
+    }
+  ]
+}

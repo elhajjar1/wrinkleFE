@@ -32,7 +32,6 @@ import numpy as np
 
 from wrinklefe.solver.arclength import ArcLengthSolver
 
-
 # ----------------------------------------------------------------------
 # Toy single-DOF assembler / BC handler
 # ----------------------------------------------------------------------

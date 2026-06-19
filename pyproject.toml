@@ -35,7 +35,6 @@ dependencies = [
 # so plain `pip install wrinklefe` produces a headless-safe environment. See
 # requirements.txt for the rationale.
 [project.optional-dependencies]
-export = ["meshio>=5.3"]
 # Streamlit web app deps — keep versions in sync with requirements.txt.
 streamlit = [
     "streamlit>=1.57",
@@ -46,11 +45,23 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1",
     "mypy>=1.5",
+    "scipy-stubs>=1.14",
 ]
-all = ["wrinklefe[export,streamlit,dev]"]
+docs = [
+    "sphinx>=8.0",
+    "myst-parser>=4.0",
+    "furo>=2024.8",
+]
+all = ["wrinklefe[streamlit,dev,docs]"]
 
 [project.scripts]
 wrinklefe = "wrinklefe.cli:main"
+
+[project.urls]
+Documentation = "https://wrinklefe.readthedocs.io"
+Repository = "https://github.com/elhajjar1/wrinkleFE"
+Issues = "https://github.com/elhajjar1/wrinkleFE/issues"
+Changelog = "https://github.com/elhajjar1/wrinkleFE/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -64,6 +75,20 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
+# WrinkleFE follows established composite-mechanics / FE notation
+# throughout (E1, G12, Q11, Ke, B, J, T, sigma_x, gamma_Y, GIc, eta_BK,
+# Voigt indices, ...). The pep8-naming codes that clash with that
+# convention are ignored project-wide rather than fought with hundreds
+# of per-line noqa or by renaming domain terms (issue #87, and the
+# `fix-ruff-violations` guidance to prefer ignores over renames here):
+#   N802 function name / N803 argument name / N806 local variable —
+#     math-symbol identifiers in functions, args, and bodies.
+#   N815 mixedCase class attribute / N816 mixedCase global —
+#     unit- and mode-suffixed fields like analytical_strength_MPa,
+#     czm_GIc, mode_ratio_init_FE.
+# N801 (class names) stays enforced: it caught a genuinely off-convention
+# test class with no domain justification.
+ignore = ["N802", "N803", "N806", "N815", "N816"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -73,3 +98,19 @@ addopts = "-v --tb=short"
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+
+# streamlit and plotly ship no type stubs (and none exist on PyPI), so
+# the Streamlit entry points (app.py, streamlit_viz.py) cannot resolve
+# their imports under mypy. Scope the missing-imports allowance to
+# exactly those packages — everything else stays strictly checked.
+[[tool.mypy.overrides]]
+module = ["streamlit", "streamlit.*", "plotly", "plotly.*"]
+ignore_missing_imports = true
+
+# Optional usage-logging deps in usage_tracking.py (imported lazily). They are
+# not installed in the lint job ([dev] only) and ship no stubs, so allow the
+# missing-import resolution exactly like streamlit/plotly above. Patterns match
+# the actual imports: `import gspread` and `from google.oauth2.service_account`.
+[[tool.mypy.overrides]]
+module = ["gspread", "google.oauth2.*"]
+ignore_missing_imports = true

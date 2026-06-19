@@ -27,14 +27,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # Starter scope: only the bug-catching rules that are clean on `main` today.
-      # Full ruff config in pyproject.toml currently has ~840 violations across the
-      # repo; that will be addressed in a follow-up cleanup PR (see issue #87).
-      - name: Ruff (starter scope - E9,F63,F7,F82)
-        run: ruff check --select E9,F63,F7,F82 .
+      # Full config: CI now runs ruff's complete pyproject.toml ruleset
+      # (E, F, W, I, N, UP) with no --select override, completing the
+      # incremental widening tracked in issue #87. The scientific-naming
+      # codes that clash with composite-mechanics notation (N802/803/806/
+      # 815/816) are documented ignores in pyproject's [tool.ruff.lint].
+      - name: Ruff (full pyproject config)
+        run: ruff check .
 
-      # Starter scope: package `__init__` only. Broader src/wrinklefe has ~102
-      # mypy errors today (mostly numpy `Any` returns + missing stubs); fixing
-      # those is tracked as a follow-up to issue #87.
-      - name: Mypy (starter scope - package init)
-        run: mypy src/wrinklefe/__init__.py
+      # Whole-tree mypy: the src/wrinklefe package plus the repo-root
+      # Streamlit entry points (app.py, streamlit_viz.py). Completes the
+      # mypy-coverage walk tracked as a follow-up to issue #87; streamlit
+      # and plotly are unstubbed and ignored via pyproject [tool.mypy].
+      - name: Mypy (whole tree)
+        run: mypy src/wrinklefe app.py streamlit_viz.py

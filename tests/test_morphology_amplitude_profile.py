@@ -27,7 +27,6 @@ from wrinklefe.core.morphology import (
 )
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 
-
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -297,7 +296,12 @@ class TestGeometryAngleParity:
         nonzero = np.abs(dz_base[mask]) > 1e-12
         ratio_dz = dz_mod[mask][nonzero] / dz_base[mask][nonzero]
         nonzero_ang = np.abs(ang_base[mask]) > 1e-12
-        ratio_ang = ang_mod[mask][nonzero_ang] / ang_base[mask][nonzero_ang]
+        # Composed-field angles (#252): the amplitude scale multiplies
+        # the slope, so the ratio is recovered in tan space.
+        ratio_ang = (
+            np.tan(ang_mod[mask][nonzero_ang])
+            / np.tan(ang_base[mask][nonzero_ang])
+        )
         # Both ratios must equal the Gaussian scale at the same x.
         # Use the displacement-side ratio as ground truth and compare.
         npt.assert_allclose(ratio_dz.mean(), ratio_ang.mean(), rtol=1e-12)

@@ -20,7 +20,6 @@ from wrinklefe.analysis import (
 )
 from wrinklefe.core.material import MaterialLibrary
 
-
 # ---------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------
@@ -164,16 +163,25 @@ class TestMultiWrinkleValidation:
         with pytest.raises(ValueError, match="ply_interface"):
             _build_cfg(ac318_material, ud14_angles, bad)
 
-    def test_fe_solve_raises_not_implemented(self, ac318_material, ud14_angles):
-        """Multi-wrinkle + FE solve must raise NotImplementedError."""
+    def test_fe_solve_rejects_multi_wrinkle_czm(
+        self, ac318_material, ud14_angles
+    ):
+        """Multi-wrinkle + CZM raises a precise NotImplementedError
+        (cohesive interface placement assumes a single crest); the FE
+        path itself supports arbitrary N-wrinkle layouts since #252 —
+        see tests/test_integration/test_multi_wrinkle_fe.py."""
         wrinkles = [
-            WrinkleSpec(amplitude=1.5, wavelength=12.9, width=12.9, ply_interface=4),
+            WrinkleSpec(amplitude=1.5, wavelength=12.9, width=12.9,
+                        ply_interface=4),
+            WrinkleSpec(amplitude=1.5, wavelength=12.9, width=12.9,
+                        ply_interface=6, phase_offset=0.5),
         ]
         cfg = _build_cfg(
-            ac318_material, ud14_angles, wrinkles, analytical_only=False
+            ac318_material, ud14_angles, wrinkles, analytical_only=False,
+            enable_czm=True,
         )
         analysis = WrinkleAnalysis(cfg)
-        with pytest.raises(NotImplementedError, match="Multi-wrinkle FE solve"):
+        with pytest.raises(NotImplementedError, match="cohesive"):
             analysis.run(analytical_only=False)
 
 

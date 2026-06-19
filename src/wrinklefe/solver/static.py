@@ -26,6 +26,7 @@ Zienkiewicz, O.C. & Taylor, R.L. (2000). The Finite Element Method, Vol. 1.
 
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
@@ -34,6 +35,14 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg as spla
 
+from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.mesh import MeshData
+from wrinklefe.core.transforms import stress_transformation_3d
+from wrinklefe.solver.assembler import GlobalAssembler
+from wrinklefe.solver.results import FieldResults
+
+logger = logging.getLogger(__name__)
+
 
 @contextmanager
 def _suppress_assembly_warnings():
@@ -41,14 +50,8 @@ def _suppress_assembly_warnings():
     with np.errstate(divide='ignore', invalid='ignore'):
         yield
 
-from wrinklefe.core.mesh import MeshData
-from wrinklefe.core.laminate import Laminate, LoadState
-from wrinklefe.core.transforms import stress_transformation_3d
-from wrinklefe.solver.assembler import GlobalAssembler
-from wrinklefe.solver.results import FieldResults
-
 if TYPE_CHECKING:
-    from wrinklefe.solver.boundary import BoundaryHandler, BoundaryCondition
+    from wrinklefe.solver.boundary import BoundaryCondition
 
 
 class StaticSolver:
@@ -113,7 +116,9 @@ class StaticSolver:
             ``'direct'`` uses ``spsolve``; ``'iterative'`` uses CG with
             ILU preconditioner. Default is ``'direct'``.
         verbose : bool, optional
-            Print progress information. Default is ``False``.
+            Deprecated and ignored. Progress is reported through the
+            ``wrinklefe.solver.static`` logger (milestones at INFO,
+            per-element detail at DEBUG).
         keep_stiffness : bool, optional
             If True, retain a copy of the unmodified (pre-penalty) global
             stiffness matrix on ``self._K`` after solve. Default is False,
@@ -138,17 +143,15 @@ class StaticSolver:
         t0 = time.perf_counter()
 
         # 1. Assemble global stiffness
-        if verbose:
-            print("Assembling global stiffness matrix...")
+        logger.debug("Assembling global stiffness matrix...")
         with _suppress_assembly_warnings():
             K = self.assembler.assemble_stiffness(verbose=verbose)
         # Opt-in retention of the unmodified K (see ``keep_stiffness``).
         # Default: do not store a copy to avoid doubling peak FE memory.
         self._K = K.copy() if keep_stiffness else None
 
-        if verbose:
-            t1 = time.perf_counter()
-            print(f"  Assembly time: {t1 - t0:.2f} s")
+        t1 = time.perf_counter()
+        logger.info("Assembly time: %.2f s", t1 - t0)
 
         # 2. Assemble force vector
         bc_handler = BoundaryHandler(self.mesh)
@@ -161,9 +164,9 @@ class StaticSolver:
         K, F = self._apply_penalty_bcs(K, F, self._constrained_dofs, verbose)
 
         # 4. Solve
-        if verbose:
-            print(f"Solving system ({self.mesh.n_dof} DOFs, "
-                  f"solver={solver})...")
+        logger.info(
+            "Solving system (%d DOFs, solver=%s)...", self.mesh.n_dof, solver
+        )
 
         if solver == "direct":
             u = self._solve_direct(K, F, verbose=verbose)
@@ -174,14 +177,12 @@ class StaticSolver:
                 f"Unknown solver '{solver}'. Use 'direct' or 'iterative'."
             )
 
-        if verbose:
-            t2 = time.perf_counter()
-            print(f"  Solve time: {t2 - t1:.2f} s")
-            t1 = t2
+        t2 = time.perf_counter()
+        logger.info("Solve time: %.2f s", t2 - t1)
+        t1 = t2
 
         # 5. Post-process
-        if verbose:
-            print("Recovering element stresses and strains...")
+        logger.debug("Recovering element stresses and strains...")
 
         stress_g, stress_l, strain_g, strain_l = self.recover_element_results(
             u, verbose=verbose
@@ -191,10 +192,9 @@ class StaticSolver:
         displacement = u.reshape(-1, 3)
         self._displacement = displacement
 
-        if verbose:
-            t3 = time.perf_counter()
-            print(f"  Post-processing time: {t3 - t1:.2f} s")
-            print(f"Total solve time: {t3 - t0:.2f} s")
+        t3 = time.perf_counter()
+        logger.info("Post-processing time: %.2f s", t3 - t1)
+        logger.info("Total solve time: %.2f s", t3 - t0)
 
         return FieldResults(
             displacement=displacement,
@@ -238,7 +238,6 @@ class StaticSolver:
         FieldResults
             Complete solution data.
         """
-        from wrinklefe.solver.boundary import BoundaryCondition
 
         bcs = self._load_state_to_bcs(load)
         return self.solve(bcs, solver=solver, verbose=verbose)
@@ -270,9 +269,9 @@ class StaticSolver:
             Shape ``(n_dof,)`` displacement vector.
         """
         u = spla.spsolve(K, F)
-        if verbose:
+        if logger.isEnabledFor(logging.DEBUG):
             residual = np.linalg.norm(K @ u - F)
-            print(f"  Direct solver residual: {residual:.4e}")
+            logger.debug("Direct solver residual: %.4e", residual)
         return u
 
     def _solve_iterative(
@@ -315,8 +314,7 @@ class StaticSolver:
         n = K.shape[0]
 
         # Build ILU preconditioner
-        if verbose:
-            print("  Building ILU preconditioner...")
+        logger.debug("Building ILU preconditioner...")
         try:
             ilu = spla.spilu(K, drop_tol=1e-4)
             M_op = spla.LinearOperator(
@@ -326,8 +324,10 @@ class StaticSolver:
             )
         except Exception:
             # Fall back to diagonal preconditioner if ILU fails
-            if verbose:
-                print("  ILU failed, falling back to diagonal preconditioner.")
+            logger.warning(
+                "ILU preconditioner failed; falling back to diagonal "
+                "preconditioner."
+            )
             diag = K.diagonal()
             diag[diag == 0] = 1.0
             M_op = spla.LinearOperator(
@@ -336,13 +336,13 @@ class StaticSolver:
                 dtype=K.dtype,
             )
 
-        # Iteration counter for verbose output
+        # Iteration counter for logging and error reporting
         iter_count = [0]
 
         def _callback(xk: np.ndarray) -> None:
             iter_count[0] += 1
 
-        callback = _callback if verbose else None
+        callback = _callback
 
         # SciPy >=1.12 deprecated ``tol=`` in favour of ``rtol=``.
         u, info = spla.cg(K, F, rtol=tol, maxiter=maxiter, M=M_op,
@@ -354,10 +354,12 @@ class StaticSolver:
                 f"(iterations={iter_count[0]}, tol={tol})"
             )
 
-        if verbose:
+        if logger.isEnabledFor(logging.INFO):
             residual = np.linalg.norm(K @ u - F)
-            print(f"  CG converged in {iter_count[0]} iterations, "
-                  f"residual: {residual:.4e}")
+            logger.info(
+                "CG converged in %d iterations, residual: %.4e",
+                iter_count[0], residual,
+            )
 
         return u
 
@@ -380,7 +382,7 @@ class StaticSolver:
         within :meth:`solve`).  See the helper docstring for the math
         and the choice of penalty scaling.
         """
-        from wrinklefe.solver.boundary import apply_penalty_bcs, _PENALTY_SCALE
+        from wrinklefe.solver.boundary import _PENALTY_SCALE, apply_penalty_bcs
 
         if not constrained_dofs:
             return K, F
@@ -389,11 +391,13 @@ class StaticSolver:
             K, F, constrained_dofs, in_place=True,
         )
 
-        if verbose:
+        if logger.isEnabledFor(logging.DEBUG):
             diag_max = float(np.abs(K.diagonal()).max())
             alpha = _PENALTY_SCALE * max(diag_max, 1.0)
-            print(f"  Applied {len(constrained_dofs)} displacement BCs "
-                  f"(penalty alpha={alpha:.2e})")
+            logger.debug(
+                "Applied %d displacement BCs (penalty alpha=%.2e)",
+                len(constrained_dofs), alpha,
+            )
 
         return K_out, F_out
 
@@ -494,8 +498,8 @@ class StaticSolver:
         if cls._hex8_gp_shape_cache is not None:
             return cls._hex8_gp_shape_cache
 
-        from wrinklefe.elements.hex8 import Hex8Element
         from wrinklefe.elements.gauss import gauss_points_hex
+        from wrinklefe.elements.hex8 import Hex8Element
 
         gp_coords, _ = gauss_points_hex(order=2)
         n_gp = gp_coords.shape[0]
@@ -583,9 +587,11 @@ class StaticSolver:
         B_scratch = np.zeros((n_gp, 6, 24))
 
         for e in range(n_elem):
-            if verbose and e % 1000 == 0:
-                print(f"  Post-processing element {e}/{n_elem} "
-                      f"({100.0 * e / n_elem:.1f}%)")
+            if e % 1000 == 0:
+                logger.debug(
+                    "Post-processing element %d/%d (%.1f%%)",
+                    e, n_elem, 100.0 * e / n_elem,
+                )
 
             node_ids = mesh_elements[e]
             node_coords = mesh_nodes[node_ids]  # (8, 3)
@@ -665,8 +671,9 @@ class StaticSolver:
             stress_global[e] = sig_g
             strain_global[e] = eps_g
 
-        if verbose:
-            print(f"  Post-processing element {n_elem}/{n_elem} (100.0%) -- done.")
+        logger.debug(
+            "Post-processing element %d/%d (100.0%%) -- done.", n_elem, n_elem
+        )
 
         return stress_global, stress_local, strain_global, strain_local
 
@@ -726,8 +733,8 @@ class StaticSolver:
         if cls._hex8_extrap_cache is not None:
             return cls._hex8_extrap_cache
 
-        from wrinklefe.elements.hex8 import Hex8Element, _NODE_COORDS
         from wrinklefe.elements.gauss import gauss_points_hex
+        from wrinklefe.elements.hex8 import _NODE_COORDS, Hex8Element
 
         gp_coords, _ = gauss_points_hex(order=2)  # lex order, shape (8, 3)
 
@@ -745,9 +752,9 @@ class StaticSolver:
             matches = np.flatnonzero(sign_match)
             if matches.size != 1:
                 raise RuntimeError(
-                    "Failed to pair hex8 VTK node {} with a unique 2x2x2 "
-                    "Gauss point (matches={}). Did the GP or node ordering "
-                    "convention change?".format(j, matches.tolist())
+                    f"Failed to pair hex8 VTK node {j} with a unique 2x2x2 "
+                    f"Gauss point (matches={matches.tolist()}). Did the GP or node ordering "
+                    "convention change?"
                 )
             node_to_gp[j] = int(matches[0])
 
@@ -817,5 +824,5 @@ class StaticSolver:
             )
 
         N_inv, _node_to_gp = self._build_hex8_extrapolation()
-        nodal = N_inv @ gauss_values
+        nodal = np.asarray(N_inv @ gauss_values)
         return nodal[:, 0] if squeeze else nodal

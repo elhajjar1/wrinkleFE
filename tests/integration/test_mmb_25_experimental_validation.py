@@ -570,7 +570,10 @@ def _drive_mmb_fixed(
                 if s.d > d_max:
                     d_max = s.d
                 if s.d > 0.0 and s.mode_ratio_init >= 0.0:
-                    if best_mr < 0.0 or abs(s.mode_ratio_init - MODE_RATIO_TARGET) < abs(best_mr - MODE_RATIO_TARGET):
+                    if best_mr < 0.0 or (
+                        abs(s.mode_ratio_init - MODE_RATIO_TARGET)
+                        < abs(best_mr - MODE_RATIO_TARGET)
+                    ):
                         best_mr = s.mode_ratio_init
 
         converged_delta_II.append(delta_II_try)

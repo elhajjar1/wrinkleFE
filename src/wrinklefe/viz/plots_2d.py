@@ -28,21 +28,21 @@ Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from wrinklefe.core.wrinkle import WrinkleSurface3D
 from wrinklefe.viz.style import (
     ACCENT_GRAY,
-    FIGSIZE_SINGLE_COLUMN,
     FIGSIZE_DOUBLE_COLUMN,
     FIGSIZE_SINGLE_TALL,
     MORPHOLOGY_COLORS,
     MORPHOLOGY_LABELS,
-    MORPHOLOGY_LINESTYLES,
     colorbar_setup,
     ensure_axes,
     get_morphology_style,
@@ -55,17 +55,33 @@ if TYPE_CHECKING:
     from wrinklefe.core.morphology import WrinkleConfiguration
     from wrinklefe.core.wrinkle import WrinkleProfile
     from wrinklefe.solver.results import FieldResults
-    from wrinklefe.statistics.jensen import JensenGapResult
-    from wrinklefe.statistics.montecarlo import MonteCarloResults
+
+    # The wrinklefe.statistics package does not exist yet; these
+    # annotation-only imports document the intended result types for
+    # plot_strength_distribution / plot_jensen_gap.
+    from wrinklefe.statistics.jensen import JensenGapResult  # type: ignore[import-not-found]
+    from wrinklefe.statistics.montecarlo import MonteCarloResults  # type: ignore[import-not-found]
 
 
 # ======================================================================
 # Wrinkle geometry plots
 # ======================================================================
 
+def _base_profile(profile: WrinkleProfile | WrinkleSurface3D) -> WrinkleProfile:
+    """Return the underlying 1-D profile, unwrapping a 3-D surface.
+
+    The 2-D profile plots draw the longitudinal section z(x); for a
+    :class:`WrinkleSurface3D` that is its inner 1-D ``profile`` (the
+    same convention as :mod:`wrinklefe.core.morphology`).
+    """
+    if isinstance(profile, WrinkleSurface3D):
+        return profile.profile
+    return profile
+
+
 def plot_wrinkle_profile(
-    profile: "WrinkleProfile",
-    ax: Optional[Axes] = None,
+    profile: WrinkleProfile,
+    ax: Axes | None = None,
     n_points: int = 500,
 ) -> Axes:
     """Plot the out-of-plane displacement z(x) of a single wrinkle profile.
@@ -101,8 +117,8 @@ def plot_wrinkle_profile(
 
 
 def plot_dual_wrinkle_profiles(
-    config: "WrinkleConfiguration",
-    ax: Optional[Axes] = None,
+    config: WrinkleConfiguration,
+    ax: Axes | None = None,
     n_points: int = 500,
     show_gap: bool = True,
 ) -> Axes:
@@ -134,7 +150,7 @@ def plot_dual_wrinkle_profiles(
     if config.n_wrinkles() < 2:
         # Fall back to single profile
         wrinkle = config.wrinkles[0]
-        profile = wrinkle.profile
+        profile = _base_profile(wrinkle.profile)
         xlo, xhi = profile.domain()
         x = np.linspace(xlo, xhi, n_points)
         z = profile.displacement(x)
@@ -147,8 +163,8 @@ def plot_dual_wrinkle_profiles(
 
     w_upper = config.wrinkles[0]
     w_lower = config.wrinkles[1]
-    p_upper = w_upper.profile
-    p_lower = w_lower.profile
+    p_upper = _base_profile(w_upper.profile)
+    p_lower = _base_profile(w_lower.profile)
 
     # Use union of domains
     xlo_u, xhi_u = p_upper.domain()
@@ -164,7 +180,6 @@ def plot_dual_wrinkle_profiles(
     ax.plot(x, z_lower, color=MORPHOLOGY_COLORS["concave"], linewidth=1.5, label="Lower wrinkle")
 
     if show_gap:
-        gap = z_upper - z_lower
         ax.fill_between(
             x, z_lower, z_upper,
             alpha=0.15, color=MORPHOLOGY_COLORS["convex"], label="Interface gap",
@@ -185,7 +200,7 @@ def plot_dual_wrinkle_profiles(
 
 def plot_morphology_factor(
     loading: str = "compression",
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     n_points: int = 361,
 ) -> Axes:
     """Plot morphology factor M_f as a function of phase offset phi.
@@ -208,7 +223,7 @@ def plot_morphology_factor(
     Axes
         The axes with the morphology factor curve.
     """
-    from wrinklefe.core.morphology import WrinkleConfiguration, MORPHOLOGY_PHASES
+    from wrinklefe.core.morphology import MORPHOLOGY_PHASES, WrinkleConfiguration
 
     set_publication_style()
     ax = ensure_axes(ax)
@@ -245,7 +260,7 @@ def plot_morphology_factor(
 
 def plot_kinkband_concavity(
     gamma_Y: float = 0.02,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     theta_max_deg: float = 25.0,
     n_points: int = 500,
 ) -> Axes:
@@ -322,7 +337,7 @@ def plot_kinkband_concavity(
 
 def plot_strength_vs_amplitude(
     results_list: Sequence[dict],
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot predicted strength versus wrinkle amplitude from a parametric sweep.
 
@@ -387,8 +402,8 @@ def plot_strength_vs_amplitude(
 
 
 def plot_strength_distribution(
-    mc_results: "MonteCarloResults",
-    ax: Optional[Axes] = None,
+    mc_results: MonteCarloResults,
+    ax: Axes | None = None,
     n_bins: int = 50,
     show_kde: bool = True,
     by_morphology: bool = False,
@@ -454,7 +469,8 @@ def plot_strength_distribution(
             from scipy.stats import gaussian_kde
             kde = gaussian_kde(strengths)
             x_kde = np.linspace(strengths.min(), strengths.max(), 300)
-            ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"], linewidth=1.5, label="KDE")
+            ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"],
+                    linewidth=1.5, label="KDE")
         except ImportError:
             pass
 
@@ -476,8 +492,8 @@ def plot_strength_distribution(
 
 
 def plot_jensen_gap(
-    jensen_result: "JensenGapResult",
-    ax: Optional[Axes] = None,
+    jensen_result: JensenGapResult,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a bar chart of the Jensen gap broken down by morphology.
 
@@ -541,7 +557,7 @@ def plot_jensen_gap(
 
 def plot_failure_envelope(
     envelope_data: Sequence[dict],
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a 2D failure envelope (e.g., amplitude vs. wavelength).
 
@@ -621,11 +637,11 @@ def plot_failure_envelope(
 # ======================================================================
 
 def plot_stress_through_thickness(
-    field_results: "FieldResults",
+    field_results: FieldResults,
     x: float,
     y: float,
     component: int = 0,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a stress component through the laminate thickness.
 
@@ -679,9 +695,9 @@ def plot_stress_through_thickness(
 
 
 def plot_damage_contour(
-    mesh: "MeshData",
+    mesh: MeshData,
     damage_field: np.ndarray,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Plot a 2D contour of damage at the laminate midplane.
 
@@ -779,8 +795,8 @@ def plot_damage_contour(
 def plot_traction_separation(
     separation_history: np.ndarray,
     traction_history: np.ndarray,
-    ax: Optional[Axes] = None,
-    label: Optional[str] = None,
+    ax: Axes | None = None,
+    label: str | None = None,
     beta: float = 1.0,
 ) -> Axes:
     """Plot the traction-separation trajectory at a single cohesive Gauss point.
@@ -860,8 +876,8 @@ def plot_traction_separation(
 
 def plot_load_displacement(
     load_displacement: np.ndarray,
-    ax: Optional[Axes] = None,
-    label: Optional[str] = None,
+    ax: Axes | None = None,
+    label: str | None = None,
 ) -> Axes:
     """Plot the load-displacement response from a CZM Newton-Raphson run.
 
@@ -923,7 +939,7 @@ def plot_load_displacement(
 
 def plot_damage_histogram(
     damage: np.ndarray,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     bins: int = 20,
 ) -> Axes:
     """Plot a histogram of the cohesive damage variable.
@@ -983,7 +999,7 @@ def plot_damage_histogram(
 def plot_interface_damage_field(
     damage_per_elem: np.ndarray,
     xy_centroids: np.ndarray,
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
     cmap: str = "viridis",
 ) -> Axes:
     """Scatter the per-element damage on the interface (x, y) plane.
@@ -1050,7 +1066,7 @@ def plot_interface_damage_field(
 
 def plot_energy_per_interface(
     energy_per_interface: Mapping[int, float],
-    ax: Optional[Axes] = None,
+    ax: Axes | None = None,
 ) -> Axes:
     """Bar chart of cohesive energy dissipated, broken down by interface.
 
@@ -1109,7 +1125,7 @@ def plot_energy_per_interface(
     return ax
 
 
-def czm_overview_figure(results: "AnalysisResults") -> Figure:
+def czm_overview_figure(results: AnalysisResults) -> Figure:
     """Build a 2x2 dashboard of CZM outputs from an ``AnalysisResults``.
 
     Panels:

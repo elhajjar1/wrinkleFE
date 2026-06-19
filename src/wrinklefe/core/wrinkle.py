@@ -26,11 +26,9 @@ laminates under multidirectional static loading. Thin-Walled Structures,
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Tuple
 
 import numpy as np
 from scipy.optimize import minimize_scalar
-
 
 # ---------------------------------------------------------------------------
 # Abstract base class
@@ -130,7 +128,7 @@ class WrinkleProfile(ABC):
 
     # ---- concrete helpers --------------------------------------------------
 
-    def domain(self) -> Tuple[float, float]:
+    def domain(self) -> tuple[float, float]:
         """Effective longitudinal extent covering 99.7 % of the Gaussian envelope.
 
         Returns ``(center - 3*width, center + 3*width)``.
@@ -150,7 +148,7 @@ class WrinkleProfile(ABC):
         numpy.ndarray
             Fiber angle at each *x* location (radians).
         """
-        return np.arctan(self.slope(np.asarray(x, dtype=float)))
+        return np.asarray(np.arctan(self.slope(np.asarray(x, dtype=float))))
 
     def max_angle(self) -> float:
         """Numerical maximum fiber misalignment angle (radians).
@@ -174,7 +172,7 @@ class WrinkleProfile(ABC):
         Sample density rationale (Nyquist vs wrinkle wavelength).  The
         finest oscillation in ``slope(x)`` has period ``wavelength``; its
         derivative content is band-limited to that scale.  Resolving every
-        |slope| lobe requires at least a few samples per quarter-wave.  The
+        ``|slope|`` lobe requires at least a few samples per quarter-wave.  The
         domain spans at most ~6 envelope widths or ~6 wavelengths, so
         ``n_grid = 4096`` yields hundreds of samples per wavelength even for
         the most oscillatory profiles in this module -- far above the
@@ -184,7 +182,7 @@ class WrinkleProfile(ABC):
         xlo, xhi = self.domain()
 
         def abs_slope_arr(xv: np.ndarray) -> np.ndarray:
-            return np.abs(self.slope(np.asarray(xv, dtype=float)))
+            return np.asarray(np.abs(self.slope(np.asarray(xv, dtype=float))))
 
         # Dense grid sweep to locate the global argmax robustly.  4096 pts
         # over a <=6-wavelength support => hundreds of samples per wrinkle
@@ -193,7 +191,6 @@ class WrinkleProfile(ABC):
         xs = np.linspace(xlo, xhi, n_grid)
         vals = abs_slope_arr(xs)
         idx = int(np.argmax(vals))
-        best_x = float(xs[idx])
         best_val = float(vals[idx])
 
         # Local refinement bracketed to neighbours of the grid winner.
@@ -210,7 +207,6 @@ class WrinkleProfile(ABC):
                 refined_val = float(np.abs(self.slope(np.atleast_1d(result.x))[0]))
                 if refined_val > best_val:
                     best_val = refined_val
-                    best_x = float(result.x)
             except Exception:
                 # Fall back to grid winner on any optimizer hiccup.
                 pass
@@ -329,7 +325,6 @@ class RectangularSinusoidal(WrinkleProfile):
         arg = (self.width / 2.0 - adx) / tw
         sech2 = 1.0 / np.cosh(arg) ** 2
         tanh_val = np.tanh(arg)
-        sign = np.sign(dx)
         # env(x) = 0.5 * (tanh(arg) + 1) with arg = (w/2 - |dx|) / tw.
         # d(env)/dx = 0.5 * sech^2(arg) * d(arg)/dx, d(arg)/dx = -sign(dx)/tw,
         # so d(env)/dx = -0.5 * sech^2(arg) * sign(dx) / tw.
@@ -371,7 +366,7 @@ class RectangularSinusoidal(WrinkleProfile):
             - env * k ** 2 * cos_term
         )
 
-    def domain(self) -> Tuple[float, float]:
+    def domain(self) -> tuple[float, float]:
         half = self.width / 2.0 + self.width / 4.0  # extend slightly beyond taper
         return (self.center - half, self.center + half)
 
@@ -475,7 +470,7 @@ class PureSinusoidal(WrinkleProfile):
         k = 2.0 * np.pi / self.wavelength
         return -self.amplitude * k ** 2 * np.cos(k * dx)
 
-    def domain(self) -> Tuple[float, float]:
+    def domain(self) -> tuple[float, float]:
         """Default domain: 3 wavelengths on each side of center."""
         return (self.center - 3.0 * self.wavelength, self.center + 3.0 * self.wavelength)
 
@@ -663,9 +658,9 @@ class WrinkleSurface3D:
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
-        return self.profile.displacement(x) * self._f_y(y)
+        return np.asarray(self.profile.displacement(x) * self._f_y(y))
 
-    def gradient(self, x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def gradient(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Surface gradient (dz/dx, dz/dy).
 
         Parameters
@@ -730,4 +725,4 @@ class WrinkleSurface3D:
             Misalignment angle (radians).
         """
         dz_dx, _ = self.gradient(x, y)
-        return np.arctan(dz_dx)
+        return np.asarray(np.arctan(dz_dx))

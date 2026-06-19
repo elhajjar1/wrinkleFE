@@ -31,7 +31,7 @@ import csv
 import json
 from dataclasses import fields, is_dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -120,7 +120,7 @@ def _array_or_summary(arr: Any) -> Any:
 # Config + results -> dict
 # ----------------------------------------------------------------------
 
-def _config_to_dict(cfg: "AnalysisConfig") -> dict:
+def _config_to_dict(cfg: AnalysisConfig) -> dict:
     """Serialise an :class:`AnalysisConfig` to a plain JSON-able dict.
 
     The material is reduced to its name (full property tables are not
@@ -148,7 +148,7 @@ def _config_to_dict(cfg: "AnalysisConfig") -> dict:
     return out
 
 
-def _per_ply_rows(results: "AnalysisResults") -> list[dict]:
+def _per_ply_rows(results: AnalysisResults) -> list[dict]:
     """Build the per-ply summary table.
 
     One row per ply with:
@@ -212,7 +212,7 @@ def _per_ply_rows(results: "AnalysisResults") -> list[dict]:
     return rows
 
 
-def _first_ply_failure(results: "AnalysisResults") -> dict | None:
+def _first_ply_failure(results: AnalysisResults) -> dict | None:
     """First-ply failure summary across all criteria (lowest load factor)."""
     rep = results.failure_report
     if rep is None or not getattr(rep, "fpf", None):
@@ -231,7 +231,7 @@ def _first_ply_failure(results: "AnalysisResults") -> dict | None:
     }
 
 
-def _knockdown_factors(results: "AnalysisResults") -> dict:
+def _knockdown_factors(results: AnalysisResults) -> dict:
     """Bundle the analytical + FE knockdown / retention factors."""
     out: dict = {
         "analytical": _f(results.analytical_knockdown),
@@ -251,7 +251,7 @@ def _knockdown_factors(results: "AnalysisResults") -> dict:
     return out
 
 
-def _load_factor(results: "AnalysisResults") -> float:
+def _load_factor(results: AnalysisResults) -> float:
     """Top-level "load factor" surfaced in the export.
 
     For a wrinkled laminate the most useful single number is the FPF
@@ -268,7 +268,7 @@ def _load_factor(results: "AnalysisResults") -> float:
     return _f(results.analytical_knockdown)
 
 
-def _stress_field_summary(results: "AnalysisResults") -> dict | None:
+def _stress_field_summary(results: AnalysisResults) -> dict | None:
     """Reduce the (n_elem, n_gauss, 6) stress tensor to summary stats."""
     fr = results.field_results
     if fr is None or fr.stress_global is None:
@@ -288,7 +288,7 @@ def _stress_field_summary(results: "AnalysisResults") -> dict | None:
     return out
 
 
-def results_to_dict(results: "AnalysisResults") -> dict:
+def results_to_dict(results: AnalysisResults) -> dict:
     """Build the JSON-shaped dict for :func:`export_results_json`.
 
     Exposed so callers (CLI, Streamlit, tests) can introspect the same
@@ -347,8 +347,8 @@ def results_to_dict(results: "AnalysisResults") -> dict:
 # ----------------------------------------------------------------------
 
 def export_results_json(
-    results: "AnalysisResults",
-    path: Union[str, Path],
+    results: AnalysisResults,
+    path: str | Path,
 ) -> None:
     """Write an :class:`AnalysisResults` as a schema-versioned JSON file.
 
@@ -397,8 +397,8 @@ _CSV_COLUMNS = (
 
 
 def export_results_csv(
-    results: "AnalysisResults",
-    path: Union[str, Path],
+    results: AnalysisResults,
+    path: str | Path,
 ) -> None:
     """Write the per-ply summary table as a Pandas-friendly CSV.
 

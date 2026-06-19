@@ -15,6 +15,10 @@ venv/
 .venv/
 env/
 
+# Streamlit secrets (service-account keys for usage logging — NEVER commit).
+# Keep the committed .streamlit/secrets.toml.example template.
+.streamlit/secrets.toml
+
 # IDE
 .vscode/
 .idea/
@@ -68,6 +72,7 @@ joss/*.fls
 .superpowers/
 docs/superpowers/
 joss/
+docs/_build/
 examples/
 validation/*
 # ... except the Li progressive-damage validation driver and its results

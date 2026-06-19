@@ -19,7 +19,6 @@ import pytest
 
 from wrinklefe.analysis import estimate_wavelength_from_amplitude
 
-
 # ----------------------------------------------------------------------
 # Linear scaling
 # ----------------------------------------------------------------------

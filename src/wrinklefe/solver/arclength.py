@@ -65,7 +65,8 @@ and buckling problems."  Int. J. Solids Struct. 15: 529-551.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy import sparse
@@ -74,6 +75,9 @@ from scipy.sparse import linalg as spla
 if TYPE_CHECKING:
     from wrinklefe.solver.assembler import GlobalAssembler
     from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
+
+
+logger = logging.getLogger(__name__)
 
 
 class ArcLengthSolver:
@@ -109,9 +113,9 @@ class ArcLengthSolver:
 
     def __init__(
         self,
-        assembler: "GlobalAssembler",
-        bc_handler: "BoundaryHandler",
-        boundary_conditions: "list[BoundaryCondition] | None" = None,
+        assembler: GlobalAssembler,
+        bc_handler: BoundaryHandler,
+        boundary_conditions: list[BoundaryCondition] | None = None,
         n_arc_steps: int = 50,
         arc_length: float = 0.1,
         max_newton_iter: int = 25,
@@ -229,11 +233,11 @@ class ArcLengthSolver:
 
             if not attempt_ok:
                 converged_all = False
-                if verbose:
-                    print(
-                        f"  arc step {step}: bailed out after "
-                        f"{n_halvings} halvings (last ds={tried_ds:.3e})"
-                    )
+                logger.warning(
+                    "arc step %d: bailed out after %d halvings "
+                    "(last ds=%.3e)",
+                    step, n_halvings, tried_ds,
+                )
                 break
 
             u = u_new
@@ -244,12 +248,10 @@ class ArcLengthSolver:
 
             self._commit_state()
 
-            if verbose:
-                print(
-                    f"  arc step {step}: lambda={lam:+.4e} "
-                    f"|u|={float(np.linalg.norm(u)):.3e} "
-                    f"ds={tried_ds:.3e}"
-                )
+            logger.debug(
+                "arc step %d: lambda=%+.4e |u|=%.3e ds=%.3e",
+                step, lam, float(np.linalg.norm(u)), tried_ds,
+            )
 
             # Re-arm step size for the next attempt: grow modestly on
             # success, but never above the user-supplied initial ds.
@@ -259,6 +261,12 @@ class ArcLengthSolver:
                     ds = tried_ds
                 else:
                     ds = min(ds * 1.2, self.arc_length)
+
+        logger.info(
+            "Arc-length solve: %d/%d steps completed, lambda=%+.4e, "
+            "converged=%s",
+            steps_completed, self.n_arc_steps, lam, converged_all,
+        )
 
         return {
             "displacement": u,
@@ -387,11 +395,10 @@ class ArcLengthSolver:
             else:
                 bc_viol = 0.0
 
-            if verbose:
-                print(
-                    f"  arc {step_idx} it {it}: lam={lam:+.4e} "
-                    f"|R_phys|={phys_norm:.3e} bc_viol={bc_viol:.3e}"
-                )
+            logger.debug(
+                "arc %d it %d: lam=%+.4e |R_phys|=%.3e bc_viol=%.3e",
+                step_idx, it, lam, phys_norm, bc_viol,
+            )
 
             # Convergence: physical residual is small AND BC violation
             # is small (penalty term is finite, so the constrained
@@ -517,7 +524,7 @@ class ArcLengthSolver:
     def _assemble_tangent(self, u: np.ndarray) -> sparse.csc_matrix:
         tan = getattr(self.assembler, "assemble_tangent", None)
         if callable(tan):
-            return tan(u)
+            return cast(sparse.csc_matrix, tan(u))
         cohesive = getattr(self.assembler, "cohesive_elements", None)
         if cohesive:
             raise RuntimeError(
@@ -533,7 +540,9 @@ class ArcLengthSolver:
             self.assembler, "assemble_residual_and_tangent", None
         )
         if callable(combined):
-            return combined(u)
+            return cast(
+                "tuple[sparse.csc_matrix, np.ndarray]", combined(u)
+            )
         F_int = self.assembler.assemble_internal_force(u)
         K_t = self._assemble_tangent(u)
         return K_t, F_int
@@ -552,4 +561,6 @@ class ArcLengthSolver:
         n_dof = K.shape[0]
         diag_data = np.zeros(n_dof, dtype=np.float64)
         diag_data[dofs_arr] = alpha
-        return (K + sparse.diags(diag_data, 0, format="csc")).tocsc()
+        return sparse.csc_matrix(
+            (K + sparse.diags(diag_data, 0, format="csc")).tocsc()
+        )

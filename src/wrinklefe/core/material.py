@@ -1,6 +1,7 @@
 """Orthotropic material properties and material library for composite FE analysis.
 
 This module provides:
+
 - OrthotropicMaterial: A dataclass encapsulating the full set of orthotropic
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.
@@ -13,11 +14,10 @@ Compliance and stiffness matrices follow standard Voigt notation
 
 from __future__ import annotations
 
-import json
 import functools
-from dataclasses import dataclass, field, fields, asdict, replace
+import json
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 
 import numpy as np
 
@@ -101,10 +101,11 @@ class OrthotropicMaterial:
     gamma_Y: float = 0.02
 
     # --- LaRC04/05 parameters ---
-    GIc: Optional[float] = None       # Mode I fracture toughness (N/mm)
-    GIIc: Optional[float] = None      # Mode II fracture toughness (N/mm)
+    GIc: float | None = None       # Mode I fracture toughness (N/mm)
+    GIIc: float | None = None      # Mode II fracture toughness (N/mm)
     beta_shear: float = 3.2e-8        # Ramberg-Osgood nonlinear shear coeff (1/MPa³)
-    alpha_0: float = 53.0             # Fracture plane angle under pure transverse compression (degrees)
+    # Fracture plane angle under pure transverse compression (degrees)
+    alpha_0: float = 53.0
 
     # --- Cohesive-interface defaults (Mode I / Mode II for the
     # bilinear traction-separation law used by the CZM Phase 3 path).
@@ -388,7 +389,7 @@ class OrthotropicMaterial:
         )
 
     @classmethod
-    def from_dict(cls, data: dict) -> "OrthotropicMaterial":
+    def from_dict(cls, data: dict) -> OrthotropicMaterial:
         """Construct an OrthotropicMaterial from a dictionary.
 
         Parameters
@@ -453,7 +454,7 @@ class MaterialLibrary:
     """
 
     def __init__(self) -> None:
-        self._materials: Dict[str, OrthotropicMaterial] = {}
+        self._materials: dict[str, OrthotropicMaterial] = {}
         self._load_builtins()
 
     # ------------------------------------------------------------------
@@ -495,7 +496,7 @@ class MaterialLibrary:
         """
         self._materials[material.name] = material
 
-    def list_names(self) -> List[str]:
+    def list_names(self) -> list[str]:
         """Return a sorted list of all material names in the library.
 
         Returns
@@ -514,7 +515,7 @@ class MaterialLibrary:
     # JSON serialisation
     # ------------------------------------------------------------------
 
-    def to_json(self, path: Optional[Union[str, Path]] = None) -> str:
+    def to_json(self, path: str | Path | None = None) -> str:
         """Serialise the entire library to a JSON string.
 
         Parameters
@@ -536,7 +537,7 @@ class MaterialLibrary:
         return text
 
     @classmethod
-    def from_json(cls, source: Union[str, Path]) -> "MaterialLibrary":
+    def from_json(cls, source: str | Path) -> MaterialLibrary:
         """Create a library from a JSON file or string.
 
         If *source* is a path to an existing file it is read; otherwise

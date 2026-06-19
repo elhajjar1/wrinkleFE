@@ -4,10 +4,21 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 
 ## Reporting Issues
 
-- Use the [GitHub Issues](https://github.com/elhajjar1/wrinkleFE/issues) tracker
-- Include a minimal reproducible example when reporting bugs
-- Describe your environment (OS, Python version, package versions)
-- For feature requests, describe the use case and expected behavior
+Open a new issue and pick the form that fits — the
+[**New issue**](https://github.com/elhajjar1/wrinkleFE/issues/new/choose)
+chooser offers three:
+
+- **Bug report** — for incorrect behavior or crashes (asks for version
+  and a reproduction).
+- **Enhancement** — pre-seeded with the project's
+  Where / What / Suggested approach / Acceptance criteria skeleton.
+- **Validation / physics discrepancy** — when a predicted knockdown or
+  strength disagrees with experiment or another model (material, layup,
+  wrinkle geometry, measured vs. predicted, data source).
+
+Blank issues stay enabled for anything that doesn't fit a form. A
+results JSON's `provenance` block carries the version and environment
+fields a bug report needs.
 
 ## Development Setup
 
@@ -33,7 +44,10 @@ pytest
 2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes
 4. Run the test suite (`pytest`) and ensure all tests pass
-5. Submit a pull request with a clear description
+5. For user-visible changes, add an entry to the `[Unreleased]` section
+   of [`CHANGELOG.md`](CHANGELOG.md) — and call out anything that shifts
+   predictions under its **Numerical results** category
+6. Submit a pull request with a clear description
 
 ## Code Style
 
@@ -58,7 +72,7 @@ For one-off or ad-hoc materials you do not need to modify source — turn on
 ν12/ν13/ν23 and the Xt/Xc/Yt/Yc/Zt/Zc/S12/S13/S23 allowables, seeded from
 IM7/8552. Custom materials are scoped to the current Streamlit session and
 do not persist; use the source-level workflow above for anything you want
-to keep. See [`DEPLOYMENT_STREAMLIT.md`](DEPLOYMENT_STREAMLIT.md) for a
+to keep. See [`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for a
 full feature tour.
 
 ## Questions
