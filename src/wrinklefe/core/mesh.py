@@ -229,7 +229,7 @@ class MeshData:
     # fibres to kink).  Both the stiffness assembler and the stress-recovery
     # path consult these via :meth:`element_material` / :meth:`is_resin`.
     resin_mask: np.ndarray | None = None
-    resin_material: "OrthotropicMaterial | None" = None
+    resin_material: OrthotropicMaterial | None = None
     # Graded resin pocket: per-element blend weight in [0, 1] (1 = neat
     # resin at the lens centre, 0 = host fibre at the boundary) and the
     # corresponding precomputed per-element blended materials.  When set,
@@ -238,14 +238,14 @@ class MeshData:
     # ``(1 - weight)`` so the wrinkle defect is counted once (no
     # double-count with the misaligned-fibre crest elements).
     resin_blend: np.ndarray | None = None
-    resin_blend_materials: "dict[int, OrthotropicMaterial] | None" = None
+    resin_blend_materials: dict[int, OrthotropicMaterial] | None = None
 
     # ---- per-element material override (progressive damage) ----------------
     # Maps element index -> material, taking precedence over both the
     # resin pocket and the host ply.  The progressive-damage solver
     # populates this with degraded materials as elements fail; it is
     # ``None`` for ordinary (undamaged) analyses.
-    element_material_override: "dict[int, OrthotropicMaterial] | None" = None
+    element_material_override: dict[int, OrthotropicMaterial] | None = None
 
     # ---- derived quantities ------------------------------------------------
 
@@ -349,8 +349,8 @@ class MeshData:
         return bool(self.resin_mask[elem_idx])
 
     def element_material(
-        self, elem_idx: int, ply_material: "OrthotropicMaterial"
-    ) -> "OrthotropicMaterial":
+        self, elem_idx: int, ply_material: OrthotropicMaterial
+    ) -> OrthotropicMaterial:
         """Resolve an element's material, honouring overrides and the pocket.
 
         Resolution precedence (highest first):

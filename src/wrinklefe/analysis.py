@@ -47,16 +47,16 @@ import numpy as np
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface
 from wrinklefe.core.laminate import Laminate, LoadState
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
-from wrinklefe.core.penetration_gate import (
-    GateParameters,
-    penetration_gate_kd,
-)
 from wrinklefe.core.mesh import MeshData, WrinkleMesh
 from wrinklefe.core.morphology import (
     MORPHOLOGY_PHASES,
     SINGLE_WRINKLE_MODES,
     WrinkleConfiguration,
     WrinklePlacement,
+)
+from wrinklefe.core.penetration_gate import (
+    GateParameters,
+    penetration_gate_kd,
 )
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
@@ -2991,7 +2991,7 @@ class WrinkleAnalysis:
         sign = -1.0 if cfg.applied_strain <= 0 else 1.0
         applied = sign * abs(target)
 
-        def _run(m: MeshData) -> "object":
+        def _run(m: MeshData) -> object:
             return ProgressiveDamageSolver(
                 m, laminate,
                 applied_strain=applied,

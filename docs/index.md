@@ -12,6 +12,7 @@ getting_started
 overview
 api/index
 validation
+wrinkle_modeling_findings
 architecture
 czm_plan
 deployment_streamlit

@@ -31,7 +31,8 @@ RESIN = ML.get("EPOXY_S6C10")
 def run(matname, n, t, A, L, pocket=True):
     mat = ML.get(matname)
     lam = Laminate.from_angles([0.0] * n, mat, ply_thickness=t)
-    Lx = max(3 * L, 10); cx = Lx / 2
+    Lx = max(3 * L, 10)
+    cx = Lx / 2
     pr = GaussianSinusoidal(amplitude=A, wavelength=L, width=L / 2, center=cx)
     wc = WrinkleConfiguration.from_morphology_name(
         "graded", pr, interface1=n // 2 - 1, interface2=n // 2, decay_floor=0.0)
@@ -43,7 +44,8 @@ def run(matname, n, t, A, L, pocket=True):
         zc = zlo + 0.5 * (zhi - zlo)
         w = compute_resin_blend(m, ResinPocketSpec.from_wrinkle(
             amplitude=A, wavelength=L, center_x=cx, z_center=zc))
-        m.resin_material = RESIN; m.resin_blend = w
+        m.resin_material = RESIN
+        m.resin_blend = w
         m.resin_blend_materials = {
             int(e): mat.blend(RESIN, float(w[e])) for e in np.flatnonzero(w > 0)}
         nr = int((w > 0).sum())

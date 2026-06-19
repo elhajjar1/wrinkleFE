@@ -25,7 +25,6 @@ import pytest
 
 from wrinklefe.core.material import MaterialLibrary
 
-
 # Frozen built-in roster. Update only if the library intentionally adds
 # or removes a material. The nine fibre/epoxy laminate prepregs are the
 # issue #88 roster; ``EPOXY_S6C10`` is the isotropic neat-epoxy card

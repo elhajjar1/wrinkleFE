@@ -11,12 +11,11 @@ not resolving fibre-scale kinking), not tested as an accuracy target.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.morphology import WrinkleConfiguration
 from wrinklefe.core.mesh import WrinkleMesh
+from wrinklefe.core.morphology import WrinkleConfiguration
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 from wrinklefe.solver.buckling import LinearBucklingSolver
 

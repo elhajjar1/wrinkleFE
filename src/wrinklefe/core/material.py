@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import functools
 import json
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
 import numpy as np
@@ -291,7 +291,7 @@ class OrthotropicMaterial:
         """Convert material to a plain dictionary suitable for JSON serialisation."""
         return asdict(self)
 
-    def blend(self, other: "OrthotropicMaterial", w: float) -> "OrthotropicMaterial":
+    def blend(self, other: OrthotropicMaterial, w: float) -> OrthotropicMaterial:
         """Linear interpolation toward *other* by weight ``w`` in [0, 1].
 
         Returns a new material whose elastic constants and strength
@@ -340,7 +340,7 @@ class OrthotropicMaterial:
         Ss: float = 50.0,
         GIc: float | None = 0.25,
         GIIc: float | None = 0.75,
-    ) -> "OrthotropicMaterial":
+    ) -> OrthotropicMaterial:
         """Build an isotropic material as a degenerate orthotropic card.
 
         Used for the resin-pocket zone (bulk epoxy filling the lens the
