@@ -34,6 +34,7 @@ References
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -46,6 +47,8 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 from wrinklefe.failure.progressive import PlyDiscount
 from wrinklefe.solver.boundary import BoundaryHandler
 from wrinklefe.solver.static import StaticSolver
+
+logger = logging.getLogger(__name__)
 
 
 def _mode_family(mode: str) -> str:
@@ -261,9 +264,12 @@ class ProgressiveDamageSolver:
             elastic.append((abs(eps), first_sigma, first_fi))
 
             if self.verbose:
-                print(f"  [inc {i}/{self.n_increments}] eps={eps:.4f} "
-                      f"sigma={sigma:.1f} MPa  fi={first_fi:.3f}  "
-                      f"n_failed={len(degraded_families)}")
+                logger.info(
+                    "  [inc %d/%d] eps=%.4f sigma=%.1f MPa  fi=%.3f  "
+                    "n_failed=%d",
+                    i, self.n_increments, eps, sigma, first_fi,
+                    len(degraded_families),
+                )
 
         peak, failed_at = self._resolve_peak(elastic, history)
 
