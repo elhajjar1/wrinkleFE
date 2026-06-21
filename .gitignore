@@ -27,7 +27,6 @@ env/
 *~
 
 # Claude
-CLAUDE.md
 .claude/settings.local.json
 .claude/transcripts/
 .claude/cache/
