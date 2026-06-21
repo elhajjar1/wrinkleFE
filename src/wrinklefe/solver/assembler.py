@@ -190,11 +190,17 @@ class GlobalAssembler:
         ply_idx = int(self.mesh.ply_ids[elem_idx])
         ply_angle = float(self.mesh.ply_angles[elem_idx])
 
-        # Material from the laminate's ply stack
-        material = self.laminate.plies[ply_idx].material
+        # Material from the laminate's ply stack — overridden by the
+        # resin-pocket material for elements inside the resin lens.
+        ply_material = self.laminate.plies[ply_idx].material
+        material = self.mesh.element_material(elem_idx, ply_material)
 
-        # Wrinkle misalignment angles at the 8 element nodes (radians)
-        wrinkle_angles = self.mesh.fiber_angles[node_ids]
+        # Wrinkle misalignment angles at the 8 element nodes (radians),
+        # scaled by the resin-pocket retention factor: a fibre-free resin
+        # centre carries no misalignment (scale 0), the lens boundary the
+        # full angle (scale 1), so the wrinkle defect is counted once.
+        angle_scale = self.mesh.resin_angle_scale(elem_idx)
+        wrinkle_angles = angle_scale * self.mesh.fiber_angles[node_ids]
 
         return Hex8Element(
             node_coords=node_coords,
@@ -202,6 +208,25 @@ class GlobalAssembler:
             ply_angle=ply_angle,
             wrinkle_angles=wrinkle_angles,
         )
+
+    def update_element(self, elem_idx: int) -> None:
+        """Rebuild one element's cached object and stiffness after a material
+        change.
+
+        The progressive-damage solver mutates
+        ``mesh.element_material_override`` as elements fail; calling this
+        for each changed element refreshes the cached ``Hex8Element`` and
+        its 24x24 stiffness so the next :meth:`assemble_stiffness` picks up
+        the degraded material without rebuilding the whole assembler.
+
+        Parameters
+        ----------
+        elem_idx : int
+            Element index (0-based) to refresh.
+        """
+        elem = self.create_element(elem_idx)
+        self._hex8_elements[elem_idx] = elem
+        self._hex8_Ke[elem_idx] = elem.stiffness_matrix()
 
     # ------------------------------------------------------------------
     # DOF mapping
@@ -293,6 +318,54 @@ class GlobalAssembler:
                 "instead of StaticSolver."
             )
         return self._assemble_hex8_stiffness(verbose=verbose)
+
+    def assemble_geometric_stiffness(
+        self, displacement: np.ndarray
+    ) -> sparse.csc_matrix:
+        """Assemble the global geometric (initial-stress) stiffness K_geo.
+
+        Evaluates each hex8 element's geometric stiffness from the pre-
+        stress state implied by *displacement* (the linear-static
+        solution) and scatters into a global sparse matrix.  Used by the
+        linearized-buckling microbuckling knockdown (item D.4): the
+        buckling load factors solve ``K phi = -lambda K_geo phi``.
+
+        Parameters
+        ----------
+        displacement : np.ndarray
+            Global nodal displacement vector ``(n_dof,)`` defining the
+            pre-stress.
+
+        Returns
+        -------
+        scipy.sparse.csc_matrix
+            ``(n_dof, n_dof)`` geometric stiffness matrix.
+        """
+        u = np.asarray(displacement, dtype=float).ravel()
+        n_elem = self.mesh.n_elements
+        n_dof = self.mesh.n_dof
+        entries = 24 * 24
+        coo_rows = np.empty(n_elem * entries, dtype=np.intp)
+        coo_cols = np.empty(n_elem * entries, dtype=np.intp)
+        coo_vals = np.empty(n_elem * entries, dtype=np.float64)
+        grid_ii, grid_jj = np.meshgrid(
+            np.arange(24), np.arange(24), indexing="ij"
+        )
+        local_ii = grid_ii.ravel()
+        local_jj = grid_jj.ravel()
+
+        for e in range(n_elem):
+            dofs = self._hex8_dofs[e]
+            u_elem = u[dofs]
+            Kg = self._hex8_elements[e].geometric_stiffness_matrix(u_elem)
+            off = e * entries
+            coo_rows[off:off + entries] = dofs[local_ii]
+            coo_cols[off:off + entries] = dofs[local_jj]
+            coo_vals[off:off + entries] = Kg.ravel()
+
+        return sparse.coo_matrix(
+            (coo_vals, (coo_rows, coo_cols)), shape=(n_dof, n_dof)
+        ).tocsc()
 
     def _assemble_hex8_stiffness(
         self, verbose: bool = False

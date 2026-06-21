@@ -36,9 +36,11 @@ python scripts/validate.py --update   # re-pin after a deliberate model change
 The pinned values are regression baselines, not claims of experimental
 agreement — the measured-vs-predicted error per dataset is printed
 alongside. This is the harness whose absence forced the revert of the
-graded-decay fix (issue #254, commit `00584b4`); datasets whose raw
-case data are not yet in the repository (Elhajjar 2025, Mukhopadhyay
-2015, Li 2026) should be added to the ledger as their points land.
+graded-decay fix (issue #254, commit `00584b4`). The ledger currently
+holds the Li (2025) single-wrinkle compression cases; the
+multidirectional case data (Elhajjar 2025, Mukhopadhyay 2015, Li 2026)
+are not yet in the repository and should be added to the ledger as their
+points land.
 
 ## Included datasets
 
@@ -49,6 +51,66 @@ See the table in [README.md](../../README.md). Current sources:
   (compression) and 77:219–228 (tension).
 - Li, Y. et al. (2026), *Composites Part A* 205:109719 — S-glass/epoxy,
   compression (material `AC318_S6C10`).
+- **Dataset E — Li, X. et al. (2024)**, *Composites Science and
+  Technology* 256:110762 — UD glass/epoxy single-wrinkle compression,
+  9 cases, **moulded** material realization (material card
+  `AC318_S6C10`). Normalised ÷830 MPa (indicative — the paper reports
+  no measured pristine).
+- **Dataset F — Li, Li, Ge & Liang (2025)**, *Polymer Composites*
+  46:15176–15187 — UD glass/epoxy single-wrinkle compression, 6 cases
+  (incl. the near-surface position case S-A-2), **vacuum-bag**
+  realization with a measured pristine of 335.5 MPa (material card
+  `AC318_S6C10_vacbag`, measured Xc = 335.5, E1 = 50.8 GPa).
+
+### UD predictor: the two-parameter (θ, D/T, z) penetration gate
+
+The adopted predictor for the UD single-wrinkle datasets (E, F) is the
+penetration gate, `wrinklefe.core.penetration_gate`
+(`AnalysisConfig.penetration_gate`), documented in
+[WRINKLE_MODELING_FINDINGS.md](WRINKLE_MODELING_FINDINGS.md) (items D.3 /
+D.5). It exists because angle-only Budiansky–Fleck knockdown is
+**scale-invariant**: at a *fixed* peak misalignment angle, the Li grids
+show knockdown still varying strongly with through-thickness penetration
+(Li 2025 S-M-2/4/5: identical θ ≈ 20°, KD 0.63 → 1.00 as `D/T` falls).
+The gate adds that second axis, and a third for wrinkle position:
+
+```
+KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)
+KD_angle(θ) = 1 / (1 + θ_rad / γ_Y)        # Budiansky–Fleck angle floor
+S(D/T)      = min(1, (D/T / dt0)^p)         # penetration gate
+P(z)        = (2·min(z, 1−z))^position_q    # through-thickness position
+```
+
+Two calibrated presets ship, one per material realization:
+`GATE_LI2024_MOULDED` (Dataset E, moulded) and `GATE_LI2025_VACBAG`
+(Dataset F, vacuum-bag; carries the position exponent for the
+near-surface S-A-2 case). The gate is UD-scoped, has zero FE cost, and is
+the package's best UD knockdown predictor.
+
+### E vs F: two material realizations, no shared normalization
+
+E and F are the **same prepreg system** (AC318 S-glass / S6C10-800) cured
+two different ways: E **moulded** at 2.9 MPa, F **vacuum-bag** at ~1 bar.
+The lower consolidation gives F roughly half the compressive strength
+(F's measured pristine Xc = 335.5 MPa vs the moulded ÷830 MPa
+normalization for E) — a ~2× difference. Because every E wrinkled
+strength exceeds F's pristine, the two **cannot share an absolute KD
+normalization**: pooling them is meaningless. This is why there are two
+material cards (`AC318_S6C10` vs `AC318_S6C10_vacbag`) and two gate
+presets, and why the cross-dataset comparison below uses a parity plot
+of `(KD_exp, KD_pred)` pairs rather than an absolute-strength axis.
+
+### Consolidated parity chart
+
+`validation/plot_all_validation.py` renders every single-wrinkle case
+(Datasets A–F) on one predicted-vs-experimental parity plot with a ±20 %
+corridor, writing `validation/fig_all_validation_parity.png`. Each
+dataset is predicted by the model that physically applies to it:
+multidirectional A–D via the analytical Budiansky–Fleck / three-mechanism
+models run through `WrinkleAnalysis`, UD E/F via the penetration gate.
+This is the single cross-dataset predicted-vs-experimental view. Running
+the script prints the per-dataset scorecard; the UD entries are
+**E: 2.8 % MAE, 9/9** and **F: 5.0 % MAE, 6/6** (within ±20 %).
 
 ## Evaluated — not included
 
@@ -132,6 +194,14 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   wrinkle geometry, compression, measured strength with a pristine
   baseline). **Inclusion deferred** pending a model capability tracked by
   [issue #161](https://github.com/ranipdx-glitch/wrinkleFE/issues/161).
+  > **Update**: the single-wrinkle cases (S-M-1…5 and the near-surface
+  > S-A-2) are now an **included** dataset — Dataset F above — predicted by
+  > the two-parameter (θ, D/T, z) penetration gate (`AC318_S6C10_vacbag`),
+  > MAE 5.0 %, 6/6. The gate is a *separate fitted predictor*, not the
+  > analytical/FE pipeline; the analysis below explains why that BF /
+  > FE-strength pipeline could not capture the amplitude-at-constant-angle
+  > effect (issue #161 remains open for that pipeline and for the
+  > multi-wrinkle D-/T- cases).
 - **Dataset** (pristine plate 335.52 MPa; A = peak-to-peak amplitude;
   θ_max = arctan(2π·(A/2)/λ)):
 

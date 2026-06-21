@@ -39,6 +39,7 @@ from wrinklefe.elements.hex8 import _detJ_at_centroid_batch
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from wrinklefe.core.material import OrthotropicMaterial
     from wrinklefe.core.morphology import WrinkleConfiguration
 
 
@@ -220,6 +221,32 @@ class MeshData:
     nz: int
     laminate: Laminate | None = None
 
+    # ---- resin-pocket material zone (Li et al. 2024/2025) ------------------
+    # Optional fibre-free isotropic inclusion at a wrinkle crest.  When
+    # ``resin_mask`` is set, elements flagged ``True`` use ``resin_material``
+    # (an isotropic epoxy card) instead of their host ply's material, and
+    # their fibre-misalignment angle is treated as zero (resin has no
+    # fibres to kink).  Both the stiffness assembler and the stress-recovery
+    # path consult these via :meth:`element_material` / :meth:`is_resin`.
+    resin_mask: np.ndarray | None = None
+    resin_material: OrthotropicMaterial | None = None
+    # Graded resin pocket: per-element blend weight in [0, 1] (1 = neat
+    # resin at the lens centre, 0 = host fibre at the boundary) and the
+    # corresponding precomputed per-element blended materials.  When set,
+    # these supersede the binary ``resin_mask`` path: the element material
+    # is the blend and the fibre-misalignment angle is scaled by
+    # ``(1 - weight)`` so the wrinkle defect is counted once (no
+    # double-count with the misaligned-fibre crest elements).
+    resin_blend: np.ndarray | None = None
+    resin_blend_materials: dict[int, OrthotropicMaterial] | None = None
+
+    # ---- per-element material override (progressive damage) ----------------
+    # Maps element index -> material, taking precedence over both the
+    # resin pocket and the host ply.  The progressive-damage solver
+    # populates this with degraded materials as elements fail; it is
+    # ``None`` for ordinary (undamaged) analyses.
+    element_material_override: dict[int, OrthotropicMaterial] | None = None
+
     # ---- derived quantities ------------------------------------------------
 
     @property
@@ -304,6 +331,71 @@ class MeshData:
             Shape ``(n_elements,)`` array of mean fiber angles (radians).
         """
         return np.asarray(self.fiber_angles[self.elements].mean(axis=1))
+
+    # ---- resin-pocket queries ----------------------------------------------
+
+    def is_resin(self, elem_idx: int) -> bool:
+        """Whether an element belongs to the resin-pocket zone.
+
+        Returns ``False`` when no resin pocket is attached.
+
+        Parameters
+        ----------
+        elem_idx : int
+            Element index (0-based).
+        """
+        if self.resin_mask is None:
+            return False
+        return bool(self.resin_mask[elem_idx])
+
+    def element_material(
+        self, elem_idx: int, ply_material: OrthotropicMaterial
+    ) -> OrthotropicMaterial:
+        """Resolve an element's material, honouring overrides and the pocket.
+
+        Resolution precedence (highest first):
+
+        1. ``element_material_override[elem_idx]`` — per-element degraded
+           material from the progressive-damage solver, when present.
+        2. ``resin_material`` — for elements inside the resin lens.
+        3. ``ply_material`` — the host-ply material (the supplied fallback).
+
+        Callers pass the host-ply material they would otherwise have used
+        so this method stays the single decision point.
+
+        Parameters
+        ----------
+        elem_idx : int
+            Element index (0-based).
+        ply_material : OrthotropicMaterial
+            The host-ply material (fallback).
+        """
+        if self.element_material_override is not None:
+            override = self.element_material_override.get(elem_idx)
+            if override is not None:
+                return override
+        if self.resin_blend_materials is not None:
+            blended = self.resin_blend_materials.get(elem_idx)
+            if blended is not None:
+                return blended
+        if self.is_resin(elem_idx) and self.resin_material is not None:
+            return self.resin_material
+        return ply_material
+
+    def resin_angle_scale(self, elem_idx: int) -> float:
+        """Fibre-misalignment retention factor for an element, in [0, 1].
+
+        Graded pocket: ``1 - blend_weight`` (the resin centre carries no
+        fibre angle; the boundary carries the full wrinkle angle).  Binary
+        pocket: ``0`` for lens elements (fibre-free), ``1`` elsewhere.
+        Used by the assembler and stress recovery so the wrinkle defect is
+        represented once.
+        """
+        if self.resin_blend is not None:
+            return float(1.0 - self.resin_blend[elem_idx])
+        if self.is_resin(elem_idx):
+            return 0.0
+        return 1.0
 
     # ---- boundary / set queries --------------------------------------------
 

@@ -272,6 +272,14 @@ class WrinkleConfiguration:
         # the wrinkle core. Interpolates between graded (0) and uniform (1).
         self.decay_floor: float = max(0.0, min(1.0, decay_floor))
 
+        # Through-thickness centre of the graded decay, as a fraction of
+        # the laminate thickness (0 = bottom surface, 0.5 = mid-plane,
+        # 1 = top surface).  Default 0.5 (mid-plane) reproduces the legacy
+        # symmetric graded decay; off-mid values place the wrinkle nearer
+        # a surface (Li 2025 S-A-2 "Above" position, item D.5), with the
+        # decay tapering asymmetrically to each surface from the centre.
+        self.wrinkle_z_position: float = 0.5
+
         # Spatially varying in-plane amplitude profile (issue #3). This is
         # a SEPARATE multiplicative modulation applied on top of the
         # wrinkle's own longitudinal envelope -- it lets a single wrinkle
@@ -772,8 +780,20 @@ class WrinkleConfiguration:
         if self.decay_mode == "graded":
             if n_plies <= 1:
                 return np.ones(p.shape, dtype=np.float64)
-            p_mid = (n_plies - 1) / 2.0
-            raw = 1.0 - np.abs(p - p_mid) / p_mid  # 1 at mid, 0 at surface
+            # Centre the decay at ``wrinkle_z_position`` (fraction of the
+            # thickness), tapering linearly to zero at each surface — so an
+            # off-mid wrinkle (item D.5) decays asymmetrically: steeply
+            # toward the near surface, gradually toward the far one.  At
+            # 0.5 this reduces to the symmetric ``1 - |p - p_mid|/p_mid``.
+            p_c = float(self.wrinkle_z_position) * (n_plies - 1)
+            pf = p.astype(np.float64)
+            below = p_c if p_c > 0 else 1.0          # distance to bottom
+            above = (n_plies - 1 - p_c) or 1.0       # distance to top
+            raw = np.where(
+                pf <= p_c,
+                1.0 - (p_c - pf) / below,
+                1.0 - (pf - p_c) / above,
+            )
             decay = self.decay_floor + (1.0 - self.decay_floor) * raw
             return np.asarray(np.maximum(0.0, decay))
 

@@ -27,7 +27,12 @@ Public link, no account needed.
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
 - **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
-- **9 built-in materials:** AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 (S-glass/epoxy), T800S/M21, IM10/8552, S-2 glass/epoxy, Kevlar-49/epoxy
+- **Movable wrinkle position:** Configurable through-thickness placement (`wrinkle_z_position`, 0.5 = mid-plane)
+- **Resin-pocket material zone:** Graded neat-epoxy lens at the wrinkle crest (modulus + fibre-angle blend, counted once) via `wrinklefe.core.resin_pocket`
+- **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
+- **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
+- **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown
+- **10 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Developer / library install
@@ -168,6 +173,65 @@ result = WrinkleAnalysis(config).run()
 print(result.analytical_knockdown)
 ```
 
+### Resin pocket + progressive-damage FE (UD compression)
+
+For a unidirectional wrinkle, tag the soft neat-epoxy lens at the crest
+and load-step to ultimate with the progressive-damage solver:
+
+```python
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+from wrinklefe.core.material import MaterialLibrary
+
+lib = MaterialLibrary()
+config = AnalysisConfig(
+    amplitude=0.366, wavelength=16.0, width=12.0,
+    morphology="graded", loading="compression",
+    material=lib.get("AC318_S6C10"),
+    enable_resin_pocket=True,                       # graded epoxy lens at the crest
+    resin_pocket_material=lib.get("EPOXY_S6C10"),   # default if left None
+    enable_progressive_damage=True,                 # load-step to ultimate
+    progressive_n_increments=15,
+)
+result = WrinkleAnalysis(config).run()
+print(result.progressive_knockdown, result.progressive_strength_MPa)
+```
+
+### Penetration gate (θ, D/T, z) — UD, zero FE cost
+
+The closed-form two-parameter gate predicts a UD knockdown directly from
+geometry. Call it on its own with a calibrated preset:
+
+```python
+from wrinklefe.core.penetration_gate import penetration_gate_kd, GATE_LI2024_MOULDED
+
+kd = penetration_gate_kd(theta_deg=8.0, dt=0.10, params=GATE_LI2024_MOULDED)
+print(kd)
+```
+
+Or drive it through `AnalysisConfig.penetration_gate` so
+`analytical_knockdown` (and `analytical_strength_MPa`) come from the gate
+instead of Budiansky–Fleck (use `GATE_LI2025_VACBAG` with
+`AC318_S6C10_vacbag` for the vacuum-bag realization):
+
+```python
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+from wrinklefe.core.material import MaterialLibrary
+from wrinklefe.core.penetration_gate import GATE_LI2024_MOULDED
+
+lib = MaterialLibrary()
+config = AnalysisConfig(
+    amplitude=0.366, wavelength=16.0, width=12.0,
+    morphology="uniform", loading="compression",
+    material=lib.get("AC318_S6C10"),
+    penetration_gate=GATE_LI2024_MOULDED,
+)
+result = WrinkleAnalysis(config).run(analytical_only=True)
+print(result.analytical_knockdown)
+```
+
+When `penetration_gate` is left unset (the default `None`), the
+analytical knockdown is unchanged.
+
 ### Batch parametric sweeps
 
 For exploring how the knockdown varies across a parameter range, use
@@ -290,6 +354,14 @@ below. Reproducing case-level pass/fail tables from this repository
 alone is not currently possible — the raw data and regeneration script
 are not included.
 
+For a consolidated predicted-vs-experimental view, the script
+[`validation/plot_all_validation.py`](validation/plot_all_validation.py)
+regenerates `validation/fig_all_validation_parity.png`: a single parity
+plot of every single-wrinkle case (Datasets A–F) inside a ±20% band,
+with each dataset predicted by the model that physically applies to it
+(Budiansky–Fleck / three-mechanism for the multidirectional cases A–D,
+the penetration gate for the UD cases E/F).
+
 ## Supported morphologies
 
 WrinkleFE ships five wrinkle morphologies (defined in
@@ -383,6 +455,8 @@ For graded morphology, the BF knockdown is averaged over the wrinkle profile in 
 
 - Elhajjar, R. (2025). Scientific Reports, 15:25977.
 - Li, Y. et al. (2026). Composites Part A, 205:109719.
+- Li, X. et al. (2024). Composites Science and Technology, 256:110762.
+- Li, Y. et al. (2025). Polymer Composites, 46:15176-15187.
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

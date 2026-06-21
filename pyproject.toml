@@ -90,6 +90,13 @@ select = ["E", "F", "W", "I", "N", "UP"]
 # test class with no domain justification.
 ignore = ["N802", "N803", "N806", "N815", "N816"]
 
+[tool.ruff.lint.per-file-ignores]
+# The validation/ runner scripts are standalone diagnostics executed
+# directly (not installed): each inserts the in-repo ``src`` onto
+# sys.path before importing wrinklefe, which is the canonical reason
+# E402 (module-level import not at top of file) exists to be silenced.
+"validation/*" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"

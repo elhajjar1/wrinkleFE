@@ -27,7 +27,6 @@ env/
 *~
 
 # Claude
-CLAUDE.md
 .claude/settings.local.json
 .claude/transcripts/
 .claude/cache/
@@ -73,5 +72,24 @@ joss/*.fls
 docs/superpowers/
 joss/
 docs/_build/
-validation/*.png
-validation/
+examples/
+validation/*
+# ... except the Li progressive-damage validation driver and its results
+!validation/validate_li_progressive.py
+!validation/viz_li_fe.py
+!validation/probe_crackband_mesh.py
+!validation/tune_gf.py
+!validation/diag_crest_pocket.py
+!validation/d3_two_parameter.py
+!validation/d2_kink_micromechanics.py
+!validation/plot_all_validation.py
+!validation/fig_all_validation_parity.png
+!validation/li_load_displacement.png
+!validation/li_mesh_F.png
+!validation/li_mesh_E.png
+!validation/li_progressive_E.csv
+!validation/li_progressive_E_nz1.csv
+!validation/li_progressive_E_nx16.csv
+!validation/li_progressive_E_crackband.csv
+!validation/li_progressive_EF.csv
+!validation/li_progressive_EF_crackband.csv

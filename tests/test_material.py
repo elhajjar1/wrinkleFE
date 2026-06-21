@@ -169,13 +169,17 @@ BUILTIN_NAMES = (
     "IM10_8552",
     "S2_GLASS_EPOXY",
     "KEVLAR49_EPOXY",
+    # Isotropic neat-epoxy card for the resin-pocket zone (Li 2024/2025).
+    "EPOXY_S6C10",
+    # Vacuum-bag AC318 realization for Li 2025 Dataset F.
+    "AC318_S6C10_vacbag",
 )
 
 
 class TestMaterialLibrary:
     """Test MaterialLibrary functionality."""
 
-    def test_has_nine_builtins(self):
+    def test_has_all_builtins(self):
         lib = MaterialLibrary()
         assert len(lib) == len(BUILTIN_NAMES)
 

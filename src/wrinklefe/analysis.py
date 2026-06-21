@@ -54,6 +54,10 @@ from wrinklefe.core.morphology import (
     WrinkleConfiguration,
     WrinklePlacement,
 )
+from wrinklefe.core.penetration_gate import (
+    GateParameters,
+    penetration_gate_kd,
+)
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
 )
@@ -801,6 +805,67 @@ class AnalysisConfig:
     kink_band_quadratic_coeff: float = 0.0
 
     # ------------------------------------------------------------------
+    # Two-parameter (theta, D/T) penetration-gate knockdown (item D.3).
+    # ------------------------------------------------------------------
+    # When set, the analytical knockdown is computed from the
+    # penetration-gate model instead of the Budiansky-Fleck kink-band
+    # path: KD = 1 - (1 - KD_angle(theta)) * min(1, (D/T / dt0)**p), which
+    # reproduces both the angle and the through-thickness penetration
+    # dependence the Li UD grids expose (E MAE 2.8 %, F MAE 6.0 % vs the
+    # angle-only/FE models' ~20-30 %).  Material-realization specific —
+    # use ``wrinklefe.core.penetration_gate.GATE_LI2024_MOULDED`` /
+    # ``GATE_LI2025_VACBAG`` or calibrate your own.  UD-scoped: do NOT set
+    # for multidirectional/blocked laminates.
+    penetration_gate: GateParameters | None = None
+
+    # ------------------------------------------------------------------
+    # Resin-pocket material zone (Li et al. 2024/2025 UD glass datasets).
+    # ------------------------------------------------------------------
+    # When ``enable_resin_pocket`` is True, the FE path tags the hex
+    # elements inside the cosine resin lens at the wrinkle crest and
+    # assigns them an isotropic epoxy material (``resin_pocket_material``,
+    # default the built-in ``EPOXY_S6C10`` card) instead of the host ply's
+    # fibre-direction material, with the fibre-misalignment angle zeroed.
+    # This captures the soft, fibre-free inclusion the machined cosine
+    # insert leaves at the crest — a real compressive-knockdown mechanism
+    # the homogenised-ply mesh otherwise misses.  No effect on the
+    # analytical path or when ``analytical_only=True``.
+    enable_resin_pocket: bool = False
+    resin_pocket_material: OrthotropicMaterial | None = None
+    # Graded transition (default): the pocket modulus blends smoothly from
+    # neat resin at the lens centre to the host fibre material at the
+    # boundary, and the fibre-misalignment angle is scaled by (1 - weight),
+    # so the wrinkle defect is counted once.  A binary fibre/resin jump
+    # (``False``) over-weakens via a spurious stress concentration that
+    # double-counts the misaligned-fibre crest knockdown.
+    resin_pocket_graded: bool = True
+    # Crest half-height of the lens as a multiple of the wrinkle
+    # half-amplitude A (mm at center, tapering to 0 at the longitudinal
+    # edges).  Must be > 0 when the pocket is enabled.
+    resin_pocket_height_scale: float = 1.0
+    # Longitudinal half-extent of the lens as a multiple of wavelength/2
+    # (the cosine insert support).  Must be > 0 when enabled.
+    resin_pocket_length_scale: float = 1.0
+
+    # ------------------------------------------------------------------
+    # Progressive-damage FE path (load-stepping ply-discount to ultimate
+    # load).  When ``enable_progressive_damage`` is True the FE solve runs
+    # the :class:`~wrinklefe.solver.progressive_damage.ProgressiveDamageSolver`
+    # on the wrinkled mesh and a pristine baseline, populating
+    # ``progressive_strength_MPa`` and ``progressive_knockdown`` on the
+    # result.  This is the only path that carries UD compression past
+    # first-ply failure (the linear LaRC05 index never activates for
+    # pristine UD).  No effect on ``analytical_only`` runs; not combinable
+    # with ``enable_czm``.
+    enable_progressive_damage: bool = False
+    progressive_n_increments: int = 15
+    progressive_residual_factor: float = 0.1
+    # Target nominal strain magnitude for the load-stepping ramp.  ``None``
+    # auto-sizes it to ~1.8x the fibre failure strain (Xc / E1) so the
+    # ramp brackets the peak load.  Must be > 0 when set.
+    progressive_max_strain: float | None = None
+
+    # ------------------------------------------------------------------
     # Cohesive zone modelling (delamination prediction).
     # ------------------------------------------------------------------
     # v1: bilinear intrinsic CZM with Benzeggagh-Kenane mode-mixity.
@@ -1083,6 +1148,76 @@ class AnalysisConfig:
                 f"got {self.kink_band_quadratic_coeff!r}"
             )
 
+        # --- Penetration gate -----------------------------------------
+        if self.penetration_gate is not None and not isinstance(
+            self.penetration_gate, GateParameters
+        ):
+            raise ValueError(
+                "AnalysisConfig.penetration_gate must be a GateParameters "
+                f"or None, got {type(self.penetration_gate).__name__}"
+            )
+
+        # --- Resin-pocket zone ----------------------------------------
+        # Fields are no-ops when ``enable_resin_pocket`` is False; still
+        # type-checked so misconfigurations surface at construction time.
+        if not isinstance(self.enable_resin_pocket, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_resin_pocket must be a bool, "
+                f"got {self.enable_resin_pocket!r}"
+            )
+        for name in ("resin_pocket_height_scale", "resin_pocket_length_scale"):
+            val = getattr(self, name)
+            if not (
+                isinstance(val, (int, float))
+                and not isinstance(val, bool)
+                and math.isfinite(val)
+                and val > 0.0
+            ):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be a finite positive "
+                    f"float, got {val!r}"
+                )
+
+        # --- Progressive-damage path ----------------------------------
+        if not isinstance(self.enable_progressive_damage, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_progressive_damage must be a bool, "
+                f"got {self.enable_progressive_damage!r}"
+            )
+        if self.enable_progressive_damage and self.enable_czm:
+            raise ValueError(
+                "AnalysisConfig: enable_progressive_damage and enable_czm "
+                "cannot both be True (separate nonlinear FE paths)."
+            )
+        if (
+            not isinstance(self.progressive_n_increments, int)
+            or isinstance(self.progressive_n_increments, bool)
+            or self.progressive_n_increments < 1
+        ):
+            raise ValueError(
+                f"AnalysisConfig.progressive_n_increments must be an int "
+                f">= 1, got {self.progressive_n_increments!r}"
+            )
+        if not (
+            isinstance(self.progressive_residual_factor, (int, float))
+            and not isinstance(self.progressive_residual_factor, bool)
+            and 0.0 < self.progressive_residual_factor < 1.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.progressive_residual_factor must be in "
+                f"(0, 1), got {self.progressive_residual_factor!r}"
+            )
+        if self.progressive_max_strain is not None and not (
+            isinstance(self.progressive_max_strain, (int, float))
+            and not isinstance(self.progressive_max_strain, bool)
+            and math.isfinite(self.progressive_max_strain)
+            and self.progressive_max_strain > 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.progressive_max_strain must be a finite "
+                f"positive float when set, got {self.progressive_max_strain!r}"
+            )
+
         # --- Cohesive zone modelling ----------------------------------
         # All CZM fields are no-ops when ``enable_czm`` is False; we
         # still type-check them so misconfigurations surface at
@@ -1312,6 +1447,24 @@ class AnalysisResults:
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
     modulus_retention: float = 1.0
+
+    # ------------------------------------------------------------------
+    # Progressive-damage results — populated when
+    # AnalysisConfig.enable_progressive_damage = True.
+    # ------------------------------------------------------------------
+    progressive_strength_MPa: float = 0.0
+    """Predicted ultimate compressive strength of the wrinkled coupon
+    (peak carried nominal stress over the load history, MPa)."""
+
+    progressive_pristine_strength_MPa: float = 0.0
+    """Predicted ultimate strength of the pristine (flat) baseline, MPa."""
+
+    progressive_knockdown: float = 1.0
+    """Progressive-damage strength knockdown
+    ``progressive_strength_MPa / progressive_pristine_strength_MPa``."""
+
+    progressive_history: list | None = None
+    """``(applied_strain, nominal_stress)`` samples for the wrinkled run."""
 
     # ------------------------------------------------------------------
     # CZM results — only populated when AnalysisConfig.enable_czm = True.
@@ -1629,6 +1782,12 @@ class WrinkleAnalysis:
                 )
             results.wrinkle_config = wrinkle_config
 
+        # Through-thickness wrinkle position (item D.5): the graded decay
+        # is centred here (0.5 = mid-plane).  Off-mid values place the
+        # wrinkle nearer a surface (Li 2025 S-A-2).
+        wrinkle_config.wrinkle_z_position = float(cfg.wrinkle_z_position)
+        results.wrinkle_config = wrinkle_config
+
         _report("Computing analytical predictions", 0.05)
 
         # 3. Analytical predictions
@@ -1656,6 +1815,11 @@ class WrinkleAnalysis:
             nz_per_ply=cfg.nz_per_ply,
         )
         mesh = mesh_gen.generate()
+
+        # 4a2. Resin-pocket material zone (Li et al. 2024/2025).
+        if cfg.enable_resin_pocket:
+            self._attach_resin_pocket(mesh, laminate)
+
         results.mesh = mesh
 
         # 4b. Mesh-based max fiber angle (accounts for decay mode)
@@ -1675,6 +1839,13 @@ class WrinkleAnalysis:
                 results.analytical_knockdown,
             )
             return results
+
+        # Progressive-damage path: carries the solve to ultimate load and
+        # reports a strength knockdown (the only path that knocks down
+        # pristine UD compression).  Still runs the linear solve below so
+        # the usual field/failure/retention outputs remain populated.
+        if cfg.enable_progressive_damage:
+            self._run_progressive_path(results, laminate, mesh)
 
         # Linear (legacy) path.
         solver = StaticSolver(mesh, laminate)
@@ -2304,6 +2475,33 @@ class WrinkleAnalysis:
             theta_max = 0.0
         theta_eff = theta_max * mf
 
+        # Penetration-gate path (item D.3): when a calibrated gate is
+        # configured, the analytical knockdown is the two-parameter
+        # (theta, D/T) gate value instead of Budiansky-Fleck.  Uses the
+        # peak angle and the penetration D/T = A / (t_ply * n_plies), both
+        # on the section-2.7 conventions (config amplitude is the
+        # half-amplitude).  Returns early — the BF / tension blocks below
+        # are bypassed.
+        if cfg.penetration_gate is not None:
+            angles_g = cfg.angles if cfg.angles else [0]
+            T = cfg.ply_thickness * len(angles_g)
+            dt = (cfg.amplitude / T) if T > 0 else 0.0
+            kd_gate = penetration_gate_kd(
+                math.degrees(theta_max), dt, cfg.penetration_gate,
+                z_position=float(cfg.wrinkle_z_position),
+            )
+            results.morphology_factor = mf
+            results.max_angle_rad = theta_max
+            results.effective_angle_rad = theta_eff
+            results.gamma_Y_eff = cfg.penetration_gate.gamma_Y
+            results.analytical_knockdown = float(kd_gate)
+            material = cfg.material
+            assert material is not None  # set by AnalysisConfig.__post_init__
+            ref = (material.Xt if cfg.loading == "tension"
+                   else material.Xc)
+            results.analytical_strength_MPa = float(ref) * float(kd_gate)
+            return
+
         # Compute layup-dependent effective gamma_Y from confinement
         angles: list[float] = (
             cfg.angles if cfg.angles else [0.0, 45.0, -45.0, 90.0] * 6
@@ -2742,6 +2940,166 @@ class WrinkleAnalysis:
 
         return float(kd_lam), mechanisms
 
+    def _build_flat_mesh(self, laminate: Laminate) -> MeshData:
+        """Generate a pristine (zero-amplitude) mesh matching the config.
+
+        Shared by the retention-factor baseline and the progressive-damage
+        pristine reference so both compare against the same flat laminate.
+        """
+        cfg = self.config
+        flat_profile = GaussianSinusoidal(
+            amplitude=0.0,
+            wavelength=cfg.wavelength,
+            width=cfg.width,
+            center=cfg.domain_length / 2.0,
+        )
+        # Both interface indices are populated by AnalysisConfig.__post_init__.
+        assert cfg.interface_1 is not None and cfg.interface_2 is not None
+        flat_config = WrinkleConfiguration.from_morphology_name(
+            "stack", flat_profile,
+            interface1=cfg.interface_1,
+            interface2=cfg.interface_2,
+        )
+        return WrinkleMesh(
+            laminate=laminate,
+            wrinkle_config=flat_config,
+            Lx=cfg.domain_length,
+            Ly=cfg.domain_width,
+            nx=cfg.nx,
+            ny=cfg.ny,
+            nz_per_ply=cfg.nz_per_ply,
+        ).generate()
+
+    def _run_progressive_path(
+        self, results: AnalysisResults, laminate: Laminate, mesh: MeshData
+    ) -> None:
+        """Run the load-stepping progressive-damage solver to ultimate load.
+
+        Solves the wrinkled mesh (with any resin pocket already attached)
+        and a pristine flat baseline, then records the ultimate strengths
+        and their ratio as the progressive-damage knockdown.  The wrinkled
+        mesh's per-element material override is cleared afterwards so the
+        subsequent linear field/failure/retention pass is unaffected.
+        """
+        from wrinklefe.solver.progressive_damage import (
+            ProgressiveDamageResult,
+            ProgressiveDamageSolver,
+        )
+
+        cfg = self.config
+        # Auto-size the strain ramp to bracket fibre failure (~1.8x the
+        # compressive failure strain Xc / E1 of the 0-degree material).
+        if cfg.progressive_max_strain is not None:
+            target = float(cfg.progressive_max_strain)
+        else:
+            mat0 = laminate.plies[0].material
+            eps_f = mat0.Xc / mat0.E1
+            target = 1.8 * eps_f
+        sign = -1.0 if cfg.applied_strain <= 0 else 1.0
+        applied = sign * abs(target)
+
+        def _run(m: MeshData) -> ProgressiveDamageResult:
+            return ProgressiveDamageSolver(
+                m, laminate,
+                applied_strain=applied,
+                n_increments=cfg.progressive_n_increments,
+                residual_factor=cfg.progressive_residual_factor,
+                solver=cfg.solver,
+                verbose=cfg.verbose,
+            ).solve()
+
+        # Wrinkled run — snapshot/restore the override so the later linear
+        # pass sees the undamaged mesh.
+        saved_override = mesh.element_material_override
+        wr = _run(mesh)
+        mesh.element_material_override = saved_override
+
+        pristine = _run(self._build_flat_mesh(laminate))
+
+        results.progressive_strength_MPa = wr.peak_stress
+        results.progressive_pristine_strength_MPa = pristine.peak_stress
+        results.progressive_history = wr.history
+        if pristine.peak_stress > 0:
+            results.progressive_knockdown = (
+                wr.peak_stress / pristine.peak_stress
+            )
+
+    def _attach_resin_pocket(
+        self, mesh: MeshData, laminate: Laminate
+    ) -> None:
+        """Tag the resin-lens elements and attach the resin material.
+
+        Builds a :class:`~wrinklefe.core.resin_pocket.ResinPocketSpec`
+        from the wrinkle geometry and the configured scale knobs, flags
+        the hex elements whose centroids fall inside the lens, and stores
+        the boolean mask plus the resin material on *mesh* so the
+        assembler, stress-recovery and failure paths pick them up.
+
+        The resin material defaults to the built-in ``EPOXY_S6C10``
+        isotropic card when ``resin_pocket_material`` is unset.
+        """
+        from wrinklefe.core.resin_pocket import (
+            ResinPocketSpec,
+            compute_resin_blend,
+            compute_resin_mask,
+        )
+
+        cfg = self.config
+        # Place the pocket relative to the mesh's ACTUAL z-extent, which
+        # is centred on the mid-plane (z in [-T/2, +T/2]) — not the
+        # bottom-referenced [0, T].  ``wrinkle_z_position`` maps 0 -> bottom
+        # surface, 0.5 -> mid-plane (where the graded morphology places the
+        # wrinkle crest), 1 -> top surface.  Using ``z_frac * T`` (the old
+        # form) put a mid-plane pocket at the top surface, mis-locating it
+        # away from the high-angle crest entirely.
+        z_lo = float(mesh.nodes[:, 2].min())
+        z_hi = float(mesh.nodes[:, 2].max())
+        z_center = z_lo + float(cfg.wrinkle_z_position) * (z_hi - z_lo)
+        center_x = cfg.domain_length / 2.0
+
+        spec = ResinPocketSpec.from_wrinkle(
+            amplitude=cfg.amplitude,
+            wavelength=cfg.wavelength,
+            center_x=center_x,
+            z_center=z_center,
+            height_scale=cfg.resin_pocket_height_scale,
+            length_scale=cfg.resin_pocket_length_scale,
+        )
+
+        resin_material = cfg.resin_pocket_material
+        if resin_material is None:
+            resin_material = MaterialLibrary().get("EPOXY_S6C10")
+        mesh.resin_material = resin_material
+
+        if cfg.resin_pocket_graded:
+            # Graded pocket: per-element blend weight + precomputed blended
+            # materials (host ply <-> resin), and the fibre angle scaled by
+            # (1 - weight) downstream via ``resin_angle_scale``.
+            weight = compute_resin_blend(mesh, spec)
+            mesh.resin_blend = weight
+            blend_mats: dict[int, OrthotropicMaterial] = {}
+            for e_np in np.flatnonzero(weight > 0.0):
+                e = int(e_np)
+                ply_mat = laminate.plies[int(mesh.ply_ids[e])].material
+                blend_mats[e] = ply_mat.blend(
+                    resin_material, float(weight[e])
+                )
+            mesh.resin_blend_materials = blend_mats
+            n_resin = int((weight > 0.0).sum())
+        else:
+            mesh.resin_mask = compute_resin_mask(mesh, spec)
+            n_resin = int(mesh.resin_mask.sum())
+
+        if cfg.verbose:
+            import logging
+            logging.getLogger(__name__).info(
+                "Resin pocket (%s): %d/%d elements tagged "
+                "(half_length=%.3g mm, h_center=%.3g mm, z_center=%.3g mm)",
+                "graded" if cfg.resin_pocket_graded else "binary",
+                n_resin, mesh.n_elements, spec.half_length,
+                spec.h_center, z_center,
+            )
+
     def _evaluate_failure(
         self,
         results: AnalysisResults,
@@ -2758,11 +3116,40 @@ class WrinkleAnalysis:
         # Per-element fiber angles from wrinkle geometry (for LaRC05 kinking)
         elem_fiber_angles = mesh.element_fiber_angles_array()
 
+        # Resin-pocket zone (Li et al. 2024/2025): route lens elements to
+        # their pocket material (graded blend, or the binary resin card)
+        # so failure is evaluated at the locally-softened strengths, and
+        # scale the fibre angle by the retention factor so the LaRC05
+        # kink-band path is not double-counted at the resin centre.
+        eval_ply_ids = np.asarray(mesh.ply_ids)
+        if mesh.resin_blend_materials:
+            # Graded pocket: each blended element gets its own material.
+            extra = list(mesh.resin_blend_materials.items())
+            base = len(materials)
+            mat_index = {e: base + i for i, (e, _m) in enumerate(extra)}
+            materials = [*materials, *(m for _e, m in extra)]
+            eval_ply_ids = eval_ply_ids.copy()
+            for e, idx in mat_index.items():
+                eval_ply_ids[e] = idx
+            if mesh.resin_blend is not None:
+                elem_fiber_angles = (
+                    elem_fiber_angles * (1.0 - mesh.resin_blend)
+                )
+        elif mesh.resin_mask is not None and mesh.resin_material is not None:
+            resin_idx = len(materials)
+            materials = [*materials, mesh.resin_material]
+            eval_ply_ids = np.where(
+                mesh.resin_mask, resin_idx, mesh.ply_ids
+            )
+            elem_fiber_angles = np.where(
+                mesh.resin_mask, 0.0, elem_fiber_angles
+            )
+
         # Field-level evaluation
         fi_fields, mode_fields = evaluator.evaluate_field(
             field_results.stress_local,
             materials,
-            mesh.ply_ids,
+            eval_ply_ids,
             fiber_angles=elem_fiber_angles,
         )
         results.failure_indices = fi_fields
@@ -2795,28 +3182,7 @@ class WrinkleAnalysis:
             return
 
         # Build a flat (no wrinkle) mesh with same dimensions
-        flat_profile = GaussianSinusoidal(
-            amplitude=0.0,
-            wavelength=cfg.wavelength,
-            width=cfg.width,
-            center=cfg.domain_length / 2.0,
-        )
-        flat_config = WrinkleConfiguration.from_morphology_name(
-            "stack", flat_profile,
-            interface1=cfg.interface_1,
-            interface2=cfg.interface_2,
-        )
-
-        flat_mesh_gen = WrinkleMesh(
-            laminate=laminate,
-            wrinkle_config=flat_config,
-            Lx=cfg.domain_length,
-            Ly=cfg.domain_width,
-            nx=cfg.nx,
-            ny=cfg.ny,
-            nz_per_ply=cfg.nz_per_ply,
-        )
-        flat_mesh = flat_mesh_gen.generate()
+        flat_mesh = self._build_flat_mesh(laminate)
 
         # Solve with same BCs
         flat_solver = StaticSolver(flat_mesh, laminate)

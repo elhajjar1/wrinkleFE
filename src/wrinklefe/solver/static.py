@@ -571,9 +571,15 @@ class StaticSolver:
         mesh_ply_angles = self.mesh.ply_angles
         mesh_ply_ids = self.mesh.ply_ids
 
-        # Material stiffness in the material frame — constant per ply.
+        # Per-element material is resolved through the mesh's single
+        # decision point (progressive-damage override > graded resin blend
+        # > binary resin pocket > host ply), and the wrinkle-misalignment
+        # retention through ``resin_angle_scale`` (0 at a fibre-free resin
+        # centre, 1 in the bulk).  Stiffness is cached by material identity
+        # (shared ply objects hit the cache; per-element blended/degraded
+        # materials are distinct).
         plies = self.laminate.plies
-        material_C_by_ply: dict[int, np.ndarray] = {}
+        mat_C_cache: dict[int, np.ndarray] = {}
 
         # Reusable scratch B-matrix template (zeros are stable between GPs
         # at the slots we never touch; we overwrite the populated slots
@@ -624,10 +630,13 @@ class StaticSolver:
 
             # Rotated stiffness per GP: ply rotation (about z) once per
             # element, then wrinkle rotation (about y) per GP.
-            ply_idx = int(mesh_ply_ids[e])
-            if ply_idx not in material_C_by_ply:
-                material_C_by_ply[ply_idx] = plies[ply_idx].material.stiffness_matrix
-            C_material = material_C_by_ply[ply_idx]
+            ply_material = plies[int(mesh_ply_ids[e])].material
+            mat_e = self.mesh.element_material(e, ply_material)
+            mid = id(mat_e)
+            C_material = mat_C_cache.get(mid)
+            if C_material is None:
+                C_material = mat_e.stiffness_matrix
+                mat_C_cache[mid] = C_material
 
             ply_angle_rad = np.radians(float(mesh_ply_angles[e]))
             if abs(ply_angle_rad) > 1.0e-15:
@@ -635,9 +644,14 @@ class StaticSolver:
             else:
                 C_ply = C_material
 
-            fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)
-            # One matmul gives the interpolated wrinkle angle at every GP.
-            wrinkle_angles_gp = N_gp @ fiber_angles_local  # (n_gp,)
+            angle_scale = self.mesh.resin_angle_scale(e)
+            if angle_scale == 0.0:
+                wrinkle_angles_gp = np.zeros(n_gp)
+            else:
+                fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)
+                # One matmul gives the interpolated wrinkle angle per GP,
+                # scaled by the resin retention factor.
+                wrinkle_angles_gp = angle_scale * (N_gp @ fiber_angles_local)
 
             T_ply = stress_transformation_3d(ply_angle_rad, axis='z')
             sig_g = np.empty((n_gp, 6))

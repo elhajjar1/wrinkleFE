@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import functools
 import json
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
 import numpy as np
@@ -291,6 +291,103 @@ class OrthotropicMaterial:
         """Convert material to a plain dictionary suitable for JSON serialisation."""
         return asdict(self)
 
+    def blend(self, other: OrthotropicMaterial, w: float) -> OrthotropicMaterial:
+        """Linear interpolation toward *other* by weight ``w`` in [0, 1].
+
+        Returns a new material whose elastic constants and strength
+        allowables are ``(1 - w) * self + w * other``.  Used for the
+        graded resin-pocket transition (host fibre material at the lens
+        boundary, ``w = 0``, smoothly to the neat resin at the lens
+        centre, ``w = 1``), which removes the spurious stress
+        concentration a binary fibre/resin jump produces.
+
+        Parameters
+        ----------
+        other : OrthotropicMaterial
+            Target material (reached at ``w = 1``).
+        w : float
+            Blend weight in [0, 1].
+
+        Returns
+        -------
+        OrthotropicMaterial
+            Interpolated material.  ``w = 0`` returns a copy of ``self``;
+            ``w = 1`` a copy of ``other``.
+        """
+        w = float(min(max(w, 0.0), 1.0))
+        if w <= 0.0:
+            return replace(self)
+        if w >= 1.0:
+            return replace(other)
+        a, b = self.to_dict(), other.to_dict()
+        blended = dict(a)
+        for k, av in a.items():
+            bv = b.get(k)
+            if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
+                blended[k] = (1.0 - w) * av + w * bv
+        blended["name"] = f"{self.name}~{other.name}@{w:.2f}"
+        return OrthotropicMaterial.from_dict(blended)
+
+    @classmethod
+    def isotropic(
+        cls,
+        E: float,
+        nu: float,
+        *,
+        name: str = "isotropic",
+        St: float = 80.0,
+        Sc: float = 120.0,
+        Ss: float = 50.0,
+        GIc: float | None = 0.25,
+        GIIc: float | None = 0.75,
+    ) -> OrthotropicMaterial:
+        """Build an isotropic material as a degenerate orthotropic card.
+
+        Used for the resin-pocket zone (bulk epoxy filling the lens the
+        machined cosine insert leaves at a wrinkle crest, Li et al. 2024):
+        a soft, fibre-free inclusion with matrix-level strengths.  All
+        three Young's moduli equal ``E``, all Poisson ratios equal ``nu``,
+        and the shear moduli follow the isotropic relation
+        ``G = E / (2 (1 + nu))``.
+
+        Parameters
+        ----------
+        E : float
+            Young's modulus (MPa).  Must be > 0.
+        nu : float
+            Poisson's ratio.  Must satisfy ``-1 < nu < 0.5`` for the
+            isotropic stiffness to stay positive-definite.
+        name : str, optional
+            Material identifier.  Default ``"isotropic"``.
+        St, Sc, Ss : float, optional
+            Tensile, compressive and shear strength allowables (MPa)
+            applied uniformly to every direction.  Defaults are typical
+            cured-epoxy values (80 / 120 / 50 MPa).
+        GIc, GIIc : float or None, optional
+            Mode I / II fracture toughnesses (N/mm).  Defaults 0.25 / 0.75.
+
+        Returns
+        -------
+        OrthotropicMaterial
+            Isotropic material card.
+        """
+        if not (E > 0):
+            raise ValueError(f"isotropic E must be > 0, got {E}")
+        if not (-1.0 < nu < 0.5):
+            raise ValueError(
+                f"isotropic nu must be in (-1, 0.5), got {nu}"
+            )
+        G = E / (2.0 * (1.0 + nu))
+        return cls(
+            E1=E, E2=E, E3=E,
+            G12=G, G13=G, G23=G,
+            nu12=nu, nu13=nu, nu23=nu,
+            Xt=St, Xc=Sc, Yt=St, Yc=Sc, Zt=St, Zc=Sc,
+            S12=Ss, S13=Ss, S23=Ss,
+            GIc=GIc, GIIc=GIIc,
+            name=name,
+        )
+
     @classmethod
     def from_dict(cls, data: dict) -> OrthotropicMaterial:
         """Construct an OrthotropicMaterial from a dictionary.
@@ -562,6 +659,49 @@ class MaterialLibrary:
             G12=5_500.0, G13=5_500.0, G23=4_000.0,
             nu12=0.28, nu13=0.28, nu23=0.40,
             Xt=1_200.0, Xc=830.0,
+            Yt=40.0, Yc=150.0,
+            Zt=40.0, Zc=150.0,
+            S12=60.0, S13=60.0, S23=45.0,
+            alpha1=5.0e-6, alpha2=25.0e-6, alpha3=25.0e-6,
+            beta1=0.0, beta2=0.3, beta3=0.3,
+            gamma_Y=0.02,
+            GIc=0.25, GIIc=0.75, alpha_0=53.0,
+            sigma_max=70.0, tau_max=90.0,
+        ))
+
+        # 5b. S6C10-800 neat epoxy (resin-pocket zone for Li 2024/2025
+        #     UD glass datasets).  The machined cosine resin insert that
+        #     creates the wrinkle is co-cured bulk epoxy, so the lens it
+        #     leaves at the crest is fibre-free matrix.  Isotropic:
+        #     E ≈ 3.5 GPa, nu ≈ 0.35 (typical cured aerospace epoxy),
+        #     matrix-level strengths consistent with the AC318 transverse
+        #     allowables (Yt 40 / Yc 150 / S 60 MPa).  Built via the
+        #     isotropic constructor so the degenerate-orthotropic card
+        #     stays positive-definite.
+        self.add(OrthotropicMaterial.isotropic(
+            3_500.0, 0.35,
+            name="EPOXY_S6C10",
+            St=40.0, Sc=150.0, Ss=60.0,
+            GIc=0.25, GIIc=0.75,
+        ))
+
+        # 5c. AC318 S-glass / S6C10-800 — vacuum-bag realization (Li 2025,
+        #     Dataset F).  Same prepreg as the moulded AC318_S6C10 card
+        #     (Dataset E) but oven-cured under a 1 bar vacuum bag rather
+        #     than 2.9 MPa mould, giving lower consolidation: MEASURED
+        #     pristine modulus E1 = 50.8 GPa and MEASURED pristine
+        #     compressive strength Xc = 335.5 MPa (~half the moulded
+        #     value).  E2/G12/Yt/... are inherited from the base AC318 card
+        #     (no separate vacuum-bag measurements) and are approximate.
+        #     The two realizations cannot share a normalization — F's
+        #     335.5 plate gives KD > 1 for every E specimen (see
+        #     VALIDATION_DATA section 3).
+        self.add(OrthotropicMaterial(
+            name="AC318_S6C10_vacbag",
+            E1=50_800.0, E2=12_000.0, E3=12_000.0,
+            G12=5_500.0, G13=5_500.0, G23=4_000.0,
+            nu12=0.28, nu13=0.28, nu23=0.40,
+            Xt=1_200.0, Xc=335.5,
             Yt=40.0, Yc=150.0,
             Zt=40.0, Zc=150.0,
             S12=60.0, S13=60.0, S23=45.0,

@@ -36,3 +36,25 @@ Mesh
 .. automodule:: wrinklefe.core.mesh
    :members: WrinkleMesh, MeshData
    :show-inheritance:
+
+Resin pocket
+------------
+
+.. automodule:: wrinklefe.core.resin_pocket
+   :members: ResinPocketSpec, compute_resin_mask, compute_resin_blend
+   :show-inheritance:
+
+Penetration gate
+----------------
+
+.. automodule:: wrinklefe.core.penetration_gate
+   :members: GateParameters, penetration_gate_kd, angle_floor, position_factor,
+             predict_from_geometry, calibrate_gate
+   :show-inheritance:
+
+Coordinate transforms
+---------------------
+
+.. automodule:: wrinklefe.core.transforms
+   :members:
+   :show-inheritance:
