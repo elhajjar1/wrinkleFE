@@ -6,7 +6,7 @@ This module provides:
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.
 - MaterialLibrary: A registry of named materials with JSON serialisation and
-  four built-in carbon/epoxy systems.
+  ten built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
 
 Compliance and stiffness matrices follow standard Voigt notation
 (11, 22, 33, 23, 13, 12) consistent with most composite-mechanics texts.
@@ -425,8 +425,9 @@ class OrthotropicMaterial:
 class MaterialLibrary:
     """Named collection of :class:`OrthotropicMaterial` instances.
 
-    Provides five built-in composite material systems (four carbon/epoxy
-    and one glass/epoxy) and supports JSON serialisation for user-defined
+    Provides ten built-in fibre-reinforced composite systems (carbon,
+    S-glass, and aramid / epoxy) plus an isotropic neat-epoxy card for the
+    resin-pocket zone, and supports JSON serialisation for user-defined
     materials.
 
     Built-in materials
@@ -435,11 +436,17 @@ class MaterialLibrary:
     - ``IM7_8552`` : Hexcel IM7 / 8552 (toughened epoxy, widely characterised)
     - ``T300_914`` : Toray T300 / Hexcel 914 (legacy European aerospace)
     - ``T700_2510`` : Toray T700SC / Cytec 2510 (OOA VBO system)
-    - ``AC318_S6C10`` : AC318 / S6C10-800 (S-glass / epoxy, Li et al. 2026)
+    - ``AC318_S6C10`` : AC318 / S6C10-800 S-glass / epoxy, *moulded*
+      realization (Li et al. 2026)
+    - ``AC318_S6C10_vacbag`` : same prepreg, *vacuum-bag* realization
+      (Li 2025; measured ``Xc = 335.5`` MPa, ``E1 = 50.8`` GPa)
     - ``T800S_M21`` : Hexcel T800S / M21 toughened epoxy (A350 / A400M primary)
     - ``IM10_8552`` : Hexcel IM10 / 8552 (high-strain toughened epoxy)
     - ``S2_GLASS_EPOXY`` : Generic S-2 glass / epoxy (MIL-HDBK-17 / CMH-17)
     - ``KEVLAR49_EPOXY`` : Generic Kevlar 49 / epoxy aramid system
+    - ``EPOXY_S6C10`` : Isotropic neat-epoxy card (the fibre-free resin
+      lens at a machined wrinkle crest; built via
+      :meth:`OrthotropicMaterial.isotropic`)
 
     Examples
     --------
@@ -448,9 +455,9 @@ class MaterialLibrary:
     >>> mat.E1
     171420.0
     >>> sorted(lib.list_names())  # doctest: +NORMALIZE_WHITESPACE
-    ['AC318_S6C10', 'AS4_3501_6', 'IM10_8552', 'IM7_8552',
-     'KEVLAR49_EPOXY', 'S2_GLASS_EPOXY', 'T300_914', 'T700_2510',
-     'T800S_M21']
+    ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
+     'IM10_8552', 'IM7_8552', 'KEVLAR49_EPOXY', 'S2_GLASS_EPOXY',
+     'T300_914', 'T700_2510', 'T800S_M21']
     """
 
     def __init__(self) -> None:

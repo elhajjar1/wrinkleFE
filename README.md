@@ -31,7 +31,7 @@ Public link, no account needed.
 - **Resin-pocket material zone:** Graded neat-epoxy lens at the wrinkle crest (modulus + fibre-angle blend, counted once) via `wrinklefe.core.resin_pocket`
 - **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
-- **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown
+- **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue over-predicts the *fibre-scale* wrinkle knockdown, so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
 - **10 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
@@ -432,24 +432,69 @@ through `FailureEvaluator` or used independently:
 
 ## How It Works
 
-### Compression
+The full mechanism-by-mechanism derivation lives on the
+[Theory: physics & mechanics](https://wrinklefe.readthedocs.io/en/latest/theory.html)
+page (`docs/theory.md`). The essentials:
 
-CLT-weighted Budiansky-Fleck:
+### Wrinkle kinematics
+
+A wrinkle is reduced to its peak fibre-misalignment angle
 
 ```
-KD_lam = f_0 / (1 + theta / gamma_Y_eff) + (1 - f_0)
-gamma_Y_eff = 0.032 + 0.050 * f_confined
+theta_max = arctan(2*pi*A / lambda)
 ```
 
-### Tension
+(half-amplitude `A`, wavelength `λ`) and — for unidirectional laminates —
+its through-thickness penetration `D/T = A/T` (`T` = laminate thickness).
+`theta_eff = M_f * theta_max` folds in the morphology factor `M_f`
+(`stack` = 1, `convex` < 1, `concave` > 1).
 
-Three-mechanism minimum, CLT-weighted:
+### Compression — CLT-weighted Budiansky–Fleck kink-band
+
+```
+KD_lam      = f_0 * KD_BF + (1 - f_0)
+KD_BF       = 1 / (1 + r + c_AF * r^2),   r = theta_eff / gamma_Y_eff
+gamma_Y_eff = max(0.032 + 0.050 * f_confined
+                        - 0.010 * max(n_block_max - 1, 0),  0.016)
+```
+
+`f_0` is the axial-stiffness fraction carried by the 0° plies (the plies
+that kink); the `(1 - f_0)` term is the off-axis plies riding through at
+full strength. The matrix shear-yield strain `gamma_Y_eff` **rises** with
+the confinement `f_confined` (off-axis neighbours bracing the 0° plies
+against kink-band rotation) and **falls** with the longest run of
+consecutive 0° plies `n_block_max` (blocked 0° plies kink more easily),
+floored at half the UD value. So a dispersed `[0/45/90/-45]s` resists
+wrinkle knockdown far better than a blocked `[0_4/90_4]s`. The optional
+Argon–Fleck quadratic term `c_AF` (`kink_band_quadratic_coeff`) defaults
+to `0` — the pure linear Budiansky–Fleck floor.
+
+### Tension — three-mechanism minimum, CLT-weighted
 
 ```
 KD_lam = f_0 * min(cos^2(theta), KD_matrix, KD_oop) + (1 - f_0)
 ```
 
-For graded morphology, the BF knockdown is averaged over the wrinkle profile in both the longitudinal (x) and through-thickness (z) directions, with Gaussian decay (scale = amplitude A) confining the effect to the wrinkle zone.
+The 0° ply knockdown is the *most severe* of three competing mechanisms:
+fibre load-rotation (`cos^2(theta)`), in-situ matrix cracking (a
+Hashin/LaRC `σ22`–`τ12` interaction with a thick-ply in-situ strength
+correction, `KD_matrix`), and a curved-beam out-of-plane delamination
+check (`KD_oop`: the wrinkle curvature drives an interlaminar `σ33` at the
+crest and `τ13` at the flanks). A Benzeggagh–Kenane mixed-mode
+delamination-*onset* knockdown is reported alongside, and the tension
+knockdown is floored by the compression value for the same defect
+("tension is never worse than compression").
+
+### Graded morphology
+
+For the `graded` morphology the knockdown is averaged over the wrinkle
+profile in both the longitudinal (`x`) and through-thickness (`z`)
+directions. The **compression** path weights each ply by a Gaussian
+through-thickness envelope centred at `wrinkle_z_position` (decay scale
+`max(λ/2, A)`); the **tension** path uses an analogous linear taper. In
+both, `decay_floor` sets the surface-ply amplitude: `0` is a fully
+embedded wrinkle that fades to flat at the surfaces, `1` collapses to
+`uniform`.
 
 ## References
 

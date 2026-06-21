@@ -59,7 +59,7 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 
 | Module | Description |
 |--------|-------------|
-| `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (9 built-in presets) |
+| `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (10 built-in fibre-reinforced systems + 1 isotropic neat-epoxy card) |
 | `core/laminate.py` | `Laminate`, `Ply`, `LoadState`; Classical Lamination Theory ABD matrices |
 | `core/wrinkle.py` | `GaussianSinusoidal` wrinkle profile: z(x) = A exp(-x^2/w^2) cos(2pi x/lam) |
 | `core/morphology.py` | `WrinkleConfiguration`, `MorphologyFactor`, `MORPHOLOGY_PHASES`; phase-to-Mf mapping |
@@ -153,4 +153,11 @@ The library never calls `logging.basicConfig` or attaches handlers; that is left
 
 ## Confinement Model
 
-The matrix yield strain `gamma_Y` is not a fixed constant -- it depends on how much lateral support neighboring off-axis plies provide to the 0-degree plies that fail by kink-banding. Each 0-degree ply is scored by whether its neighbors are off-axis (confined) or also 0-degree (unconfined). The effective yield strain is then `gamma_Y_eff = 0.032 + 0.050 * f_confined`, where `f_confined` is the weighted confinement fraction. This means dispersed layups like `[0/45/90/-45]s` are significantly more resistant to wrinkle-induced knockdown than blocked layups like `[0_4/90_4]s`.
+The matrix yield strain `gamma_Y` is not a fixed constant -- it depends on how much lateral support neighboring off-axis plies provide to the 0-degree plies that fail by kink-banding. Each 0-degree ply is scored by whether its neighbors are off-axis (confined) or also 0-degree (unconfined). The effective yield strain is a **three-parameter** model:
+
+```
+gamma_Y_eff = max(0.032 + 0.050 * f_confined
+                        - 0.010 * max(n_block_max - 1, 0),  0.016)
+```
+
+where `f_confined` is the weighted confinement fraction (0 = unconfined UD, 1 = every 0-deg ply bracketed by off-axis neighbours) and `n_block_max` is the longest run of consecutive 0-deg plies. The `0.050 * f_confined` term rewards dispersion; the `0.010 * (n_block_max - 1)` **block penalty** captures that the inner 0-deg faces of a thick 0-block are bracketed by another 0-deg ply that does *not* restrain kink-band lateral expansion, so blocked 0-plies kink at a lower applied shear strain than the neighbour-counting score alone predicts. The result is floored at `0.016` (half the UD value) so a long block cannot drive `gamma_Y_eff` to zero (a degenerate Budiansky-Fleck knockdown). The block penalty is suppressed for pure UD `[0]_n` (no off-axis plies) so UD stays at the `0.032` calibration point. This means dispersed layups like `[0/45/90/-45]s` are significantly more resistant to wrinkle-induced knockdown than blocked layups like `[0_4/90_4]s`.
