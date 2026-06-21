@@ -30,6 +30,48 @@ length. All lengths are millimetres. The full parameter reference is
 the wrinkle-geometry table in the [overview](overview.md) and the
 {class}`~wrinklefe.analysis.AnalysisConfig` API page.
 
+## Unidirectional wrinkle knockdown (penetration gate)
+
+For *unidirectional* laminates the angle-only models under-predict the
+scale effect: at a fixed misalignment angle the compressive knockdown
+still drops as the wrinkle penetrates deeper through the thickness. The
+penetration-gate model captures this from two inputs — the peak angle
+`theta_deg` and the through-thickness penetration `D/T = A/T` — using a
+calibrated preset:
+
+```python
+from wrinklefe.core.penetration_gate import (
+    penetration_gate_kd,
+    predict_from_geometry,
+    GATE_LI2025_VACBAG,
+)
+
+# From the two model inputs directly:
+kd = penetration_gate_kd(theta_deg=10.0, dt=0.12, params=GATE_LI2025_VACBAG)
+print(f"knockdown = {kd:.3f}")
+
+# Or straight from the wrinkle geometry (A, lambda, layup):
+kd_geom = predict_from_geometry(
+    amplitude=0.5, wavelength=15.0,
+    n_plies=14, ply_thickness=0.183,
+    params=GATE_LI2025_VACBAG,
+)
+print(f"knockdown = {kd_geom:.3f}")
+```
+
+`GATE_LI2025_VACBAG` (and `GATE_LI2024_MOULDED`) are calibrated to the
+Li 2024/2025 UD glass/epoxy grids; `penetration_gate_kd` also takes an
+optional `z_position` (0.5 = mid-plane) for the through-thickness
+position factor. To route a full `AnalysisConfig` run through the gate,
+set `AnalysisConfig.penetration_gate = GATE_LI2025_VACBAG`. The gate is
+**UD-scoped** — do not apply it to multidirectional / blocked laminates.
+
+For the FE side, `AnalysisConfig.enable_resin_pocket=True` tags a soft
+epoxy lens at the wrinkle crest, and
+`AnalysisConfig.enable_progressive_damage=True` load-steps the solve to
+ultimate load for a real UD compression knockdown; both are documented
+on the {class}`~wrinklefe.analysis.AnalysisConfig` API page.
+
 The same pipeline is available from the command line:
 
 ```bash

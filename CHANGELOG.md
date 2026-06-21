@@ -15,6 +15,48 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Resin-pocket material zone (`wrinklefe.core.resin_pocket`:
+  `ResinPocketSpec`, `compute_resin_mask`, `compute_resin_blend`):
+  a graded neat-epoxy lens at the wrinkle crest, tagged into the FE mesh
+  via `AnalysisConfig.enable_resin_pocket` /
+  `resin_pocket_graded` / `resin_pocket_material` /
+  `resin_pocket_height_scale` / `resin_pocket_length_scale`. The modulus
+  and fibre-misalignment angle blend together so the wrinkle defect is
+  counted once. Adds `OrthotropicMaterial.isotropic()` / `.blend()` and
+  an isotropic neat-epoxy card `EPOXY_S6C10`.
+- Progressive-damage FE solver
+  (`wrinklefe.solver.progressive_damage`: `ProgressiveDamageSolver`,
+  `ProgressiveDamageResult`), enabled via
+  `AnalysisConfig.enable_progressive_damage` with
+  `progressive_n_increments` / `progressive_residual_factor` /
+  `progressive_max_strain`. Load-steps to ultimate load with optional
+  crack-band (Bažant–Oh) regularization — the first FE route to a real
+  UD compression knockdown.
+- Two-parameter (θ, D/T, z) penetration gate
+  (`wrinklefe.core.penetration_gate`: `GateParameters`,
+  `penetration_gate_kd`, `angle_floor`, `position_factor`,
+  `predict_from_geometry`, `calibrate_gate`, plus presets
+  `GATE_LI2024_MOULDED` and `GATE_LI2025_VACBAG`), wired through
+  `AnalysisConfig.penetration_gate`. A closed-form UD predictor
+  `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` at zero FE cost.
+- Linear buckling / geometric stiffness
+  (`wrinklefe.solver.buckling`: `LinearBucklingSolver`,
+  `BucklingResult`, `microbuckling_knockdown`), backed by
+  `Hex8Element.geometric_stiffness_matrix` and
+  `assemble_geometric_stiffness`.
+- Movable wrinkle through-thickness position
+  (`AnalysisConfig.wrinkle_z_position`, 0.5 = mid-plane); the graded
+  decay centres there.
+- `AC318_S6C10_vacbag` material card — the Li 2025 vacuum-bag
+  realization of the AC318 / S6C10-800 S-glass/epoxy prepreg (measured
+  Xc = 335.5 MPa, E1 = 50.8 GPa).
+- Combined validation parity chart
+  (`validation/plot_all_validation.py` →
+  `validation/fig_all_validation_parity.png`): a predicted-vs-experimental
+  parity plot of all single-wrinkle cases (Datasets A–F) inside a ±20%
+  band, each predicted with the model that applies to it
+  (Budiansky–Fleck / three-mechanism for multidirectional A–D, the
+  penetration gate for UD E/F).
 - `wrinklefe sweep` and `wrinklefe compare` gained `--output-json` and
   `--output-csv`: machine-readable batch results (a JSON array of
   per-run objects matching `analyze --output-json`, and a tidy
@@ -61,6 +103,12 @@ version produced a given file.
   imported; native `.inp`/VTK writers need no extra).
 
 ### Numerical results
+- **Penetration gate**: when `AnalysisConfig.penetration_gate` is set to
+  a `GateParameters` preset, `analytical_knockdown` (and
+  `analytical_strength_MPa`) are computed from the two-parameter
+  (θ, D/T, z) gate instead of Budiansky–Fleck, so UD configurations
+  return different (calibrated) knockdowns. The default
+  `penetration_gate=None` preserves previous results bit-for-bit.
 - **Graded compression `decay_floor`**: configurations that set
   `decay_floor` under compression now produce different (correct)
   knockdowns. The default `decay_floor=0.0` preserves previous results

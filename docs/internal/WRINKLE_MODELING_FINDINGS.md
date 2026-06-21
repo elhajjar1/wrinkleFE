@@ -1,4 +1,4 @@
-# Wrinkle compressive-knockdown modelling: findings (items D.1–D.4)
+# Wrinkle compressive-knockdown modelling: findings (items D.1–D.5)
 
 This note records the outcome of the five-item modelling programme (list
 "D") aimed at closing the residual gaps in WrinkleFE's prediction of
@@ -42,9 +42,14 @@ equals the fibre-kink fracture energy `Gf` regardless of mesh.
 angle response *and* the steep penetration drop (KD 1.00→0.94→0.63 over
 D/T 0.041→0.122) — that defeated the angle-only and FE models.
 
-- **E: MAE 2.8 %, 9/9** (γ_Y = 0.258, dt0 = 0.094, p = 0.59).
-- **F: MAE 6.0 %, 5/5** (γ_Y = 0.62, dt0 = 0.122, p = 4.31; matches
-  §2.7's predicted dt0 ≈ 0.12, p ≈ 4.8).
+- **E: MAE 2.8 %, 9/9** (`GATE_LI2024_MOULDED`: γ_Y = 0.2577,
+  dt0 = 0.0938, p = 0.59).
+- **F: MAE 6.0 %, 5/5** on the five mid-plane cases used to fit the gate
+  (`GATE_LI2025_VACBAG`: γ_Y = 0.6215, dt0 = 0.122, p = 4.31; matches
+  §2.7's predicted dt0 ≈ 0.12, p ≈ 4.8). Adding the near-surface S-A-2
+  case via the D.5 position factor gives the full six-case F result
+  **5.0 %, 6/6** (the value reported in the consolidated chart and the
+  "Net picture" table below).
 - Material-realization specific (E moulded vs F vacuum-bag give
   contradictory KD at the same (θ, D/T) — the §2.7 normalization issue);
   UD-scoped.
@@ -123,6 +128,14 @@ The throughline: the governing physics is **fibre-scale** (kinking with
 fibre bending), which closed-form models capture (the gate) but the
 homogenised continuum FE cannot.  The gate (D.3) is the production UD
 predictor; the FE (D.1) gives mesh-objective field detail.
+
+**Consolidated parity chart.** `validation/plot_all_validation.py`
+renders every single-wrinkle case (Datasets A–F) on one
+predicted-vs-experimental parity plot with a ±20 % corridor, each dataset
+predicted by the model that physically applies to it (multidirectional
+A–D via the analytical BF / three-mechanism path; UD E/F via this gate).
+Running it prints the per-dataset scorecard — E 2.8 % (9/9), F 5.0 %
+(6/6) — and writes `validation/fig_all_validation_parity.png`.
 
 ## Open items
 
