@@ -69,6 +69,10 @@ laminates, and the penetration gate for unidirectional laminates**,
 because at a fixed angle the UD knockdown still varies with
 through-thickness penetration.
 
-See the [API reference](api/index.md) for the full public surface and
-the [validation page](validation.md) for how these models compare against
+For the full mechanism-by-mechanism derivation — kink-band confinement,
+the tension three-mechanism minimum, the penetration gate, the
+progressive-damage crack-band, and the cohesive law — see the
+[Theory: physics & mechanics](theory.md) page. See the
+[API reference](api/index.md) for the full public surface and the
+[validation page](validation.md) for how these models compare against
 experiment.

@@ -12,6 +12,7 @@ progressive-damage FE, and a (θ, D/T, z) penetration gate).
 
 getting_started
 overview
+theory
 api/index
 validation
 wrinkle_modeling_findings
