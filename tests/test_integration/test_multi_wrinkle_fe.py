@@ -121,8 +121,13 @@ class TestMultiWrinkleFE:
         r_scalar = WrinkleAnalysis(scalar_cfg).run()
         r_multi = WrinkleAnalysis(multi_cfg).run()
 
+        # modulus_retention is an FP-reduced scalar (mean sigma_11 over the
+        # mesh); the scalar-graded and one-entry-wrinkles paths reduce in a
+        # different order, agreeing only to ~1e-8, so rel=1e-9 flakes across
+        # platforms (e.g. macOS arm64). 1e-6 is well within any physical
+        # meaning; the FI fields below stay strict.
         assert r_multi.modulus_retention == pytest.approx(
-            r_scalar.modulus_retention, rel=1e-9
+            r_scalar.modulus_retention, rel=1e-6
         )
         for crit, arr in r_scalar.failure_indices.items():
             np.testing.assert_allclose(
@@ -168,8 +173,13 @@ class TestMultiWrinkleFE:
             rtol=0, atol=1e-12,
             err_msg="coincident halves must produce the same angle field",
         )
+        # FP-reduced scalar (see test above): the full vs coincident-halves
+        # paths reduce sigma_11 in a different order and agree only to ~1e-8,
+        # even though the mesh nodes and angle field are bit-identical
+        # (asserted at 1e-12 above). rel=1e-9 flakes on macOS arm64; 1e-6 is
+        # far inside any physical tolerance.
         assert r_halves.modulus_retention == pytest.approx(
-            r_full.modulus_retention, rel=1e-9
+            r_full.modulus_retention, rel=1e-6
         )
         for crit, arr in r_full.failure_indices.items():
             np.testing.assert_allclose(
