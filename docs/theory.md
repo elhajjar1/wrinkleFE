@@ -356,6 +356,17 @@ load-stepped) system and evaluates ply failure.
   $D=\tfrac13\sum \bar{Q}_k(z_k^3-z_{k-1}^3)$, an FSDT transverse-shear
   $H$ matrix with shear-correction factor $5/6$, thermal resultants, and
   effective membrane moduli $E_x, E_y, G_{xy}, \nu_{xy}$ from $A^{-1}$.
+- **Stiffness (modulus) knockdown.** Besides the per-criterion strength
+  retention, the linear FE solve reports `modulus_retention` — the ratio
+  of the wrinkled to pristine mean fibre-direction stress at a fixed
+  applied strain, i.e. the axial Young's-modulus knockdown
+  $E_x/E_{x,0}$. The *analytical* path has no stiffness model (it returns
+  $1.0$); both the FE `modulus_retention` and a closed-form
+  CLT-series-average estimate are validated against the UD modulus
+  datasets (Li 2025, Hsiao & Daniel 1996) by
+  `validation/validate_modulus.py` — see the
+  [validation page](validation.md). Stiffness is consistently far more
+  wrinkle-tolerant than strength.
 
 ### 5.1 Cohesive-zone delamination (CZM)
 
