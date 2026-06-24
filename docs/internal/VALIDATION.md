@@ -102,6 +102,11 @@ on the amplitude/position axes, consistent with the strength findings.
 The modulus validation is **UD-only** — no multidirectional dataset in
 the ledger reports a measured modulus knockdown.
 
+`validation/plot_modulus_validation.py` renders the consolidated
+predicted-vs-experimental view (`validation/fig_modulus_validation.png`):
+modulus knockdown vs misalignment angle, and a parity plot, for all three
+datasets — the stiffness counterpart of `plot_all_validation.py`.
+
 ### UD predictor: the two-parameter (θ, D/T, z) penetration gate
 
 The adopted predictor for the UD single-wrinkle datasets (E, F) is the

@@ -376,7 +376,12 @@ both against the UD datasets that report a *measured modulus* — **F**
 3.9 % MAE (F) / 1.2 % (G) and the FE at 6.9 % (F) / 5.1 % (G). The data
 and both models agree that stiffness is far more wrinkle-tolerant than
 strength: the modulus knockdown stays ≈0.81–0.98 for the S-glass cases
-and only reaches ≈0.52–0.57 for a carbon uniform wrinkle at θ = 15°.
+and only reaches ≈0.52–0.57 for a carbon uniform wrinkle at θ = 15°. The
+script
+[`validation/plot_modulus_validation.py`](validation/plot_modulus_validation.py)
+renders the comparison as `validation/fig_modulus_validation.png` —
+knockdown-vs-angle and a predicted-vs-experimental parity plot across all
+three datasets.
 
 ## Supported morphologies
 
