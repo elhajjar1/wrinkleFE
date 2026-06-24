@@ -167,6 +167,7 @@ BUILTIN_NAMES = (
     "AC318_S6C10",
     "T800S_M21",
     "IM10_8552",
+    "IM6G_3501_6",
     "S2_GLASS_EPOXY",
     "KEVLAR49_EPOXY",
     # Isotropic neat-epoxy card for the resin-pocket zone (Li 2024/2025).

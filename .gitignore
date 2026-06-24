@@ -83,6 +83,7 @@ validation/*
 !validation/d3_two_parameter.py
 !validation/d2_kink_micromechanics.py
 !validation/plot_all_validation.py
+!validation/validate_modulus.py
 !validation/fig_all_validation_parity.png
 !validation/li_load_displacement.png
 !validation/li_mesh_F.png

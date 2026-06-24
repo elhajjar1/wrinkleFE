@@ -32,7 +32,7 @@ Public link, no account needed.
 - **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
 - **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue over-predicts the *fibre-scale* wrinkle knockdown, so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
-- **10 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
+- **11 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, IM6G/3501-6 carbon/epoxy — the Hsiao & Daniel 1996 wavy-UD study, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Developer / library install
@@ -502,6 +502,7 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 - Li, Y. et al. (2026). Composites Part A, 205:109719.
 - Li, X. et al. (2024). Composites Science and Technology, 256:110762.
 - Li, Y. et al. (2025). Polymer Composites, 46:15176-15187.
+- Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593.
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

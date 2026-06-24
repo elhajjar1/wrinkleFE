@@ -6,7 +6,7 @@ This module provides:
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.
 - MaterialLibrary: A registry of named materials with JSON serialisation and
-  ten built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
+  eleven built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
 
 Compliance and stiffness matrices follow standard Voigt notation
 (11, 22, 33, 23, 13, 12) consistent with most composite-mechanics texts.
@@ -425,7 +425,7 @@ class OrthotropicMaterial:
 class MaterialLibrary:
     """Named collection of :class:`OrthotropicMaterial` instances.
 
-    Provides ten built-in fibre-reinforced composite systems (carbon,
+    Provides eleven built-in fibre-reinforced composite systems (carbon,
     S-glass, and aramid / epoxy) plus an isotropic neat-epoxy card for the
     resin-pocket zone, and supports JSON serialisation for user-defined
     materials.
@@ -442,6 +442,8 @@ class MaterialLibrary:
       (Li 2025; measured ``Xc = 335.5`` MPa, ``E1 = 50.8`` GPa)
     - ``T800S_M21`` : Hexcel T800S / M21 toughened epoxy (A350 / A400M primary)
     - ``IM10_8552`` : Hexcel IM10 / 8552 (high-strain toughened epoxy)
+    - ``IM6G_3501_6`` : Hercules IM6G / 3501-6 carbon / epoxy (Hsiao &
+      Daniel 1996 wavy-UD compression study; Dataset G)
     - ``S2_GLASS_EPOXY`` : Generic S-2 glass / epoxy (MIL-HDBK-17 / CMH-17)
     - ``KEVLAR49_EPOXY`` : Generic Kevlar 49 / epoxy aramid system
     - ``EPOXY_S6C10`` : Isotropic neat-epoxy card (the fibre-free resin
@@ -456,8 +458,8 @@ class MaterialLibrary:
     171420.0
     >>> sorted(lib.list_names())  # doctest: +NORMALIZE_WHITESPACE
     ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
-     'IM10_8552', 'IM7_8552', 'KEVLAR49_EPOXY', 'S2_GLASS_EPOXY',
-     'T300_914', 'T700_2510', 'T800S_M21']
+     'IM10_8552', 'IM6G_3501_6', 'IM7_8552', 'KEVLAR49_EPOXY',
+     'S2_GLASS_EPOXY', 'T300_914', 'T700_2510', 'T800S_M21']
     """
 
     def __init__(self) -> None:
@@ -764,6 +766,31 @@ class MaterialLibrary:
             gamma_Y=0.02,
             GIc=0.28, GIIc=0.79, alpha_0=53.0,
             sigma_max=80.0, tau_max=90.0,
+        ))
+
+        # 7b. IM6G / 3501-6  (Hercules IM6G carbon / 3501-6 epoxy).
+        #     Lamina properties from Hsiao & Daniel (1996) "Effect of fiber
+        #     waviness on stiffness and strength reduction of unidirectional
+        #     composites under compressive loading", Compos. Sci. Technol.
+        #     56(5):581-593, Table 1 (Vf 0.66).  E3/G13/nu13 set by
+        #     transverse isotropy; G23 ~= E2 / (2(1+nu23)); Z = transverse
+        #     allowables; S23 estimated.  Cohesive defaults: brittle 3501-6
+        #     epoxy interface (sigma_max=60, tau_max=90; spec).  This is the
+        #     material card for Dataset G of the validation database.
+        self.add(OrthotropicMaterial(
+            name="IM6G_3501_6",
+            E1=169_000.0, E2=9_000.0, E3=9_000.0,
+            G12=6_500.0, G13=6_500.0, G23=3_200.0,
+            nu12=0.31, nu13=0.31, nu23=0.40,
+            Xt=2_236.0, Xc=1_682.0,
+            Yt=46.2, Yc=213.0,
+            Zt=46.2, Zc=213.0,
+            S12=72.8, S13=72.8, S23=50.0,
+            alpha1=-0.4e-6, alpha2=26.0e-6, alpha3=26.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.02,
+            GIc=0.10, GIIc=0.45, alpha_0=53.0,
+            sigma_max=60.0, tau_max=90.0,
         ))
 
         # 8. S-2 Glass / Epoxy  (generic).
