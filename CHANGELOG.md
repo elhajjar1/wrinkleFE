@@ -74,6 +74,11 @@ version produced a given file.
   and G (Hsiao & Daniel 1996). It is the first stiffness (as opposed to
   strength) validation in the repository; analytical MAE 3.9 % (F) /
   1.2 % (G), FE MAE 6.9 % (F) / 5.1 % (G).
+- Stiffness validation chart (`validation/plot_modulus_validation.py` →
+  `validation/fig_modulus_validation.png`): the modulus counterpart of
+  the strength parity chart — predicted-vs-experimental modulus knockdown
+  (analytical and FE) vs misalignment angle, plus a parity panel, across
+  the UD modulus datasets E/F/G.
 - Combined validation parity chart
   (`validation/plot_all_validation.py` →
   `validation/fig_all_validation_parity.png`): a predicted-vs-experimental
