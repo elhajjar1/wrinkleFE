@@ -362,6 +362,21 @@ with each dataset predicted by the model that physically applies to it
 (Budiansky–Fleck / three-mechanism for the multidirectional cases A–D,
 the penetration gate for the UD cases E/F).
 
+### Stiffness (modulus) knockdown
+
+Besides strength, WrinkleFE reports a **stiffness** knockdown — the FE
+`modulus_retention` (wrinkled vs pristine axial Young's modulus from the
+linear static solve). The script
+[`validation/validate_modulus.py`](validation/validate_modulus.py) scores
+this against the UD datasets that report a *measured modulus* — **F**
+(Li 2025, S-glass), **G** (Hsiao & Daniel 1996, carbon — the
+`IM6G_3501_6` card), and the indicative **E** (Li 2024) — alongside a
+closed-form CLT series-average estimate. The analytical estimate lands at
+3.9 % MAE (F) / 1.2 % (G) and the FE at 6.9 % (F) / 5.1 % (G). The data
+and both models agree that stiffness is far more wrinkle-tolerant than
+strength: the modulus knockdown stays ≈0.81–0.98 for the S-glass cases
+and only reaches ≈0.52–0.57 for a carbon uniform wrinkle at θ = 15°.
+
 ## Supported morphologies
 
 WrinkleFE ships five wrinkle morphologies (defined in

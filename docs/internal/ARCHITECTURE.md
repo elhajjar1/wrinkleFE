@@ -59,7 +59,7 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 
 | Module | Description |
 |--------|-------------|
-| `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (10 built-in fibre-reinforced systems + 1 isotropic neat-epoxy card) |
+| `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (11 built-in fibre-reinforced systems + 1 isotropic neat-epoxy card) |
 | `core/laminate.py` | `Laminate`, `Ply`, `LoadState`; Classical Lamination Theory ABD matrices |
 | `core/wrinkle.py` | `GaussianSinusoidal` wrinkle profile: z(x) = A exp(-x^2/w^2) cos(2pi x/lam) |
 | `core/morphology.py` | `WrinkleConfiguration`, `MorphologyFactor`, `MORPHOLOGY_PHASES`; phase-to-Mf mapping |

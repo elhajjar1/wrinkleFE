@@ -50,6 +50,19 @@ version produced a given file.
 - `AC318_S6C10_vacbag` material card — the Li 2025 vacuum-bag
   realization of the AC318 / S6C10-800 S-glass/epoxy prepreg (measured
   Xc = 335.5 MPa, E1 = 50.8 GPa).
+- `IM6G_3501_6` material card — Hercules IM6G / 3501-6 carbon/epoxy
+  (Vf 0.66) from Hsiao & Daniel (1996), the material behind validation
+  **Dataset G** (UD carbon, measured stiffness *and* strength knockdown).
+  This brings the built-in `MaterialLibrary` to 12 cards (11
+  fibre-reinforced systems + the `EPOXY_S6C10` neat-epoxy card).
+- Stiffness-only validation driver (`validation/validate_modulus.py`):
+  compares WrinkleFE's axial Young's-modulus knockdown — the FE
+  `modulus_retention` and a closed-form CLT series-average estimate of
+  the off-axis lamina modulus over the wrinkle profile — against the
+  measured modulus knockdown in the UD datasets E (Li 2024), F (Li 2025),
+  and G (Hsiao & Daniel 1996). It is the first stiffness (as opposed to
+  strength) validation in the repository; analytical MAE 3.9 % (F) /
+  1.2 % (G), FE MAE 6.9 % (F) / 5.1 % (G).
 - Combined validation parity chart
   (`validation/plot_all_validation.py` →
   `validation/fig_all_validation_parity.png`): a predicted-vs-experimental
@@ -95,7 +108,7 @@ version produced a given file.
   missing), document `theta_eff = M_f·theta_max` and the optional
   Argon–Fleck quadratic term, and correct the graded through-thickness
   decay scale to `max(λ/2, A)`. The `MaterialLibrary` docstring (and its
-  doctest) now lists all 11 registered cards (10 fibre-reinforced systems
+  doctest) now lists all 12 registered cards (11 fibre-reinforced systems
   + the `EPOXY_S6C10` neat-epoxy card) instead of a stale list of nine.
 - API-reference docstrings (physics audit, follow-up): the LaRC05 module
   docstring described "iterative φ_c computation" and a Ramberg-Osgood

@@ -61,6 +61,45 @@ See the table in [README.md](../../README.md). Current sources:
   (incl. the near-surface position case S-A-2), **vacuum-bag**
   realization with a measured pristine of 335.5 MPa (material card
   `AC318_S6C10_vacbag`, measured Xc = 335.5, E1 = 50.8 GPa).
+- **Dataset G — Hsiao & Daniel (1996)**, *Composites Science and
+  Technology* 56(5):581–593 — UD **carbon**/epoxy (IM6G/3501-6, material
+  card `IM6G_3501_6`) periodic waviness under compression, with measured
+  defect-free baselines. Two specimens: a *uniform*-waviness coupon
+  (θ ≈ 15°, modulus knockdown 0.571) and a *graded*-waviness coupon
+  (θ ≈ 7.2°, modulus knockdown 0.941, strength knockdown 0.660). The
+  first carbon system and the first dataset carrying a measured
+  **stiffness** knockdown — see *Stiffness / modulus validation* below.
+
+### Stiffness / modulus validation
+
+Everything above scores **strength** knockdown. WrinkleFE also predicts a
+**stiffness** (axial Young's-modulus) knockdown, exercised by
+`validation/validate_modulus.py` against every UD dataset that reports a
+measured modulus:
+
+- **FE** — the linear static solve's `modulus_retention` (mean
+  fibre-direction stress / applied strain, wrinkled vs pristine).
+- **Analytical** — a closed-form CLT series-average of the off-axis
+  lamina modulus over the wrinkle profile. The shipped *analytical* path
+  has no stiffness model (it returns `modulus_retention = 1.0`), so the
+  driver computes this estimate from the package primitives; it is the
+  same off-axis-compliance integration as Hsiao & Daniel (1996).
+
+| Dataset | Material | analytical MAE | FE MAE |
+|---|---|---|---|
+| F — Li (2025) | S-glass/epoxy | 3.9 % | 6.9 % |
+| G — Hsiao & Daniel (1996) | carbon/epoxy | 1.2 % | 5.1 % |
+| E — Li (2024), indicative | S-glass/epoxy | 7.7 % | 10.3 % |
+
+Both predictors confirm the datasets' headline: stiffness is far more
+wrinkle-tolerant than strength — modulus knockdown stays 0.81–0.98 for
+the Li S-glass cases and drops only to ≈0.52–0.57 for the carbon
+uniform-waviness case at θ = 15° (whose *strength* would fall far
+further). The analytical CLT tracks the angle, amplitude/penetration and
+through-thickness-position axes; the homogenised-continuum FE is flatter
+on the amplitude/position axes, consistent with the strength findings.
+The modulus validation is **UD-only** — no multidirectional dataset in
+the ledger reports a measured modulus knockdown.
 
 ### UD predictor: the two-parameter (θ, D/T, z) penetration gate
 
