@@ -97,6 +97,15 @@ version produced a given file.
   decay scale to `max(λ/2, A)`. The `MaterialLibrary` docstring (and its
   doctest) now lists all 11 registered cards (10 fibre-reinforced systems
   + the `EPOXY_S6C10` neat-epoxy card) instead of a stale list of nine.
+- API-reference docstrings (physics audit, follow-up): the LaRC05 module
+  docstring described "iterative φ_c computation" and a Ramberg-Osgood
+  nonlinear-shear amplification that the code does not apply — corrected
+  to the linear closed-form load-induced φ_c that is actually used (the
+  `max_phi_c_iter` / `phi_c_tol` parameters are documented as reserved /
+  unused). The linear-buckling module docstring now carries the item-D.4
+  negative-finding note (the eigenvalue over-predicts the UD wrinkle
+  knockdown; use the penetration gate instead), matching the README and
+  the new theory page.
 - `wrinklefe sweep` now validates its inputs: an unknown `--parameter`,
   `--min >= --max`, or `--steps < 2` print a one-line error and exit
   non-zero (code 2) before any solve, instead of a raw traceback or a

@@ -4,7 +4,7 @@ Implements the NASA Langley Research Center failure criteria (Dávila,
 Camanho, Pinho 2005) with:
 
 - **Fibre kinking** under compression via misalignment-frame rotation
-  with iterative φ_c computation and Ramberg-Osgood nonlinear shear
+  with a closed-form load-induced φ_c rotation
 - **Fibre tension** with fibre-matrix shear interaction
 - **Matrix failure** via fracture-plane search (Mohr-Coulomb)
 - **In-situ strength** corrections (fracture-toughness-based when GIc/GIIc
@@ -21,23 +21,20 @@ Derived from the fracture plane angle α₀ (typically 53° for CFRP)::
     μ_L = -S_L · cos(2α₀) / (Y_c · cos²(α₀))
     μ_T = -1 / tan(2α₀)
 
-Nonlinear Shear (Ramberg-Osgood)
----------------------------------
-Effective shear strain in the misalignment frame::
-
-    γ_12 = τ_12 / G_12 + β · τ_12³
-
-The nonlinear contribution amplifies the effective shear stress seen by
-the kink band, which is critical for accurate kink-band initiation
-predictions with fibre waviness.
-
-Iterative φ_c Computation
+Load-induced φ_c rotation
 -------------------------
-The additional fibre rotation under load is found by iterating::
+Under compression the misaligned fibres rotate further before kinking.
+The additional rotation is taken from the Dávila & Camanho linear
+closed form (NOT an iterative scheme)::
 
-    φ_c = (|σ_1| - σ_2) · φ_0 / (G_12 + |σ_1| - σ_2)  (linear approx.)
+    φ_c = (|σ₁| - σ₂) · φ₀ / (G₁₂ + |σ₁| - σ₂)      (clamped to [0, φ₀])
 
-Then the full nonlinear shear response refines φ_c until convergence.
+For wrinkle problems φ₀ is the dominant angle read from the geometry, so
+this small load-induced correction is evaluated once, with no iteration
+instability. A Ramberg-Osgood nonlinear-shear refinement
+(``γ_12 = τ_12 / G_12 + β · τ_12³``) is provided as a helper but is **not**
+applied to the kinking failure index in the current implementation, which
+uses the linear closed-form φ_c above.
 
 References
 ----------
@@ -71,9 +68,12 @@ class LaRC05Criterion(FailureCriterion):
     n_theta : int
         Number of fracture-plane angles to search (default 181).
     max_phi_c_iter : int
-        Maximum iterations for φ_c convergence (default 20).
+        Reserved for API compatibility (default 20). The current φ_c is a
+        single linear closed-form evaluation, so this iteration cap is not
+        used.
     phi_c_tol : float
-        Convergence tolerance for φ_c iteration (radians, default 1e-6).
+        Reserved for API compatibility (radians, default 1e-6). Unused
+        while φ_c is computed in closed form (see ``_compute_phi_c``).
     """
 
     name = "larc05"

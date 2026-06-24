@@ -25,6 +25,22 @@ so the **microbuckling knockdown** is
 Unlike the progressive-damage path this is a single eigenvalue solve (no
 load stepping, no arc-length), and it captures the rotation-amplification
 the linear stress analysis misses.
+
+.. note::
+
+   **Negative finding (item D.4): this is not the production UD wrinkle
+   predictor.** Calibrated against the Li (2025) grids, the linear
+   eigenvalue *over-predicts* the knockdown badly (e.g. F
+   0.30 / 0.06 / 0.38 vs measured 0.89 / 0.63 / 0.47) for two physical
+   reasons: (1) the wrinkled structure is imperfection-sensitive (Koiter
+   — the bifurcation load sits far below the limit load), and (2)
+   buckling of the homogenised ply-mesh is local *structural* buckling of
+   the soft wrinkle region, not the sub-ply *fibre kinking* that actually
+   governs. ``K_geo`` is correct, tested infrastructure for genuine
+   structural-buckling analyses and is retained as such, but the
+   unidirectional wrinkle knockdown should be taken from the
+   :mod:`~wrinklefe.core.penetration_gate` instead. See the wrinkle
+   modelling findings (item D.4).
 """
 from __future__ import annotations
 
