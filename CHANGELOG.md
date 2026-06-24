@@ -15,6 +15,17 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Analytical stiffness (axial-modulus) knockdown on the analytical path:
+  `AnalysisResults.analytical_modulus_knockdown`, a closed-form CLT
+  series-average of the off-axis lamina modulus over the wrinkle profile
+  (`analysis._profile_modulus_knockdown`). Populated for unidirectional
+  layups (loading-independent, zero FE cost) — the closed-form companion
+  to the FE `modulus_retention`, which previously was the only stiffness
+  knockdown (the analytical path reported none). Surfaced in
+  `AnalysisResults.summary()`, the `analyze --output-json` payload,
+  `results_to_dict`, and the Streamlit app; validated by
+  `validation/validate_modulus.py` (analytical MAE 3.9 % / 1.2 % on the
+  Li 2025 / Hsiao & Daniel UD datasets).
 - Resin-pocket material zone (`wrinklefe.core.resin_pocket`:
   `ResinPocketSpec`, `compute_resin_mask`, `compute_resin_blend`):
   a graded neat-epoxy lens at the wrinkle crest, tagged into the FE mesh

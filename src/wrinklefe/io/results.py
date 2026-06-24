@@ -235,6 +235,7 @@ def _knockdown_factors(results: AnalysisResults) -> dict:
     """Bundle the analytical + FE knockdown / retention factors."""
     out: dict = {
         "analytical": _f(results.analytical_knockdown),
+        "analytical_modulus": _f(results.analytical_modulus_knockdown),
     }
     # FE-derived strength retention factors are keyed by criterion in
     # results.retention_factors; we surface a single ``fe`` scalar as the
@@ -308,6 +309,9 @@ def results_to_dict(results: AnalysisResults) -> dict:
             "effective_angle_deg": _f(np.degrees(results.effective_angle_rad)),
             "damage_index": _f(results.damage_index),
             "analytical_knockdown": _f(results.analytical_knockdown),
+            "analytical_modulus_knockdown": _f(
+                results.analytical_modulus_knockdown
+            ),
             "analytical_strength_MPa": _f(results.analytical_strength_MPa),
             "gamma_Y_eff": _f(results.gamma_Y_eff),
         },

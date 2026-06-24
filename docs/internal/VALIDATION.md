@@ -79,11 +79,12 @@ measured modulus:
 
 - **FE** — the linear static solve's `modulus_retention` (mean
   fibre-direction stress / applied strain, wrinkled vs pristine).
-- **Analytical** — a closed-form CLT series-average of the off-axis
-  lamina modulus over the wrinkle profile. The shipped *analytical* path
-  has no stiffness model (it returns `modulus_retention = 1.0`), so the
-  driver computes this estimate from the package primitives; it is the
-  same off-axis-compliance integration as Hsiao & Daniel (1996).
+- **Analytical** — the analytical path's `analytical_modulus_knockdown`
+  (UD-scoped): a closed-form CLT series-average of the off-axis lamina
+  modulus over the wrinkle profile, the same off-axis-compliance
+  integration as Hsiao & Daniel (1996), at zero FE cost. (The driver
+  also recomputes this estimate standalone for datasets/configs outside
+  the single-`WrinkleAnalysis` path.)
 
 | Dataset | Material | analytical MAE | FE MAE |
 |---|---|---|---|

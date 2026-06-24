@@ -120,6 +120,9 @@ def analysis_results_to_dict(results: AnalysisResults) -> dict:
             "effective_angle_deg": float(np.degrees(results.effective_angle_rad)),
             "damage_index": float(results.damage_index),
             "analytical_knockdown": float(results.analytical_knockdown),
+            "analytical_modulus_knockdown": float(
+                results.analytical_modulus_knockdown
+            ),
             "analytical_strength_MPa": float(results.analytical_strength_MPa),
         },
     }

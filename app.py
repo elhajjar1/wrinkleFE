@@ -1212,6 +1212,9 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         "morphology_factor": float(result.morphology_factor),
         "gamma_Y_eff": float(result.gamma_Y_eff),
         "analytical_knockdown": float(result.analytical_knockdown),
+        "analytical_modulus_knockdown": float(
+            result.analytical_modulus_knockdown
+        ),
         "analytical_strength_MPa": float(result.analytical_strength_MPa),
         "damage_index": float(result.damage_index),
         "tension_mechanisms": (
@@ -1736,6 +1739,15 @@ with tab_results:
                 "of load-carrying capacity. Above 0.5 is severe."
             ),
         )
+
+        _mod_kd = float(r.get("analytical_modulus_knockdown", 1.0))
+        if _mod_kd < 0.9999:
+            st.caption(
+                f"Analytical **stiffness** knockdown (axial modulus E₁): "
+                f"**{_mod_kd:.3f}** — closed-form CLT estimate for this "
+                "unidirectional wrinkle (no FE solve). Stiffness is far "
+                "more wrinkle-tolerant than strength."
+            )
 
         d1, d2, d3 = st.columns(3)
         d1.metric(
