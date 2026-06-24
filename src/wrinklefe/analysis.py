@@ -378,6 +378,107 @@ def _profile_proportional_kd(
     return kd_sum / n_plies
 
 
+def _is_unidirectional(angles: Sequence[float], tol: float = 5.0) -> bool:
+    """True when every ply is a 0-degree (axial) ply within ``tol`` degrees.
+
+    0 and 180 degrees are equivalent fibre directions. The analytical
+    modulus knockdown (:func:`_profile_modulus_knockdown`) is only valid
+    for such unidirectional axial layups, so callers gate on this.
+    """
+    if not angles:
+        return False
+    for a in angles:
+        off = abs(float(a)) % 180.0
+        if min(off, 180.0 - off) > tol:
+            return False
+    return True
+
+
+def _profile_modulus_knockdown(
+    amplitude: float,
+    wavelength: float,
+    width: float,
+    domain_length: float,
+    ply_thickness: float,
+    n_plies: int,
+    E1: float,
+    E2: float,
+    G12: float,
+    nu12: float,
+    *,
+    morphology_factor: float = 1.0,
+    through_thickness_decay: bool = True,
+    z_position_fraction: float = 0.5,
+    decay_scale: float | None = None,
+    decay_floor: float = 0.0,
+) -> float:
+    r"""Axial Young's-modulus knockdown ``E_x / E_x0`` for a wavy UD laminate.
+
+    A Classical-Lamination-Theory series-average of the off-axis lamina
+    modulus over the wrinkle profile — the same off-axis-compliance
+    integration as Hsiao & Daniel (1996, Compos. Sci. Technol. 56:581).
+    At every ``(x, z_p)`` the local fibre tilt is the same field used by
+    :func:`_profile_proportional_kd`,
+    ``theta(x, z_p) = |dz_w/dx| * M_f * Phi(z_p)``, and the off-axis axial
+    modulus of a 0-degree ply tilted by ``theta`` is::
+
+        1/E_x(theta) = cos^4/E1 + (1/G12 - 2 nu12/E1) cos^2 sin^2 + sin^4/E2
+
+    The plies share the membrane strain, so the section modulus at a
+    station is the through-thickness mean
+    ``E_sec(x) = <E_x(theta(x, z_p))>_p``; along the load direction the
+    compliances add, so the effective modulus is the series (harmonic)
+    average ``E_eff = 1 / <1/E_sec(x)>_x``. The knockdown is
+    ``E_eff / E1`` (the pristine UD axial modulus is ``E1``).
+
+    Linear-elastic, hence loading-independent. **UD-scoped**: the off-axis
+    formula assumes a 0-degree base ply, so callers must restrict this to
+    unidirectional axial layups (see :func:`_is_unidirectional`).
+
+    Returns
+    -------
+    float
+        Axial-modulus knockdown in ``(0, 1]``.
+    """
+    T = n_plies * ply_thickness
+    z_center = z_position_fraction * T
+    L_s = domain_length
+    if decay_scale is None:
+        sigma = max(wavelength / 2.0, amplitude)
+    else:
+        sigma = float(decay_scale)
+    sigma_sq2 = 2.0 * sigma * sigma
+
+    # Same longitudinal angle field as the strength profile-average.
+    x = np.linspace(-L_s / 2.0, L_s / 2.0, _N_PROFILE_PTS)
+    gauss_env = np.exp(-(x ** 2) / (width ** 2))
+    cos_term = np.cos(2.0 * np.pi * x / wavelength)
+    sin_term = np.sin(2.0 * np.pi * x / wavelength)
+    dz_dx = amplitude * gauss_env * (
+        (-2.0 * x / (width ** 2)) * cos_term
+        - (2.0 * np.pi / wavelength) * sin_term
+    )
+    theta_x = np.abs(np.arctan(dz_dx)) * morphology_factor
+
+    shear_coupling = 1.0 / G12 - 2.0 * nu12 / E1
+    Ex_sum = np.zeros_like(x)
+    for p in range(n_plies):
+        z_p = (p + 0.5) * ply_thickness
+        if through_thickness_decay:
+            raw_p = np.exp(-((z_p - z_center) ** 2) / sigma_sq2)
+            phi_p = decay_floor + (1.0 - decay_floor) * raw_p
+        else:
+            phi_p = 1.0
+        theta = theta_x * phi_p
+        c2 = np.cos(theta) ** 2
+        s2 = np.sin(theta) ** 2
+        inv_Ex = c2 * c2 / E1 + shear_coupling * c2 * s2 + s2 * s2 / E2
+        Ex_sum += 1.0 / inv_Ex
+    E_sec = Ex_sum / n_plies              # through-thickness mean at each x
+    E_eff = 1.0 / np.mean(1.0 / E_sec)    # series-average along x
+    return float(E_eff / E1)
+
+
 def _check_multi_wrinkle_fe_support(cfg: AnalysisConfig) -> None:
     """Reject multi-wrinkle FE configs the pipeline cannot represent yet.
 
@@ -1429,6 +1530,13 @@ class AnalysisResults:
     mesh_max_angle_rad: float = 0.0  # max fiber angle from FE mesh (accounts for decay)
     damage_index: float = 0.0
     analytical_knockdown: float = 1.0
+    analytical_modulus_knockdown: float = 1.0
+    """Analytical axial Young's-modulus (stiffness) knockdown
+    ``E_x / E_x0`` — a closed-form CLT series-average of the off-axis
+    lamina modulus over the wrinkle profile (:func:`_profile_modulus_knockdown`).
+    UD-scoped: stays ``1.0`` for non-unidirectional layups and
+    multi-wrinkle configs. Loading-independent; the closed-form companion
+    to the FE :attr:`modulus_retention`."""
     analytical_onset_knockdown: float | None = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
@@ -1551,6 +1659,7 @@ class AnalysisResults:
             f"({self.effective_angle_rad:.4f} rad)",
             f"    Damage index D:         {self.damage_index:.4f}",
             f"    Combined knockdown:     {self.analytical_knockdown:.4f}",
+            f"    Modulus knockdown:      {self.analytical_modulus_knockdown:.4f}",
             f"    Predicted strength:     {self.analytical_strength_MPa:.1f} MPa",
         ]
 
@@ -2436,6 +2545,45 @@ class WrinkleAnalysis:
             crack_length_per_interface=crack_len_per_iface,
         )
 
+    def _analytical_modulus_knockdown(
+        self, angles: list[float], morphology_factor: float
+    ) -> float:
+        """Closed-form axial-modulus knockdown for a wavy UD laminate.
+
+        Returns ``1.0`` (no analytical estimate) for multi-wrinkle configs,
+        non-unidirectional layups, or a degenerate wrinkle — the FE
+        :attr:`AnalysisResults.modulus_retention` covers those cases. See
+        :func:`_profile_modulus_knockdown`.
+        """
+        cfg = self.config
+        if cfg.wrinkles is not None:
+            return 1.0
+        if not _is_unidirectional(angles):
+            return 1.0
+        if cfg.wavelength <= 1e-12 or cfg.amplitude <= 0.0:
+            return 1.0
+        mat = cfg.material
+        assert mat is not None  # filled in __post_init__
+        graded = cfg.morphology.lower().strip() == "graded"
+        if cfg.through_thickness_decay_scale is not None:
+            decay_scale = float(cfg.through_thickness_decay_scale)
+        else:
+            decay_scale = max(cfg.wavelength / 2.0, cfg.amplitude)
+        return _profile_modulus_knockdown(
+            amplitude=cfg.amplitude,
+            wavelength=cfg.wavelength,
+            width=cfg.width,
+            domain_length=cfg.domain_length,
+            ply_thickness=cfg.ply_thickness,
+            n_plies=len(angles),
+            E1=mat.E1, E2=mat.E2, G12=mat.G12, nu12=mat.nu12,
+            morphology_factor=morphology_factor,
+            through_thickness_decay=graded,
+            z_position_fraction=float(cfg.wrinkle_z_position),
+            decay_scale=decay_scale,
+            decay_floor=float(cfg.decay_floor),
+        )
+
     def _compute_analytical(
         self,
         results: AnalysisResults,
@@ -2474,6 +2622,19 @@ class WrinkleAnalysis:
         else:
             theta_max = 0.0
         theta_eff = theta_max * mf
+
+        # Analytical stiffness (axial-modulus) knockdown — UD-scoped and
+        # loading-independent, set on both the gate and Budiansky-Fleck
+        # paths below. Resolve the layup the same way each path does.
+        if cfg.penetration_gate is not None:
+            _mod_angles = cfg.angles if cfg.angles else [0.0]
+        else:
+            _mod_angles = (
+                cfg.angles if cfg.angles else [0.0, 45.0, -45.0, 90.0] * 6
+            )
+        results.analytical_modulus_knockdown = (
+            self._analytical_modulus_knockdown(_mod_angles, mf)
+        )
 
         # Penetration-gate path (item D.3): when a calibrated gate is
         # configured, the analytical knockdown is the two-parameter

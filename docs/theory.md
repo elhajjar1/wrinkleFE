@@ -356,14 +356,20 @@ load-stepped) system and evaluates ply failure.
   $D=\tfrac13\sum \bar{Q}_k(z_k^3-z_{k-1}^3)$, an FSDT transverse-shear
   $H$ matrix with shear-correction factor $5/6$, thermal resultants, and
   effective membrane moduli $E_x, E_y, G_{xy}, \nu_{xy}$ from $A^{-1}$.
-- **Stiffness (modulus) knockdown.** Besides the per-criterion strength
-  retention, the linear FE solve reports `modulus_retention` — the ratio
-  of the wrinkled to pristine mean fibre-direction stress at a fixed
-  applied strain, i.e. the axial Young's-modulus knockdown
-  $E_x/E_{x,0}$. The *analytical* path has no stiffness model (it returns
-  $1.0$); both the FE `modulus_retention` and a closed-form
-  CLT-series-average estimate are validated against the UD modulus
-  datasets (Li 2025, Hsiao & Daniel 1996) by
+- **Stiffness (modulus) knockdown.** The analysis reports two estimates
+  of the axial Young's-modulus knockdown $E_x/E_{x,0}$. The FE
+  `modulus_retention` is the ratio of the wrinkled to pristine mean
+  fibre-direction stress at a fixed applied strain (any layup). For
+  **unidirectional** layups the analytical path additionally returns a
+  closed-form `analytical_modulus_knockdown`
+  (`analysis._profile_modulus_knockdown`): a Classical-Lamination-Theory
+  series-average of the off-axis lamina modulus
+  $1/E_x(\theta)=\cos^4\theta/E_1+(1/G_{12}-2\nu_{12}/E_1)\sin^2\theta\cos^2\theta+\sin^4\theta/E_2$
+  over the wrinkle profile (the same off-axis-compliance integration as
+  Hsiao & Daniel 1996), evaluated with no FE solve. It is loading-
+  independent and UD-scoped (it stays $1.0$ for multidirectional layups,
+  where `modulus_retention` is the predictor). Both are validated against
+  the UD modulus datasets (Li 2025, Hsiao & Daniel 1996) by
   `validation/validate_modulus.py` — see the
   [validation page](validation.md). Stiffness is consistently far more
   wrinkle-tolerant than strength.
