@@ -117,6 +117,18 @@ version produced a given file.
 - GitHub issue forms, pull-request template, and this changelog.
 
 ### Fixed
+- Linear-buckling eigensolve correctness/robustness
+  (`solver/buckling.py`): for a wrinkled (non-uniform) pre-stress the
+  geometric "mass" matrix `M = -K_geo` is **indefinite**, which violated
+  the SPD assumption of the previous `eigsh` shift-invert. It returned
+  spurious, run-to-run-varying eigenvalues — and on macOS arm64 sometimes
+  no surviving positive mode at all, so `critical_load_factor` came back
+  `inf` and the buckling-knockdown test flaked in CI. The solve is now the
+  symmetric-definite pencil `M φ = μ K φ` (the material stiffness `K` is
+  SPD), with `λ = 1/μ` and a deterministic ARPACK start vector — finite,
+  reproducible, and matching a dense reference. This is infrastructure
+  only; `microbuckling_knockdown` is still **not** the production UD
+  predictor (see Numerical results).
 - Documentation accuracy (physics audit): the README "How It Works" and
   `ARCHITECTURE.md` confinement section now show the full three-parameter
   effective yield strain `gamma_Y_eff = max(0.032 + 0.050·f_conf −
@@ -156,6 +168,18 @@ version produced a given file.
   imported; native `.inp`/VTK writers need no extra).
 
 ### Numerical results
+- **Linear-buckling microbuckling knockdown**: with the eigensolve
+  corrected (indefinite `-K_geo` handled via the symmetric-definite
+  pencil), the bifurcation load of the homogenised ply-mesh *rises* with
+  the wrinkle (tilted fibres carry less destabilising axial pre-stress;
+  e.g. the Li 20 mm coupon goes pristine λ ≈ 8.30 → amplitude-0.6 wrinkle
+  λ ≈ 8.65), so `microbuckling_knockdown` returns ≈ 1.0 (no knockdown)
+  rather than the spurious sub-1.0 values the old indefinite-`M` solve
+  produced. This sharpens the documented negative finding (item D.4): the
+  linear eigenvalue gets the wrinkle-knockdown *sign* wrong, which is why
+  the UD wrinkle knockdown is taken from the penetration gate. No
+  production prediction path consumes `microbuckling_knockdown`, so no
+  user-facing knockdown changes.
 - **Penetration gate**: when `AnalysisConfig.penetration_gate` is set to
   a `GateParameters` preset, `analytical_knockdown` (and
   `analytical_strength_MPa`) are computed from the two-parameter

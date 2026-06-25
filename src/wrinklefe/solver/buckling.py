@@ -29,17 +29,20 @@ the linear stress analysis misses.
 .. note::
 
    **Negative finding (item D.4): this is not the production UD wrinkle
-   predictor.** Calibrated against the Li (2025) grids, the linear
-   eigenvalue *over-predicts* the knockdown badly (e.g. F
-   0.30 / 0.06 / 0.38 vs measured 0.89 / 0.63 / 0.47) for two physical
-   reasons: (1) the wrinkled structure is imperfection-sensitive (Koiter
-   — the bifurcation load sits far below the limit load), and (2)
-   buckling of the homogenised ply-mesh is local *structural* buckling of
-   the soft wrinkle region, not the sub-ply *fibre kinking* that actually
-   governs. ``K_geo`` is correct, tested infrastructure for genuine
-   structural-buckling analyses and is retained as such, but the
-   unidirectional wrinkle knockdown should be taken from the
-   :mod:`~wrinklefe.core.penetration_gate` instead. See the wrinkle
+   predictor.** With the eigenproblem solved correctly (symmetric-definite
+   pencil, see :meth:`LinearBucklingSolver.solve`), the linear bifurcation
+   load of the homogenised ply-mesh *rises* with the wrinkle rather than
+   falling — tilting the fibres out of the load path reduces the
+   destabilising axial pre-stress — so ``microbuckling_knockdown`` returns
+   ~1.0 (no knockdown), the opposite sign of the measured Li (2025)
+   knockdowns 0.89 / 0.63 / 0.47. Two physical reasons: (1) the wrinkled
+   structure is imperfection-sensitive (Koiter — the bifurcation load sits
+   far below the limit load), and (2) buckling of the homogenised ply-mesh
+   is *structural* buckling of the soft wrinkle region, not the sub-ply
+   *fibre kinking* that actually governs. ``K_geo`` is correct, tested
+   infrastructure for genuine structural-buckling analyses and is retained
+   as such, but the unidirectional wrinkle knockdown should be taken from
+   the :mod:`~wrinklefe.core.penetration_gate` instead. See the wrinkle
    modelling findings (item D.4).
 """
 from __future__ import annotations
@@ -135,28 +138,35 @@ class LinearBucklingSolver:
         K_ff = K[free][:, free].tocsc()
         Kg_ff = Kg[free][:, free].tocsc()
 
-        # Buckling eigenproblem K phi = -lambda K_geo phi.  Under
-        # compression K_geo is negative-definite, so -K_geo is SPD and the
-        # eigenvalues are positive.  Shift-invert near 0 returns the
-        # smallest-magnitude (first) modes.
+        # Buckling eigenproblem ``K phi = lambda M phi`` with ``M = -K_geo``.
+        # For a uniform pre-stress ``M`` is (near) positive-definite, but a
+        # *wrinkled* mesh has a non-uniform pre-stress field, so ``M`` is
+        # genuinely INDEFINITE. That breaks ``eigsh``'s M-inner-product
+        # Lanczos (it requires the generalized "mass" matrix to be SPD):
+        # it returned spurious, run-to-run-varying eigenvalues and on some
+        # platforms no surviving positive mode at all (critical factor ->
+        # ``inf``). Reformulate as the symmetric-DEFINITE pencil
+        # ``M phi = mu K phi`` with ``mu = 1 / lambda``: the *material*
+        # stiffness ``K`` is SPD, so it is a valid B-matrix and the solve is
+        # stable and deterministic. The smallest positive load factor is the
+        # reciprocal of the algebraically largest positive ``mu``.
         M = (-Kg_ff).tocsc()
         k = min(self.n_modes, K_ff.shape[0] - 2)
-        try:
-            vals = eigsh(
-                K_ff, k=k, M=M, sigma=0.0, which="LM",
-                return_eigenvectors=False,
-            )
-        except Exception:
-            # Fall back to a regular (non-shift-invert) smallest-algebraic
-            # search if the factorization is singular.
-            vals = eigsh(
-                K_ff, k=k, M=M, which="SM", return_eigenvectors=False,
-            )
-
-        vals = np.sort(np.real(vals))
-        positive = vals[vals > 1e-9]
-        crit = float(positive[0]) if positive.size else float("inf")
-        return BucklingResult(critical_load_factor=crit, load_factors=vals)
+        # Deterministic ARPACK start vector (the default random v0 is the
+        # remaining source of run-to-run drift once the pencil is definite).
+        v0 = np.ones(K_ff.shape[0])
+        mu = eigsh(
+            M, k=k, M=K_ff, which="LA", v0=v0, return_eigenvectors=False,
+        )
+        mu = np.real(mu)
+        load_factors = np.sort(1.0 / mu[np.abs(mu) > 1e-12])
+        positive_mu = np.sort(mu[mu > 1e-9])
+        crit = float(1.0 / positive_mu[-1]) if positive_mu.size else float(
+            "inf"
+        )
+        return BucklingResult(
+            critical_load_factor=crit, load_factors=load_factors
+        )
 
 
 def microbuckling_knockdown(
