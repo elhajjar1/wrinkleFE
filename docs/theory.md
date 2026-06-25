@@ -316,16 +316,23 @@ Compressive failure of a wavy UD laminate is at root a geometric
 instability, so a linearized-buckling route was tried
 (`solver/buckling.py`): assemble the geometric stiffness $K_\text{geo}$
 from a pre-stressed solve and solve the eigenproblem
-$K\,\phi = -\lambda\, K_\text{geo}\,\phi$, with
+$K\,\phi = \lambda\, M\,\phi$ with $M = -K_\text{geo}$, taking the
+smallest positive $\lambda$, and
 `microbuckling_knockdown` $= \lambda_\text{wrinkled}/\lambda_\text{pristine}$.
-**This does not work for the wrinkle knockdown**: the linear eigenvalue
-over-predicts the knockdown badly because (1) the wrinkled structure is
-imperfection-sensitive (Koiter — bifurcation sits far below the limit
-load) and (2) buckling of the homogenised ply-mesh is *structural*
-buckling of the soft region, not the sub-ply *fibre kinking* that
-governs. $K_\text{geo}$ is retained as correct, tested infrastructure for
-genuine structural-buckling analyses, but it is **not** used as the UD
-wrinkle predictor. See
+For a non-uniform (wrinkled) pre-stress $M$ is **indefinite**, which is
+solved correctly as the symmetric-definite pencil $M\,\phi = \mu\,K\,\phi$
+($K$ is SPD), $\lambda = 1/\mu$.
+**This does not work for the wrinkle knockdown — it gets the sign
+wrong**: with the eigenproblem solved correctly the bifurcation load
+*rises* with the wrinkle (tilting the fibres out of the load path reduces
+the destabilising axial pre-stress), so `microbuckling_knockdown`
+$\to 1$ (no knockdown) instead of the measured drop, because (1) the
+wrinkled structure is imperfection-sensitive (Koiter — bifurcation sits
+far below the limit load) and (2) buckling of the homogenised ply-mesh is
+*structural* buckling of the soft region, not the sub-ply *fibre kinking*
+that governs. $K_\text{geo}$ is retained as correct, tested
+infrastructure for genuine structural-buckling analyses, but it is
+**not** used as the UD wrinkle predictor. See
 [Wrinkle modelling findings](wrinkle_modeling_findings.md) (item D.4).
 
 ## 5. Finite-element mechanics

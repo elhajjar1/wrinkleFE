@@ -63,15 +63,26 @@ at zero FE cost.
 
 Added the geometric stiffness `K_geo` to the hex8 element (verified
 against Euler column theory, σ_cr ∝ 1/L²) and a linearized-buckling
-solver.  The microbuckling knockdown it produces is badly wrong (Li F
-0.30/0.06/0.38 vs measured 0.89/0.63/0.47), for two physical reasons:
+solver.  The microbuckling knockdown it produces is badly wrong — and it
+gets the **sign** wrong.  For a non-uniform (wrinkled) pre-stress the
+generalized "mass" matrix `M = -K_geo` is *indefinite*; solved correctly
+as the symmetric-definite pencil `M φ = μ K φ` (`K` SPD, `λ = 1/μ`), the
+bifurcation load *rises* with the wrinkle (pristine λ ≈ 8.30 →
+amplitude-0.6 wrinkle λ ≈ 8.65 on the Li 20 mm coupon), so
+`microbuckling_knockdown → 1` (no knockdown) versus the measured
+0.89/0.63/0.47.  (An earlier `eigsh` shift-invert that wrongly assumed
+`M` was SPD returned spurious sub-pristine eigenvalues — ~0.1–2.4,
+varying run to run, occasionally `inf` — which masked the sign; see the
+commit that reformulated the pencil.)  Two physical reasons:
 
 1. **Imperfection sensitivity (Koiter)** — the bifurcation load of the
    wrinkled structure sits far below its limit load, so the linear
-   eigenvalue over-predicts the knockdown.
+   eigenvalue cannot represent the knockdown.
 2. **Wrong scale** — buckling of the homogenised ply-mesh is local
    *structural* buckling of the soft wrinkle region, not the sub-ply
-   *fibre kinking* that governs (fibre buckling on the matrix foundation).
+   *fibre kinking* that governs (fibre buckling on the matrix foundation);
+   tilting the fibres out of the load path *reduces* the destabilising
+   axial pre-stress, which is why the structural eigenvalue rises.
 
 `K_geo` remains correct, tested, reusable infrastructure for genuine
 structural-buckling analyses, but continuum geometric nonlinearity does

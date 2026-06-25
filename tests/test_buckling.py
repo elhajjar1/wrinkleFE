@@ -1,16 +1,19 @@
 """Tests for the geometric stiffness and linearized buckling solver (D.4).
 
 The geometric stiffness ``K_geo`` is verified against Euler column theory
-(critical stress ~ 1/L^2).  The wrinkle-knockdown behaviour is checked
-qualitatively (a wrinkle lowers the buckling factor); the *quantitative*
-over-prediction of the knockdown by linear buckling is a documented
-physical limitation (imperfection sensitivity + the homogenised continuum
-not resolving fibre-scale kinking), not tested as an accuracy target.
+(critical stress ~ 1/L^2).  The wrinkle-buckling solve is checked for
+finiteness, determinism, and agreement with a dense reference (the
+generalized "mass" matrix ``-K_geo`` is indefinite for a wrinkled
+pre-stress, which the symmetric-definite reformulation handles); the
+documented physical limitation — that linear buckling does not track the
+fibre-scale wrinkle knockdown (it gets the sign wrong) — is recorded, not
+tested as an accuracy target.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.material import OrthotropicMaterial
@@ -63,10 +66,21 @@ class TestGeometricStiffness:
 
 
 class TestBucklingKnockdown:
-    def test_wrinkle_lowers_buckling_factor(self):
-        # Stocky coupon (Li regime): the local wrinkle mode is the lowest,
-        # so a wrinkle imperfection lowers the buckling factor (and in fact
-        # over-lowers it -- the documented imperfection-sensitivity limit).
+    def test_wrinkle_buckling_factor_finite_and_correct(self):
+        """A severe wrinkle gives a non-uniform pre-stress, so ``M = -K_geo``
+        is INDEFINITE. The old ``eigsh`` shift-invert (which assumes ``M``
+        is SPD) returned spurious, run-to-run-varying eigenvalues and, on
+        macOS arm64, *no* surviving positive mode at all (critical factor
+        ``inf``). The symmetric-definite reformulation is finite,
+        deterministic, and matches a dense reference (pristine ~8.30,
+        wrinkled ~8.65).
+
+        It also pins the **negative finding** (item D.4): the linear
+        bifurcation load *rises* with the wrinkle (tilted fibres carry less
+        destabilising axial pre-stress), so this eigenvalue solve does not
+        track the compressive wrinkle knockdown — the penetration gate
+        does. The spurious old solver returned sub-pristine garbage
+        (~0.1-2.4) that masked this entirely."""
         from wrinklefe.core.material import MaterialLibrary
         mat = MaterialLibrary().get("AC318_S6C10_vacbag")
         pm, lam = _bar(20.0, amplitude=1e-4, material=mat,
@@ -77,7 +91,16 @@ class TestBucklingKnockdown:
             pm, lam, applied_strain=-0.005).solve().critical_load_factor
         lamw = LinearBucklingSolver(
             wm, lam, applied_strain=-0.005).solve().critical_load_factor
-        assert lamw < lam0  # imperfection lowers the buckling load
+        # Finite & positive (was `inf` on macOS arm64 before the fix).
+        assert np.isfinite(lamw) and lamw > 0.0
+        # Dense symmetric-definite reference values (loose tol absorbs
+        # cross-platform LAPACK noise; the old garbage was orders of
+        # magnitude off, ~0.1-2.4, so this still catches a regression).
+        assert lam0 == pytest.approx(8.2995, rel=2e-3)
+        assert lamw == pytest.approx(8.6487, rel=2e-3)
+        # Negative finding: the factor RISES with the wrinkle, it does not
+        # fall -- the UD knockdown must come from the penetration gate.
+        assert lamw > lam0
 
     def test_positive_finite_factor(self):
         mesh, lam = _bar(40.0)
