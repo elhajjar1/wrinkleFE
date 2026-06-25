@@ -87,11 +87,50 @@ def test_zero_amplitude_is_unity():
     assert _kd(_ud_config(amplitude=0.0)) == pytest.approx(1.0, abs=1e-9)
 
 
-def test_multidirectional_is_unity():
-    """UD-scoped: a multidirectional layup is left at 1.0 (use the FE
-    modulus_retention there)."""
+def test_multidirectional_is_populated():
+    """Issue #327: a multidirectional layup now gets a sub-unity analytical
+    modulus knockdown (it used to be left at 1.0)."""
     kd = _kd(_ud_config(angles=[0.0, 45.0, -45.0, 90.0] * 2))
+    assert 0.0 < kd < 1.0
+
+
+def test_multidirectional_knocks_down_less_than_ud():
+    """Off-axis plies carry little axial load and are insensitive to axial
+    fibre misalignment, so the same wrinkle knocks a quasi-isotropic /
+    cross-ply laminate down LESS than a pure-UD one (issue #327)."""
+    kd_ud = _kd(_ud_config(angles=[0.0] * 14))
+    kd_qi = _kd(_ud_config(angles=[0.0, 45.0, -45.0, 90.0] * 2))
+    kd_cross = _kd(_ud_config(angles=[0.0, 90.0] * 4))
+    assert kd_ud < kd_qi < 1.0
+    assert kd_ud < kd_cross < 1.0
+
+
+def test_multidirectional_zero_amplitude_is_unity():
+    """A degenerate (zero-amplitude) wrinkle leaves a multidirectional
+    laminate exactly unaffected — the CLT reference cancels."""
+    kd = _kd(_ud_config(angles=[0.0, 45.0, -45.0, 90.0] * 2, amplitude=0.0))
     assert kd == pytest.approx(1.0, abs=1e-12)
+
+
+def test_multidirectional_reduces_to_ud_for_all_zero():
+    """The generalized path is only taken for non-UD layups; an explicit UD
+    layup still routes through the scalar fast path and matches it exactly
+    (the [0]_n reduction guarantee, issue #327)."""
+    # A 4-ply [0/45/-45/90] knocks down; the same geometry with every ply
+    # forced to 0 deg must equal the scalar UD result bit-for-bit.
+    kd_ud_pipeline = _kd(_ud_config(angles=[0.0] * 4))
+    kd_scalar = _profile_modulus_knockdown(
+        amplitude=0.75, wavelength=12.9, width=6.45,
+        domain_length=max(3.0 * 12.9, 10.0),
+        ply_thickness=0.44, n_plies=4,
+        E1=ML.get("AC318_S6C10_vacbag").E1,
+        E2=ML.get("AC318_S6C10_vacbag").E2,
+        G12=ML.get("AC318_S6C10_vacbag").G12,
+        nu12=ML.get("AC318_S6C10_vacbag").nu12,
+        through_thickness_decay=True,
+        decay_scale=max(12.9 / 2.0, 0.75),
+    )
+    assert kd_ud_pipeline == pytest.approx(kd_scalar, rel=1e-12)
 
 
 def test_loading_independent():
