@@ -1555,6 +1555,28 @@ class AnalysisResults:
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
     modulus_retention: float = 1.0
+    """FE axial-modulus retention from the **local** fibre-direction-stress
+    proxy: ``E_eff = <σ₁₁> / ε_applied`` (mean element-frame σ₁₁ over the
+    coupon), wrinkled vs pristine.  Because it averages the *local* fibre
+    stress rather than the coupon's global axial response, it over-predicts
+    the modulus retention (flatter on the amplitude / penetration / position
+    axes) than the measured ``E_x / E_x0``.  Kept for backward
+    compatibility; prefer :attr:`modulus_retention_global` for the
+    coupon-level stiffness knockdown."""
+
+    modulus_retention_global: float = 1.0
+    """FE axial-modulus retention from the **global** reaction response:
+    ``E_eff = σ_nominal / ε_applied`` with
+    ``σ_nominal = R / A`` — the total axial reaction on the loaded
+    (``x_max``) face over the cross-section area ``Ly·Lz`` — computed
+    wrinkled vs pristine to give a true coupon-level ``E_x / E_x0``.
+
+    This reuses the same reaction-based nominal-stress pattern as the
+    progressive-damage solver (``reaction = sum((K @ u)[xmax_dofs])`` over
+    the loaded-face x-DOFs).  Unlike the local σ₁₁ proxy in
+    :attr:`modulus_retention`, it captures load redistribution around the
+    wrinkle, so it matches the measured modulus knockdown more closely (and
+    is correspondingly lower for a wrinkled coupon)."""
 
     # ------------------------------------------------------------------
     # Progressive-damage results — populated when
@@ -1678,7 +1700,9 @@ class AnalysisResults:
                 "",
                 "  FE Results:",
                 f"    Max displacement: {max_disp:.6e} mm",
-                f"    Modulus retention: {self.modulus_retention:.4f}",
+                f"    Modulus retention (local σ₁₁):  {self.modulus_retention:.4f}",
+                f"    Modulus retention (global E_x): "
+                f"{self.modulus_retention_global:.4f}",
             ])
 
         if self.czm_damage is not None:
@@ -3393,8 +3417,21 @@ class WrinkleAnalysis:
         results.baseline_fi = baseline
 
         # --- Modulus retention from FE ---
-        # E_eff = <σ₁₁> / ε_applied  where σ₁₁ is the local-coords fiber-direction stress
-        # modulus_retention = E_wrinkled / E_pristine
+        # Two complementary estimators of the axial-modulus knockdown
+        # ``E_x / E_x0`` (wrinkled vs pristine), both populated here:
+        #
+        #   modulus_retention        — LOCAL σ₁₁ proxy: E_eff = <σ₁₁> /
+        #     ε_applied, the mean element-frame fibre-direction stress over
+        #     the coupon divided by the applied strain.  A local proxy that
+        #     over-predicts the retention (issue #328).
+        #
+        #   modulus_retention_global — GLOBAL reaction response: E_eff =
+        #     σ_nominal / ε_applied with σ_nominal = R / A, the total axial
+        #     reaction on the loaded (x_max) face over the cross-section
+        #     area Ly·Lz.  A true coupon-level stiffness that captures load
+        #     redistribution around the wrinkle, so it tracks the measured
+        #     modulus knockdown more closely (and is lower than the local
+        #     proxy for a wrinkled coupon).
         try:
             applied_strain = cfg.applied_strain
             if applied_strain == 0.0:
@@ -3419,4 +3456,83 @@ class WrinkleAnalysis:
                     results.modulus_retention = 1.0
         except Exception:
             results.modulus_retention = 1.0
+
+        # --- Global (reaction-based) modulus retention ---
+        try:
+            applied_strain = cfg.applied_strain
+            wrinkled_mesh = results.mesh
+            if applied_strain == 0.0 or wrinkled_mesh is None:
+                results.modulus_retention_global = 1.0
+            else:
+                E_w_global = self._reaction_modulus(
+                    wrinkled_mesh, laminate, applied_strain
+                )
+                E_p_global = self._reaction_modulus(
+                    flat_mesh, laminate, applied_strain
+                )
+                if E_w_global is not None and E_p_global is not None and (
+                    abs(E_p_global) > 1e-12
+                ):
+                    results.modulus_retention_global = float(
+                        abs(E_w_global) / abs(E_p_global)
+                    )
+                else:
+                    results.modulus_retention_global = 1.0
+        except Exception:
+            logger.debug(
+                "Global reaction-based modulus retention failed; "
+                "falling back to 1.0", exc_info=True
+            )
+            results.modulus_retention_global = 1.0
+
+    def _reaction_modulus(
+        self,
+        mesh: MeshData,
+        laminate: Laminate,
+        applied_strain: float,
+    ) -> float | None:
+        """Coupon-level axial modulus from the global reaction force.
+
+        Solves the compression problem on ``mesh`` (retaining the
+        unmodified stiffness ``K``) and returns the effective axial modulus
+        ``E_eff = σ_nominal / ε_applied`` where the nominal stress is the
+        total axial reaction on the loaded ``x_max`` face divided by the
+        cross-section area ``Ly·Lz``.
+
+        Reuses the exact reaction-extraction pattern of the
+        progressive-damage solver: ``reaction = sum((K @ u)[xmax_dofs])``
+        over the loaded-face x-DOFs (``3 * nodes_on_face("x_max")``), so the
+        two agree.  Returns ``None`` if the reaction/area/strain cannot give
+        a finite modulus.
+        """
+        if applied_strain == 0.0:
+            return None
+
+        solver = StaticSolver(mesh, laminate)
+        bcs = BoundaryHandler.compression_bcs(
+            mesh, applied_strain=applied_strain
+        )
+        field = solver.solve(
+            bcs, solver=self.config.solver, verbose=False,
+            keep_stiffness=True,
+        )
+
+        K = solver._K
+        if K is None:
+            return None
+
+        xmax_nodes = mesh.nodes_on_face("x_max")
+        xmax_dofs = 3 * xmax_nodes  # ux DOFs on the loaded face
+        _Lx, Ly, Lz = mesh.domain_size
+        area = Ly * Lz
+        if area <= 0.0:
+            return None
+
+        u = field.displacement.ravel()
+        reaction = float(np.sum((K @ u)[xmax_dofs]))
+        sigma_nominal = reaction / area
+        E_eff = sigma_nominal / applied_strain
+        if not np.isfinite(E_eff):
+            return None
+        return float(E_eff)
 
