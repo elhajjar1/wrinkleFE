@@ -9,11 +9,16 @@ front-ends can never drift apart.
 Two notations are accepted:
 
 * **Contracted** -- ``[0/45/-45/90]_3s`` (sublaminate in brackets,
-  optional repeat count, trailing ``s`` for symmetry). ``+/-`` (written
-  ``±``) and ``_n`` ply-level modifiers are also supported, e.g.
-  ``[0/±45/90_2]s``.
+  optional repeat count, trailing ``s`` for symmetry). ``±`` (ASCII
+  ``+-``; ``-+`` gives the reversed ``∓`` order) and ``_n`` ply-level
+  modifiers are also supported, e.g. ``[0/±45/90_2]s``.
 * **Explicit list** -- comma-, semicolon-, or newline-separated angles,
   e.g. ``0, 45, -45, 90, ...``.
+
+Ply angles must be canonical (``|angle| <= 90``). Common ASCII typos for
+the ``_n`` repeat syntax -- a leading-zero token like ``02`` or an
+out-of-range token like ``902`` -- are rejected with a hint toward the
+intended ``0_2`` / ``90_2`` spelling rather than silently parsed.
 """
 
 from __future__ import annotations
@@ -24,9 +29,12 @@ from collections.abc import Sequence
 __all__ = ["parse_layup", "to_contracted_layup"]
 
 
+_MAX_PLY_ANGLE = 90.0
+
+
 _PLY_TOKEN_RE = re.compile(
     r"""\s*
-        (?P<sign>±)?\s*
+        (?P<sign>±|\+-|-\+)?\s*
         (?P<angle>[+-]?\d+(?:\.\d+)?)\s*
         (?:_(?P<rep>\d+))?\s*
     """,
@@ -34,18 +42,81 @@ _PLY_TOKEN_RE = re.compile(
 )
 
 
+def _subscript_hint(angle_str: str) -> str | None:
+    """Spelling a bare-digit-subscript typo most likely meant.
+
+    For an out-of-range *integer* angle that reads as a canonical angle
+    followed by a bare repeat count (``902`` -> ``90_2``, ``452`` ->
+    ``45_2``), return the ``_n`` spelling; otherwise ``None``. A trailing
+    ``_1`` is a no-op repeat, so a split is only offered for counts >= 2.
+    """
+    sign = ""
+    mag = angle_str
+    if mag[:1] in "+-":
+        sign, mag = mag[0], mag[1:]
+    if not mag.isdigit():  # decimals are never subscript typos
+        return None
+    for k in range(len(mag) - 1, 0, -1):
+        head, tail = mag[:k], mag[k:]
+        if 0 <= int(head) <= _MAX_PLY_ANGLE and int(tail) >= 2:
+            return f"{sign}{head}_{tail}"
+    return None
+
+
 def _expand_ply_token(token: str) -> list[float]:
-    """Expand a single ply entry like ``0``, ``45_2``, ``±45``, or ``±30_2``."""
+    """Expand a single ply entry like ``0``, ``45_2``, ``±45``, ``+-45``,
+    ``-+30``, or ``±30_2``.
+
+    ``±45`` and the ASCII aliases ``+-45`` expand to ``[45, -45]``;
+    ``-+45`` (the reversed order, the ASCII spelling of ``∓``) expands to
+    ``[-45, 45]``. Angles must be canonical (``|angle| <= 90``); leading
+    zeros (``02``) and out-of-range angles (``902``) are rejected with a
+    hint toward the ``_n`` repeat syntax they were likely meant to be.
+    """
     token = token.strip()
     if not token:
         return []
     m = _PLY_TOKEN_RE.fullmatch(token)
     if not m:
         raise ValueError(f"Could not parse ply token: {token!r}")
-    angle = float(m.group("angle"))
+    angle_str = m.group("angle")
     rep = int(m.group("rep")) if m.group("rep") else 1
-    if m.group("sign") == "±":
+
+    # Leading-zero integer tokens (02, 045) are never an angle — almost
+    # always a bare-digit repeat the user meant to write as `0_n`.
+    has_sign = angle_str[:1] in "+-"
+    mag = angle_str[1:] if has_sign else angle_str
+    if "." not in mag and len(mag) > 1 and mag[0] == "0":
+        sign_str = angle_str[0] if has_sign else ""
+        rest = mag.lstrip("0") or "0"
+        lead_hint = (
+            f" Did you mean {sign_str}0_{rest} (use _n for a repeated ply)?"
+            if int(rest) >= 2
+            else ""
+        )
+        raise ValueError(
+            f"Invalid ply angle {angle_str!r}: leading zeros are not "
+            f"allowed.{lead_hint}"
+        )
+
+    angle = float(angle_str)
+    if abs(angle) > _MAX_PLY_ANGLE:
+        hint = _subscript_hint(angle_str)
+        suggestion = (
+            f" Did you mean {hint} (use _n for a repeated ply)?"
+            if hint
+            else ""
+        )
+        raise ValueError(
+            f"Ply angle {angle:g}° is outside the canonical fibre-angle "
+            f"range [-90, 90].{suggestion}"
+        )
+
+    sign = m.group("sign")
+    if sign in ("±", "+-"):
         return [angle, -angle] * rep
+    if sign == "-+":
+        return [-angle, angle] * rep
     return [angle] * rep
 
 
