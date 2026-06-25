@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "WrinkleFE validation ledger — machine-readable companion to VALIDATION.md.",
+    "WrinkleFE validation ledger \u2014 machine-readable companion to VALIDATION.md.",
     "Each case carries the full AnalysisConfig recipe (the 'harness reference",
     "configuration'), the measured experimental knockdown, and a pinned",
     "expected_analytical_kd computed by the current code. The pinned values are",
@@ -9,9 +9,15 @@
     "reproducible-harness precondition named in issue #254 (and the revert of",
     "00584b4) for re-landing the graded compression decay fix. Re-pin deliberately",
     "with 'python scripts/validate.py --update' after an intentional model change.",
+    "STIFFNESS (issue #326): cases that also carry expected_analytical_modulus_kd",
+    "pin the closed-form CLT axial-modulus knockdown (analytical_modulus_knockdown,",
+    "added in #324) the same way; measured_kd_modulus is the matching experimental",
+    "stiffness knockdown, stored for reference only. The modulus baseline is UD-",
+    "scoped (1.0 for non-unidirectional layups), so it is pinned on the UD datasets",
+    "F (Li 2025) and G (Hsiao & Daniel 1996) only.",
     "NOTE: the 'KD analytical' column published in VALIDATION.md for Li (2025) was",
     "produced by an uncommitted script whose configuration could not be reproduced",
-    "from a clean checkout — exactly the gap this ledger closes going forward.",
+    "from a clean checkout \u2014 exactly the gap this ledger closes going forward.",
     "Elhajjar (2025), Mukhopadhyay (2015) and Li (2026) case-level data are not in",
     "the repository (see README 'Validation'); add their datasets here when the",
     "raw points land (tracked by issue #22's follow-ups)."
@@ -21,7 +27,7 @@
     {
       "name": "li_2025_multi_wrinkle_compression",
       "reference": "Li, Li, Ge & Liang (2025), Polymer Composites 46(16):15176-15187, DOI 10.1002/pc.30121",
-      "status": "deferred — pending issue #161 (amplitude effect at constant peak angle); see VALIDATION.md",
+      "status": "deferred \u2014 pending issue #161 (amplitude effect at constant peak angle); see VALIDATION.md",
       "material": "AC318_S6C10",
       "layup": "[0]_14",
       "ply_thickness_mm": 0.44,
@@ -38,7 +44,9 @@
           "peak_angle_deg": 10,
           "measured_strength_MPa": 298.81,
           "measured_kd": 0.891,
-          "expected_analytical_kd": 0.428859
+          "expected_analytical_kd": 0.428859,
+          "measured_kd_modulus": 0.931,
+          "expected_analytical_modulus_kd": 0.949288
         },
         {
           "case": "S-M-2",
@@ -47,7 +55,9 @@
           "peak_angle_deg": 20,
           "measured_strength_MPa": 211.1,
           "measured_kd": 0.629,
-          "expected_analytical_kd": 0.308699
+          "expected_analytical_kd": 0.308699,
+          "measured_kd_modulus": 0.864,
+          "expected_analytical_modulus_kd": 0.839641
         },
         {
           "case": "S-M-3",
@@ -56,7 +66,9 @@
           "peak_angle_deg": 30,
           "measured_strength_MPa": 158.41,
           "measured_kd": 0.472,
-          "expected_analytical_kd": 0.247616
+          "expected_analytical_kd": 0.247616,
+          "measured_kd_modulus": 0.811,
+          "expected_analytical_modulus_kd": 0.722632
         },
         {
           "case": "S-M-4",
@@ -65,7 +77,9 @@
           "peak_angle_deg": 20,
           "measured_strength_MPa": 316.34,
           "measured_kd": 0.943,
-          "expected_analytical_kd": 0.316646
+          "expected_analytical_kd": 0.316646,
+          "measured_kd_modulus": 0.967,
+          "expected_analytical_modulus_kd": 0.850933
         },
         {
           "case": "S-M-5",
@@ -74,7 +88,9 @@
           "peak_angle_deg": 20,
           "measured_strength_MPa": 335.63,
           "measured_kd": 1.0,
-          "expected_analytical_kd": 0.36273
+          "expected_analytical_kd": 0.36273,
+          "measured_kd_modulus": 0.975,
+          "expected_analytical_modulus_kd": 0.895154
         },
         {
           "case": "S-A-2",
@@ -84,7 +100,48 @@
           "measured_strength_MPa": 329.29,
           "measured_kd": 0.981,
           "expected_analytical_kd": 0.308699,
-          "note": "S-M-2 geometry at a near-surface interface; the model has no through-thickness wrinkle-position parameter, so the harness runs the mid-plane configuration (prediction identical to S-M-2 by construction)."
+          "measured_kd_modulus": 0.923,
+          "expected_analytical_modulus_kd": 0.839641,
+          "note": "S-M-2 geometry at a near-surface interface; the ledger recipe carries no through-thickness wrinkle-position parameter, so the harness runs the mid-plane configuration. Both the strength and the modulus predictions are identical to S-M-2 by construction (the measured near-surface KDs are stored for reference only)."
+        }
+      ]
+    },
+    {
+      "name": "hsiao_daniel_1996_ud_carbon",
+      "reference": "Hsiao & Daniel (1996), Composites Science and Technology 56(5):581-593",
+      "status": "active \u2014 UD carbon (IM6G/3501-6); the first dataset carrying a measured stiffness knockdown (issue #326). See VALIDATION.md 'Dataset G'.",
+      "material": "IM6G_3501_6",
+      "layup": "[0]_20",
+      "ply_thickness_mm": 0.95,
+      "loading": "compression",
+      "morphology": "uniform",
+      "amplitude_convention": "config amplitude = crest height A (= half of peak-to-peak); amplitude_p2p_mm = 2A. theta_peak = arctan(2 pi A / lambda).",
+      "width_convention": "config width = wavelength (matches the Li 2025 dataset recipe in scripts/validate.py case_config).",
+      "modulus_source": "Hsiao & Daniel (1996) measured axial-modulus knockdown (uniform 0.571, graded 0.941); strength knockdown 0.660 for the graded specimen (VALIDATION.md Dataset G).",
+      "cases": [
+        {
+          "case": "HD-uniform",
+          "amplitude_p2p_mm": 2.38,
+          "wavelength_mm": 27.9,
+          "peak_angle_deg": 15,
+          "expected_analytical_kd": 0.108903,
+          "measured_kd_modulus": 0.571,
+          "expected_analytical_modulus_kd": 0.745459,
+          "note": "Uniform-waviness coupon (A = 1.19 mm, lambda = 27.9 mm, 20 plies, t_ply = 0.95 mm, theta ~ 15 deg). Hsiao & Daniel report a measured MODULUS knockdown only (0.571); no measured strength knockdown for the uniform coupon, so measured_kd is omitted and expected_analytical_kd is a pure regression baseline. The shipped graded-Gaussian modulus path (width = lambda, mid-plane decay) is pinned here, not the periodic-RVE linear-taper estimate in validation/validate_modulus.py."
+        },
+        {
+          "case": "HD-graded",
+          "amplitude_p2p_mm": 0.58,
+          "wavelength_mm": 14.5,
+          "peak_angle_deg": 7.2,
+          "morphology": "graded",
+          "layup": "[0]_24",
+          "ply_thickness_mm": 0.381,
+          "measured_kd": 0.66,
+          "expected_analytical_kd": 0.512695,
+          "measured_kd_modulus": 0.941,
+          "expected_analytical_modulus_kd": 0.935871,
+          "note": "Graded-waviness coupon (A = 0.29 mm, lambda = 14.5 mm, 24 plies, t_ply = 0.381 mm, theta ~ 7.2 deg). Measured strength knockdown 0.660, measured modulus knockdown 0.941. expected_analytical_kd is the CURRENT code's graded profile-proportional Budiansky-Fleck output for this recipe (0.5127); the issue's indicative 'BF ~ 0.716' uses a textbook gamma_Y rather than the package's confinement-weighted gamma_Y_eff = 0.032 for [0]_24, so it is not the pinned value."
         }
       ]
     }

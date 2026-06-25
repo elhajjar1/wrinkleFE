@@ -58,6 +58,7 @@ from wrinklefe.core.penetration_gate import (
     GateParameters,
     penetration_gate_kd,
 )
+from wrinklefe.core.transforms import rotate_stiffness_3d
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
 )
@@ -381,9 +382,10 @@ def _profile_proportional_kd(
 def _is_unidirectional(angles: Sequence[float], tol: float = 5.0) -> bool:
     """True when every ply is a 0-degree (axial) ply within ``tol`` degrees.
 
-    0 and 180 degrees are equivalent fibre directions. The analytical
-    modulus knockdown (:func:`_profile_modulus_knockdown`) is only valid
-    for such unidirectional axial layups, so callers gate on this.
+    0 and 180 degrees are equivalent fibre directions. Used to dispatch
+    the analytical modulus knockdown to its scalar unidirectional fast path
+    (:func:`_profile_modulus_knockdown`); multidirectional layups take the
+    laminate generalization (:func:`_laminate_modulus_knockdown`) instead.
     """
     if not angles:
         return False
@@ -431,9 +433,13 @@ def _profile_modulus_knockdown(
     average ``E_eff = 1 / <1/E_sec(x)>_x``. The knockdown is
     ``E_eff / E1`` (the pristine UD axial modulus is ``E1``).
 
-    Linear-elastic, hence loading-independent. **UD-scoped**: the off-axis
-    formula assumes a 0-degree base ply, so callers must restrict this to
-    unidirectional axial layups (see :func:`_is_unidirectional`).
+    Linear-elastic, hence loading-independent. This closed form assumes a
+    0-degree base ply, so it covers single-wrinkle **unidirectional** axial
+    layups exactly (see :func:`_is_unidirectional`). Multidirectional and
+    multi-wrinkle configurations are handled by the laminate generalization
+    :func:`_laminate_modulus_knockdown`, which reduces to this result for
+    ``[0]_n``; this scalar form is retained as the UD fast path so the
+    pinned UD baselines stay numerically identical.
 
     Returns
     -------
@@ -477,6 +483,126 @@ def _profile_modulus_knockdown(
     E_sec = Ex_sum / n_plies              # through-thickness mean at each x
     E_eff = 1.0 / np.mean(1.0 / E_sec)    # series-average along x
     return float(E_eff / E1)
+
+
+def _plane_stress_qbar_tilted(
+    stiffness_3d: np.ndarray, phi_rad: float, theta_rad: float
+) -> np.ndarray:
+    """Plane-stress reduced stiffness for a ply rotated in-plane *and* tilted.
+
+    The ply's full 3D stiffness ``[C]`` (material axes) is rotated by the
+    in-plane orientation ``phi`` about the through-thickness ``z`` axis and
+    by the out-of-plane wrinkle tilt ``theta`` about the transverse ``y``
+    axis (the combination of the ply angle with the local wrinkle slope is
+    a composition of these two principal-axis rotations,
+    :func:`wrinklefe.core.transforms.rotate_stiffness_3d`). The rotated 3D
+    stiffness is then statically condensed to plane stress
+    (``sigma_33 = tau_23 = tau_13 = 0``) onto the in-plane Voigt indices
+    ``(11, 22, 12)`` so it can enter the laminate membrane (A) matrix like a
+    standard ``Q-bar``.
+
+    For ``theta = 0`` this returns the ordinary CLT ``Q-bar(phi)`` and for
+    ``phi = 0`` the axial term ``1/inv(Q-bar)[0, 0]`` equals the off-axis
+    formula used by :func:`_profile_modulus_knockdown`, so the laminate
+    knockdown reduces exactly to the UD scalar result for ``[0]_n``.
+    """
+    c_rot = rotate_stiffness_3d(stiffness_3d, phi_rad, axis="z")
+    c_rot = rotate_stiffness_3d(c_rot, theta_rad, axis="y")
+    # Voigt split: in-plane (11, 22, 12) vs out-of-plane (33, 23, 13).
+    ip = [0, 1, 5]
+    op = [2, 3, 4]
+    c_ii = c_rot[np.ix_(ip, ip)]
+    c_io = c_rot[np.ix_(ip, op)]
+    c_oi = c_rot[np.ix_(op, ip)]
+    c_oo = c_rot[np.ix_(op, op)]
+    return np.asarray(c_ii - c_io @ np.linalg.solve(c_oo, c_oi))
+
+
+def _laminate_modulus_knockdown(
+    slope_field: np.ndarray,
+    ply_decays: np.ndarray,
+    angles: Sequence[float],
+    stiffness_3d: np.ndarray,
+    ply_thickness: float,
+    E_x0: float,
+) -> float:
+    r"""Axial-modulus knockdown ``E_x / E_x0`` for an arbitrary wavy laminate.
+
+    Generalizes :func:`_profile_modulus_knockdown` from a single 0-degree
+    base ply to an arbitrary stacking sequence and to an already-composed
+    multi-wrinkle slope field, via a CLT membrane (A-matrix) series-average
+    — the laminate form of the Hsiao & Daniel (1996) off-axis-compliance
+    integration.
+
+    At every longitudinal station ``x`` each ply ``p`` carries a local fibre
+    tilt ``theta(x, z_p) = arctan|sum_w (dz_w/dx) Phi_w(z_p)|`` (the composed
+    slope field, decayed through the thickness exactly as the FE composes it
+    in :meth:`WrinkleConfiguration.fiber_angles_at_nodes` — "compose then
+    differentiate"). The ply's plane-stress stiffness is rotated to its
+    in-plane angle ``phi_p`` plus that tilt
+    (:func:`_plane_stress_qbar_tilted`) and summed into the membrane
+    stiffness ``A(x) = sum_p Q-bar_p(phi_p, theta) * t``. The plies share the
+    membrane strain, so the section axial modulus is
+    ``E_x_section(x) = 1 / (a11(x) * T)`` with ``a11 = inv(A)[0, 0]`` and
+    ``T`` the total thickness; along ``x`` the compliances add, giving the
+    series (harmonic) average ``E_eff = 1 / <1/E_x_section(x)>_x``.
+
+    The knockdown is ``E_eff / E_x0`` where ``E_x0`` is the **flat** laminate
+    axial modulus (``Laminate.Ex``). Because the flat-laminate A-matrix is
+    recovered exactly when every tilt is zero, the knockdown is exactly
+    ``1.0`` for a degenerate (zero-amplitude) wrinkle and lies in ``(0, 1]``
+    otherwise. Off-axis plies, already carrying little axial load, are
+    insensitive to the axial misalignment, so a multidirectional layup is
+    knocked down less than the same wrinkle in pure UD.
+
+    Linear-elastic, hence loading-independent.
+
+    The per-ply tilt is built as ``sum_w slope_field[w] * ply_decays[p, w]``
+    — the signed per-wrinkle slopes, each scaled by that wrinkle's
+    through-thickness decay, summed *before* the angle is taken. A single
+    wrinkle is just the one-entry (``N_w == 1``) case of this composition.
+
+    Parameters
+    ----------
+    slope_field : np.ndarray
+        Shape ``(N_w, N_x)`` per-wrinkle longitudinal slope ``dz_w/dx``
+        *before* the through-thickness decay, evaluated along the wrinkle.
+    ply_decays : np.ndarray
+        Shape ``(n_plies, N_w, N_x)`` through-thickness decay ``Phi_w(z_p)``
+        applied to each wrinkle's slope for each ply.
+    angles : Sequence[float]
+        Ply in-plane orientations ``phi_p`` in **degrees**.
+    stiffness_3d : np.ndarray
+        The common ply ``6x6`` 3D stiffness ``[C]`` (material axes).
+    ply_thickness : float
+        Uniform ply thickness [mm].
+    E_x0 : float
+        Pristine flat-laminate axial modulus ``Laminate.Ex`` [MPa].
+
+    Returns
+    -------
+    float
+        Axial-modulus knockdown in ``(0, 1]``.
+    """
+    phis = [math.radians(float(a)) for a in angles]
+    n_x = slope_field.shape[-1]
+    total_thickness = len(phis) * ply_thickness
+
+    inv_E_section = np.empty(n_x, dtype=float)
+    for xi in range(n_x):
+        a_mat = np.zeros((3, 3), dtype=float)
+        for p, phi in enumerate(phis):
+            # Compose the per-wrinkle slopes (each decayed for this ply)
+            # then take the local tilt angle: arctan|sum_w dz_w/dx * Phi_w|.
+            slope_p = float(np.dot(slope_field[:, xi], ply_decays[p, :, xi]))
+            theta = math.atan(abs(slope_p))
+            q_bar = _plane_stress_qbar_tilted(stiffness_3d, phi, theta)
+            a_mat += q_bar * ply_thickness
+        inv_E_section[xi] = np.linalg.inv(a_mat)[0, 0] * total_thickness
+
+    # E_section(x) = 1 / inv_E_section; series-average the compliance.
+    e_eff = 1.0 / float(np.mean(inv_E_section))
+    return float(e_eff / E_x0)
 
 
 def _check_multi_wrinkle_fe_support(cfg: AnalysisConfig) -> None:
@@ -1532,11 +1658,15 @@ class AnalysisResults:
     analytical_knockdown: float = 1.0
     analytical_modulus_knockdown: float = 1.0
     """Analytical axial Young's-modulus (stiffness) knockdown
-    ``E_x / E_x0`` — a closed-form CLT series-average of the off-axis
-    lamina modulus over the wrinkle profile (:func:`_profile_modulus_knockdown`).
-    UD-scoped: stays ``1.0`` for non-unidirectional layups and
-    multi-wrinkle configs. Loading-independent; the closed-form companion
-    to the FE :attr:`modulus_retention`."""
+    ``E_x / E_x0`` — a closed-form CLT membrane series-average of the
+    off-axis lamina modulus over the wrinkle profile. Populated for
+    arbitrary layups and multi-wrinkle layouts: the unidirectional
+    single-wrinkle case uses the scalar :func:`_profile_modulus_knockdown`,
+    everything else the laminate generalization
+    :func:`_laminate_modulus_knockdown` (which reduces to the UD result for
+    ``[0]_n``). Stays ``1.0`` only for a degenerate (zero-amplitude)
+    wrinkle. Loading-independent; the closed-form companion to the FE
+    :attr:`modulus_retention`."""
     analytical_onset_knockdown: float | None = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
@@ -1555,6 +1685,28 @@ class AnalysisResults:
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
     modulus_retention: float = 1.0
+    """FE axial-modulus retention from the **local** fibre-direction-stress
+    proxy: ``E_eff = <σ₁₁> / ε_applied`` (mean element-frame σ₁₁ over the
+    coupon), wrinkled vs pristine.  Because it averages the *local* fibre
+    stress rather than the coupon's global axial response, it over-predicts
+    the modulus retention (flatter on the amplitude / penetration / position
+    axes) than the measured ``E_x / E_x0``.  Kept for backward
+    compatibility; prefer :attr:`modulus_retention_global` for the
+    coupon-level stiffness knockdown."""
+
+    modulus_retention_global: float = 1.0
+    """FE axial-modulus retention from the **global** reaction response:
+    ``E_eff = σ_nominal / ε_applied`` with
+    ``σ_nominal = R / A`` — the total axial reaction on the loaded
+    (``x_max``) face over the cross-section area ``Ly·Lz`` — computed
+    wrinkled vs pristine to give a true coupon-level ``E_x / E_x0``.
+
+    This reuses the same reaction-based nominal-stress pattern as the
+    progressive-damage solver (``reaction = sum((K @ u)[xmax_dofs])`` over
+    the loaded-face x-DOFs).  Unlike the local σ₁₁ proxy in
+    :attr:`modulus_retention`, it captures load redistribution around the
+    wrinkle, so it matches the measured modulus knockdown more closely (and
+    is correspondingly lower for a wrinkled coupon)."""
 
     # ------------------------------------------------------------------
     # Progressive-damage results — populated when
@@ -1678,7 +1830,9 @@ class AnalysisResults:
                 "",
                 "  FE Results:",
                 f"    Max displacement: {max_disp:.6e} mm",
-                f"    Modulus retention: {self.modulus_retention:.4f}",
+                f"    Modulus retention (local σ₁₁):  {self.modulus_retention:.4f}",
+                f"    Modulus retention (global E_x): "
+                f"{self.modulus_retention_global:.4f}",
             ])
 
         if self.czm_damage is not None:
@@ -2548,40 +2702,127 @@ class WrinkleAnalysis:
     def _analytical_modulus_knockdown(
         self, angles: list[float], morphology_factor: float
     ) -> float:
-        """Closed-form axial-modulus knockdown for a wavy UD laminate.
+        """Closed-form axial-modulus knockdown for a wavy laminate.
 
-        Returns ``1.0`` (no analytical estimate) for multi-wrinkle configs,
-        non-unidirectional layups, or a degenerate wrinkle — the FE
-        :attr:`AnalysisResults.modulus_retention` covers those cases. See
-        :func:`_profile_modulus_knockdown`.
+        Populated for arbitrary layups and multi-wrinkle layouts. The
+        unidirectional single-wrinkle case is served by the scalar fast path
+        :func:`_profile_modulus_knockdown` (so the pinned UD baselines stay
+        bit-identical); every other case is routed through the CLT membrane
+        series-average :func:`_laminate_modulus_knockdown`, which reduces
+        exactly to the UD result for ``[0]_n``. Returns ``1.0`` only for a
+        degenerate (zero-amplitude / zero-wavelength) wrinkle.
         """
         cfg = self.config
-        if cfg.wrinkles is not None:
-            return 1.0
-        if not _is_unidirectional(angles):
-            return 1.0
-        if cfg.wavelength <= 1e-12 or cfg.amplitude <= 0.0:
-            return 1.0
         mat = cfg.material
         assert mat is not None  # filled in __post_init__
         graded = cfg.morphology.lower().strip() == "graded"
-        if cfg.through_thickness_decay_scale is not None:
-            decay_scale = float(cfg.through_thickness_decay_scale)
+
+        # --- Single-wrinkle UD fast path (unchanged, pins F/G baselines) ---
+        if cfg.wrinkles is None and _is_unidirectional(angles):
+            if cfg.wavelength <= 1e-12 or cfg.amplitude <= 0.0:
+                return 1.0
+            if cfg.through_thickness_decay_scale is not None:
+                decay_scale = float(cfg.through_thickness_decay_scale)
+            else:
+                decay_scale = max(cfg.wavelength / 2.0, cfg.amplitude)
+            return _profile_modulus_knockdown(
+                amplitude=cfg.amplitude,
+                wavelength=cfg.wavelength,
+                width=cfg.width,
+                domain_length=cfg.domain_length,
+                ply_thickness=cfg.ply_thickness,
+                n_plies=len(angles),
+                E1=mat.E1, E2=mat.E2, G12=mat.G12, nu12=mat.nu12,
+                morphology_factor=morphology_factor,
+                through_thickness_decay=graded,
+                z_position_fraction=float(cfg.wrinkle_z_position),
+                decay_scale=decay_scale,
+                decay_floor=float(cfg.decay_floor),
+            )
+
+        # --- Generalized laminate / multi-wrinkle path -------------------
+        # Build the longitudinal slope field(s) and the per-ply
+        # through-thickness decay, then hand to the CLT membrane
+        # series-average. The composition mirrors the FE's
+        # "compose then differentiate" multi-wrinkle field.
+        n_plies = len(angles)
+        if n_plies == 0:
+            return 1.0
+        ply_thickness = cfg.ply_thickness
+        total_thickness = n_plies * ply_thickness
+        decay_floor = float(cfg.decay_floor)
+        x = np.linspace(
+            -cfg.domain_length / 2.0, cfg.domain_length / 2.0, _N_PROFILE_PTS
+        )
+
+        # Collect (amplitude, wavelength, width, z_center, decay_scale,
+        # phase_shift_x) for every wrinkle. The single (non-UD) wrinkle and
+        # the multi-wrinkle list are normalized to the same representation.
+        specs: list[tuple[float, float, float, float, float, float]] = []
+        if cfg.wrinkles is not None:
+            for spec in cfg.wrinkles:
+                if spec.wavelength <= 1e-12 or spec.amplitude <= 0.0:
+                    continue
+                # Through-thickness decay centred on this wrinkle's interface.
+                z_center = (spec.ply_interface + 1.0) * ply_thickness
+                z_center = min(max(z_center, 0.0), total_thickness)
+                ds = (
+                    float(cfg.through_thickness_decay_scale)
+                    if cfg.through_thickness_decay_scale is not None
+                    else max(spec.wavelength / 2.0, spec.amplitude)
+                )
+                dx_shift = spec.phase_offset * spec.wavelength / (2.0 * np.pi)
+                specs.append(
+                    (spec.amplitude, spec.wavelength, spec.width,
+                     z_center, ds, dx_shift)
+                )
         else:
-            decay_scale = max(cfg.wavelength / 2.0, cfg.amplitude)
-        return _profile_modulus_knockdown(
-            amplitude=cfg.amplitude,
-            wavelength=cfg.wavelength,
-            width=cfg.width,
-            domain_length=cfg.domain_length,
-            ply_thickness=cfg.ply_thickness,
-            n_plies=len(angles),
-            E1=mat.E1, E2=mat.E2, G12=mat.G12, nu12=mat.nu12,
-            morphology_factor=morphology_factor,
-            through_thickness_decay=graded,
-            z_position_fraction=float(cfg.wrinkle_z_position),
-            decay_scale=decay_scale,
-            decay_floor=float(cfg.decay_floor),
+            if cfg.wavelength <= 1e-12 or cfg.amplitude <= 0.0:
+                return 1.0
+            z_center = float(cfg.wrinkle_z_position) * total_thickness
+            ds = (
+                float(cfg.through_thickness_decay_scale)
+                if cfg.through_thickness_decay_scale is not None
+                else max(cfg.wavelength / 2.0, cfg.amplitude)
+            )
+            specs.append(
+                (cfg.amplitude, cfg.wavelength, cfg.width, z_center, ds, 0.0)
+            )
+
+        if not specs:
+            return 1.0
+
+        n_w = len(specs)
+        # Per-wrinkle slope along x and per-(ply, wrinkle) decay.
+        slope_field = np.empty((n_w, _N_PROFILE_PTS), dtype=float)
+        ply_decays = np.empty((n_plies, n_w, _N_PROFILE_PTS), dtype=float)
+        use_decay = graded or cfg.wrinkles is not None
+        for w, (amp, lam, wid, z_center, ds, dx_shift) in enumerate(specs):
+            dxw = x - dx_shift
+            gauss_env = np.exp(-(dxw ** 2) / (wid ** 2))
+            k = 2.0 * np.pi / lam
+            slope = amp * gauss_env * (
+                (-2.0 * dxw / (wid ** 2)) * np.cos(k * dxw)
+                - k * np.sin(k * dxw)
+            )
+            slope_field[w] = slope * morphology_factor
+            sigma_sq2 = 2.0 * ds * ds
+            for p in range(n_plies):
+                z_p = (p + 0.5) * ply_thickness
+                if use_decay:
+                    raw = math.exp(-((z_p - z_center) ** 2) / sigma_sq2)
+                    ply_decays[p, w, :] = decay_floor + (1.0 - decay_floor) * raw
+                else:
+                    ply_decays[p, w, :] = 1.0
+
+        laminate = Laminate.from_angles(list(angles), mat, ply_thickness)
+        return _laminate_modulus_knockdown(
+            slope_field=slope_field,
+            ply_decays=ply_decays,
+            angles=angles,
+            stiffness_3d=mat.stiffness_matrix,
+            ply_thickness=ply_thickness,
+            E_x0=laminate.Ex,
         )
 
     def _compute_analytical(
@@ -2623,9 +2864,10 @@ class WrinkleAnalysis:
             theta_max = 0.0
         theta_eff = theta_max * mf
 
-        # Analytical stiffness (axial-modulus) knockdown — UD-scoped and
-        # loading-independent, set on both the gate and Budiansky-Fleck
-        # paths below. Resolve the layup the same way each path does.
+        # Analytical stiffness (axial-modulus) knockdown — generalized to
+        # arbitrary layups and multi-wrinkle layouts, loading-independent,
+        # set on both the gate and Budiansky-Fleck paths below. Resolve the
+        # layup the same way each path does.
         if cfg.penetration_gate is not None:
             _mod_angles = cfg.angles if cfg.angles else [0.0]
         else:
@@ -3393,8 +3635,21 @@ class WrinkleAnalysis:
         results.baseline_fi = baseline
 
         # --- Modulus retention from FE ---
-        # E_eff = <σ₁₁> / ε_applied  where σ₁₁ is the local-coords fiber-direction stress
-        # modulus_retention = E_wrinkled / E_pristine
+        # Two complementary estimators of the axial-modulus knockdown
+        # ``E_x / E_x0`` (wrinkled vs pristine), both populated here:
+        #
+        #   modulus_retention        — LOCAL σ₁₁ proxy: E_eff = <σ₁₁> /
+        #     ε_applied, the mean element-frame fibre-direction stress over
+        #     the coupon divided by the applied strain.  A local proxy that
+        #     over-predicts the retention (issue #328).
+        #
+        #   modulus_retention_global — GLOBAL reaction response: E_eff =
+        #     σ_nominal / ε_applied with σ_nominal = R / A, the total axial
+        #     reaction on the loaded (x_max) face over the cross-section
+        #     area Ly·Lz.  A true coupon-level stiffness that captures load
+        #     redistribution around the wrinkle, so it tracks the measured
+        #     modulus knockdown more closely (and is lower than the local
+        #     proxy for a wrinkled coupon).
         try:
             applied_strain = cfg.applied_strain
             if applied_strain == 0.0:
@@ -3419,4 +3674,83 @@ class WrinkleAnalysis:
                     results.modulus_retention = 1.0
         except Exception:
             results.modulus_retention = 1.0
+
+        # --- Global (reaction-based) modulus retention ---
+        try:
+            applied_strain = cfg.applied_strain
+            wrinkled_mesh = results.mesh
+            if applied_strain == 0.0 or wrinkled_mesh is None:
+                results.modulus_retention_global = 1.0
+            else:
+                E_w_global = self._reaction_modulus(
+                    wrinkled_mesh, laminate, applied_strain
+                )
+                E_p_global = self._reaction_modulus(
+                    flat_mesh, laminate, applied_strain
+                )
+                if E_w_global is not None and E_p_global is not None and (
+                    abs(E_p_global) > 1e-12
+                ):
+                    results.modulus_retention_global = float(
+                        abs(E_w_global) / abs(E_p_global)
+                    )
+                else:
+                    results.modulus_retention_global = 1.0
+        except Exception:
+            logger.debug(
+                "Global reaction-based modulus retention failed; "
+                "falling back to 1.0", exc_info=True
+            )
+            results.modulus_retention_global = 1.0
+
+    def _reaction_modulus(
+        self,
+        mesh: MeshData,
+        laminate: Laminate,
+        applied_strain: float,
+    ) -> float | None:
+        """Coupon-level axial modulus from the global reaction force.
+
+        Solves the compression problem on ``mesh`` (retaining the
+        unmodified stiffness ``K``) and returns the effective axial modulus
+        ``E_eff = σ_nominal / ε_applied`` where the nominal stress is the
+        total axial reaction on the loaded ``x_max`` face divided by the
+        cross-section area ``Ly·Lz``.
+
+        Reuses the exact reaction-extraction pattern of the
+        progressive-damage solver: ``reaction = sum((K @ u)[xmax_dofs])``
+        over the loaded-face x-DOFs (``3 * nodes_on_face("x_max")``), so the
+        two agree.  Returns ``None`` if the reaction/area/strain cannot give
+        a finite modulus.
+        """
+        if applied_strain == 0.0:
+            return None
+
+        solver = StaticSolver(mesh, laminate)
+        bcs = BoundaryHandler.compression_bcs(
+            mesh, applied_strain=applied_strain
+        )
+        field = solver.solve(
+            bcs, solver=self.config.solver, verbose=False,
+            keep_stiffness=True,
+        )
+
+        K = solver._K
+        if K is None:
+            return None
+
+        xmax_nodes = mesh.nodes_on_face("x_max")
+        xmax_dofs = 3 * xmax_nodes  # ux DOFs on the loaded face
+        _Lx, Ly, Lz = mesh.domain_size
+        area = Ly * Lz
+        if area <= 0.0:
+            return None
+
+        u = field.displacement.ravel()
+        reaction = float(np.sum((K @ u)[xmax_dofs]))
+        sigma_nominal = reaction / area
+        E_eff = sigma_nominal / applied_strain
+        if not np.isfinite(E_eff):
+            return None
+        return float(E_eff)
 

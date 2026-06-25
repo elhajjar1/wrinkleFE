@@ -36,6 +36,15 @@ def _all_cases():
             )
 
 
+def _modulus_cases():
+    for dataset in _LEDGER["datasets"]:
+        for case in dataset["cases"]:
+            if "expected_analytical_modulus_kd" in case:
+                yield pytest.param(
+                    dataset, case, id=f"{dataset['name']}-{case['case']}"
+                )
+
+
 @pytest.mark.parametrize(("dataset", "case"), list(_all_cases()))
 def test_case_matches_pinned_baseline(dataset, case):
     predicted = validate.run_case(dataset, case)
@@ -46,6 +55,27 @@ def test_case_matches_pinned_baseline(dataset, case):
         f"({predicted} vs {pinned}). If intentional, re-pin via "
         f"'python scripts/validate.py --update' and explain the move."
     )
+
+
+@pytest.mark.parametrize(("dataset", "case"), list(_modulus_cases()))
+def test_modulus_matches_pinned_baseline(dataset, case):
+    """Pin the closed-form CLT modulus knockdown (#324) for the UD datasets.
+
+    A deliberate change to ``_profile_modulus_knockdown`` (or the recipe
+    that feeds it) moves ``analytical_modulus_knockdown`` and is caught
+    here, the stiffness counterpart of the strength guard above (#326).
+    """
+    _strength, predicted = validate.run_case_both(dataset, case)
+    pinned = case["expected_analytical_modulus_kd"]
+    tol = _LEDGER["rel_tolerance"]
+    assert predicted == pytest.approx(pinned, rel=tol), (
+        f"{case['case']} analytical MODULUS KD drifted from the pinned "
+        f"baseline ({predicted} vs {pinned}). If intentional, re-pin via "
+        f"'python scripts/validate.py --update' and explain the move."
+    )
+    # The UD modulus path must produce a genuine sub-unity knockdown
+    # (a multidirectional layup would silently collapse it to 1.0).
+    assert 0.0 < predicted <= 1.0
 
 
 def test_validate_script_passes():
