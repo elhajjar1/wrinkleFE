@@ -504,3 +504,65 @@ class TestValidateJacobianSign:
         )
         with pytest.raises(MeshValidationError, match=r"inverted hex8"):
             bad.validate()
+
+
+# --------------------------------------------------------------------------- #
+# Aspect-ratio warning calibration (issue #303)
+# --------------------------------------------------------------------------- #
+
+
+def _box_mesh(boxes):
+    """Build a MeshData of independent axis-aligned hex8 boxes.
+
+    Each box is ``(x0, x1, y0, y1, z0, z1)`` and gets its own 8 nodes in the
+    standard hex8 ordering (positive Jacobian), so the degenerate and
+    inversion checks pass and only the aspect-ratio logic is exercised.
+    """
+    nodes: list[tuple[float, float, float]] = []
+    elements: list[list[int]] = []
+    for i, (x0, x1, y0, y1, z0, z1) in enumerate(boxes):
+        base = 8 * i
+        nodes += [
+            (x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+            (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1),
+        ]
+        elements.append(list(range(base, base + 8)))
+    n = len(boxes)
+    return MeshData(
+        nodes=np.asarray(nodes, dtype=float),
+        elements=np.asarray(elements, dtype=int),
+        ply_ids=np.zeros(n, dtype=int),
+        fiber_angles=np.zeros(n, dtype=float),
+        ply_angles=np.array([0.0]),
+        nx=n, ny=1, nz=1,
+    )
+
+
+class TestAspectRatioWarning:
+    """Issue #303: the AR warning must baseline off the mesh's own median
+    so the inherent ply-pancake shape does not trip it on every run."""
+
+    def test_default_pancake_mesh_emits_no_aspect_warning(self, small_laminate):
+        # Package-default in-plane discretization: dx=4, dy=2, dz=0.183 ->
+        # ~22:1 by construction. The old fixed 10:1 flagged 100% of these.
+        mesh = WrinkleMesh(
+            laminate=small_laminate, wrinkle_config=None,
+            Lx=48.0, Ly=12.0, nx=12, ny=6, nz_per_ply=1,
+        ).generate()
+        warns = mesh.validate()
+        assert not any("aspect ratio" in w for w in warns), warns
+
+    def test_uniformly_thin_mesh_is_silent(self):
+        # Every element a 50:1 pancake -> uniform, no outlier -> silent;
+        # standard practice for thin laminates is not a defect.
+        boxes = [(0, 5, j, j + 5, 0, 0.1) for j in range(6)]
+        warns = _box_mesh(boxes).validate()
+        assert not any("aspect ratio" in w for w in warns), warns
+
+    def test_anomalous_in_plane_sliver_warns(self):
+        # Five well-shaped cubes plus one in-plane sliver (AR 200): far above
+        # the mesh's ~1:1 median, so it must still be flagged.
+        boxes = [(0, 1, j, j + 1, 0, 1) for j in range(5)]
+        boxes.append((0.0, 10.0, 0.0, 0.05, 0.0, 1.0))
+        warns = _box_mesh(boxes).validate()
+        assert any("aspect ratio" in w for w in warns), warns

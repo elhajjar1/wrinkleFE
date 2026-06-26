@@ -77,6 +77,18 @@ class MeshValidationError(ValueError):
 MESH_DECAY_WARN_RATIO: float = 2.5
 MESH_DECAY_INVERT_RATIO: float = 5.0
 
+# Aspect-ratio quality warning (issue #303). Ply-by-ply solid meshes are
+# intentionally thin through-thickness (one ply per element), so a large
+# overall max/min bounding-box ratio is the inherent "pancake" shape of the
+# discretization, not a defect — a fixed threshold flags ~every element of
+# ~every run. Instead, baseline off the mesh's own *median* element aspect
+# ratio and flag only elements ``ASPECT_RATIO_REL_FACTOR`` x worse than that
+# (wrinkle-induced distortion / in-plane slivers), never below
+# ``ASPECT_RATIO_ABS_FLOOR``:1 so genuinely cubic meshes still catch true
+# slivers.
+ASPECT_RATIO_REL_FACTOR: float = 3.0
+ASPECT_RATIO_ABS_FLOOR: float = 10.0
+
 
 @dataclass(frozen=True)
 class MeshShearDiagnostics:
@@ -618,7 +630,9 @@ class MeshData:
 
         * No NaN or Inf values in node coordinates.
         * Element connectivity indices are within ``[0, n_nodes)``.
-        * Element aspect ratios (bounding-box based) do not exceed 10:1.
+        * Element aspect ratios (bounding-box based) are not anomalous
+          relative to the mesh's own median — flags wrinkle-induced
+          distortion, not the inherent ply-pancake shape (issue #303).
         * No degenerate elements (all 8 nodes collapsed to a single point).
         * Element Jacobian determinant ``det(J)`` at the centroid is
           strictly positive for every hex8 element.  This is the upstream
@@ -656,27 +670,41 @@ class MeshData:
                 )
                 connectivity_ok = False
 
-        # 3. Aspect ratio check (bounding-box based, sampled for large meshes)
+        # 3. Aspect ratio check (bounding-box based, sampled for large
+        #    meshes). Ply-by-ply solid meshes are inherently pancake-shaped
+        #    (each element is one ply thick), so a fixed max/min threshold
+        #    flags every element of every run (issue #303). Baseline off the
+        #    mesh's own median element aspect ratio and flag only outliers
+        #    materially worse than that — wrinkle-induced distortion rather
+        #    than the inherent through-thickness pancake.
         if self.elements.size > 0 and connectivity_ok:
             n_check = min(self.n_elements, 500)
             rng = np.random.default_rng(42)
             sample_ids = rng.choice(self.n_elements, size=n_check, replace=False)
-            bad_aspect = 0
+            ratios: list[float] = []
             for eid in sample_ids:
                 coords = self.nodes[self.elements[eid]]  # (8, 3)
                 extents = coords.max(axis=0) - coords.min(axis=0)
                 # Replace zeros to avoid division issues
                 nonzero = extents[extents > 0]
                 if nonzero.size >= 2:
-                    ratio = nonzero.max() / nonzero.min()
-                    if ratio > 10.0:
-                        bad_aspect += 1
-            if bad_aspect > 0:
-                pct = 100.0 * bad_aspect / n_check
-                warnings.append(
-                    f"{bad_aspect}/{n_check} sampled elements have aspect "
-                    f"ratio > 10:1 ({pct:.1f}%)"
+                    ratios.append(float(nonzero.max() / nonzero.min()))
+            if ratios:
+                ratios_arr = np.asarray(ratios)
+                baseline = float(np.median(ratios_arr))
+                threshold = max(
+                    ASPECT_RATIO_ABS_FLOOR,
+                    ASPECT_RATIO_REL_FACTOR * baseline,
                 )
+                bad_aspect = int(np.count_nonzero(ratios_arr > threshold))
+                if bad_aspect > 0:
+                    pct = 100.0 * bad_aspect / len(ratios)
+                    warnings.append(
+                        f"{bad_aspect}/{len(ratios)} sampled elements have "
+                        f"aspect ratio > {threshold:.0f}:1 ({pct:.1f}%), well "
+                        f"above the mesh's typical {baseline:.0f}:1 — possible "
+                        f"distortion"
+                    )
 
         # 4. Degenerate element check (all 8 nodes at same point)
         if self.elements.size > 0 and connectivity_ok:
