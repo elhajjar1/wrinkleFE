@@ -75,6 +75,72 @@ def test_malformed_layup_raises_value_error(bad):
 
 
 # --------------------------------------------------------------------------- #
+# Angle-range validation (issue #308)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("bad", ["[900]", "[452]", "[0/91/90]", "900", "-452"])
+def test_out_of_range_angle_raises(bad):
+    with pytest.raises(ValueError, match="canonical"):
+        parse_layup(bad)
+
+
+def test_canonical_bounds_are_accepted():
+    # ±90 are the same fibre direction and must stay valid.
+    assert parse_layup("[90/-90/0]") == [90.0, -90.0, 0.0]
+    assert parse_layup("0, 90, -90, 45.5, -45.5") == [
+        0.0, 90.0, -90.0, 45.5, -45.5
+    ]
+
+
+def test_subscript_typo_suggests_underscore_syntax():
+    with pytest.raises(ValueError, match=r"90_2"):
+        parse_layup("[902]")
+    with pytest.raises(ValueError, match=r"45_2"):
+        parse_layup("452")
+
+
+# --------------------------------------------------------------------------- #
+# Leading-zero token rejection (issue #308)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("bad", ["[02/902]s", "02", "045", "[0/030/90]"])
+def test_leading_zero_token_raises(bad):
+    with pytest.raises(ValueError, match="leading zero"):
+        parse_layup(bad)
+
+
+def test_leading_zero_suggests_repeat_syntax():
+    # The headline #308 case: [02/902]s must fail loudly toward [0_2/90_2]s.
+    with pytest.raises(ValueError, match=r"0_2"):
+        parse_layup("[02/902]s")
+
+
+# --------------------------------------------------------------------------- #
+# ASCII sign aliases +-, -+ for the Unicode ± / ∓ (issue #308)
+# --------------------------------------------------------------------------- #
+
+
+def test_ascii_plus_minus_matches_unicode():
+    assert parse_layup("[0/+-45/90]s") == parse_layup("[0/±45/90]s")
+    assert parse_layup("0, +-45, 90") == [0.0, 45.0, -45.0, 90.0]
+
+
+def test_ascii_minus_plus_is_reversed_order():
+    assert parse_layup("[0/-+45/90]s") == [
+        0.0, -45.0, 45.0, 90.0, 90.0, 45.0, -45.0, 0.0
+    ]
+    # -+ is the ASCII spelling of the reversed pair, opposite of +-.
+    assert parse_layup("-+30") == [-30.0, 30.0]
+    assert parse_layup("+-30") == [30.0, -30.0]
+
+
+def test_ascii_sign_alias_respects_repeat():
+    assert parse_layup("+-45_2") == [45.0, -45.0, 45.0, -45.0]
+
+
+# --------------------------------------------------------------------------- #
 # Contracted rendering (to_contracted_layup)
 # --------------------------------------------------------------------------- #
 
