@@ -29,7 +29,7 @@ Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -41,6 +41,7 @@ from wrinklefe.viz.style import (
     ACCENT_GRAY,
     FIGSIZE_DOUBLE_COLUMN,
     FIGSIZE_SINGLE_TALL,
+    MODE_COLORS,
     MORPHOLOGY_COLORS,
     MORPHOLOGY_LABELS,
     colorbar_setup,
@@ -1203,3 +1204,123 @@ def czm_overview_figure(results: AnalysisResults) -> Figure:
     fig.suptitle("Cohesive Zone Modeling — Overview", fontsize=12)
 
     return fig
+
+
+def failure_mode_family(mode: str) -> str:
+    """Map a failure-mode string to a colour family in :data:`MODE_COLORS`.
+
+    ``fiber_*`` / ``*kink*`` -> ``"fiber"``; ``matrix_*`` -> ``"matrix"``;
+    ``shear`` -> ``"shear"``; ``delam*`` -> ``"delamination"``; anything
+    else (including an empty / unspecified mode) -> ``"other"``.
+    """
+    m = (mode or "").lower()
+    if m.startswith("fiber") or "kink" in m:
+        return "fiber"
+    if m.startswith("matrix"):
+        return "matrix"
+    if m.startswith("shear"):
+        return "shear"
+    if m.startswith("delam"):
+        return "delamination"
+    return "other"
+
+
+def _governing_mode_shares(
+    results: Any, weight: str
+) -> tuple[dict[str, float], str, float]:
+    """Aggregate the governing failure mode over the FE field.
+
+    At every (element, Gauss-point) the governing criterion is the one with
+    the largest failure index; its mode string is the governing mode there.
+    Returns ``(shares, top_mode, max_fi)`` where ``shares`` maps each mode
+    string to its share (fractions summing to 1) under the requested weight
+    (``"count"`` = element/GP share, ``"fi"`` = failure-index-weighted).
+    """
+    fi = results.failure_indices
+    modes = results.failure_modes
+    if not fi or not modes:
+        raise ValueError(
+            "results carries no FE failure field (failure_indices / "
+            "failure_modes are empty) — run an FE analysis first."
+        )
+    crits = [c for c in fi if c in modes]
+    if not crits:
+        raise ValueError("No criterion has both a FI and a mode field.")
+    fi_stack = np.stack([np.asarray(fi[c], dtype=float) for c in crits])
+    mode_stack = np.stack([np.asarray(modes[c], dtype=object) for c in crits])
+    gov = np.argmax(fi_stack, axis=0)
+    ii, jj = np.indices(gov.shape)
+    gov_fi = fi_stack[gov, ii, jj].ravel()
+    gov_mode = mode_stack[gov, ii, jj].ravel().astype(str)
+    max_fi = float(gov_fi.max()) if gov_fi.size else 0.0
+
+    labels = np.where(gov_mode == "", "unspecified", gov_mode)
+    totals: dict[str, float] = {}
+    for m in np.unique(labels):
+        mask = labels == m
+        totals[str(m)] = (
+            float(np.count_nonzero(mask)) if weight == "count"
+            else float(gov_fi[mask].sum())
+        )
+    grand = sum(totals.values())
+    shares = (
+        {m: v / grand for m, v in totals.items()} if grand > 0
+        else dict.fromkeys(totals, 0.0)
+    )
+    top_mode = max(shares, key=lambda m: shares[m]) if shares else "unspecified"
+    return shares, top_mode, max_fi
+
+
+def plot_failure_mode_breakdown(
+    results: Any, *, weight: str = "count", ax: Axes | None = None
+) -> Axes:
+    """Bar chart of the governing failure-mode share over an FE run.
+
+    After "how big is the knockdown?" the next engineering question is
+    "which mechanism drives it — fibre kinking, matrix cracking, or shear?"
+    The answer changes the mitigation and the model conservatism. That mode
+    field is computed on every FE run (``AnalysisResults.failure_modes``)
+    but was not surfaced by the viz layer (issue #269).
+
+    Parameters
+    ----------
+    results : AnalysisResults
+        A finished FE analysis carrying ``failure_indices`` and
+        ``failure_modes``.
+    weight : {"count", "fi"}, optional
+        ``"count"`` (default) shows the element/Gauss-point share of each
+        governing mode; ``"fi"`` weights by failure index, emphasising
+        near-critical regions.
+    ax : Axes, optional
+        Target axes. A new figure is created when ``None``.
+
+    Returns
+    -------
+    Axes
+        The axes with the mode-breakdown bar chart.
+    """
+    if weight not in ("count", "fi"):
+        raise ValueError(f"weight must be 'count' or 'fi', got {weight!r}")
+    shares, top_mode, max_fi = _governing_mode_shares(results, weight)
+
+    set_publication_style()
+    ax = ensure_axes(ax, figsize=FIGSIZE_DOUBLE_COLUMN)
+
+    order = sorted(shares, key=lambda m: shares[m], reverse=True)
+    values = [100.0 * shares[m] for m in order]
+    colors = [MODE_COLORS[failure_mode_family(m)] for m in order]
+    ax.bar(
+        range(len(order)), values, color=colors, edgecolor="k", linewidth=0.5
+    )
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels(order, rotation=30, ha="right", fontsize=8)
+    ax.set_ylabel(
+        "Element share (%)" if weight == "count" else "FI-weighted share (%)"
+    )
+    ax.set_title(
+        f"Governing failure mode — {top_mode} dominates "
+        f"({shares.get(top_mode, 0.0) * 100:.0f}%), max FI = {max_fi:.3g}"
+    )
+    ax.set_ylim(0, max(values) * 1.15 if values else 1.0)
+    ax.grid(axis="y", alpha=0.3)
+    return ax
