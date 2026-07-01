@@ -798,6 +798,11 @@ class MaterialLibrary:
         #    laminate tables) and Daniel & Ishai (2006) "Engineering
         #    Mechanics of Composite Materials", 2nd ed., Table A.4.
         #    Representative cured-ply values at Vf ≈ 0.60.
+        #    Interlaminar fracture toughness: glass/epoxy is markedly tougher
+        #    than carbon/epoxy (published GIc ≈ 0.4–1.0 N/mm, GIIc ≈ 2–4×
+        #    GIc); GIc = 0.8, GIIc = 2.0 N/mm are representative values in
+        #    that range (CMH-17 Vol 2 / Daniel & Ishai 2006), consistent
+        #    with the ~2.5× GIIc/GIc ratio of the carbon presets above.
         self.add(OrthotropicMaterial(
             name="S2_GLASS_EPOXY",
             E1=52_000.0, E2=19_000.0, E3=19_000.0,
@@ -810,7 +815,7 @@ class MaterialLibrary:
             alpha1=6.6e-6, alpha2=19.7e-6, alpha3=19.7e-6,
             beta1=0.0, beta2=0.3, beta3=0.3,
             gamma_Y=0.02,
-            GIc=None, GIIc=None, alpha_0=53.0,
+            GIc=0.80, GIIc=2.00, alpha_0=53.0,
             sigma_max=70.0, tau_max=90.0,
         ))
 
@@ -820,6 +825,11 @@ class MaterialLibrary:
         #    Table 2.2.  Representative cured-ply values at Vf ≈ 0.60.
         #    Note: longitudinal compressive strength of aramid prepregs
         #    is markedly lower than tensile because of fibre kinking.
+        #    Interlaminar fracture toughness: aramid/epoxy GIc ≈ 0.3–0.6
+        #    N/mm (moderate matrix-dominated Mode I, raised by fibre
+        #    bridging); GIc = 0.4, GIIc = 1.0 N/mm are representative values
+        #    in that range (Daniel & Ishai 2006), at the ~2.5× GIIc/GIc
+        #    ratio of the other presets.
         self.add(OrthotropicMaterial(
             name="KEVLAR49_EPOXY",
             E1=76_000.0, E2=5_500.0, E3=5_500.0,
@@ -832,7 +842,7 @@ class MaterialLibrary:
             alpha1=-4.0e-6, alpha2=79.0e-6, alpha3=79.0e-6,
             beta1=0.0, beta2=0.6, beta3=0.6,
             gamma_Y=0.02,
-            GIc=None, GIIc=None, alpha_0=53.0,
+            GIc=0.40, GIIc=1.00, alpha_0=53.0,
             sigma_max=40.0, tau_max=70.0,
         ))
 
