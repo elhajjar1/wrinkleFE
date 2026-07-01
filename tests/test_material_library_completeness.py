@@ -110,3 +110,38 @@ def test_issue_88_material_allowables(name):
         assert got == pytest.approx(want, rel=REL_TOL), (
             f"{name}.{attr}: got {got}, expected {want} (±{REL_TOL:.0%})"
         )
+
+
+# --------------------------------------------------------------------------- #
+# CZM (cohesive-zone) capability matrix (issue #268)
+# --------------------------------------------------------------------------- #
+
+
+def test_all_presets_are_czm_capable():
+    """Every built-in preset ships interlaminar toughness (GIc, GIIc) so
+    cohesive-zone delamination runs without user-supplied overrides
+    (issue #268). If a new preset is added without them, populate the
+    values or justify the None with a comment and update this test."""
+    lib = MaterialLibrary()
+    missing = [
+        name for name in lib.list_names()
+        if lib.get(name).GIc is None or lib.get(name).GIIc is None
+    ]
+    assert not missing, (
+        f"presets missing CZM toughness (GIc/GIIc): {sorted(missing)} — "
+        "populate them or document the None explicitly."
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "gic", "giic"),
+    [("S2_GLASS_EPOXY", 0.80, 2.00), ("KEVLAR49_EPOXY", 0.40, 1.00)],
+)
+def test_glass_and_aramid_toughness_pinned(name, gic, giic):
+    """Issue #268: the two previously-None presets now carry representative
+    interlaminar toughness in the published glass/aramid ranges."""
+    mat = MaterialLibrary().get(name)
+    assert mat.GIc == pytest.approx(gic)
+    assert mat.GIIc == pytest.approx(giic)
+    # Physically sane: positive, and Mode II tougher than Mode I.
+    assert mat.GIIc > mat.GIc > 0
