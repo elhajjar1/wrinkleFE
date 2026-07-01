@@ -7,7 +7,7 @@ import pytest
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.mesh import MeshData, MeshValidationError, WrinkleMesh
-from wrinklefe.core.morphology import WrinkleConfiguration
+from wrinklefe.core.morphology import WrinkleConfiguration, WrinklePlacement
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 
 
@@ -566,3 +566,66 @@ class TestAspectRatioWarning:
         boxes.append((0.0, 10.0, 0.0, 0.05, 0.0, 1.0))
         warns = _box_mesh(boxes).validate()
         assert any("aspect ratio" in w for w in warns), warns
+
+
+# --------------------------------------------------------------------------- #
+# Wrinkle-wavelength resolution guard (issue #306)
+# --------------------------------------------------------------------------- #
+
+
+class TestWrinkleResolutionWarning:
+    """Issue #306: warn when the in-plane mesh under-samples the wrinkle
+    wave (too few elements per wavelength to represent the sinusoid)."""
+
+    def _mesh(self, laminate, config, Lx, nx):
+        return WrinkleMesh(
+            laminate=laminate, wrinkle_config=config,
+            Lx=Lx, Ly=5.0, nx=nx, ny=3, nz_per_ply=1,
+        )
+
+    def test_under_resolved_wrinkle_warns(self, small_laminate):
+        # Repro from #306: 2 mm wavelength on a 6 mm domain with nx=4 ->
+        # dx=1.5 mm -> 1.3 elements/wavelength.
+        prof = GaussianSinusoidal(
+            amplitude=0.05, wavelength=2.0, width=1.5, center=3.0
+        )
+        cfg = WrinkleConfiguration.dual_wrinkle(
+            prof, interface1=1, interface2=2, phase=0.0
+        )
+        msg = self._mesh(small_laminate, cfg, Lx=6.0, nx=4)._wrinkle_resolution_warning()
+        assert msg is not None
+        assert "1.3" in msg      # elements per wavelength named
+        assert ">= 12" in msg    # nx needed to reach 4/wavelength named
+
+    def test_adequately_resolved_is_silent(self, small_laminate):
+        # 16 mm wavelength, 48 mm domain, nx=12 -> dx=4 -> exactly 4/wave.
+        prof = GaussianSinusoidal(
+            amplitude=0.1, wavelength=16.0, width=12.0, center=24.0
+        )
+        cfg = WrinkleConfiguration.dual_wrinkle(
+            prof, interface1=1, interface2=2, phase=0.0
+        )
+        mesh = self._mesh(small_laminate, cfg, Lx=48.0, nx=12)
+        assert mesh._wrinkle_resolution_warning() is None
+
+    def test_flat_mesh_is_silent(self, small_laminate):
+        mesh = self._mesh(small_laminate, None, Lx=48.0, nx=12)
+        assert mesh._wrinkle_resolution_warning() is None
+
+    def test_multi_wrinkle_uses_shortest_wavelength(self, small_laminate):
+        # A well-resolved 16 mm wrinkle plus an under-resolved 4 mm wrinkle
+        # at nx=12 over 48 mm (dx=4): the 4 mm (1 element/wavelength) governs.
+        long_p = GaussianSinusoidal(
+            amplitude=0.1, wavelength=16.0, width=12.0, center=24.0
+        )
+        short_p = GaussianSinusoidal(
+            amplitude=0.05, wavelength=4.0, width=3.0, center=24.0
+        )
+        cfg = WrinkleConfiguration([
+            WrinklePlacement(profile=long_p, ply_interface=1, phase_offset=0.0),
+            WrinklePlacement(profile=short_p, ply_interface=2, phase_offset=0.0),
+        ])
+        msg = self._mesh(small_laminate, cfg, Lx=48.0, nx=12)._wrinkle_resolution_warning()
+        assert msg is not None
+        assert "1.0 elements" in msg   # shortest (4 mm) wavelength governs
+        assert ">= 48" in msg

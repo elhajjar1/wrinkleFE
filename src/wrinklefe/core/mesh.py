@@ -77,6 +77,15 @@ class MeshValidationError(ValueError):
 MESH_DECAY_WARN_RATIO: float = 2.5
 MESH_DECAY_INVERT_RATIO: float = 5.0
 
+# Minimum in-plane elements per wrinkle wavelength (issue #306). A trilinear
+# hex mesh needs several elements per wavelength to represent the sinusoid;
+# below this the FE "wrinkle" is aliasing noise even though the solve
+# completes. Stock defaults give exactly 4 elements/wavelength and validated
+# configs used ~8, so warning below 4 keeps default runs silent while
+# flagging the clearly-inadequate 1-3/wavelength regime. Analogous to the
+# analytical path's own Nyquist guard in ``core/wrinkle.py``.
+MESH_RESOLUTION_WARN_RATIO: float = 4.0
+
 # Aspect-ratio quality warning (issue #303). Ply-by-ply solid meshes are
 # intentionally thin through-thickness (one ply per element), so a large
 # overall max/min bounding-box ratio is the inherent "pancake" shape of the
@@ -869,7 +878,50 @@ class WrinkleMesh:
         for w in mesh_warnings:
             logger.warning(w)
 
+        resolution_warning = self._wrinkle_resolution_warning()
+        if resolution_warning is not None:
+            logger.warning(resolution_warning)
+
         return mesh_data
+
+    def _wrinkle_resolution_warning(self) -> str | None:
+        """Warn when the in-plane mesh under-samples the wrinkle wave.
+
+        The trilinear hex mesh needs several elements per wavelength to
+        represent the sinusoid; below :data:`MESH_RESOLUTION_WARN_RATIO`
+        the FE "wrinkle" is aliasing noise even though the solve completes
+        and returns failure indices with full confidence (issue #306). The
+        element x-size and each wrinkle's wavelength are both known here, so
+        the adequacy ratio ``lambda / dx`` is one division; multi-wrinkle
+        configs are governed by the shortest wavelength (fewest elements per
+        wavelength). Returns ``None`` when adequately resolved or flat.
+        """
+        cfg = self.wrinkle_config
+        if cfg is None or self.nx <= 0 or self.Lx <= 0.0:
+            return None
+        wavelengths = []
+        for w in getattr(cfg, "wrinkles", ()) or ():
+            inner = getattr(w.profile, "profile", w.profile)
+            lam = float(getattr(inner, "wavelength", 0.0))
+            if lam > 0.0:
+                wavelengths.append(lam)
+        if not wavelengths:
+            return None
+        dx = self.Lx / self.nx
+        lam_min = min(wavelengths)  # shortest wavelength -> worst sampling
+        elems_per_wave = lam_min / dx
+        if elems_per_wave >= MESH_RESOLUTION_WARN_RATIO:
+            return None
+        nx_needed = int(math.ceil(MESH_RESOLUTION_WARN_RATIO * self.Lx / lam_min))
+        return (
+            f"Wrinkle wavelength {lam_min:.3g} mm is sampled by only "
+            f"{elems_per_wave:.1f} elements/wavelength (element dx="
+            f"{dx:.3g} mm), below the recommended "
+            f"{MESH_RESOLUTION_WARN_RATIO:.0f}: the hex mesh cannot represent "
+            f"the wrinkle and the result may be aliasing noise. Increase nx "
+            f"to >= {nx_needed} (or shorten domain_length), or run a "
+            f"convergence study (`wrinklefe converge`)."
+        )
 
     def _augment_inversion_error(
         self, err: MeshValidationError
