@@ -388,6 +388,56 @@ class FieldResults:
         gp_idx = flat_idx % n_gp
         return float(comp_data[elem_idx, gp_idx]), elem_idx, gp_idx
 
+    def max_displacement_location(self) -> tuple[float, np.ndarray]:
+        """Maximum displacement magnitude and its physical location.
+
+        Coordinate-aware companion to :meth:`max_displacement`: resolves the
+        node index to its ``(x, y, z)`` coordinates via the mesh, so
+        reporting / visualisation need no manual index -> coordinate lookup.
+
+        Returns
+        -------
+        mag : float
+            Maximum displacement magnitude (mm).
+        location : np.ndarray
+            Shape ``(3,)`` node coordinates ``(x, y, z)`` (mm) where the
+            maximum occurs (undeformed reference coordinates).
+        """
+        mag, node_idx = self.max_displacement()
+        return mag, np.asarray(self.mesh.nodes[node_idx], dtype=float)
+
+    def max_stress_location(
+        self, component: int = 0, coord: str = 'local'
+    ) -> tuple[float, np.ndarray]:
+        """Maximum stress value and the physical location of its element.
+
+        Coordinate-aware companion to :meth:`max_stress`: resolves the
+        element index to its centroid ``(x, y, z)`` via the mesh.
+
+        Parameters
+        ----------
+        component : int, optional
+            Stress component in Voigt notation (0-5). Default is 0 (sigma_11).
+        coord : str, optional
+            ``'global'`` or ``'local'`` coordinate system. Default ``'local'``.
+
+        Returns
+        -------
+        value : float
+            Maximum stress value (MPa).
+        location : np.ndarray
+            Shape ``(3,)`` centroid coordinates ``(x, y, z)`` (mm) of the
+            element containing the maximum.
+        """
+        value, elem_idx, _gp_idx = self.max_stress(
+            component=component, coord=coord
+        )
+        if self.mesh.n_elements == 0:
+            return value, np.zeros(3, dtype=float)
+        return value, np.asarray(
+            self.mesh.element_center(elem_idx), dtype=float
+        )
+
     def reaction_forces(
         self,
         K_global: sparse.csc_matrix,
