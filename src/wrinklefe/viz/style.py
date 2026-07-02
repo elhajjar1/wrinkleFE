@@ -55,6 +55,19 @@ MORPHOLOGY_MARKERS: dict[str, str] = {
 }
 """Scatter plot markers for morphology types."""
 
+MODE_COLORS: dict[str, str] = {
+    "fiber": "#d62728",        # red   — fibre-dominated (kinking/tension/comp)
+    "matrix": "#1f77b4",       # blue  — matrix-dominated (all matrix_* modes)
+    "shear": "#ff7f0e",        # orange
+    "delamination": "#9467bd", # purple
+    "other": "#7f7f7f",        # gray fallback
+}
+"""Fixed colours per failure-mode *family*, so the legend of a
+failure-mode breakdown is stable across runs (issue #269). Individual
+mode strings (e.g. ``fiber_kinking``, ``matrix_transverse_compression``)
+map to a family via :func:`wrinklefe.viz.plots_2d.failure_mode_family`.
+"""
+
 MORPHOLOGY_LINESTYLES: dict[str, str] = {
     "stack": "-",       # solid
     "convex": "--",     # dashed
