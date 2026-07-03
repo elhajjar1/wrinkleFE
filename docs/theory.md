@@ -148,6 +148,20 @@ with $\alpha_\text{asym}=0.288$, $\alpha_\text{offset}=0$ in compression
 a geometric mean; single-wrinkle modes (`uniform`, `graded`) have
 $M_f=1$.
 
+**Amplitude contract in the FE mesh.** The morphology factor above scales
+the *analytical* angle. The FE mesh builds the same paired-wrinkle geometry
+by *summing* the two constituents' through-thickness–decayed displacement
+fields (`apply_to_nodes`). To keep the mesh consistent with the definition
+of $A$ as the peak deflection of the wrinkle (§1, peak-to-trough $=2A$),
+each of the two constituents of a `stack`/`convex`/`concave` morphology is
+generated at **half amplitude** $A/2$, so the in-phase (`stack`) sum peaks
+at exactly $A$ rather than $2A$. This makes the meshed fibre angle equal
+the analytical $\theta_{\max}=\arctan(2\pi A/\lambda)$ for the `stack`
+morphology, and the phase-offset morphologies (`convex`/`concave`) partly
+cancel below $A$. (Explicit multi-wrinkle configurations built through the
+`WrinkleSpec` API bypass this convention: each listed wrinkle carries the
+amplitude the caller specifies.) See issue #305.
+
 ### 2.4 Graded morphology averaging
 
 For the `graded` morphology the Budiansky–Fleck knockdown is averaged

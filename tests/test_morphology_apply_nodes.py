@@ -378,12 +378,22 @@ class TestFiberAnglesSlopeMagnitude:
 # ----------------------------------------------------------------------
 
 class TestFiberAnglesDualWrinkleComposed:
-    """Angles derive from the composed displacement field (#252):
-    two identical co-located wrinkles (phase=0) double the slope, so
-    the dual angle is ``arctan(2 * tan(single))``. With phase=pi the
-    displacement fields partly cancel."""
+    """Angles derive from the composed displacement field (#252).
 
-    def test_phase0_doubles_the_slope(self, gaussian_wrinkle):
+    Per the amplitude contract (#305), ``dual_wrinkle`` places an ``A/2``
+    clone of the profile at each interface so the in-phase composed mesh
+    sums to exactly the configured amplitude ``A`` rather than ``2A``.
+    Two identical co-located wrinkles (phase=0) therefore reproduce the
+    single full-amplitude slope, and the co-located dual angle equals the
+    single-wrinkle angle. With phase=pi the halved fields partly cancel.
+    """
+
+    def test_phase0_colocated_matches_single_full_amplitude(
+        self, gaussian_wrinkle
+    ):
+        """Issue #305: two co-located in-phase A/2 wrinkles compose to the
+        configured amplitude A, so the dual fibre angle equals the single
+        full-amplitude wrinkle's angle (not twice its slope)."""
         single = _single_config(gaussian_wrinkle, ply_interface=2)
         dual = WrinkleConfiguration.dual_wrinkle(
             gaussian_wrinkle, interface1=2, interface2=2, phase=0.0
@@ -391,15 +401,14 @@ class TestFiberAnglesDualWrinkleComposed:
         nodes, ply = _strip(np.array([2.0]), n_plies=6)
         a_single = single.fiber_angles_at_nodes(nodes, ply)[ply == 2][0]
         a_dual = dual.fiber_angles_at_nodes(nodes, ply)[ply == 2][0]
-        npt.assert_allclose(
-            a_dual, np.arctan(2.0 * np.tan(a_single)), rtol=1e-12
-        )
+        npt.assert_allclose(a_dual, a_single, rtol=1e-12)
 
     def test_phase_pi_partially_cancels_displacement(self, gaussian_wrinkle):
         """Anti-stack (phase=pi) shifts the 2nd wrinkle by lambda/2, so the
-        co-located dual displacement is the sum of profile(x) and
-        profile(x - lambda/2); at the crest these are opposite-sign and
-        the net is strictly smaller than twice the single-wrinkle crest."""
+        co-located dual displacement is the sum of the two A/2 clones,
+        profile_half(x) + profile_half(x - lambda/2); at the crest these are
+        opposite-sign and the net is strictly smaller than the single
+        full-amplitude crest."""
         single = _single_config(gaussian_wrinkle, ply_interface=2)
         dual = WrinkleConfiguration.dual_wrinkle(
             gaussian_wrinkle, interface1=2, interface2=2, phase=np.pi
@@ -409,11 +418,13 @@ class TestFiberAnglesDualWrinkleComposed:
         dz_dual = (dual.apply_to_nodes(nodes, ply, 6) - nodes)[:, 2]
         s = dz_single[ply == 2][0]
         d = dz_dual[ply == 2][0]
-        # Net dual displacement strictly below 2*single (partial cancel).
-        assert abs(d) < abs(2.0 * s)
-        # Closed-form: profile(0) + profile(0 - lambda/2).
+        # Net dual displacement strictly below the single full crest
+        # (partial cancellation of the two halved, phase-shifted fields).
+        assert abs(d) < abs(s)
+        # Closed-form: each clone carries A/2, so the composed crest is
+        # 0.5 * (profile(0) + profile(0 - lambda/2)).
         lam = gaussian_wrinkle.wavelength
-        expected = (
+        expected = 0.5 * (
             gaussian_wrinkle.displacement(np.array([0.0]))[0]
             + gaussian_wrinkle.displacement(np.array([-lam / 2.0]))[0]
         )

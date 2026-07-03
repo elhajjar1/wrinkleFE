@@ -117,6 +117,18 @@ version produced a given file.
 - GitHub issue forms, pull-request template, and this changelog.
 
 ### Fixed
+- Dual-wrinkle amplitude contract in the FE mesh (issue #305): the
+  `stack`/`convex`/`concave` morphologies build the mesh by summing two
+  through-thickness–decayed displacement fields, and each constituent
+  previously carried the full amplitude `A`, so the in-phase `stack` mesh
+  peaked at `2A` — double the intended geometry, meshed fibre angle and FE
+  knockdown, and inconsistent with the analytical
+  `theta_max = arctan(2*pi*A/lambda)`. Each constituent is now generated at
+  half amplitude `A/2` (`morphology._profile_at_half_amplitude`), so the
+  `stack` mesh composes to exactly `A` and its fibre angle matches the
+  analytical profile. Explicit multi-wrinkle `WrinkleSpec` configurations
+  are unaffected (each listed wrinkle keeps its specified amplitude). See
+  Numerical results.
 - Linear-buckling eigensolve correctness/robustness
   (`solver/buckling.py`): for a wrinkled (non-uniform) pre-stress the
   geometric "mass" matrix `M = -K_geo` is **indefinite**, which violated
@@ -196,6 +208,16 @@ version produced a given file.
   (`stack`/`convex`/`concave`) wherever through-thickness decay < 1 or
   wrinkles overlap; single-wrinkle results are unchanged. Analytical
   predictions are unaffected.
+- **Dual-wrinkle mesh amplitude (issue #305)**: the `stack`/`convex`/
+  `concave` FE meshes previously peaked at up to `2A` because each of the
+  two summed constituents carried the full amplitude `A`. Each constituent
+  is now half amplitude, so the in-phase `stack` mesh peaks at exactly `A`
+  and its meshed fibre angle drops to the analytical
+  `arctan(2*pi*A/lambda)` (roughly halved). FE-derived quantities (fibre
+  angles, FE knockdown, stiffness retention) shift for these three
+  morphologies; single-wrinkle (`uniform`/`graded`) and explicit
+  `WrinkleSpec` multi-wrinkle configurations are unchanged, and analytical
+  predictions (which already used the configured `A`) are unaffected.
 
 ## [1.0.0]
 
