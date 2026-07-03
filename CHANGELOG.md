@@ -15,6 +15,20 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Cohesive-zone delamination in multi-wrinkle FE (issue #283):
+  `enable_czm=True` now runs with an `AnalysisConfig.wrinkles` list
+  instead of raising `NotImplementedError`. Cohesive layers are inserted
+  along the **full length** of every nominated interface, and
+  `czm_interfaces="near_crest"` nominates the interface nearest *each*
+  wrinkle (deduplicated) — wrinkles sharing an interface index get one
+  continuous cohesive surface, so a delamination initiating at one crest
+  can propagate toward its neighbour (crest-to-crest link-up, the Li 2025
+  multi-wrinkle failure pattern; see
+  `examples/08_multi_wrinkle_czm_linkup.py`). Regression anchors: a
+  one-entry `wrinkles` list reproduces the scalar-config CZM solution
+  bit-tight; far-separated wrinkles match independent single-wrinkle
+  solves within a few percent with an intact interface between them;
+  scalar (named-morphology) CZM interface resolution is unchanged.
 - Analytical stiffness (axial-modulus) knockdown on the analytical path:
   `AnalysisResults.analytical_modulus_knockdown`, a closed-form CLT
   series-average of the off-axis lamina modulus over the wrinkle profile

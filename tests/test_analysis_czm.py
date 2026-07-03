@@ -293,6 +293,57 @@ class TestCzmInterfaceResolution:
         )
         assert ifaces == [2, 5, 9]
 
+    @staticmethod
+    def _multi_wrinkle_resolution(interfaces: list[int]) -> list[int]:
+        """Resolve ``near_crest`` for a multi-wrinkle config placing one
+        wrinkle at each of the given ply interfaces (no FE solve)."""
+        import dataclasses
+
+        from wrinklefe.analysis import WrinkleSpec
+        from wrinklefe.core.morphology import (
+            WrinkleConfiguration,
+            WrinklePlacement,
+        )
+        from wrinklefe.core.wrinkle import GaussianSinusoidal
+
+        base = _czm_config(czm_interfaces="near_crest")
+        specs = [
+            WrinkleSpec(
+                amplitude=0.2, wavelength=8.0, width=2.0, ply_interface=k,
+            )
+            for k in interfaces
+        ]
+        cfg = dataclasses.replace(base, wrinkles=specs)
+        analysis = WrinkleAnalysis(cfg)
+        laminate = analysis._build_laminate()
+        placements = [
+            WrinklePlacement(
+                profile=GaussianSinusoidal(
+                    amplitude=s.amplitude, wavelength=s.wavelength,
+                    width=s.width, center=cfg.domain_length / 2.0,
+                ),
+                ply_interface=s.ply_interface,
+                phase_offset=s.phase_offset,
+            )
+            for s in specs
+        ]
+        wrinkle_config = WrinkleConfiguration(placements)
+        return analysis._resolve_cohesive_interfaces(
+            laminate, wrinkle_config,
+        )
+
+    def test_czm_interfaces_near_crest_multi_wrinkle_one_per_wrinkle(self):
+        """Issue #283: with a multi-wrinkle config, ``near_crest``
+        nominates the interface nearest *each* wrinkle rather than only
+        the largest-amplitude one."""
+        assert self._multi_wrinkle_resolution([2, 5]) == [2, 5]
+        assert self._multi_wrinkle_resolution([2, 5, 9]) == [2, 5, 9]
+
+    def test_czm_interfaces_near_crest_multi_wrinkle_shared_dedup(self):
+        """Wrinkles nominating the same interface resolve to one
+        continuous cohesive surface (deduplicated index)."""
+        assert self._multi_wrinkle_resolution([4, 4]) == [4]
+
 
 # ----------------------------------------------------------------------
 # 3. MaterialLibrary CZM defaults coverage
