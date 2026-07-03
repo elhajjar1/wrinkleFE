@@ -35,6 +35,14 @@ def _czm_config(**overrides) -> AnalysisConfig:
     the wrinkle crest and (b) still converge through the
     NewtonRaphsonSolver — sit just past damage initiation but well
     below catastrophic interface failure.
+
+    The applied strain (0.025) was recalibrated for the corrected
+    dual-wrinkle amplitude contract (issue #305): the concave mesh now
+    composes to ~0.70*A rather than the previous ~1.37*A, so the older
+    0.015 strain no longer opened the crest interface past the cohesive
+    initiation threshold. 0.025 restores the intended "just past
+    initiation" state (max damage ~0.04, still convergent) for the
+    physically-correct geometry.
     """
     mat = MaterialLibrary().get("IM7_8552")
     defaults = dict(
@@ -49,7 +57,7 @@ def _czm_config(**overrides) -> AnalysisConfig:
         nx=12,
         ny=4,
         nz_per_ply=1,
-        applied_strain=0.015,
+        applied_strain=0.025,
         enable_czm=True,
         czm_n_load_increments=20,
         verbose=False,
