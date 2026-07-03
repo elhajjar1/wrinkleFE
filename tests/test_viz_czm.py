@@ -215,6 +215,12 @@ def test_czm_overview_figure_from_real_run():
     Newton-Raphson loop completes in a few seconds; we still get a
     nonzero damage field from the concave-tension geometry, which is all
     the overview figure needs to render every panel non-trivially.
+
+    The applied strain (0.025) matches the recalibration in
+    ``tests/test_analysis_czm.py`` for the corrected dual-wrinkle
+    amplitude contract (issue #305): the concave mesh now composes to
+    ~0.70*A, so the previous 0.015 no longer opened the crest past the
+    cohesive initiation threshold.
     """
     mat = MaterialLibrary().get("IM7_8552")
     cfg = AnalysisConfig(
@@ -224,7 +230,7 @@ def test_czm_overview_figure_from_real_run():
         angles=list(_LAYUP_0_90_4S),
         ply_thickness=0.183,
         nx=6, ny=3, nz_per_ply=1,
-        applied_strain=0.015,
+        applied_strain=0.025,
         enable_czm=True,
         czm_n_load_increments=8,
         verbose=False,

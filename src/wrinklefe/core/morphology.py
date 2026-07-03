@@ -31,6 +31,7 @@ References
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Literal
 
@@ -59,6 +60,28 @@ SINGLE_WRINKLE_MODES = {"uniform", "graded"}
 These values correspond to the morphology classifications in Jin et al. (2026)
 Table 3 and the analytical model in Elhajjar (2025) Eq. 8.
 """
+
+
+def _profile_at_half_amplitude(
+    profile: WrinkleProfile | WrinkleSurface3D,
+) -> WrinkleProfile | WrinkleSurface3D:
+    """Return a deep copy of *profile* carrying half its amplitude.
+
+    Used by :meth:`WrinkleConfiguration.dual_wrinkle` so that two in-phase
+    ``A/2`` wrinkles compose (sum) to the configured amplitude ``A`` in the
+    generated mesh rather than to ``2A`` (issue #305). The original
+    *profile* is left untouched.
+
+    For a :class:`~wrinklefe.core.wrinkle.WrinkleSurface3D` the amplitude
+    lives on the wrapped ``profile`` attribute; for a bare
+    :class:`~wrinklefe.core.wrinkle.WrinkleProfile` it lives directly on the
+    object. Either way the displacement field scales linearly with
+    ``amplitude``, so halving it halves each constituent's contribution.
+    """
+    scaled = copy.deepcopy(profile)
+    inner = scaled.profile if isinstance(scaled, WrinkleSurface3D) else scaled
+    inner.amplitude = inner.amplitude / 2.0
+    return scaled
 
 
 # ======================================================================
@@ -1054,13 +1077,23 @@ class WrinkleConfiguration:
             >>> config.aggregate_morphology_factor("compression")  # doctest: +ELLIPSIS
             0.749...
         """
+        # Amplitude contract (issue #305): the configured amplitude ``A`` is
+        # the peak deflection of the *composed* dual wrinkle, not of each
+        # constituent. ``apply_to_nodes`` sums the two decayed displacement
+        # fields, so two full-amplitude in-phase profiles would build a ``2A``
+        # mesh — doubling the geometry, the fibre angle, and the knockdown
+        # relative to the analytical model. Placing an ``A/2`` clone at each
+        # interface makes the in-phase (stack) sum equal exactly ``A`` and
+        # keeps the phase-offset (convex/concave) morphologies self-consistent
+        # with the amplitude the caller asked for.
+        half = _profile_at_half_amplitude(profile)
         w1 = WrinklePlacement(
-            profile=profile,
+            profile=half,
             ply_interface=interface1,
             phase_offset=0.0,
         )
         w2 = WrinklePlacement(
-            profile=profile,
+            profile=half,
             ply_interface=interface2,
             phase_offset=phase,
         )
