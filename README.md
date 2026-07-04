@@ -28,11 +28,14 @@ Public link, no account needed.
 - **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **Movable wrinkle position:** Configurable through-thickness placement (`wrinkle_z_position`, 0.5 = mid-plane)
+- **Multi-wrinkle configurations:** Arbitrary N-wrinkle layouts via `AnalysisConfig.wrinkles` — a list of `WrinkleSpec(amplitude, wavelength, width, ply_interface, phase_offset)` — through the analytical, FE, penetration-gate (per-spec, weakest-link) and CZM paths
+- **Cohesive-zone delamination (CZM):** Bilinear traction–separation interface elements (`enable_czm=True`) with per-interface damage, energy and crack-length reporting — including continuous cohesive surfaces across adjacent wrinkles for crest-to-crest delamination link-up (see `examples/08_multi_wrinkle_czm_linkup.py`)
 - **Resin-pocket material zone:** Graded neat-epoxy lens at the wrinkle crest (modulus + fibre-angle blend, counted once) via `wrinklefe.core.resin_pocket`
 - **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
 - **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue does not capture the *fibre-scale* wrinkle knockdown (it gets the sign wrong: the bifurcation load *rises* with the wrinkle), so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
 - **11 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, IM6G/3501-6 carbon/epoxy — the Hsiao & Daniel 1996 wavy-UD study, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
+- **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Developer / library install
@@ -230,7 +233,46 @@ print(result.analytical_knockdown)
 ```
 
 When `penetration_gate` is left unset (the default `None`), the
-analytical knockdown is unchanged.
+analytical knockdown is unchanged. With a multi-wrinkle configuration
+(`AnalysisConfig.wrinkles`, below) the gate evaluates each wrinkle on
+its own geometry — `theta_i = arctan(2πA_i/λ_i)`, penetration
+`D_i/T = A_i/T`, and the through-thickness position factor `P(z_i)`
+from the spec's ply interface — and returns the weakest-link (minimum)
+knockdown.
+
+### Multi-wrinkle configurations
+
+Real laminates often carry several wrinkles. Passing a list of
+`WrinkleSpec` entries overrides the single/dual-wrinkle dispatch and
+places each wrinkle at its own ply interface with its own geometry and
+longitudinal position (`phase_offset` shifts a crest by
+`phase·λ/2π`):
+
+```python
+import numpy as np
+from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis, WrinkleSpec
+
+config = AnalysisConfig(
+    morphology="graded", loading="compression",
+    angles=[0.0] * 14, ply_thickness=0.44,
+    wrinkles=[
+        WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                    ply_interface=6, phase_offset=-2.0 * np.pi),
+        WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                    ply_interface=6, phase_offset=+2.0 * np.pi),
+    ],
+)
+result = WrinkleAnalysis(config).run()
+```
+
+The composed displacement and fibre-angle fields feed the FE solve
+("compose then differentiate"), the penetration gate scores each
+wrinkle and takes the weakest link, and `enable_czm=True` inserts
+cohesive surfaces along the full length of every wrinkle-nominated
+interface — wrinkles sharing an interface get one continuous surface,
+so a delamination can propagate crest-to-crest between neighbours
+(`examples/08_multi_wrinkle_czm_linkup.py` demonstrates the link-up
+vs far-separated contrast).
 
 ### Batch parametric sweeps
 
@@ -254,6 +296,13 @@ for r in results:
     print(f"A={r.config.amplitude:.3f}  KD={r.analytical_knockdown:.4f}")
 ```
 
+Every sweep point is an independent analysis, so full-FE sweeps
+parallelize across processes: pass `n_workers=N` (`0` = all CPU cores)
+and the solves fan out over a process pool with results returned in
+the same order as `values` — measured 3.6× at 4 workers on an 8-value
+FE sweep. Peak memory scales with `n_workers` × the per-solve
+footprint, so size the worker count by available RAM for fine meshes.
+
 For multi-parameter cross-product sweeps with JSON output and plots,
 use `wrinklefe.sweep.run_sweep`:
 
@@ -276,6 +325,10 @@ wrinklefe --help
 
 # Single-parameter sweep (analytical-only is the default, fast)
 wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 5
+
+# Full-FE sweep across 4 worker processes (--parallel 0 = all cores)
+wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
+    --no-analytical-only --parallel 4
 ```
 
 ### Exporting results to CSV / JSON
