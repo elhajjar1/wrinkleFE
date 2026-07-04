@@ -172,3 +172,105 @@ class TestPositionFactor:
     def test_rejects_bad_position_q(self):
         with pytest.raises(ValueError):
             GateParameters(0.5, 0.1, 4.0, position_q=-1.0)
+
+
+class TestGateMultiWrinkle:
+    """Gate x AnalysisConfig.wrinkles interaction (issue #342).
+
+    The gate previously read theta from the wrinkle specs but D/T from
+    the leftover scalar ``cfg.amplitude`` — a silently wrong knockdown
+    (0.98 instead of 0.64 on the repro below). The gate now evaluates
+    per spec (theta_i, A_i/T, z_i from the spec's ply interface) and
+    takes the weakest-link minimum.
+    """
+
+    @staticmethod
+    def _cfg(wrinkles, **overrides):
+        from wrinklefe.analysis import AnalysisConfig
+
+        base = dict(
+            angles=[0.0] * 14, ply_thickness=0.44, morphology="graded",
+            loading="compression", penetration_gate=GATE_LI2025_VACBAG,
+            wrinkles=wrinkles, analytical_only=True,
+        )
+        base.update(overrides)
+        return AnalysisConfig(**base)
+
+    @staticmethod
+    def _kd(cfg) -> float:
+        from wrinklefe.analysis import WrinkleAnalysis
+
+        return float(
+            WrinkleAnalysis(cfg).run(analytical_only=True)
+            .analytical_knockdown
+        )
+
+    def test_issue_342_repro_uses_spec_amplitude(self):
+        """The issue's exact repro: D/T must come from the spec
+        (kd ~ 0.643), not the leftover scalar default (kd ~ 0.984)."""
+        from wrinklefe.analysis import WrinkleSpec
+
+        cfg = self._cfg([
+            WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                        ply_interface=6, phase_offset=0.0),
+        ])
+        kd = self._kd(cfg)
+        assert kd == pytest.approx(0.6427, abs=2e-4)
+        assert kd < 0.7  # loudly not the stale-amplitude 0.98 value
+
+    def test_single_spec_matches_scalar_gate_config(self):
+        """One spec at the midplane boundary reproduces the scalar-config
+        gate exactly (same theta, D/T and z)."""
+        from wrinklefe.analysis import AnalysisConfig, WrinkleSpec
+
+        kd_multi = self._kd(self._cfg([
+            WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                        ply_interface=6),
+        ]))
+        scalar = AnalysisConfig(
+            amplitude=0.75, wavelength=12.9, width=6.45,
+            angles=[0.0] * 14, ply_thickness=0.44, morphology="graded",
+            loading="compression", penetration_gate=GATE_LI2025_VACBAG,
+            wrinkle_z_position=7.0 / 14.0,
+            analytical_only=True,
+        )
+        assert kd_multi == pytest.approx(self._kd(scalar), rel=1e-12)
+
+    def test_weakest_link_governs(self):
+        """Adding a milder (near-surface) wrinkle must not raise the
+        knockdown above the severe midplane wrinkle's own value."""
+        from wrinklefe.analysis import WrinkleSpec
+
+        severe = WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                             ply_interface=6)
+        mild = WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                           ply_interface=9)
+        kd_severe = self._kd(self._cfg([severe]))
+        kd_mild = self._kd(self._cfg([mild]))
+        kd_both = self._kd(self._cfg([mild, severe]))
+        assert kd_mild > kd_severe
+        assert kd_both == pytest.approx(kd_severe, rel=1e-12)
+
+    def test_per_spec_position_factor_engaged(self):
+        """A near-surface spec (interface 9 of 14 -> z = 10/14) rides the
+        gate's P(z) to the measured S-A-2-style mildness."""
+        from wrinklefe.analysis import WrinkleSpec
+
+        kd = self._kd(self._cfg([
+            WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                        ply_interface=9),
+        ]))
+        assert kd == pytest.approx(0.9812, abs=2e-4)
+
+    def test_scalar_amplitude_is_ignored(self):
+        """The leftover scalar amplitude/wavelength must have no effect
+        on a multi-wrinkle gate knockdown."""
+        from wrinklefe.analysis import WrinkleSpec
+
+        spec = [WrinkleSpec(amplitude=0.75, wavelength=12.9, width=6.45,
+                            ply_interface=6)]
+        kd_default = self._kd(self._cfg(spec))
+        kd_other = self._kd(
+            self._cfg(spec, amplitude=1.9, wavelength=40.0, width=3.0)
+        )
+        assert kd_default == pytest.approx(kd_other, rel=1e-12)

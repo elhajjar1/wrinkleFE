@@ -2886,11 +2886,41 @@ class WrinkleAnalysis:
         if cfg.penetration_gate is not None:
             angles_g = cfg.angles if cfg.angles else [0]
             T = cfg.ply_thickness * len(angles_g)
-            dt = (cfg.amplitude / T) if T > 0 else 0.0
-            kd_gate = penetration_gate_kd(
-                math.degrees(theta_max), dt, cfg.penetration_gate,
-                z_position=float(cfg.wrinkle_z_position),
-            )
+            if cfg.wrinkles is not None:
+                # Multi-wrinkle gate (issue #342): evaluate the gate per
+                # spec — each wrinkle carries its own angle
+                # theta_i = arctan(2*pi*A_i/lambda_i), penetration
+                # D_i/T = A_i/T, and through-thickness position
+                # z_i = (ply_interface + 1) / n_plies (the boundary the
+                # spec nominates; ``cfg.wrinkle_z_position`` is a
+                # scalar-path parameter and is ignored here) — and take
+                # the weakest-link (minimum) knockdown.  Previously
+                # ``dt`` silently read the leftover scalar
+                # ``cfg.amplitude`` while theta came from the specs,
+                # producing a plausible-looking wrong answer (e.g. kd
+                # 0.98 instead of 0.64 on the issue's repro).
+                n_plies_g = len(angles_g)
+                kd_gate = 1.0
+                for spec in cfg.wrinkles:
+                    if spec.wavelength > 1e-12:
+                        theta_i = float(np.arctan(
+                            2.0 * np.pi * spec.amplitude / spec.wavelength
+                        ))
+                    else:
+                        theta_i = 0.0
+                    dt_i = (spec.amplitude / T) if T > 0 else 0.0
+                    z_i = (spec.ply_interface + 1) / n_plies_g
+                    kd_i = penetration_gate_kd(
+                        math.degrees(theta_i), dt_i, cfg.penetration_gate,
+                        z_position=float(z_i),
+                    )
+                    kd_gate = min(kd_gate, float(kd_i))
+            else:
+                dt = (cfg.amplitude / T) if T > 0 else 0.0
+                kd_gate = penetration_gate_kd(
+                    math.degrees(theta_max), dt, cfg.penetration_gate,
+                    z_position=float(cfg.wrinkle_z_position),
+                )
             results.morphology_factor = mf
             results.max_angle_rad = theta_max
             results.effective_angle_rad = theta_eff
