@@ -223,7 +223,7 @@ wrinkle defects.* AIP Advances 15, 065118. DOI 10.1063/5.0276297.
   would yield only a figure-derived, non-pristine apparent KD biased to the
   initial-damage region — below the database data-quality bar.
 
-## Evaluated — deferred (pending model capability)
+## Evaluated — initially deferred, since included (issue #161 closed)
 
 ### Li, Li, Ge & Liang (2025)
 
@@ -245,8 +245,22 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   > MAE 5.0 %, 6/6. The gate is a *separate fitted predictor*, not the
   > analytical/FE pipeline; the analysis below explains why that BF /
   > FE-strength pipeline could not capture the amplitude-at-constant-angle
-  > effect (issue #161 remains open for that pipeline and for the
-  > multi-wrinkle D-/T- cases).
+  > effect.
+  >
+  > **Update (issue #161 closed)**: the gate path is now wired into the
+  > reproducible harness — `scripts/validate.py` scores it per case
+  > against `expected_gate_kd` baselines pinned in
+  > `tests/test_validation/ledger.json` (the S-A-2 through-thickness
+  > position rides the new per-case `z_frac` field through the gate's
+  > `P(z)` factor), and the #161 acceptance criteria are permanent
+  > regression tests in `tests/test_validation/test_ledger.py`: the
+  > S-M-2/4/5 trio lands at **+2.2 % / −0.6 % / −0.3 %** (band ±15 %),
+  > the amplitude and angle orderings are asserted monotonic, and all
+  > six cases sit inside the ±20 % parity band. The gate is the issue's
+  > candidate direction 3 (a zone-based knockdown layered on the BF
+  > core). The multi-wrinkle D-/T- cases remain out of the ledger (the
+  > gate is calibrated on single wrinkles; gate × multi-wrinkle wiring
+  > is issue #342).
 - **Dataset** (pristine plate 335.52 MPa; A = peak-to-peak amplitude;
   θ_max = arctan(2π·(A/2)/λ)):
 
@@ -274,10 +288,19 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   strength response is in fact flatter than the analytical one (S-M-2 FE
   strength error ≈ 59%). (Underlying FE LaRC05 max-FI at ε = −0.01:
   0.767 / 0.765 / 0.777, ≤1.5% spread; modulus retention 0.945 for all
-  three — both confirm the same flat behaviour.) Capturing the effect
-  needs geometrically nonlinear progressive-damage FE (issue #161). S-A-2
-  additionally exposes a missing through-thickness wrinkle-position
-  parameter (out of scope; excluded on future inclusion).
+  three — both confirm the same flat behaviour.) In the *analytical*
+  family the effect is now captured by the penetration gate (see the
+  closure note above). On the *FE* side, the crack-band
+  progressive-damage solver (`ProgressiveDamageSolver`,
+  `crack_band=True`) does develop a genuine amplitude trend at constant
+  angle — at Gf = 3.0, nx = 16 the trio predicts 0.805 / 0.912 / 0.957
+  (measured 0.629 / 0.943 / 1.000): S-M-4/5 within ~4 %, S-M-2 still
+  +28 % (see `validation/validate_li_progressive.py` and the
+  `li_progressive_*.csv` runs) — the FE remains an open research
+  direction, no longer tracked by a blocking issue. S-A-2's
+  through-thickness position is no longer out of scope: the
+  `wrinkle_z_position` parameter and the gate's `P(z)` factor reproduce
+  it (pinned via `z_frac` in the ledger).
 - **Related (resolved)**: the `graded` compression through-thickness
   decay had a separate real bug, tracked and closed by issue #254:
   `decay_floor` was inert in compression (honored in tension), and the
@@ -291,7 +314,7 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   results bit-for-bit — confirmed by zero drift across this dataset's
   pinned baselines in `tests/test_validation/ledger.json`. Neither
   change addresses the amplitude-at-constant-angle gap above, which
-  remains issue #161.
+  was closed separately by the penetration-gate path (issue #161).
 
 ## Identified — pending evaluation
 

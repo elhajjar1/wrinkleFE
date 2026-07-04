@@ -15,6 +15,20 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Penetration-gate validation harness (issue #161): the calibrated UD
+  gate — the only strength path sensitive to wrinkle amplitude and
+  through-thickness position independently of the peak angle — is now
+  pinned in the reproducible ledger. `scripts/validate.py` scores a
+  per-case gate column (with drift detection and `--update` re-pinning)
+  for any dataset naming a `penetration_gate` preset; the Li 2025
+  dataset carries `expected_gate_kd` baselines and a per-case `z_frac`
+  through-thickness position (S-A-2 rides the gate's `P(z)` factor to
+  its measured near-surface KD). The issue's acceptance criteria are
+  permanent regression tests: the S-M-2/4/5 amplitude trio (identical
+  20° angle, measured KD 0.629/0.943/1.000) lands at +2.2 %/−0.6 %/
+  −0.3 % (±15 % band), orderings asserted monotonic, all six cases
+  within the ±20 % parity band. README and VALIDATION.md updated to
+  document the in-repo reproducible UD validation.
 - Cohesive-zone delamination in multi-wrinkle FE (issue #283):
   `enable_czm=True` now runs with an `AnalysisConfig.wrinkles` list
   instead of raising `NotImplementedError`. Cohesive layers are inserted

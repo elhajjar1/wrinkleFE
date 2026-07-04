@@ -34,13 +34,20 @@ LEDGER = REPO / "tests" / "test_validation" / "ledger.json"
 sys.path.insert(0, str(REPO / "src"))
 
 
-def case_config(dataset: dict, case: dict):
+def case_config(dataset: dict, case: dict, *, with_gate: bool = False):
     """Build the AnalysisConfig for one ledger case (the reference recipe).
 
     Recipe fields default to the dataset level, but a case may override
     ``morphology``, ``layup``, ``ply_thickness_mm``, ``material`` or
     ``loading`` (used by Dataset G, whose uniform and graded specimens
     differ in morphology, layup and ply thickness).
+
+    With ``with_gate=True`` (and the dataset naming a ``penetration_gate``
+    preset), the config also carries the calibrated penetration gate and
+    the case's through-thickness position ``z_frac`` (default 0.5,
+    mid-plane) — the recipe for the UD gate path (issues #161 / D.3),
+    whose ``analytical_knockdown`` is the gate value instead of plain
+    Budiansky-Fleck.
     """
     from wrinklefe.analysis import AnalysisConfig
     from wrinklefe.core.layup import parse_layup
@@ -48,6 +55,14 @@ def case_config(dataset: dict, case: dict):
 
     def field(key):
         return case[key] if key in case else dataset[key]
+
+    kwargs = {}
+    if with_gate:
+        import wrinklefe.core.penetration_gate as pg
+
+        preset_name = dataset["penetration_gate"]
+        kwargs["penetration_gate"] = getattr(pg, preset_name)
+        kwargs["wrinkle_z_position"] = float(case.get("z_frac", 0.5))
 
     return AnalysisConfig(
         amplitude=case["amplitude_p2p_mm"] / 2.0,
@@ -58,6 +73,7 @@ def case_config(dataset: dict, case: dict):
         material=MaterialLibrary().get(field("material")),
         angles=parse_layup(field("layup")),
         ply_thickness=field("ply_thickness_mm"),
+        **kwargs,
     )
 
 
@@ -88,6 +104,22 @@ def run_case_both(dataset: dict, case: dict) -> tuple[float, float]:
     )
 
 
+def run_case_gate(dataset: dict, case: dict) -> float:
+    """Recompute one case's penetration-gate strength knockdown.
+
+    Requires the dataset to name a ``penetration_gate`` preset. The gate
+    (issue #161 / item D.3) is the UD strength path that is sensitive to
+    amplitude and through-thickness position independently of the peak
+    angle — the axis plain Budiansky-Fleck cannot see.
+    """
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    cfg = case_config(dataset, case, with_gate=True)
+    return float(
+        WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
+    )
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -101,14 +133,21 @@ def main(argv=None) -> int:
     failures = 0
 
     for dataset in ledger["datasets"]:
+        has_gate = "penetration_gate" in dataset
         print(f"\n=== {dataset['name']}  ({dataset['reference']})")
+        gate_hdr = (
+            f"   {'KD gate':>8} {'gate pin':>9} {'drift%':>8} {'err%':>7}"
+            if has_gate else ""
+        )
         print(
             f"{'case':<10} {'KD meas':>8} {'KD pred':>9} {'pinned':>9} "
             f"{'drift%':>8} {'meas err%':>10}   "
             f"{'Em meas':>8} {'Em pred':>9} {'Em pin':>9} {'drift%':>8}"
+            f"{gate_hdr}"
         )
         str_errors = []
         mod_errors = []
+        gate_errors = []
         for case in dataset["cases"]:
             predicted, predicted_mod = run_case_both(dataset, case)
 
@@ -156,10 +195,42 @@ def main(argv=None) -> int:
             else:
                 mod_cols = ""
 
+            # --- penetration-gate knockdown (UD datasets, issue #161) ---
+            gate_cols = ""
+            if has_gate:
+                predicted_gate = run_case_gate(dataset, case)
+                pinned_gate = case.get("expected_gate_kd")
+                if pinned_gate is not None:
+                    drift_gate = (
+                        abs(predicted_gate - float(pinned_gate))
+                        / max(abs(float(pinned_gate)), 1e-30)
+                    )
+                    if drift_gate > tol:
+                        flag += "  <-- GATE DRIFT"
+                        failures += 1
+                    drift_gate_s = f"{100 * drift_gate:>8.3f}"
+                    pin_gate_s = f"{float(pinned_gate):>9.4f}"
+                else:
+                    drift_gate_s = f"{'--':>8}"
+                    pin_gate_s = f"{'--':>9}"
+                if meas is not None:
+                    gate_errors.append(abs(predicted_gate - meas))
+                    gate_err_s = (
+                        f"{100 * (predicted_gate - meas) / meas:>+7.1f}"
+                    )
+                else:
+                    gate_err_s = f"{'--':>7}"
+                gate_cols = (
+                    f"   {predicted_gate:>8.4f} {pin_gate_s} "
+                    f"{drift_gate_s} {gate_err_s}"
+                )
+                if args.update:
+                    case["expected_gate_kd"] = round(predicted_gate, 6)
+
             print(
                 f"{case['case']:<10} {meas_s} "
                 f"{predicted:>9.4f} {pinned:>9.4f} {100 * drift:>8.3f} "
-                f"{meas_err_s}{mod_cols}{flag}"
+                f"{meas_err_s}{mod_cols}{gate_cols}{flag}"
             )
             if args.update:
                 case["expected_analytical_kd"] = round(predicted, 6)
@@ -174,6 +245,12 @@ def main(argv=None) -> int:
             print(
                 f"MAE modulus  vs measured KD: {mae_m:.4f}  "
                 f"({len(mod_errors)} cases)"
+            )
+        if gate_errors:
+            mae_g = sum(gate_errors) / len(gate_errors)
+            print(
+                f"MAE gate     vs measured KD: {mae_g:.4f}  "
+                f"({len(gate_errors)} cases)"
             )
 
     if args.update:

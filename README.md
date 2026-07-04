@@ -333,11 +333,37 @@ strengths:
   tension knockdown is no more severe than compression for the same
   defect.
 
-These act as regression guards on the analytical model. They are not a
-quantitative validation against experimental data: this repository does
-not currently ship the Elhajjar (2025), Mukhopadhyay (2015), or Li et
-al. (2026) experimental data points, nor a script that regenerates
-case-by-case error statistics. (Tracking issue: #22.)
+These act as regression guards on the analytical model. For the
+multidirectional datasets (Elhajjar 2025, Mukhopadhyay 2015, Li et al.
+2026) the repository does not ship the experimental data points, so
+case-level error statistics for them are not reproducible in-repo.
+(Tracking issue: #22.)
+
+For the **unidirectional** datasets the situation is different: the
+committed validation ledger
+([`tests/test_validation/ledger.json`](tests/test_validation/ledger.json))
+carries the digitized measured knockdowns for **Li et al. (2025)**
+(Dataset F, 6 single-wrinkle S-glass compression cases) and **Hsiao &
+Daniel (1996)** (Dataset G, carbon), and one command regenerates the
+full per-case predicted-vs-measured table with drift detection against
+pinned baselines:
+
+```bash
+python scripts/validate.py
+```
+
+For Li (2025) the ledger scores three predictors per case: the plain
+Budiansky–Fleck angle floor, the closed-form **modulus** knockdown, and
+the calibrated **penetration gate** — the UD strength path (issue #161)
+that is sensitive to amplitude and through-thickness position
+independently of the peak angle. On the S-M-2/4/5 trio (identical 20°
+peak angle, amplitude 1.5/1.0/0.5 mm, measured KD 0.63/0.94/1.00 — a
+~60 % strength spread invisible to any angle-only model) the gate lands
+within **2.2 % / 0.6 % / 0.3 %**; over all six cases (including the
+near-surface S-A-2 via the position factor) the mean absolute KD error
+is **0.035**, with every case inside the ±20 % parity band. These
+acceptance criteria are pinned as permanent regression tests in
+[`tests/test_validation/test_ledger.py`](tests/test_validation/test_ledger.py).
 
 ### Quantitative validation against experiment
 
@@ -350,9 +376,9 @@ data is documented in the accompanying paper:
 
 Additional datasets referenced by the model calibration (Mukhopadhyay
 et al., 2015; Li et al., 2026) are cited in [References](#references)
-below. Reproducing case-level pass/fail tables from this repository
-alone is not currently possible — the raw data and regeneration script
-are not included.
+below. Reproducing case-level pass/fail tables for those
+multidirectional datasets from this repository alone is not currently
+possible — their raw data are not included.
 
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
