@@ -27,7 +27,7 @@
     {
       "name": "li_2025_multi_wrinkle_compression",
       "reference": "Li, Li, Ge & Liang (2025), Polymer Composites 46(16):15176-15187, DOI 10.1002/pc.30121",
-      "status": "deferred \u2014 pending issue #161 (amplitude effect at constant peak angle); see VALIDATION.md",
+      "status": "included \u2014 strength via the calibrated penetration gate (GATE_LI2025_VACBAG, issue #161 resolved; the plain Budiansky-Fleck column is retained as the angle-only floor for drift detection). See VALIDATION.md.",
       "material": "AC318_S6C10",
       "layup": "[0]_14",
       "ply_thickness_mm": 0.44,
@@ -46,7 +46,8 @@
           "measured_kd": 0.891,
           "expected_analytical_kd": 0.428859,
           "measured_kd_modulus": 0.931,
-          "expected_analytical_modulus_kd": 0.949288
+          "expected_analytical_modulus_kd": 0.949288,
+          "expected_gate_kd": 0.778045
         },
         {
           "case": "S-M-2",
@@ -57,7 +58,8 @@
           "measured_kd": 0.629,
           "expected_analytical_kd": 0.308699,
           "measured_kd_modulus": 0.864,
-          "expected_analytical_modulus_kd": 0.839641
+          "expected_analytical_modulus_kd": 0.839641,
+          "expected_gate_kd": 0.642705
         },
         {
           "case": "S-M-3",
@@ -68,7 +70,8 @@
           "measured_kd": 0.472,
           "expected_analytical_kd": 0.247616,
           "measured_kd_modulus": 0.811,
-          "expected_analytical_modulus_kd": 0.722632
+          "expected_analytical_modulus_kd": 0.722632,
+          "expected_gate_kd": 0.545168
         },
         {
           "case": "S-M-4",
@@ -79,7 +82,8 @@
           "measured_kd": 0.943,
           "expected_analytical_kd": 0.316646,
           "measured_kd_modulus": 0.967,
-          "expected_analytical_modulus_kd": 0.850933
+          "expected_analytical_modulus_kd": 0.850933,
+          "expected_gate_kd": 0.937759
         },
         {
           "case": "S-M-5",
@@ -90,7 +94,8 @@
           "measured_kd": 1.0,
           "expected_analytical_kd": 0.36273,
           "measured_kd_modulus": 0.975,
-          "expected_analytical_modulus_kd": 0.895154
+          "expected_analytical_modulus_kd": 0.895154,
+          "expected_gate_kd": 0.996862
         },
         {
           "case": "S-A-2",
@@ -102,9 +107,12 @@
           "expected_analytical_kd": 0.308699,
           "measured_kd_modulus": 0.923,
           "expected_analytical_modulus_kd": 0.839641,
-          "note": "S-M-2 geometry at a near-surface interface; the ledger recipe carries no through-thickness wrinkle-position parameter, so the harness runs the mid-plane configuration. Both the strength and the modulus predictions are identical to S-M-2 by construction (the measured near-surface KDs are stored for reference only)."
+          "note": "S-M-2 geometry at a near-surface interface (z = 10/14 through the thickness, carried as z_frac). The plain-BF strength and modulus predictions are identical to S-M-2 by construction; the penetration gate applies its through-thickness position factor P(z) (item D.5, calibrated to this single case), so expected_gate_kd reproduces the measured near-surface mildness.",
+          "z_frac": 0.7142857142857143,
+          "expected_gate_kd": 0.981179
         }
-      ]
+      ],
+      "penetration_gate": "GATE_LI2025_VACBAG"
     },
     {
       "name": "hsiao_daniel_1996_ud_carbon",

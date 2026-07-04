@@ -160,3 +160,94 @@ def test_replace_preserves_ledger_predictions():
         analytical_only=True
     ).analytical_knockdown
     assert kd1 == pytest.approx(kd2, rel=1e-12)
+
+
+# --------------------------------------------------------------------------- #
+# Issue #161 — penetration-gate strength path (UD amplitude effect)
+# --------------------------------------------------------------------------- #
+
+
+def _gate_cases():
+    for dataset in _LEDGER["datasets"]:
+        if "penetration_gate" not in dataset:
+            continue
+        for case in dataset["cases"]:
+            yield pytest.param(
+                dataset, case, id=f"{dataset['name']}-{case['case']}"
+            )
+
+
+@pytest.mark.parametrize(("dataset", "case"), list(_gate_cases()))
+def test_gate_matches_pinned_baseline(dataset, case):
+    """Pin the calibrated penetration-gate knockdown (issue #161).
+
+    The gate is the package's best UD strength predictor — the only
+    analytical path sensitive to amplitude and through-thickness
+    position independently of the peak angle. Before this guard it was
+    entirely unpinned: a drift in the gate formula, the preset
+    constants, or the position factor was invisible to CI.
+    """
+    predicted = validate.run_case_gate(dataset, case)
+    pinned = case["expected_gate_kd"]
+    tol = _LEDGER["rel_tolerance"]
+    assert predicted == pytest.approx(pinned, rel=tol), (
+        f"{case['case']} penetration-gate KD drifted from the pinned "
+        f"baseline ({predicted} vs {pinned}). If intentional, re-pin via "
+        f"'python scripts/validate.py --update' and explain the move."
+    )
+
+
+def _gate_kd_by_case() -> dict:
+    dataset = next(
+        d for d in _LEDGER["datasets"] if "penetration_gate" in d
+    )
+    return {
+        c["case"]: (validate.run_case_gate(dataset, c), c["measured_kd"])
+        for c in dataset["cases"]
+    }
+
+
+def test_issue_161_amplitude_trend_at_constant_angle():
+    """The #161 acceptance criterion, as a permanent regression guard.
+
+    S-M-2 / S-M-4 / S-M-5 share the same 20-degree peak angle but span
+    amplitude 1.5 / 1.0 / 0.5 mm (measured KD 0.629 / 0.943 / 1.000 —
+    a ~60% strength spread invisible to any angle-only model). The
+    penetration gate must reproduce each within +/-15% relative KD and
+    preserve the monotonic amplitude ordering.
+    """
+    kd = _gate_kd_by_case()
+    trio = ["S-M-2", "S-M-4", "S-M-5"]
+    for name in trio:
+        pred, meas = kd[name]
+        assert abs(pred - meas) / meas <= 0.15, (
+            f"{name}: gate KD {pred:.3f} vs measured {meas:.3f} exceeds "
+            f"the +/-15% acceptance band of issue #161"
+        )
+    # Larger amplitude at the same angle => lower strength.
+    assert kd["S-M-2"][0] < kd["S-M-4"][0] < kd["S-M-5"][0]
+
+
+def test_issue_161_angle_trend_not_degraded():
+    """Companion guard: the angle series S-M-1/2/3 (10/20/30 degrees at
+    fixed amplitude 1.5 mm) stays monotonic under the gate, and every
+    Li 2025 case stays within the +/-20% parity band the README claims
+    for the UD datasets."""
+    kd = _gate_kd_by_case()
+    assert kd["S-M-1"][0] > kd["S-M-2"][0] > kd["S-M-3"][0]
+    for name, (pred, meas) in kd.items():
+        assert abs(pred - meas) / meas <= 0.20, (
+            f"{name}: gate KD {pred:.3f} vs measured {meas:.3f} outside "
+            f"the +/-20% parity band"
+        )
+
+
+def test_gate_position_factor_reproduces_near_surface_case():
+    """S-A-2 is S-M-2's geometry at z = 10/14: the ledger's z_frac plus
+    the gate's position factor P(z) must reproduce the measured
+    near-surface mildness (KD 0.981 vs mid-plane 0.629)."""
+    kd = _gate_kd_by_case()
+    pred_mid, _ = kd["S-M-2"]
+    pred_surf, meas_surf = kd["S-A-2"]
+    assert pred_surf > pred_mid + 0.2
+    assert pred_surf == pytest.approx(meas_surf, abs=0.02)
