@@ -184,10 +184,12 @@ def test_compare_no_analytical_only_runs_full_fe():
 def test_sweep_default_is_analytical_only():
     captured: dict = {}
 
-    def fake_sweep(base_config, parameter, values, analytical_only):
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
         captured["analytical_only"] = analytical_only
         captured["parameter"] = parameter
         captured["values"] = list(values)
+        captured["n_workers"] = n_workers
         return [_make_fake_result() for _ in values]
 
     with patch(
@@ -205,12 +207,14 @@ def test_sweep_default_is_analytical_only():
     assert captured["analytical_only"] is True
     assert captured["parameter"] == "amplitude"
     assert len(captured["values"]) == 3
+    assert captured["n_workers"] == 1  # sequential by default (issue #260)
 
 
 def test_sweep_no_analytical_only_runs_full_fe():
     captured: dict = {}
 
-    def fake_sweep(base_config, parameter, values, analytical_only):
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
         captured["analytical_only"] = analytical_only
         return [_make_fake_result() for _ in values]
 
@@ -541,7 +545,8 @@ def test_sweep_accepts_graded_morphology():
     """sweep --morphology graded must be accepted (was argparse-rejected)."""
     captured: dict = {}
 
-    def fake_sweep(base_config, parameter, values, analytical_only):
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
         captured["config"] = base_config
         return [_make_fake_result() for _ in values]
 
@@ -559,3 +564,43 @@ def test_sweep_accepts_graded_morphology():
         ])
 
     assert captured["config"].morphology == "graded"
+
+
+# --------------------------------------------------------------------------- #
+# sweep: --parallel (issue #260)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_parallel_flag_passthrough():
+    """--parallel N reaches parametric_sweep as n_workers (0 = all
+    cores is resolved downstream, so it must pass through verbatim)."""
+    for flag_val, expected in (("4", 4), ("0", 0)):
+        captured: dict = {}
+
+        def fake_sweep(base_config, parameter, values, analytical_only,
+                       n_workers=1):
+            captured["n_workers"] = n_workers
+            return [_make_fake_result() for _ in values]
+
+        with patch(
+            "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+            new=staticmethod(fake_sweep),
+        ):
+            cli_main([
+                "sweep", "--parameter", "amplitude",
+                "--min", "0.1", "--max", "0.3", "--steps", "2",
+                "--parallel", flag_val,
+            ])
+        assert captured["n_workers"] == expected
+
+
+def test_sweep_negative_parallel_rejected(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "sweep", "--parameter", "amplitude",
+            "--min", "0.1", "--max", "0.3",
+            "--parallel", "-1",
+        ])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "--parallel" in err and "Traceback" not in err

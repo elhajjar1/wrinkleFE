@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -117,7 +118,57 @@ def _result_to_metrics(ar):
     }
 
 
-def run_sweep(sweep_config, fine_mesh=False):
+def _evaluate_point(swept_params, param_vals, fine_mesh, is_phase_sweep):
+    """Evaluate one grid point: the full set of solves for one parameter
+    combination.
+
+    Module-level (not a closure) so it pickles for
+    ``ProcessPoolExecutor`` workers (issue #260). Only primitives cross
+    the process boundary: the parameter tuple in, the scalar metrics
+    dict out.
+    """
+    params = dict(DEFAULTS)
+    for p, v in zip(swept_params, param_vals):
+        params[p] = v
+
+    if is_phase_sweep:
+        # Phase sweep: the swept phase value is plumbed straight into
+        # AnalysisConfig.phase (issue #49), which overrides the
+        # named-morphology phase so each point uses a distinct
+        # dual-wrinkle geometry instead of an identical 'stack' one.
+        phase = float(params['phase'])
+        params['morphology'] = 'stack'  # named phase is overridden anyway
+        cfg = _make_config(params, fine_mesh)
+        ar = WrinkleAnalysis(cfg).run()
+        return {
+            'custom': {
+                **_result_to_metrics(ar),
+                'phase_rad': float(phase),
+                'phase_deg': float(np.degrees(phase)),
+            }
+        }
+    # Standard sweep: run all 3 morphologies via WrinkleAnalysis
+    point_results = {}
+    for morph in MORPHOLOGIES:
+        params['morphology'] = morph
+        cfg = _make_config(params, fine_mesh)
+        ar = WrinkleAnalysis(cfg).run()
+        point_results[morph] = _result_to_metrics(ar)
+    return point_results
+
+
+def _resolve_n_workers(n_workers) -> int:
+    """Validate and resolve the ``n_workers`` count (0 -> all cores)."""
+    if not isinstance(n_workers, int) or isinstance(n_workers, bool):
+        raise ValueError(f"n_workers must be an int >= 0, got {n_workers!r}")
+    if n_workers < 0:
+        raise ValueError(f"n_workers must be >= 0, got {n_workers}")
+    if n_workers == 0:
+        return os.cpu_count() or 1
+    return n_workers
+
+
+def run_sweep(sweep_config, fine_mesh=False, n_workers=1):
     """
     Run parametric sweep over wrinkle parameters.
 
@@ -128,6 +179,14 @@ def run_sweep(sweep_config, fine_mesh=False):
         Example: {'amplitude': np.linspace(0.183, 0.549, 5)}
     fine_mesh : bool
         If True, use fine mesh (50x20). Default coarse (30x15).
+    n_workers : int
+        Number of worker processes for the per-point solves
+        (issue #260). ``1`` (default) keeps the sequential in-process
+        path; ``0`` uses all CPU cores; ``> 1`` fans the independent
+        grid points out over a ``ProcessPoolExecutor``. Results are
+        returned in grid order regardless. Note peak memory scales with
+        ``n_workers`` x the per-solve footprint — size the worker count
+        by available RAM for fine meshes.
 
     Returns
     -------
@@ -140,6 +199,7 @@ def run_sweep(sweep_config, fine_mesh=False):
             'elapsed_seconds': float
         }
     """
+    n_workers = _resolve_n_workers(n_workers)
     swept_params = sorted(sweep_config.keys())
     is_phase_sweep = 'phase' in sweep_config
 
@@ -158,55 +218,67 @@ def run_sweep(sweep_config, fine_mesh=False):
     else:
         print(f"  Total configurations: {total} x {len(MORPHOLOGIES)} morphologies"
               f" = {total * len(MORPHOLOGIES)} runs")
+    if n_workers > 1:
+        print(f"  Workers: {n_workers} processes")
     print()
 
-    results = {}
+    def _param_key(param_vals):
+        if len(swept_params) == 1:
+            return float(param_vals[0])
+        return str(tuple(float(v) for v in param_vals))
+
+    def _param_str(param_vals):
+        return ', '.join(
+            f'{p}={v:.4f}' for p, v in zip(swept_params, param_vals)
+        )
+
     t_start = time.time()
 
-    for idx, param_vals in enumerate(grid):
-        # Build parameter dict for this point
-        params = dict(DEFAULTS)
-        for p, v in zip(swept_params, param_vals):
-            params[p] = v
-
-        # Parameter key for results dict
-        if len(swept_params) == 1:
-            param_key = float(param_vals[0])
-        else:
-            param_key = str(tuple(float(v) for v in param_vals))
-
-        t_point = time.time()
-        param_str = ', '.join(f'{p}={v:.4f}' for p, v in zip(swept_params, param_vals))
-        print(f"  [{idx+1}/{total}] {param_str} ...", end='', flush=True)
-
-        if is_phase_sweep:
-            # Phase sweep: the swept phase value is plumbed straight into
-            # AnalysisConfig.phase (issue #49), which overrides the
-            # named-morphology phase so each point uses a distinct
-            # dual-wrinkle geometry instead of an identical 'stack' one.
-            phase = float(params['phase'])
-            params['morphology'] = 'stack'  # named phase is overridden anyway
-            cfg = _make_config(params, fine_mesh)
-            ar = WrinkleAnalysis(cfg).run()
-            point_results = {
-                'custom': {
-                    **_result_to_metrics(ar),
-                    'phase_rad': float(phase),
-                    'phase_deg': float(np.degrees(phase)),
-                }
+    if n_workers == 1:
+        # Sequential path — unchanged behaviour and output.
+        results = {}
+        for idx, param_vals in enumerate(grid):
+            t_point = time.time()
+            print(f"  [{idx+1}/{total}] {_param_str(param_vals)} ...",
+                  end='', flush=True)
+            results[_param_key(param_vals)] = _evaluate_point(
+                swept_params, param_vals, fine_mesh, is_phase_sweep
+            )
+            print(f" done ({time.time() - t_point:.1f}s)")
+    else:
+        # Parallel path: every grid point is an independent analysis
+        # (separate mesh, separate solve, no shared state), so fan them
+        # out over processes. Progress is completion-based; the results
+        # dict is assembled in grid order afterwards so ordering is
+        # deterministic and identical to the sequential path.
+        point_results: list = [None] * total
+        executor = ProcessPoolExecutor(max_workers=n_workers)
+        try:
+            future_to_idx = {
+                executor.submit(
+                    _evaluate_point, swept_params, param_vals,
+                    fine_mesh, is_phase_sweep,
+                ): idx
+                for idx, param_vals in enumerate(grid)
             }
+            n_done = 0
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                point_results[idx] = future.result()
+                n_done += 1
+                print(f"  [{n_done}/{total} done] {_param_str(grid[idx])}",
+                      flush=True)
+        except BaseException:
+            # KeyboardInterrupt (or a worker failure): cancel everything
+            # still queued instead of letting the pool drain.
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
         else:
-            # Standard sweep: run all 3 morphologies via WrinkleAnalysis
-            point_results = {}
-            for morph in MORPHOLOGIES:
-                params['morphology'] = morph
-                cfg = _make_config(params, fine_mesh)
-                ar = WrinkleAnalysis(cfg).run()
-                point_results[morph] = _result_to_metrics(ar)
-
-        results[param_key] = point_results
-        elapsed = time.time() - t_point
-        print(f" done ({elapsed:.1f}s)")
+            executor.shutdown(wait=True)
+        results = {
+            _param_key(param_vals): point_results[idx]
+            for idx, param_vals in enumerate(grid)
+        }
 
     total_elapsed = time.time() - t_start
     print(f"\nSweep complete: {total} points in {total_elapsed:.1f}s")
