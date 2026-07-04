@@ -79,6 +79,7 @@ class FieldResults:
     # Derived quantities (computed lazily)
     _von_mises: np.ndarray | None = field(default=None, repr=False)
     _max_principal: np.ndarray | None = field(default=None, repr=False)
+    _elem_centers: np.ndarray | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------
     # Derived stress quantities
@@ -146,24 +147,45 @@ class FieldResults:
             self._max_principal = np.empty((0, 0))
             return self._max_principal
 
-        n_elem, n_gp, _ = self.stress_global.shape
-        result = np.empty((n_elem, n_gp))
+        # Reconstruct all symmetric 3x3 tensors from the Voigt vectors by
+        # slice assignment and solve them in one batched eigvalsh call
+        # (issue #295) — replaces a Python double loop that called LAPACK
+        # once per Gauss point.
+        # Voigt: [s11, s22, s33, t23, t13, t12]
+        s = self.stress_global  # (n_elem, n_gp, 6)
+        n_elem, n_gp, _ = s.shape
+        tensors = np.empty((n_elem, n_gp, 3, 3), dtype=np.float64)
+        tensors[..., 0, 0] = s[..., 0]
+        tensors[..., 1, 1] = s[..., 1]
+        tensors[..., 2, 2] = s[..., 2]
+        tensors[..., 0, 1] = tensors[..., 1, 0] = s[..., 5]
+        tensors[..., 0, 2] = tensors[..., 2, 0] = s[..., 4]
+        tensors[..., 1, 2] = tensors[..., 2, 1] = s[..., 3]
 
-        for e in range(n_elem):
-            for g in range(n_gp):
-                sv = self.stress_global[e, g]
-                # Reconstruct symmetric 3x3 tensor from Voigt vector
-                # Voigt: [s11, s22, s33, t23, t13, t12]
-                tensor = np.array([
-                    [sv[0], sv[5], sv[4]],
-                    [sv[5], sv[1], sv[3]],
-                    [sv[4], sv[3], sv[2]],
-                ])
-                eigvals = np.linalg.eigvalsh(tensor)
-                result[e, g] = eigvals[-1]  # largest eigenvalue
-
-        self._max_principal = result
+        eigvals = np.linalg.eigvalsh(tensors)  # (n_elem, n_gp, 3), ascending
+        self._max_principal = np.ascontiguousarray(eigvals[..., -1])
         return self._max_principal
+
+    @property
+    def element_centers(self) -> np.ndarray:
+        """Centroids of all elements, computed once and cached (#295).
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(n_elements, 3)`` centroid coordinates (mm).
+            Equivalent to stacking ``mesh.element_center(e)`` for every
+            element, but built with one vectorised gather-and-mean so
+            repeated through-thickness / column queries do not rebuild
+            the array.
+        """
+        if self._elem_centers is not None:
+            return self._elem_centers
+        if self.mesh.n_elements == 0:
+            self._elem_centers = np.empty((0, 3))
+            return self._elem_centers
+        self._elem_centers = self.mesh.nodes[self.mesh.elements].mean(axis=1)
+        return self._elem_centers
 
     # ------------------------------------------------------------------
     # Through-thickness queries
@@ -197,10 +219,9 @@ class FieldResults:
         if self.stress_global.size == 0:
             return np.empty(0), np.empty(0)
 
-        # Compute element centroids
-        elem_centers = np.empty((self.mesh.n_elements, 3))
-        for e in range(self.mesh.n_elements):
-            elem_centers[e] = self.mesh.element_center(e)
+        # Element centroids — computed once per FieldResults and cached
+        # (issue #295); repeated column queries reuse the array.
+        elem_centers = self.element_centers
 
         # Find elements closest to (x, y) in the x-y plane
         xy_dist = np.sqrt(

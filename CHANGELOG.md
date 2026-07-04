@@ -15,6 +15,16 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Vectorized `FieldResults.max_principal_stress` (issue #295): the
+  per-Gauss-point Python double loop (one `np.linalg.eigvalsh` call per
+  point) is replaced by a single batched eigen-solve on the
+  `(n_elem, n_gp, 3, 3)` tensor stack — ~6× on a 50k-element × 8-GP
+  field (4.2 s → 0.7 s on first access; results identical to 1e-10,
+  regression-tested against the old loop kept as the test oracle).
+  Element centroids are now computed once per `FieldResults` (lazy
+  `element_centers` property) instead of rebuilt on every
+  `stress_through_thickness` call (372 ms → 5 ms per query on the same
+  mesh).
 - Vectorized `evaluate_field` for LaRC05, Puck, and Budiansky–Fleck
   (issue #299) — the three most expensive criteria were the last ones
   running the base class's per-Gauss-point Python loop. The
