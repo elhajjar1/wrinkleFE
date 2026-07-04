@@ -36,9 +36,12 @@ References
 
 from __future__ import annotations
 
+import itertools
 import logging
 import math
+import os
 from collections.abc import Callable, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, fields, replace
 from typing import Any, Literal, cast
 
@@ -1848,6 +1851,32 @@ class AnalysisResults:
 
 
 # ======================================================================
+# Sweep parallelism helpers (issue #260)
+# ======================================================================
+
+
+def _sweep_run_one(
+    cfg: AnalysisConfig, analytical_only: bool
+) -> AnalysisResults:
+    """Run one sweep point.  Module-level so it pickles for
+    ``ProcessPoolExecutor`` workers."""
+    return WrinkleAnalysis(cfg).run(analytical_only=analytical_only)
+
+
+def _resolve_sweep_workers(n_workers: int) -> int:
+    """Validate and resolve a sweep worker count (``0`` -> all cores)."""
+    if not isinstance(n_workers, int) or isinstance(n_workers, bool):
+        raise ValueError(
+            f"n_workers must be an int >= 0, got {n_workers!r}"
+        )
+    if n_workers < 0:
+        raise ValueError(f"n_workers must be >= 0, got {n_workers}")
+    if n_workers == 0:
+        return os.cpu_count() or 1
+    return n_workers
+
+
+# ======================================================================
 # Main analysis class
 # ======================================================================
 
@@ -2171,6 +2200,7 @@ class WrinkleAnalysis:
         parameter: str,
         values: Sequence[float],
         analytical_only: bool = False,
+        n_workers: int = 1,
     ) -> list[AnalysisResults]:
         """Sweep a single parameter over a range of values.
 
@@ -2187,6 +2217,16 @@ class WrinkleAnalysis:
         analytical_only : bool, optional
             If True, skip the FE assembly path for each sweep value and
             return only the analytical predictions.  Default ``False``.
+        n_workers : int, optional
+            Number of worker processes (issue #260).  ``1`` (default)
+            keeps the sequential in-process path; ``0`` uses all CPU
+            cores; ``> 1`` runs the independent per-value analyses on a
+            ``ProcessPoolExecutor``.  Results come back in the order of
+            *values* either way.  Peak memory scales with ``n_workers``
+            x the per-solve footprint (each worker returns a full
+            :class:`AnalysisResults`, including mesh and field arrays on
+            the FE path) — size the worker count by available RAM for
+            fine meshes.
 
         Returns
         -------
@@ -2203,8 +2243,7 @@ class WrinkleAnalysis:
             raise AttributeError(
                 f"AnalysisConfig has no field '{parameter}'"
             )
-
-        results_list: list[AnalysisResults] = []
+        n_workers = _resolve_sweep_workers(n_workers)
 
         # If domain_length was auto-derived from wavelength in the base
         # config (i.e. user left it at the sentinel 0.0), we must reset
@@ -2218,16 +2257,38 @@ class WrinkleAnalysis:
             and base_config.domain_length == 3.0 * base_config.wavelength
         )
 
+        configs: list[AnalysisConfig] = []
         for val in values:
             overrides: dict[str, Any] = {parameter: val}
             if reset_domain_length:
                 overrides["domain_length"] = 0.0
-            cfg = replace(base_config, **overrides)
+            configs.append(replace(base_config, **overrides))
 
-            results_list.append(
-                WrinkleAnalysis(cfg).run(analytical_only=analytical_only)
+        if n_workers == 1:
+            return [
+                _sweep_run_one(cfg, analytical_only) for cfg in configs
+            ]
+
+        # Parallel path: each value is an independent analysis, so fan
+        # the solves out over processes.  ``executor.map`` preserves the
+        # submission order, so the returned list lines up with *values*
+        # exactly like the sequential path.
+        executor = ProcessPoolExecutor(max_workers=n_workers)
+        try:
+            results_list = list(
+                executor.map(
+                    _sweep_run_one,
+                    configs,
+                    itertools.repeat(analytical_only),
+                )
             )
-
+        except BaseException:
+            # KeyboardInterrupt (or a worker failure): cancel queued
+            # futures instead of letting the pool drain.
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        else:
+            executor.shutdown(wait=True)
         return results_list
 
     # ------------------------------------------------------------------

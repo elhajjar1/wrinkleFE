@@ -15,6 +15,18 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Process-parallel parametric sweeps (issue #260):
+  `WrinkleAnalysis.parametric_sweep(..., n_workers=N)`,
+  `wrinklefe.sweep.run_sweep(..., n_workers=N)`, and
+  `wrinklefe sweep --parallel N` fan the independent per-point solves
+  out over a `ProcessPoolExecutor` (`N=0` uses all CPU cores; the
+  default `N=1` keeps the exact sequential path). Results are identical
+  to and ordered like the sequential run — measured 3.6× at 4 workers
+  on an 8-value full-FE amplitude sweep. `run_sweep` progress becomes
+  completion-based in parallel mode; `KeyboardInterrupt` (or a worker
+  failure) cancels the queued futures instead of draining the pool.
+  Peak memory scales with workers × per-solve footprint — size `N` by
+  available RAM for fine meshes.
 - Vectorized `FieldResults.max_principal_stress` (issue #295): the
   per-Gauss-point Python double loop (one `np.linalg.eigvalsh` call per
   point) is replaced by a single batched eigen-solve on the

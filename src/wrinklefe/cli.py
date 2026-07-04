@@ -457,6 +457,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_sweep.add_argument(
+        "--parallel", type=int, default=1, metavar="N",
+        help=(
+            "Number of worker processes for the per-value solves "
+            "(default: 1 = sequential; 0 = all CPU cores). Each sweep "
+            "value is an independent analysis, so a full FE sweep "
+            "scales nearly linearly with workers. Peak memory scales "
+            "with N x the per-solve footprint — size N by available "
+            "RAM for fine meshes."
+        ),
+    )
+    p_sweep.add_argument(
         "-v", "--verbose", action="store_true", default=False,
         help=(
             "Show detailed pipeline progress (sets the 'wrinklefe' "
@@ -923,6 +934,13 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+    if args.parallel < 0:
+        print(
+            f"error: --parallel must be >= 0 (got {args.parallel}; "
+            "0 = all CPU cores)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     values = np.linspace(args.sweep_min, args.sweep_max, args.steps)
 
@@ -943,6 +961,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
             parameter=args.parameter,
             values=values.tolist(),
             analytical_only=args.analytical_only,
+            n_workers=args.parallel,
         )
     except (AttributeError, ValueError, NotImplementedError) as exc:
         print(f"error: sweep failed: {exc}", file=sys.stderr)
