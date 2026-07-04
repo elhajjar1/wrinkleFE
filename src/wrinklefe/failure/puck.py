@@ -205,6 +205,12 @@ class PuckCriterion(FailureCriterion):
             tnt = tau_nt[i]
             tn1 = tau_n1[i]
 
+            # Squares are written ``x * x`` rather than ``x ** 2``:
+            # ``np.float64.__pow__`` routes through libm ``pow`` and can
+            # land 1 ULP away from the exact product, whereas the
+            # vectorised field path's array ``** 2`` is an exact multiply
+            # — the explicit product keeps the two paths bit-identical
+            # (issue #299).
             if sn >= 0:
                 # Mode A (tension on fracture plane)
                 denom_nt = S23 + p_pst * sn
@@ -213,8 +219,10 @@ class PuckCriterion(FailureCriterion):
                 if denom_nt <= 0 or denom_n1 <= 0:
                     fi_arr[i] = float("inf")
                 else:
+                    r_nt = tnt / denom_nt
+                    r_n1 = tn1 / denom_n1
                     fi_arr[i] = (
-                        np.sqrt((tnt / denom_nt) ** 2 + (tn1 / denom_n1) ** 2)
+                        np.sqrt(r_nt * r_nt + r_n1 * r_n1)
                         + p_pst * sn / S23
                     )
                 mode_arr[i] = "iff_mode_a"
@@ -224,12 +232,15 @@ class PuckCriterion(FailureCriterion):
                 if abs(tnt) > bc_corner_slope * abs(sn):
                     # Mode C: shear-dominated, mild compression.
                     denom_c = 2.0 * (1.0 + p_psc) * S23
-                    bracket = (tnt / denom_c) ** 2 + (tn1 / S12) ** 2
+                    r_nt = tnt / denom_c
+                    r_n1 = tn1 / S12
+                    bracket = r_nt * r_nt + r_n1 * r_n1
                     fi_arr[i] = bracket * (-Yc / sn)
                     mode_arr[i] = "iff_mode_c"
                 else:
                     # Mode B: compression-dominated, mild shear.
-                    inner = tnt**2 + (tn1 + p_ppc * sn) ** 2
+                    b1 = tn1 + p_ppc * sn
+                    inner = tnt * tnt + b1 * b1
                     fi_arr[i] = np.sqrt(inner) / S12 + p_psc * sn / S23
                     mode_arr[i] = "iff_mode_b"
 
@@ -314,3 +325,158 @@ class PuckCriterion(FailureCriterion):
             reserve_factor=rf,
             criterion_name=self.name,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation (issue #299)
+    # ------------------------------------------------------------------
+
+    _IFF_MODE_LABELS = np.array(
+        ["iff_mode_a", "iff_mode_b", "iff_mode_c"], dtype="U32"
+    )
+
+    # Rows per block for the (N, n_theta) action-plane grid. Small enough
+    # that a block's ~10 temporaries (block x n_theta float64) stay cache
+    # resident — measured ~3x faster than materialising the full grid on
+    # an 80k-point field.
+    _FIELD_CHUNK = 2048
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised Puck evaluation across an array of stress states.
+
+        Broadcasts the action-plane search over a ``(N, n_theta)`` grid —
+        the fracture-plane resolution of stresses is pure elementwise
+        math — and takes the per-point argmax over the angle axis,
+        reproducing per-point :meth:`evaluate` exactly (same expressions,
+        same first-maximum tie-breaking). Rows are processed in blocks of
+        :attr:`_FIELD_CHUNK` so the angle-grid temporaries stay cache
+        resident; chunking does not change any per-element arithmetic.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with strength allowables; shared by all N points.
+        contexts : list, optional
+            Ignored — Puck has no context dependence.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray
+            Shape ``(N,)`` arrays matching :meth:`evaluate` per point.
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+        n = s.shape[0]
+        indices = np.empty(n, dtype=np.float64)
+        modes = np.empty(n, dtype="U32")
+        reserve_factors = np.empty(n, dtype=np.float64)
+        for start in range(0, n, self._FIELD_CHUNK):
+            block = slice(start, min(start + self._FIELD_CHUNK, n))
+            fi_b, mode_b, rf_b = self._evaluate_field_block(s[block], material)
+            indices[block] = fi_b
+            modes[block] = mode_b
+            reserve_factors[block] = rf_b
+        return indices, modes, reserve_factors
+
+    def _evaluate_field_block(
+        self,
+        s: np.ndarray,
+        material: OrthotropicMaterial,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """One cache-sized block of the vectorised evaluation."""
+        n = s.shape[0]
+        s1 = s[:, 0]
+        s2 = s[:, 1][:, None]
+        s3 = s[:, 2][:, None]
+        t23 = s[:, 3][:, None]
+        t13 = s[:, 4][:, None]
+        t12 = s[:, 5][:, None]
+
+        S12 = material.S12
+        S23 = material.S23
+        Yc = material.Yc
+        p_ppt = self.p_perp_par_t
+        p_ppc = self.p_perp_par_c
+        p_pst = self.p_perp_psi_t
+        p_psc = self.p_perp_psi_c
+
+        thetas = np.linspace(-np.pi / 2, np.pi / 2, self.n_theta)
+        cos_t = np.cos(thetas)[None, :]
+        sin_t = np.sin(thetas)[None, :]
+
+        # Fracture-plane stresses, (N, n_theta). Same expressions as the
+        # scalar path so results agree bitwise.
+        sigma_n = s2 * cos_t**2 + s3 * sin_t**2 + 2.0 * t23 * sin_t * cos_t
+        tau_nt = (s3 - s2) * sin_t * cos_t + t23 * (cos_t**2 - sin_t**2)
+        tau_n1 = t12 * cos_t + t13 * sin_t
+
+        bc_corner_slope = self._mode_bc_corner_slope(p_psc)
+
+        tension_plane = sigma_n >= 0
+        mode_c_mask = ~tension_plane & (
+            np.abs(tau_nt) > bc_corner_slope * np.abs(sigma_n)
+        )
+        mode_b_mask = ~tension_plane & ~mode_c_mask
+
+        fi_grid = np.zeros_like(sigma_n)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            # Mode A (tension on the fracture plane)
+            denom_nt = S23 + p_pst * sigma_n
+            denom_n1 = S12 + p_ppt * sigma_n
+            fi_a = (
+                np.sqrt((tau_nt / denom_nt) ** 2 + (tau_n1 / denom_n1) ** 2)
+                + p_pst * sigma_n / S23
+            )
+            bad_a = tension_plane & ((denom_nt <= 0) | (denom_n1 <= 0))
+            np.copyto(fi_grid, fi_a, where=tension_plane)
+            fi_grid[bad_a] = np.inf
+
+            # Mode C (shear-dominated, mild compression)
+            denom_c = 2.0 * (1.0 + p_psc) * S23
+            bracket = (tau_nt / denom_c) ** 2 + (tau_n1 / S12) ** 2
+            np.copyto(fi_grid, bracket * (-Yc / sigma_n), where=mode_c_mask)
+
+            # Mode B (compression-dominated, mild shear)
+            inner = tau_nt**2 + (tau_n1 + p_ppc * sigma_n) ** 2
+            np.copyto(
+                fi_grid,
+                np.sqrt(inner) / S12 + p_psc * sigma_n / S23,
+                where=mode_b_mask,
+            )
+
+        rows = np.arange(n)
+        idx_max = np.argmax(fi_grid, axis=1)
+        fi_iff = fi_grid[rows, idx_max]
+        mode_code = np.where(
+            tension_plane[rows, idx_max],
+            0,
+            np.where(mode_c_mask[rows, idx_max], 2, 1),
+        )
+        modes_iff = self._IFF_MODE_LABELS[mode_code]
+
+        # Fibre failure (simplified): tension vs compression on sigma_11.
+        fi_ff = np.where(s1 >= 0, s1 / material.Xt, -s1 / material.Xc)
+        modes_ff = np.where(
+            s1 >= 0, "fiber_tension", "fiber_compression"
+        ).astype("U32")
+
+        ff_governs = fi_ff >= fi_iff
+        indices = np.where(ff_governs, fi_ff, fi_iff)
+        modes = np.where(ff_governs, modes_ff, modes_iff).astype("U32")
+
+        with np.errstate(divide="ignore"):
+            reserve_factors = np.where(
+                indices > 0,
+                1.0 / np.where(indices > 0, indices, 1.0),
+                np.inf,
+            )
+        return indices, modes, reserve_factors

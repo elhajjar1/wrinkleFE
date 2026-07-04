@@ -28,6 +28,7 @@ load can be scaled before failure occurs.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,6 +36,8 @@ from typing import Any
 import numpy as np
 
 from wrinklefe.core.material import OrthotropicMaterial
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -159,6 +162,11 @@ class FailureCriterion(ABC):
         """
         stress_field = np.asarray(stress_field, dtype=np.float64)
         n = stress_field.shape[0]
+        logger.debug(
+            "Criterion %r has no vectorised evaluate_field override; "
+            "falling back to a Python loop over %d points.",
+            self.name, n,
+        )
         indices = np.empty(n, dtype=np.float64)
         modes = np.empty(n, dtype="U32")
         reserve_factors = np.empty(n, dtype=np.float64)
