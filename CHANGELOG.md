@@ -222,6 +222,19 @@ version produced a given file.
   imported; native `.inp`/VTK writers need no extra).
 
 ### Numerical results
+- **Penetration gate × multi-wrinkle (issue #342)**: with a
+  `penetration_gate` preset and the geometry supplied via
+  `AnalysisConfig.wrinkles`, the gate previously took its angle from the
+  wrinkle specs but its penetration `D/T` from the leftover scalar
+  `cfg.amplitude` (typically the unused 0.366 default) — a silently
+  plausible wrong knockdown (0.98 instead of 0.64 on the issue's repro).
+  The gate now evaluates per spec — `theta_i = arctan(2πA_i/λ_i)`,
+  `D_i/T = A_i/T`, and `z_i = (ply_interface+1)/n_plies` through the
+  position factor `P(z)` (`cfg.wrinkle_z_position` is a scalar-path
+  parameter and is ignored when specs are present) — and returns the
+  weakest-link (minimum) knockdown over the wrinkles. Scalar-config gate
+  results are unchanged (pinned ledger baselines show zero drift); any
+  gate × `wrinkles` configuration returns different (correct) values.
 - **LaRC05 / Puck last-bit normalization (issue #299)**: the scalar
   `evaluate()` paths now square via an explicit product (`x * x`)
   instead of `x ** 2` — scalar `np.float64` pow routes through libm and
