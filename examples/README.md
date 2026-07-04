@@ -14,6 +14,7 @@ so they cannot rot.
 | [`05_export_roundtrip.py`](05_export_roundtrip.py) | JSON / Abaqus `.inp` / VTK export; open the `.vtk` in ParaView | ~10 s |
 | [`06_custom_material.py`](06_custom_material.py) | Defining an `OrthotropicMaterial` not in the preset library | ~1 s |
 | [`07_mesh_convergence.py`](07_mesh_convergence.py) | Mesh-convergence study (`mesh_convergence_study` / `wrinklefe converge`) | ~90 s |
+| [`08_multi_wrinkle_czm_linkup.py`](08_multi_wrinkle_czm_linkup.py) | Crest-to-crest delamination link-up between adjacent wrinkles (`wrinkles` + `enable_czm`) | ~60 s |
 
 Run any of them from this directory with the package installed
 (`pip install -e ..`):

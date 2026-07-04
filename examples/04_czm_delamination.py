@@ -24,7 +24,10 @@ config = AnalysisConfig(
     morphology="concave", loading="tension",
     material=mat, angles=layup, ply_thickness=0.183,
     nx=12, ny=4, nz_per_ply=1,          # coarse mesh keeps this fast
-    applied_strain=0.015,
+    # 2.5% strain sits just past cohesive damage initiation for the
+    # corrected dual-wrinkle amplitude contract (issue #305); the older
+    # 0.015 no longer opens the crest interface past the threshold.
+    applied_strain=0.025,
     enable_czm=True,
     czm_n_load_increments=20,
 )

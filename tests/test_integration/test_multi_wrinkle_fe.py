@@ -4,8 +4,9 @@ Stage 1: N wrinkles with disjoint longitudinal supports (the Li 2025
 specimen layout). Stage 2: overlapping/interacting wrinkles — both the
 displacement and the fiber-angle field derive from the composed wrinkle
 field ("compose then differentiate"), so two coincident half-amplitude
-wrinkles reproduce the single full-amplitude result exactly. Only the
-CZM pathway remains rejected, with a precise message.
+wrinkles reproduce the single full-amplitude result exactly. The CZM
+pathway is covered separately in ``test_multi_wrinkle_czm.py``
+(issue #283).
 """
 
 from __future__ import annotations
@@ -210,7 +211,3 @@ class TestMultiWrinkleFE:
         r = WrinkleAnalysis(cfg).run(analytical_only=True)
         assert 0.0 < r.analytical_knockdown <= 1.0
 
-    def test_multi_wrinkle_czm_rejected_with_precise_message(self):
-        cfg = _two_wrinkle_config(enable_czm=True)
-        with pytest.raises(NotImplementedError, match="cohesive"):
-            WrinkleAnalysis(cfg).run()

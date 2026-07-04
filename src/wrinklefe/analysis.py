@@ -605,25 +605,6 @@ def _laminate_modulus_knockdown(
     return float(e_eff / E_x0)
 
 
-def _check_multi_wrinkle_fe_support(cfg: AnalysisConfig) -> None:
-    """Reject multi-wrinkle FE configs the pipeline cannot represent yet.
-
-    Issue #252: arbitrary N-wrinkle layouts — including longitudinally
-    overlapping and interacting wrinkles — run through the FE path; the
-    displacement and fiber-angle fields both derive from the composed
-    wrinkle field ("compose then differentiate"). Only the CZM pathway
-    remains analytical-only, because cohesive interface placement
-    assumes a single wrinkle crest.
-    """
-    if cfg.enable_czm:
-        raise NotImplementedError(
-            "Multi-wrinkle FE with cohesive zones (enable_czm=True) is "
-            "not yet supported: cohesive interface placement assumes a "
-            "single wrinkle crest. Run with enable_czm=False or pass "
-            "analytical_only=True."
-        )
-
-
 def _max_consecutive_zero_plies(angles: list[float], tol: float = 5.0) -> int:
     """Find maximum number of consecutive 0-degree plies in a layup.
 
@@ -1104,8 +1085,13 @@ class AnalysisConfig:
     enable_czm: bool = False
     # Which ply interfaces to insert cohesive elements at:
     #   * ``"all"`` — every interior ply interface,
-    #   * ``"near_crest"`` — the single interface whose z-coordinate
-    #     is closest to the wrinkle peak amplitude,
+    #   * ``"near_crest"`` — for a scalar (named-morphology) config, the
+    #     single interface whose z-coordinate is closest to the wrinkle
+    #     peak; for a multi-wrinkle config (``wrinkles`` set), the
+    #     interface nearest *each* wrinkle, deduplicated — wrinkles
+    #     sharing an interface index get one continuous cohesive
+    #     surface, enabling crest-to-crest delamination link-up
+    #     (issue #283),
     #   * ``list[int]`` — explicit list of interface indices in
     #     ``[0, n_plies-1)`` (0 = bottom-most interior interface).
     czm_interfaces: list[int] | str = "near_crest"
@@ -1941,12 +1927,11 @@ class WrinkleAnalysis:
             analytical_only = cfg.analytical_only
 
         # Multi-wrinkle FE solve (issue #252): overlapping and
-        # non-overlapping layouts both run; only the CZM pathway is
-        # rejected (early, with a precise message) rather than failing
-        # mid-pipeline.
-        if cfg.wrinkles is not None and not analytical_only:
-            _check_multi_wrinkle_fe_support(cfg)
-
+        # non-overlapping layouts run through the linear FE path, and
+        # (issue #283) through the CZM path — cohesive layers are
+        # inserted along the full length of every interface a wrinkle
+        # nominates, so delaminations can link up between adjacent
+        # wrinkles sharing an interface.
         results = AnalysisResults(config=cfg)
 
         # Phase weights (sum to 1.0 on the full FE path).  The FE solve
@@ -2274,8 +2259,11 @@ class WrinkleAnalysis:
         laminate : Laminate
             The fully built laminate; supplies the ply z-coordinates.
         wrinkle_config : WrinkleConfiguration
-            Used to locate the wrinkle peak when
-            ``cfg.czm_interfaces == "near_crest"``.
+            Used to locate the wrinkle peaks when
+            ``cfg.czm_interfaces == "near_crest"``: scalar configs pick
+            the single interface nearest the (largest-amplitude)
+            wrinkle; multi-wrinkle configs pick the interface nearest
+            *each* wrinkle, deduplicated (issue #283).
 
         Returns
         -------
@@ -2308,28 +2296,38 @@ class WrinkleAnalysis:
             # (most-likely-to-delaminate driver) and pick the boundary
             # closest to that wrinkle's centre.
             wrinkles = list(getattr(wrinkle_config, "wrinkles", ()))
-            if not wrinkles:
-                # No wrinkle placements (flat mesh) — default to the
-                # midplane interface.
-                target_z = 0.0
-            else:
-                # Find the wrinkle with the largest amplitude; use its
-                # reference centre z as the target.
-                w_best = max(
-                    wrinkles,
-                    key=lambda w: abs(getattr(w.profile, "amplitude", 0.0)),
-                )
+
+            def _nearest_boundary(placement) -> int:
                 # The wrinkle's z reference is the ply boundary above ply
                 # ``ply_interface``; ``ply_interface`` is in the [0,
                 # n_plies-2] range and references the boundary at
                 # ply_z[ply_interface + 1].
-                k = int(w_best.ply_interface)
+                k = int(placement.ply_interface)
                 if 1 <= k + 1 <= n_plies - 1:
                     target_z = float(ply_z[k + 1])
                 else:
                     target_z = 0.0
-            best_i = int(np.argmin(np.abs(boundary_z - target_z)))
-            return [best_i]
+                return int(np.argmin(np.abs(boundary_z - target_z)))
+
+            if not wrinkles:
+                # No wrinkle placements (flat mesh) — default to the
+                # interior boundary nearest the midplane.
+                return [int(np.argmin(np.abs(boundary_z)))]
+            if cfg.wrinkles is not None:
+                # Multi-wrinkle configuration (issue #283): nominate the
+                # interface nearest *each* wrinkle so a delamination can
+                # initiate at any crest and, where wrinkles share an
+                # interface index, run along one continuous cohesive
+                # surface between them (crest-to-crest link-up).
+                return sorted({_nearest_boundary(w) for w in wrinkles})
+            # Scalar (named-morphology) configuration: keep the legacy
+            # single-interface choice — the wrinkle with the largest
+            # amplitude is the most-likely-to-delaminate driver.
+            w_best = max(
+                wrinkles,
+                key=lambda w: abs(getattr(w.profile, "amplitude", 0.0)),
+            )
+            return [_nearest_boundary(w_best)]
         # Validation in ``__post_init__`` already constrains the values
         # this method sees; the catch-all keeps mypy happy.
         raise ValueError(
