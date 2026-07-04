@@ -15,6 +15,20 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Vectorized `evaluate_field` for LaRC05, Puck, and Budiansky–Fleck
+  (issue #299) — the three most expensive criteria were the last ones
+  running the base class's per-Gauss-point Python loop. The
+  fracture-plane / action-plane searches broadcast over a
+  `(N, n_theta)` grid processed in cache-sized row blocks; measured on
+  an 80,000-point field: LaRC05 12.0 s → 0.51 s (23×), Puck 13.8 s →
+  0.67 s (21×), kink-band 93 ms → 7 ms (13×). Failure post-processing
+  no longer dwarfs the linear solve when these criteria are enabled
+  (the progressive-damage crack-band loop, which evaluates
+  MaxStress+LaRC05 every equilibrium iteration, inherits the speedup).
+  Outputs are **bit-identical** to per-point `evaluate()` — enforced by
+  a per-criterion equivalence suite using exact array equality across
+  randomized samples covering every branch regime. The base-class loop
+  fallback now logs at DEBUG so future criteria authors notice.
 - Penetration-gate validation harness (issue #161): the calibrated UD
   gate — the only strength path sensitive to wrinkle amplitude and
   through-thickness position independently of the peak angle — is now
@@ -208,6 +222,13 @@ version produced a given file.
   imported; native `.inp`/VTK writers need no extra).
 
 ### Numerical results
+- **LaRC05 / Puck last-bit normalization (issue #299)**: the scalar
+  `evaluate()` paths now square via an explicit product (`x * x`)
+  instead of `x ** 2` — scalar `np.float64` pow routes through libm and
+  could land 1 ULP away from the exact product the vectorized field
+  path computes. Failure indices from these two criteria may therefore
+  shift by at most one floating-point ULP (≈ 1e-16 relative) toward the
+  exactly-rounded value; no physical or tolerance-visible change.
 - **Linear-buckling microbuckling knockdown**: with the eigensolve
   corrected (indefinite `-K_geo` handled via the symmetric-definite
   pencil), the bifurcation load of the homogenised ply-mesh *rises* with

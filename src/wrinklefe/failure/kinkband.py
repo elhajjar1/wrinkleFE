@@ -239,6 +239,61 @@ class BudianskyFleckKinkBand(FailureCriterion):
             criterion_name=self.name,
         )
 
+    _MODE_TENSION = "kinkband (compression only — N/A in tension)"
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised kink-band evaluation across an array of stress states.
+
+        Identical results to per-point :meth:`evaluate` (issue #299): the
+        knockdown is a per-instance scalar, so the whole field reduces to
+        one elementwise expression on ``sigma_11``.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with ``Xc`` and ``gamma_Y``; shared by all N points.
+        contexts : list, optional
+            Ignored — the effective angle and damage live on the instance.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray
+            Shape ``(N,)`` arrays matching :meth:`evaluate` per point.
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+        s1 = s[:, 0]
+        n = s1.shape[0]
+
+        kd = self.combined_knockdown(material=material)
+        allowable = material.Xc * kd
+
+        compressive = s1 < 0.0
+        indices = np.zeros(n, dtype=np.float64)
+        if allowable > 0:
+            indices[compressive] = np.abs(s1[compressive]) / allowable
+        else:
+            indices[compressive] = np.inf
+
+        modes = np.where(
+            compressive, "kink_band", self._MODE_TENSION
+        ).astype("U64")
+
+        reserve_factors = np.full(n, np.inf, dtype=np.float64)
+        positive = indices > 0
+        reserve_factors[positive] = 1.0 / indices[positive]
+        return indices, modes, reserve_factors
+
 
 class InterlaminarDamage:
     """Analytical interlaminar damage model from the dual-wrinkle repository.

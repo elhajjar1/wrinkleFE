@@ -220,9 +220,16 @@ class LaRC05Criterion(FailureCriterion):
         splitting under combined tension + shear loading.
         """
         s1, s2, s3, t23, t13, t12 = stress
-        fi = (s1 / material.Xt) ** 2 + (t12 / material.S12) ** 2
+        # Squares as ``x * x`` (not ``x ** 2``): scalar np.float64 pow
+        # routes through libm and can be 1 ULP off the exact product the
+        # vectorised field path computes — the explicit multiply keeps
+        # evaluate() and evaluate_field() bit-identical (issue #299).
+        r1 = s1 / material.Xt
+        r12 = t12 / material.S12
+        fi = r1 * r1 + r12 * r12
         if material.S13 > 0:
-            fi += (t13 / material.S13) ** 2
+            r13 = t13 / material.S13
+            fi += r13 * r13
         return float(np.sqrt(max(fi, 0.0)))
 
     # ------------------------------------------------------------------
@@ -303,11 +310,17 @@ class LaRC05Criterion(FailureCriterion):
 
         cos_p = np.cos(phi)
         sin_p = np.sin(phi)
+        # ``c * c`` rather than ``c ** 2``: keeps the scalar path
+        # bit-identical to the vectorised field path (issue #299) —
+        # scalar np.float64 pow can differ from the exact product by
+        # 1 ULP.
+        cos_p2 = cos_p * cos_p
+        sin_p2 = sin_p * sin_p
 
         # 3D stress rotation into misalignment (kink-band) frame
         # In-plane rotation by φ about the 3-axis
-        sigma_22m = s2 * cos_p ** 2 + s1 * sin_p ** 2 - 2.0 * t12 * sin_p * cos_p
-        tau_12m = (s1 - s2) * sin_p * cos_p + t12 * (cos_p ** 2 - sin_p ** 2)
+        sigma_22m = s2 * cos_p2 + s1 * sin_p2 - 2.0 * t12 * sin_p * cos_p
+        tau_12m = (s1 - s2) * sin_p * cos_p + t12 * (cos_p2 - sin_p2)
 
         # Out-of-plane shear components in kink frame
         tau_23m = t23 * cos_p - t13 * sin_p
@@ -323,18 +336,19 @@ class LaRC05Criterion(FailureCriterion):
 
         if sigma_22m >= 0:
             # Tensile transverse stress in kink band
-            fi = (
-                (tau_12m / S12_is) ** 2
-                + (sigma_22m / Yt_is) ** 2
-                + (tau_23m / material.S23) ** 2
-            )
+            r12m = tau_12m / S12_is
+            r22m = sigma_22m / Yt_is
+            r23m = tau_23m / material.S23
+            fi = r12m * r12m + r22m * r22m + r23m * r23m
         else:
             # Compressive — Mohr-Coulomb friction model
             denom_l = S12_is + mu_L * abs(sigma_22m)
             denom_t = material.S23 + mu_T * abs(sigma_22m)
             if denom_l <= 0 or denom_t <= 0:
                 return float("inf")
-            fi = (tau_12m / denom_l) ** 2 + (tau_23m / denom_t) ** 2
+            r12m = tau_12m / denom_l
+            r23m = tau_23m / denom_t
+            fi = r12m * r12m + r23m * r23m
 
         # Return linear-in-load FI (sqrt of the quadratic form) so it can
         # be compared directly against the other sub-criteria — see #79.
@@ -391,13 +405,14 @@ class LaRC05Criterion(FailureCriterion):
             tnt = tau_nt[i]
             tn1 = tau_n1[i]
 
+            # ``x * x`` rather than ``x ** 2`` to stay bit-identical with
+            # the vectorised field path (issue #299).
             if sn >= 0:
                 # Tensile fracture plane
-                fi_arr[i] = (
-                    (tnt / S_T) ** 2
-                    + (tn1 / S_L) ** 2
-                    + (sn / Yt_is) ** 2
-                )
+                r_nt = tnt / S_T
+                r_n1 = tn1 / S_L
+                r_n = sn / Yt_is
+                fi_arr[i] = r_nt * r_nt + r_n1 * r_n1 + r_n * r_n
             else:
                 # Compressive fracture plane with friction
                 denom_t = S_T + mu_T * abs(sn)
@@ -405,7 +420,9 @@ class LaRC05Criterion(FailureCriterion):
                 if denom_t <= 0 or denom_l <= 0:
                     fi_arr[i] = float("inf")
                 else:
-                    fi_arr[i] = (tnt / denom_t) ** 2 + (tn1 / denom_l) ** 2
+                    r_nt = tnt / denom_t
+                    r_n1 = tn1 / denom_l
+                    fi_arr[i] = r_nt * r_nt + r_n1 * r_n1
 
         idx_max = int(np.argmax(fi_arr))
         # Return linear-in-load FI (sqrt of the quadratic form) so it can
@@ -506,3 +523,216 @@ class LaRC05Criterion(FailureCriterion):
             criterion_name=self.name,
             detail=detail,
         )
+
+    # ------------------------------------------------------------------
+    # Vectorised field evaluation (issue #299)
+    # ------------------------------------------------------------------
+
+    def evaluate_field(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts=None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorised LaRC04/05 evaluation across an array of stress states.
+
+        Reproduces per-point :meth:`evaluate` exactly (issue #299): the
+        fibre-tension, fibre-kinking (misalignment-frame rotation with the
+        closed-form load-induced φ_c) and matrix fracture-plane-search
+        sub-criteria are each broadcast over N points; the fracture-plane
+        search additionally broadcasts over the ``(N, n_theta)`` angle
+        grid. Per-point ``contexts`` supply the misalignment angle (and
+        optional ply-thickness override) as arrays.
+
+        Parameters
+        ----------
+        stress_field : np.ndarray
+            Shape ``(N, 6)`` array of local stress vectors.
+        material : OrthotropicMaterial
+            Material with strength, elastic and LaRC properties; shared
+            by all N points.
+        contexts : list of dict, optional
+            Per-point context dicts (``misalignment_angle``,
+            ``ply_thickness``), same length as *stress_field*.
+
+        Returns
+        -------
+        indices, modes, reserve_factors : np.ndarray
+            Shape ``(N,)`` arrays matching :meth:`evaluate` per point.
+            (The per-point ``detail`` diagnostics of :meth:`evaluate` are
+            not materialised on the field path.)
+        """
+        s = np.asarray(stress_field, dtype=np.float64)
+        if s.ndim != 2 or s.shape[1] != 6:
+            raise ValueError(
+                f"stress_field must have shape (N, 6), got {s.shape}"
+            )
+        n = s.shape[0]
+
+        # --- Per-point context arrays -------------------------------
+        phi_0 = np.zeros(n, dtype=np.float64)
+        t_eff = np.full(n, self.ply_thickness, dtype=np.float64)
+        if contexts is not None:
+            for i, ctx in enumerate(contexts):
+                if ctx is None:
+                    continue
+                phi_0[i] = ctx.get("misalignment_angle", 0.0)
+                t_override = ctx.get("ply_thickness", None)
+                if t_override is not None:
+                    t_eff[i] = t_override
+
+        # --- In-situ strengths --------------------------------------
+        # Usually every point shares one ply thickness -> one scalar
+        # evaluation; fall back to per-unique-thickness evaluation when
+        # contexts carry overrides (rare).
+        Yt_is = np.empty(n, dtype=np.float64)
+        S12_is = np.empty(n, dtype=np.float64)
+        for t_val in np.unique(t_eff):
+            yt, s12i = self._in_situ_strengths(material, float(t_val))
+            mask = t_eff == t_val
+            Yt_is[mask] = yt
+            S12_is[mask] = s12i
+
+        # Process rows in cache-sized blocks: the fracture-plane search
+        # materialises ~8 (block x n_theta) float64 temporaries, and
+        # keeping them cache resident is measured ~3x faster than the
+        # full-field grid on an 80k-point sample. Chunking does not
+        # change any per-element arithmetic.
+        indices = np.empty(n, dtype=np.float64)
+        modes = np.empty(n, dtype="U32")
+        reserve_factors = np.empty(n, dtype=np.float64)
+        for start in range(0, n, self._FIELD_CHUNK):
+            b = slice(start, min(start + self._FIELD_CHUNK, n))
+            fi_b, mode_b, rf_b = self._evaluate_field_block(
+                s[b], material, phi_0[b], Yt_is[b], S12_is[b]
+            )
+            indices[b] = fi_b
+            modes[b] = mode_b
+            reserve_factors[b] = rf_b
+        return indices, modes, reserve_factors
+
+    # Rows per block for the (N, n_theta) fracture-plane grid; see
+    # ``evaluate_field``.
+    _FIELD_CHUNK = 2048
+
+    def _evaluate_field_block(
+        self,
+        s: np.ndarray,
+        material: OrthotropicMaterial,
+        phi_0: np.ndarray,
+        Yt_is: np.ndarray,
+        S12_is: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """One cache-sized block of the vectorised evaluation."""
+        n = s.shape[0]
+        s1, s2, s3 = s[:, 0], s[:, 1], s[:, 2]
+        t23, t13, t12 = s[:, 3], s[:, 4], s[:, 5]
+
+        # --- Fibre tension (sigma_11 >= 0) ---------------------------
+        tension = s1 >= 0
+        fi_ft = (s1 / material.Xt) ** 2 + (t12 / material.S12) ** 2
+        if material.S13 > 0:
+            fi_ft = fi_ft + (t13 / material.S13) ** 2
+        fi_ft = np.sqrt(np.maximum(fi_ft, 0.0))
+
+        # --- Fibre kinking (sigma_11 < 0) ----------------------------
+        # Closed-form load-induced rotation phi_c, clamped to [0, phi_0].
+        delta_s = np.abs(s1) - s2
+        with np.errstate(divide="ignore", invalid="ignore"):
+            phi_c = delta_s * phi_0 / (material.G12 + delta_s)
+        phi_c = np.minimum(phi_c, phi_0)
+        phi_c = np.where(
+            (phi_0 == 0.0) | (s1 >= 0) | (delta_s <= 0), 0.0, phi_c
+        )
+        phi = phi_0 + phi_c
+
+        cos_p = np.cos(phi)
+        sin_p = np.sin(phi)
+        sigma_22m = (
+            s2 * cos_p**2 + s1 * sin_p**2 - 2.0 * t12 * sin_p * cos_p
+        )
+        tau_12m = (s1 - s2) * sin_p * cos_p + t12 * (cos_p**2 - sin_p**2)
+        tau_23m = t23 * cos_p - t13 * sin_p
+
+        mu_L, mu_T = self._friction_coefficients(material)
+
+        kink_tension = sigma_22m >= 0
+        fi_kt = (
+            (tau_12m / S12_is) ** 2
+            + (sigma_22m / Yt_is) ** 2
+            + (tau_23m / material.S23) ** 2
+        )
+        denom_l = S12_is + mu_L * np.abs(sigma_22m)
+        denom_t = material.S23 + mu_T * np.abs(sigma_22m)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            fi_kc = (tau_12m / denom_l) ** 2 + (tau_23m / denom_t) ** 2
+        fi_kink_sq = np.where(kink_tension, fi_kt, fi_kc)
+        fi_kink = np.sqrt(np.maximum(fi_kink_sq, 0.0))
+        bad_kink = ~kink_tension & ((denom_l <= 0) | (denom_t <= 0))
+        fi_kink[bad_kink] = np.inf
+
+        fi_fiber = np.where(tension, fi_ft, fi_kink)
+        modes_fiber = np.where(
+            tension, "fiber_tension", "fiber_kinking"
+        ).astype("U32")
+
+        # --- Matrix failure (fracture-plane search, (N, n_theta)) ----
+        alpha_0_rad = np.radians(material.alpha_0)
+        tan_2a = np.tan(2.0 * alpha_0_rad)
+        S_T = material.Yc * np.cos(alpha_0_rad) * (
+            np.sin(alpha_0_rad) + np.cos(alpha_0_rad) / tan_2a
+        )
+
+        thetas = np.linspace(-np.pi / 2, np.pi / 2, self.n_theta)
+        cos_t = np.cos(thetas)[None, :]
+        sin_t = np.sin(thetas)[None, :]
+        s2c, s3c = s2[:, None], s3[:, None]
+        t23c, t13c, t12c = t23[:, None], t13[:, None], t12[:, None]
+
+        sigma_n = (
+            s2c * cos_t**2 + s3c * sin_t**2 + 2.0 * t23c * sin_t * cos_t
+        )
+        tau_nt = (s3c - s2c) * sin_t * cos_t + t23c * (cos_t**2 - sin_t**2)
+        tau_n1 = t12c * cos_t + t13c * sin_t
+
+        S_L = S12_is[:, None]
+        Yt_col = Yt_is[:, None]
+        plane_tension = sigma_n >= 0
+
+        fi_grid = np.empty_like(sigma_n)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            fi_t = (
+                (tau_nt / S_T) ** 2
+                + (tau_n1 / S_L) ** 2
+                + (sigma_n / Yt_col) ** 2
+            )
+            denom_tp = S_T + mu_T * np.abs(sigma_n)
+            denom_lp = S_L + mu_L * np.abs(sigma_n)
+            fi_c = (tau_nt / denom_tp) ** 2 + (tau_n1 / denom_lp) ** 2
+        np.copyto(fi_grid, fi_c)
+        np.copyto(fi_grid, fi_t, where=plane_tension)
+        bad_plane = ~plane_tension & ((denom_tp <= 0) | (denom_lp <= 0))
+        fi_grid[bad_plane] = np.inf
+
+        rows = np.arange(n)
+        idx_max = np.argmax(fi_grid, axis=1)
+        fi_matrix = np.sqrt(np.maximum(fi_grid[rows, idx_max], 0.0))
+        modes_matrix = np.where(
+            plane_tension[rows, idx_max],
+            "matrix_tension",
+            "matrix_compression",
+        ).astype("U32")
+
+        # --- Governing criterion -------------------------------------
+        fiber_governs = fi_fiber >= fi_matrix
+        indices = np.where(fiber_governs, fi_fiber, fi_matrix)
+        modes = np.where(fiber_governs, modes_fiber, modes_matrix).astype(
+            "U32"
+        )
+        with np.errstate(divide="ignore"):
+            reserve_factors = np.where(
+                indices > 0,
+                1.0 / np.where(indices > 0, indices, 1.0),
+                np.inf,
+            )
+        return indices, modes, reserve_factors
