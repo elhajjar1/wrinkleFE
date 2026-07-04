@@ -296,7 +296,16 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   angle — at Gf = 3.0, nx = 16 the trio predicts 0.805 / 0.912 / 0.957
   (measured 0.629 / 0.943 / 1.000): S-M-4/5 within ~4 %, S-M-2 still
   +28 % (see `validation/validate_li_progressive.py` and the
-  `li_progressive_*.csv` runs) — the FE remains an open research
+  `li_progressive_*.csv` runs). **Caveat (measured 2026-07-04)**: the
+  crack band does *not* make the predicted strength mesh-objective in
+  this setting. Refining to a wavelength-proportional 12 elements per
+  wavelength (nx = 36) at the same Gf = 3.0 collapses every S-M case to
+  0.32–0.57 (errors −33 % to −62 %, MAE 46 % vs 14 % at nx = 16): the
+  finer mesh resolves a steeper local misalignment, so FI-driven
+  initiation fires earlier and the h-scaled softening slope does not
+  compensate. The Gf calibration is therefore only valid at the mesh
+  density it was fitted at (nx = 16, nz_per_ply = 2) — do not "improve"
+  the mesh without recalibrating. The FE remains an open research
   direction, no longer tracked by a blocking issue. S-A-2's
   through-thickness position is no longer out of scope: the
   `wrinkle_z_position` parameter and the gate's `P(z)` factor reproduce
