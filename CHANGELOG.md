@@ -15,6 +15,31 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Monte-Carlo / Latin-hypercube uncertainty propagation (issue #301):
+  `wrinklefe.stochastic.probabilistic_analysis(base_config,
+  distributions, n_samples, seed, method="lhs"|"mc")` samples
+  `AnalysisConfig` fields from user distributions (`("normal", m, s)`,
+  `("uniform", lo, hi)`, `("lognormal", mu, sigma)`, or any frozen
+  `scipy.stats` distribution), runs the analytical path per sample, and
+  returns a `ProbabilisticResults` with percentile
+  knockdowns/strengths, mean ± std, the input samples for sensitivity
+  scatter, an optional histogram+scatter `plot()`, and a `summary()`
+  that explicitly labels the output as model-input-propagation
+  statistics — **not** CMH-17 A-/B-basis allowables. Fixed seeds are
+  fully reproducible; degenerate (zero-variance) distributions
+  reproduce the deterministic result exactly; invalid draws fail loudly
+  instead of being clipped; `n_workers` reuses the #260 process pool
+  for FE-path sampling. 1000 analytical samples run in ~0.7 s for
+  UD/gate configs.
+- Vectorized `_laminate_modulus_knockdown` (issue #301 enabler): the
+  multidirectional analytical modulus knockdown ran a per-(ply,
+  x-station) Python loop (12,000 6×6 rotations/condensations), making
+  every multidirectional analytical run take ~1.2 s. The wrinkle-tilt
+  rotation and plane-stress condensation are now batched over the whole
+  (ply, x) grid (the in-plane rotation is computed once per ply, and
+  `T_sigma(θ)^-1 = T_sigma(−θ)` replaces the batched solve) — 1.18 s →
+  22 ms (~52×) per analytical run, results identical to the loop
+  (regression-tested against it; ledger baselines zero-drift).
 - Mesh-resolution warning (issue #306): `WrinkleMesh.generate` warns
   when the hex mesh samples the wrinkle wavelength with fewer than 4
   elements (element `dx` vs `lambda`), naming the offending spacing and

@@ -274,6 +274,51 @@ so a delamination can propagate crest-to-crest between neighbours
 (`examples/08_multi_wrinkle_czm_linkup.py` demonstrates the link-up
 vs far-separated contrast).
 
+### Uncertainty propagation (probabilistic analysis)
+
+Measured wrinkle geometry is uncertain — amplitude and wavelength come
+from a micrograph or C-scan with error. `probabilistic_analysis`
+samples `AnalysisConfig` fields from user-supplied distributions
+(Latin-hypercube by default, plain Monte-Carlo optional) and runs the
+analytical path per sample, turning "the model says 0.64" into "P5–P95
+= 0.59–0.86 given my measurement uncertainty" — the form an NCR
+disposition rationale actually needs:
+
+```python
+from wrinklefe.analysis import AnalysisConfig
+from wrinklefe.core.penetration_gate import GATE_LI2025_VACBAG
+from wrinklefe.stochastic import probabilistic_analysis
+
+base = AnalysisConfig(
+    amplitude=0.75, wavelength=12.9, width=6.45,
+    angles=[0.0] * 14, ply_thickness=0.44, morphology="graded",
+    penetration_gate=GATE_LI2025_VACBAG,
+)
+prob = probabilistic_analysis(
+    base,
+    {"amplitude": ("normal", 0.75, 0.08),
+     "wavelength": ("normal", 12.9, 1.0)},
+    n_samples=1000, seed=42,
+)
+print(prob.summary())                     # P5/P50/P95, mean ± std
+print(prob.knockdown_percentile(5.0))     # 5th-percentile knockdown
+prob.plot()                               # histogram + sensitivity scatter
+```
+
+Distributions accept `("normal", mean, std)`, `("uniform", lo, hi)`,
+`("lognormal", mu, sigma)` or any frozen `scipy.stats` distribution; a
+fixed `seed` makes the whole analysis reproducible, and `n_workers`
+reuses the sweep process pool for FE-path sampling. 1000 analytical
+samples run in under a second for UD/gate configs (~20 s for a 24-ply
+multidirectional layup, or seconds with `n_workers`).
+
+> **Not A-/B-basis values.** The reported percentiles are
+> *model-input-propagation* statistics — the deterministic model driven
+> by sampled geometry. They are **not** CMH-17 A-/B-basis allowables
+> (one-sided tolerance bounds on physical test data with prescribed
+> confidence) and must not be presented as basis values in
+> certification paperwork.
+
 ### Batch parametric sweeps
 
 For exploring how the knockdown varies across a parameter range, use
