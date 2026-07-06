@@ -10,6 +10,7 @@ functions, and the CLI.
    :maxdepth: 1
 
    analysis
+   stochastic
    convergence
    core
    solver

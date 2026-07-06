@@ -588,20 +588,73 @@ def _laminate_modulus_knockdown(
         Axial-modulus knockdown in ``(0, 1]``.
     """
     phis = [math.radians(float(a)) for a in angles]
-    n_x = slope_field.shape[-1]
-    total_thickness = len(phis) * ply_thickness
+    n_plies = len(phis)
+    total_thickness = n_plies * ply_thickness
 
-    inv_E_section = np.empty(n_x, dtype=float)
-    for xi in range(n_x):
-        a_mat = np.zeros((3, 3), dtype=float)
-        for p, phi in enumerate(phis):
-            # Compose the per-wrinkle slopes (each decayed for this ply)
-            # then take the local tilt angle: arctan|sum_w dz_w/dx * Phi_w|.
-            slope_p = float(np.dot(slope_field[:, xi], ply_decays[p, :, xi]))
-            theta = math.atan(abs(slope_p))
-            q_bar = _plane_stress_qbar_tilted(stiffness_3d, phi, theta)
-            a_mat += q_bar * ply_thickness
-        inv_E_section[xi] = np.linalg.inv(a_mat)[0, 0] * total_thickness
+    # Compose the per-wrinkle slopes (each decayed for this ply) then
+    # take the local tilt angle: theta(p, x) = arctan|sum_w dz_w/dx * Phi_w|.
+    slope_px = np.einsum("wx,pwx->px", slope_field, ply_decays)
+    theta_px = np.arctan(np.abs(slope_px))  # (n_plies, n_x)
+
+    # The in-plane (z-axis) rotation depends only on the ply angle, so
+    # rotate the base stiffness once per ply; the wrinkle tilt (y-axis)
+    # rotation and the plane-stress condensation are batched over the
+    # whole (ply, x) grid (issue #301: the previous per-(ply, x) Python
+    # loop made every multidirectional analytical run take seconds).
+    c_phi = np.stack(
+        [rotate_stiffness_3d(stiffness_3d, phi, axis="z") for phi in phis]
+    )  # (n_plies, 6, 6)
+
+    # Batched y-axis stress-transformation matrices T_sigma(theta) and
+    # the engineering-strain counterparts T_eps = R T_sigma R^-1
+    # (row/column Reuter scaling), mirroring
+    # wrinklefe.core.transforms.stress/strain_transformation_3d.
+    def _tsigma_y(cos_t: np.ndarray, sin_t: np.ndarray) -> np.ndarray:
+        c2, s2, sc = cos_t * cos_t, sin_t * sin_t, sin_t * cos_t
+        t = np.zeros(cos_t.shape + (6, 6), dtype=float)
+        t[..., 0, 0] = c2
+        t[..., 0, 2] = s2
+        t[..., 0, 4] = -2.0 * sc
+        t[..., 1, 1] = 1.0
+        t[..., 2, 0] = s2
+        t[..., 2, 2] = c2
+        t[..., 2, 4] = 2.0 * sc
+        t[..., 3, 3] = cos_t
+        t[..., 3, 5] = sin_t
+        t[..., 4, 0] = sc
+        t[..., 4, 2] = -sc
+        t[..., 4, 4] = c2 - s2
+        t[..., 5, 3] = -sin_t
+        t[..., 5, 5] = cos_t
+        return t
+
+    cos_t = np.cos(theta_px)
+    sin_t = np.sin(theta_px)
+    t_sig = _tsigma_y(cos_t, sin_t)
+    # Rotation transformations invert by angle negation:
+    # T_sigma(theta)^-1 == T_sigma(-theta) — a matmul instead of a
+    # batched 6x6 solve.
+    t_sig_inv = _tsigma_y(cos_t, -sin_t)
+    reuter = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
+    t_eps = t_sig * (reuter[:, None] / reuter[None, :])
+
+    # C_rot = T_sigma^-1 @ C_phi @ T_eps, batched over (ply, x).
+    c_rot = t_sig_inv @ (c_phi[:, None, :, :] @ t_eps)
+
+    # Plane-stress condensation onto the in-plane Voigt indices
+    # (11, 22, 12): Q-bar = C_ii - C_io @ C_oo^-1 @ C_oi.
+    ip = np.array([0, 1, 5])
+    op = np.array([2, 3, 4])
+    c_ii = c_rot[..., ip[:, None], ip[None, :]]
+    c_io = c_rot[..., ip[:, None], op[None, :]]
+    c_oi = c_rot[..., op[:, None], ip[None, :]]
+    c_oo = c_rot[..., op[:, None], op[None, :]]
+    q_bar = c_ii - c_io @ np.linalg.solve(c_oo, c_oi)
+
+    # Membrane A(x) = sum_p Q-bar_p * t; shared membrane strain gives
+    # E_section(x) = 1 / (inv(A)[0,0] * T).
+    a_mat = q_bar.sum(axis=0) * ply_thickness  # (n_x, 3, 3)
+    inv_E_section = np.linalg.inv(a_mat)[:, 0, 0] * total_thickness
 
     # E_section(x) = 1 / inv_E_section; series-average the compliance.
     e_eff = 1.0 / float(np.mean(inv_E_section))
