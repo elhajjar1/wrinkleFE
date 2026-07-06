@@ -15,6 +15,24 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Mesh-resolution warning (issue #306): `WrinkleMesh.generate` warns
+  when the hex mesh samples the wrinkle wavelength with fewer than 4
+  elements (element `dx` vs `lambda`), naming the offending spacing and
+  the `nx` needed — under-sampled wrinkles previously produced silent
+  aliasing noise.
+- CZM-capable glass/aramid presets (issue #268): `S2_GLASS_EPOXY` and
+  `KEVLAR49_EPOXY` now carry representative interlaminar toughness
+  (`GIc`/`GIIc` in the published glass/aramid ranges), so
+  `enable_czm=True` runs for every built-in material instead of raising
+  for those two. Configurations that previously errored now produce
+  cohesive-damage results.
+- Coordinate-aware maxima (issue #297):
+  `FieldResults.max_displacement_location()` and
+  `max_stress_location()` return the physical `(x, y, z)` of the
+  governing node / element centroid alongside the value.
+- Failure-mode breakdown plot (issue #269, part 1):
+  `wrinklefe.viz.plot_failure_mode_breakdown` with a stable
+  per-failure-mode colour map (`MODE_COLORS`).
 - Process-parallel parametric sweeps (issue #260):
   `WrinkleAnalysis.parametric_sweep(..., n_workers=N)`,
   `wrinklefe.sweep.run_sweep(..., n_workers=N)`, and
@@ -237,6 +255,18 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- `parse_layup` input strictness (issue #308) — **breaking for inputs
+  that previously parsed**: ply-angle tokens with `|angle| > 90` (e.g.
+  the repeat-count-like `[02/902]s`, which silently parsed as 2° and
+  902° plies) and leading-zero tokens now raise `ValueError` instead of
+  building a wrong laminate; ASCII `+-45`/`-+45` are now accepted as
+  the ± shorthand. Scripts feeding the newly-rejected forms must switch
+  to explicit repeat syntax (e.g. `[0_2/90_2]s`).
+- Mesh aspect-ratio warning re-baselined (issue #303): the warning now
+  compares each element against the mesh's own median aspect ratio and
+  flags only outliers, instead of a fixed 10:1 threshold that flagged
+  71–100 % of elements on typical thin-ply meshes (default runs are now
+  quiet; genuinely anomalous elements still warn).
 - CI enforces the full Ruff ruleset and `mypy` over the whole tree.
 
 ### Removed

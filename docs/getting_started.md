@@ -76,6 +76,8 @@ The same pipeline is available from the command line:
 
 ```bash
 wrinklefe analyze --amplitude 0.366 --wavelength 16 --morphology stack
+wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
+    --no-analytical-only --parallel 4   # full-FE sweep on 4 processes
 wrinklefe converge --tolerance 0.01   # mesh-convergence study
 wrinklefe materials                   # list the material library
 ```
@@ -84,6 +86,7 @@ wrinklefe materials                   # list the material library
 
 The repository's `examples/` directory contains scripts for the common
 workflows — parametric sweeps, morphology comparison, CZM delamination,
-export round-trips, custom materials, mesh convergence — each with its
+multi-wrinkle crest-to-crest delamination link-up, export round-trips,
+custom materials, mesh convergence — each with its
 expected runtime and output in the header. CI executes them all on
 every push.

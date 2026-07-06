@@ -29,6 +29,18 @@ wrinkles distinguished by their through-thickness amplitude profile);
 see the wrinkle-geometry table in the README/landing page for the full
 parameter reference.
 
+Beyond the named morphologies, arbitrary **multi-wrinkle layouts** are
+supported through `AnalysisConfig.wrinkles` — a list of
+{class}`~wrinklefe.analysis.WrinkleSpec` entries, each with its own
+amplitude, wavelength, width, ply interface, and longitudinal position.
+The displacement and fibre-angle fields derive from the composed
+wrinkle field ("compose then differentiate"), the penetration gate
+scores each wrinkle on its own geometry and takes the weakest link, and
+CZM inserts cohesive surfaces along the full length of every
+wrinkle-nominated interface — so a delamination initiating at one crest
+can propagate toward a neighbouring wrinkle on the same interface
+(crest-to-crest link-up).
+
 ## Unidirectional wrinkle-defect capabilities
 
 Angle-based models are scale-invariant: at a *fixed* misalignment angle
