@@ -308,6 +308,11 @@ version produced a given file.
   `analytical_only=True`), so the control now sits with the other expert
   FE settings instead of the simplified novice sidebar. The analytical
   path and CZM behaviour are unchanged.
+- Streamlit app — tab layout: **Configure** is now the first (default)
+  tab, so the app opens on the laminate/geometry view instead of the
+  intro. The old **Overview** tab moved to the end and is renamed
+  **Help**. Within the Configure tab the **Wrinkle mid-surface profile**
+  plot moved to the bottom, so the through-thickness cross-section leads.
 
 ### Removed
 - The dead `export` optional-dependency extra (`meshio` was never

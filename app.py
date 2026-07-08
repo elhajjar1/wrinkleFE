@@ -509,7 +509,7 @@ def _through_thickness_cross_section(
 
 
 # ---------------------------------------------------------------------------
-# Hero / orientation content — rendered inside the Overview tab below.
+# Hero / orientation content — rendered inside the Help tab below.
 # Defined here as small helpers so the demo-button click handler can run
 # before the tabs declaration (it needs to st.rerun() the whole script).
 # ---------------------------------------------------------------------------
@@ -1632,72 +1632,14 @@ if run_clicked or _demo_pending:
         )
 
 
-tab_overview, tab_configure, tab_results, tab_export = st.tabs(
-    ["Overview", "Configure", "Results", "Export"]
+tab_configure, tab_results, tab_export, tab_help = st.tabs(
+    ["Configure", "Results", "Export", "Help"]
 )
 
-with tab_overview:
-    st.markdown(_HERO_INTRO_MD)
-    st.image(_hero_schematic(), width="stretch")
-
-    _demo_cols = st.columns([2, 1, 2])
-    if _demo_cols[1].button(
-        "▶ Try a demo analysis",
-        type="primary",
-        width="stretch",
-        help=(
-            "One-click analytical run with IM7/8552 and a quasi-isotropic "
-            "[0/45/-45/90]_3s layup. Lands on the Results tab in ~2 s."
-        ),
-    ):
-        st.session_state["_demo_pending"] = True
-        st.rerun()
-
-    st.markdown("---")
-    st.markdown(
-        "**What to do next**\n\n"
-        "1. *Try the demo above* for an instant analytical run with sensible "
-        "defaults — you'll land back here with results on the **Results** tab.\n"
-        "2. *Configure your own laminate* using the sidebar (material, layup, "
-        "wrinkle amplitude and wavelength, loading mode and strain).\n"
-        "3. *Click* **▶ Run analysis** at the bottom of the sidebar.\n"
-        "4. *Review* the Results tab — the **Before / after** card up top "
-        "shows strength and stiffness loss in plain language.\n"
-        "5. *Export* the run as JSON or CSV from the **Export** tab.\n\n"
-        "Switch on **Expert mode** at the top of the sidebar to expose the "
-        "morphology selector, custom-material editor, decay floor, mesh "
-        "density, and the full FE solve."
-    )
-
 with tab_configure:
-    st.subheader("Wrinkle mid-surface profile")
-    x = np.linspace(-3 * width, 3 * width, 800)
-    z = profile.displacement(x)
-    theta_deg = np.degrees(np.arctan(profile.slope(x)))
-    fig, (ax_z, ax_theta) = plt.subplots(
-        2, 1, figsize=(8, 4.6), sharex=True,
-        gridspec_kw={"height_ratios": [1.4, 1.0]},
-    )
-    ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
-    ax_z.axhline(0.0, color="grey", linewidth=0.5)
-    ax_z.set_ylabel("z(x) [mm]")
-    ax_z.set_title("z(x) = A · exp(−x²/w²) · cos(2π x/λ)")
-    ax_z.grid(alpha=0.3)
-
-    ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
+    # θ_max is shared by the through-thickness caption below and the
+    # mid-surface plot at the bottom of the tab, so compute it once up front.
     theta_max_deg = np.degrees(profile.max_angle())
-    ax_theta.axhline(theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
-    ax_theta.axhline(-theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
-    ax_theta.set_xlabel("x [mm]")
-    ax_theta.set_ylabel("θ(x) [deg]")
-    ax_theta.grid(alpha=0.3)
-    fig.tight_layout()
-    st.pyplot(fig, clear_figure=True)
-    st.caption(
-        f"Numerical θ_max = {theta_max_deg:.2f}°  ·  "
-        f"Closed-form approx arctan(2πA/λ) = "
-        f"{np.degrees(profile.max_angle_approx()):.2f}°"
-    )
 
     st.subheader("Through-thickness cross-section")
     st.caption(
@@ -1796,6 +1738,34 @@ with tab_configure:
             fig_l.tight_layout()
             st.pyplot(fig_l, clear_figure=True)
             st.caption(f"{n} plies · colours hue-mapped on ply angle modulo 180°.")
+
+    st.subheader("Wrinkle mid-surface profile")
+    x = np.linspace(-3 * width, 3 * width, 800)
+    z = profile.displacement(x)
+    theta_deg = np.degrees(np.arctan(profile.slope(x)))
+    fig, (ax_z, ax_theta) = plt.subplots(
+        2, 1, figsize=(8, 4.6), sharex=True,
+        gridspec_kw={"height_ratios": [1.4, 1.0]},
+    )
+    ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
+    ax_z.axhline(0.0, color="grey", linewidth=0.5)
+    ax_z.set_ylabel("z(x) [mm]")
+    ax_z.set_title("z(x) = A · exp(−x²/w²) · cos(2π x/λ)")
+    ax_z.grid(alpha=0.3)
+
+    ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
+    ax_theta.axhline(theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
+    ax_theta.axhline(-theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
+    ax_theta.set_xlabel("x [mm]")
+    ax_theta.set_ylabel("θ(x) [deg]")
+    ax_theta.grid(alpha=0.3)
+    fig.tight_layout()
+    st.pyplot(fig, clear_figure=True)
+    st.caption(
+        f"Numerical θ_max = {theta_max_deg:.2f}°  ·  "
+        f"Closed-form approx arctan(2πA/λ) = "
+        f"{np.degrees(profile.max_angle_approx()):.2f}°"
+    )
 
 
 with tab_results:
@@ -2548,3 +2518,38 @@ with tab_export:
                     file_name=f"{_fn_base}.json",
                     mime="application/json",
                 )
+
+
+with tab_help:
+    st.markdown(_HERO_INTRO_MD)
+    st.image(_hero_schematic(), width="stretch")
+
+    _demo_cols = st.columns([2, 1, 2])
+    if _demo_cols[1].button(
+        "▶ Try a demo analysis",
+        type="primary",
+        width="stretch",
+        help=(
+            "One-click analytical run with IM7/8552 and a quasi-isotropic "
+            "[0/45/-45/90]_3s layup. Lands on the Results tab in ~2 s."
+        ),
+    ):
+        st.session_state["_demo_pending"] = True
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown(
+        "**What to do next**\n\n"
+        "1. *Configure your own laminate* on the **Configure** tab / sidebar "
+        "(material, layup, wrinkle amplitude and wavelength, loading mode and "
+        "strain).\n"
+        "2. *Click* **▶ Run analysis** at the bottom of the sidebar.\n"
+        "3. *Review* the **Results** tab — the **Before / after** card up top "
+        "shows strength and stiffness loss in plain language.\n"
+        "4. *Export* the run as JSON or CSV from the **Export** tab.\n\n"
+        "In a hurry? *Try the demo above* for an instant analytical run with "
+        "sensible defaults — you'll land on the **Results** tab.\n\n"
+        "Switch on **Expert mode** at the top of the sidebar to expose the "
+        "morphology selector, custom-material editor, decay floor, mesh "
+        "density, and the full FE solve."
+    )
