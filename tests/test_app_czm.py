@@ -1,17 +1,19 @@
 """Smoke tests for the Streamlit app's Cohesive Zone Modeling controls.
 
 The Streamlit ``app.py`` exposes a collapsed *Cohesive Zone Modeling*
-expander in the sidebar that, when checked, reveals toughness /
-strength / interface / Newton inputs and switches the FE solve to
-the Newton-Raphson path. These tests use ``streamlit.testing.v1.AppTest``
-to drive the page without a real browser and verify:
+expander in the sidebar — visible only in **Expert mode**, because CZM
+requires the full nonlinear FE solve which is itself expert-only. When
+checked, the expander reveals toughness / strength / interface / Newton
+inputs and switches the FE solve to the Newton-Raphson path. These tests
+use ``streamlit.testing.v1.AppTest`` to drive the page without a real
+browser and verify:
 
-1. The CZM checkbox lives in the sidebar with ``key='sb_enable_czm'``
-   and starts unchecked, so the existing UI is unchanged for users
-   who don't want CZM.
-2. Setting ``session_state['sb_enable_czm'] = True`` reveals the full
-   set of CZM widgets (toughness, strength, interface placement, load
-   increments, Newton tolerance).
+1. In the default (novice) sidebar the CZM checkbox is *hidden*; turning
+   on ``session_state['expert_mode']`` surfaces it with
+   ``key='sb_enable_czm'``, unchecked.
+2. In Expert mode, setting ``session_state['sb_enable_czm'] = True``
+   reveals the full set of CZM widgets (toughness, strength, interface
+   placement, load increments, Newton tolerance).
 3. The CZM defaults are exposed via the module-level ``DEFAULTS`` dict
    so the *Reset to defaults* button restores them.
 4. The CZM result renderer (``_render_czm_results``) gracefully
@@ -80,33 +82,56 @@ def _app_path() -> str:
     return str(_REPO_ROOT / "app.py")
 
 
-def test_app_runs_with_czm_disabled():
-    """Default page load: no exceptions, CZM checkbox is False."""
+def test_novice_mode_hides_czm_controls():
+    """Default (novice) page load: no exceptions, and the CZM checkbox is
+    hidden because CZM depends on the expert-only FE solve."""
     from streamlit.testing.v1 import AppTest
 
     at = AppTest.from_file(_app_path(), default_timeout=30)
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
 
-    # CZM checkbox is present and unchecked by default.
+    # CZM checkbox is not rendered in the simplified novice sidebar.
+    cbs = {cb.key for cb in at.checkbox if cb.key is not None}
+    assert "sb_enable_czm" not in cbs, (
+        f"CZM checkbox leaked into the novice UI; saw keys: {sorted(cbs)}"
+    )
+
+    # None of the dependent czm_* widgets should render either.
+    czm_inputs = [ni for ni in at.number_input if "czm" in (ni.key or "")]
+    assert czm_inputs == [], (
+        f"CZM inputs leaked into the novice UI: {[ni.key for ni in czm_inputs]}"
+    )
+
+
+def test_expert_mode_shows_czm_checkbox_unchecked():
+    """Turning on Expert mode surfaces the CZM checkbox, unchecked, with
+    no dependent inputs revealed until it is ticked."""
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(_app_path(), default_timeout=30)
+    at.session_state["expert_mode"] = True
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+
     cbs = {cb.key: cb for cb in at.checkbox if cb.key is not None}
     assert "sb_enable_czm" in cbs, (
-        f"CZM checkbox missing from app; saw keys: {sorted(cbs)}"
+        f"CZM checkbox missing in Expert mode; saw keys: {sorted(cbs)}"
     )
     assert cbs["sb_enable_czm"].value is False
 
-    # With CZM off, none of the dependent czm_* widgets should render.
     czm_inputs = [ni for ni in at.number_input if "czm" in (ni.key or "")]
     assert czm_inputs == [], (
-        f"CZM inputs leaked into the default UI: {[ni.key for ni in czm_inputs]}"
+        f"CZM inputs shown before enabling: {[ni.key for ni in czm_inputs]}"
     )
 
 
 def test_enabling_czm_reveals_full_widget_set():
-    """Toggling ``sb_enable_czm`` reveals every CZM input widget."""
+    """In Expert mode, toggling ``sb_enable_czm`` reveals every CZM input."""
     from streamlit.testing.v1 import AppTest
 
     at = AppTest.from_file(_app_path(), default_timeout=30)
+    at.session_state["expert_mode"] = True
     at.session_state["sb_enable_czm"] = True
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
@@ -137,6 +162,7 @@ def test_czm_widgets_seed_from_material_defaults():
     from streamlit.testing.v1 import AppTest
 
     at = AppTest.from_file(_app_path(), default_timeout=30)
+    at.session_state["expert_mode"] = True
     at.session_state["sb_enable_czm"] = True
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]

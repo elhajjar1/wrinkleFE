@@ -15,6 +15,15 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Streamlit app — **Through-thickness cross-section** on the Configure
+  tab: a new panel that draws the deformed ply stack in the (x, z) plane
+  so users can see how the wrinkle manifests through the laminate
+  thickness. It reuses the real `WrinkleConfiguration.apply_to_nodes`
+  field the FE mesh uses, so the picture faithfully tracks the active
+  morphology, its through-thickness amplitude decay, the dual-wrinkle
+  phase offset, and any in-plane amplitude profile. Each ply is a band
+  coloured by fibre angle (the same hue map as the layup visualizer),
+  with the wrinkle-interface plies outlined for the dual morphologies.
 - Monte-Carlo / Latin-hypercube uncertainty propagation (issue #301):
   `wrinklefe.stochastic.probabilistic_analysis(base_config,
   distributions, n_samples, seed, method="lhs"|"mc")` samples
@@ -293,6 +302,12 @@ version produced a given file.
   71–100 % of elements on typical thin-ply meshes (default runs are now
   quiet; genuinely anomalous elements still warn).
 - CI enforces the full Ruff ruleset and `mypy` over the whole tree.
+- Streamlit app — the **Cohesive Zone Modeling** sidebar controls now
+  render only in **Expert mode**. CZM requires the full nonlinear FE
+  solve, which is itself expert-only (novice mode forces
+  `analytical_only=True`), so the control now sits with the other expert
+  FE settings instead of the simplified novice sidebar. The analytical
+  path and CZM behaviour are unchanged.
 
 ### Removed
 - The dead `export` optional-dependency extra (`meshio` was never

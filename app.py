@@ -19,6 +19,7 @@ import sys
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Literal, cast
 
 import matplotlib
 
@@ -27,6 +28,7 @@ matplotlib.use("Agg")  # headless backend; required on Streamlit Cloud
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import streamlit as st  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
 
 # Make the src-layout package importable on Streamlit Cloud, which does not
 # pip-install the local repo.
@@ -40,6 +42,7 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
 from wrinklefe.core.layup import parse_layup  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
 from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
+from wrinklefe.core.morphology import WrinkleConfiguration  # noqa: E402
 from wrinklefe.core.wrinkle import GaussianSinusoidal  # noqa: E402
 from wrinklefe.io.export import (  # noqa: E402
     build_analysis_summary,
@@ -397,6 +400,112 @@ def _morphology_schematic(
     fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return buf.getvalue()
+
+
+def _through_thickness_cross_section(
+    *,
+    morphology: str,
+    amplitude: float,
+    wavelength: float,
+    width: float,
+    angles: list[float],
+    ply_thickness: float,
+    decay_floor: float,
+    amplitude_profile: str,
+    amplitude_profile_decay_length: float | None,
+    amplitude_profile_axis: str,
+) -> Figure:
+    """Deformed through-thickness (x–z) cross-section of the wrinkled stack.
+
+    Unlike the sidebar cartoon (:func:`_morphology_schematic`, a stylised
+    line drawing), this reuses the *real*
+    :class:`~wrinklefe.core.morphology.WrinkleConfiguration` deformation
+    field — the same one the FE mesh sees via ``apply_to_nodes`` — so the
+    section faithfully tracks the active morphology, its through-thickness
+    amplitude decay, the dual-wrinkle phase offset, and any in-plane
+    amplitude profile. Each ply is drawn as a filled band whose
+    mid-surface follows ``z0(p) + dz(x, p)``; the wrinkle-interface plies
+    are outlined so the reader can see where the defect is seeded and how
+    its amplitude fades toward the free surfaces.
+
+    The wrinkle profiles are centred at ``x = 0`` (matching the Geometry
+    tab's mid-surface plot) and the interfaces are resolved exactly as
+    :class:`~wrinklefe.analysis.AnalysisConfig` resolves them
+    (``mid = n_plies // 2``), so the picture matches what an analysis run
+    with these inputs would build.
+    """
+    n_plies = len(angles)
+    prof = GaussianSinusoidal(
+        amplitude=float(amplitude),
+        wavelength=float(wavelength),
+        width=float(width),
+        center=0.0,
+    )
+    # Interface resolution mirrors AnalysisConfig.__post_init__ so the
+    # cross-section lines up with an actual analysis of the same inputs.
+    mid = n_plies // 2
+    i1 = max(0, mid - 1)
+    i2 = min(n_plies - 1, mid)
+    wc = WrinkleConfiguration.from_morphology_name(
+        morphology,
+        prof,
+        interface1=i1,
+        interface2=i2,
+        decay_floor=decay_floor,
+        amplitude_profile=cast(
+            Literal["constant", "gaussian", "linear"], amplitude_profile
+        ),
+        amplitude_profile_decay_length=amplitude_profile_decay_length,
+        amplitude_profile_axis=cast(
+            Literal["x", "y"], amplitude_profile_axis
+        ),
+    )
+
+    # x-window matches the mid-surface plot (±3·width captures the
+    # Gaussian envelope). Deform every ply centreline in a single
+    # vectorised ``apply_to_nodes`` call.
+    x_half = 3.0 * max(float(width), 1e-6)
+    n_x = 400
+    x = np.linspace(-x_half, x_half, n_x)
+    t = float(ply_thickness)
+    total_thickness = n_plies * t
+    z0 = (np.arange(n_plies) + 0.5) * t - total_thickness / 2.0
+
+    x_flat = np.tile(x, n_plies)
+    ply_ids = np.repeat(np.arange(n_plies), n_x)
+    z0_flat = np.repeat(z0, n_x)
+    nodes = np.column_stack([x_flat, np.zeros_like(x_flat), z0_flat])
+    deformed = wc.apply_to_nodes(nodes, ply_ids, n_plies)
+    z_def = deformed[:, 2].reshape(n_plies, n_x)
+
+    cmap = plt.get_cmap("twilight")
+    fig, ax = plt.subplots(figsize=(8, 3.4), dpi=110)
+    for p in range(n_plies):
+        colour = cmap(((angles[p] % 180) + 180) % 180 / 180)
+        ax.fill_between(
+            x, z_def[p] - t / 2, z_def[p] + t / 2,
+            color=colour, edgecolor="white", linewidth=0.25,
+        )
+
+    # Outline the wrinkle-interface plies for the dual-wrinkle
+    # morphologies (stack/convex/concave), which seed the defect at a
+    # specific pair of interfaces. The single-wrinkle modes
+    # (uniform/graded) displace a broad band, so a single outline would
+    # be misleading — their shape is already read from the bands.
+    if morphology in ("stack", "convex", "concave"):
+        for p in (i1, i2):
+            ax.plot(x, z_def[p] + t / 2, color="#d62728", linewidth=1.1)
+            ax.plot(x, z_def[p] - t / 2, color="#d62728", linewidth=1.1)
+
+    ax.set_xlim(-x_half, x_half)
+    ax.set_xlabel("x [mm]")
+    ax.set_ylabel("z through thickness [mm]")
+    ax.set_title(
+        f"{morphology.capitalize()} wrinkle — deformed ply stack "
+        f"({n_plies} plies)"
+    )
+    fig.tight_layout()
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -853,120 +962,140 @@ with st.sidebar:
         )
 
     # ------------------------------------------------------------------
-    # Cohesive zone modelling (delamination prediction). Collapsed by
-    # default so the existing UI flow is unchanged for users who don't
-    # want CZM. When the checkbox is ticked, the FE solve switches from
-    # the linear StaticSolver to Newton-Raphson and zero-thickness
+    # Cohesive zone modelling (delamination prediction). Expert-mode only:
+    # CZM requires the full nonlinear FE solve (Newton-Raphson), and the FE
+    # solve itself is gated behind Expert mode (novice mode forces
+    # ``analytical_only=True``), so the control belongs alongside the other
+    # expert FE settings rather than in the simplified novice sidebar.
+    # Collapsed by default so the expert flow is unchanged for users who
+    # don't want CZM. When the checkbox is ticked, the FE solve switches
+    # from the linear StaticSolver to Newton-Raphson and zero-thickness
     # cohesive elements are inserted at the requested ply interfaces.
     # ------------------------------------------------------------------
-    with st.expander(
-        "Cohesive Zone Modeling (delamination)", expanded=False,
-    ):
-        enable_czm = st.checkbox(
-            "Enable Cohesive Zone Modeling (delamination prediction)",
-            value=DEFAULT_ENABLE_CZM,
-            key="sb_enable_czm",
-            help=(
-                "Adds zero-thickness cohesive interface elements at ply "
-                "boundaries. When enabled, the FE solve switches from "
-                "linear (StaticSolver) to nonlinear Newton-Raphson. "
-                "Run time is ~5-20x longer; produces damage field "
-                "output and energy dissipation per interface."
-            ),
-        )
+    if expert_mode:
+        with st.expander(
+            "Cohesive Zone Modeling (delamination)", expanded=False,
+        ):
+            enable_czm = st.checkbox(
+                "Enable Cohesive Zone Modeling (delamination prediction)",
+                value=DEFAULT_ENABLE_CZM,
+                key="sb_enable_czm",
+                help=(
+                    "Adds zero-thickness cohesive interface elements at ply "
+                    "boundaries. When enabled, the FE solve switches from "
+                    "linear (StaticSolver) to nonlinear Newton-Raphson. "
+                    "Run time is ~5-20x longer; produces damage field "
+                    "output and energy dissipation per interface. Requires "
+                    "the full FE solve (untick *Analytical only* under "
+                    "Advanced — mesh & solver)."
+                ),
+            )
 
-        # Seed the toughness / strength inputs from the chosen material
-        # so users only have to override values they care about. When
-        # the material exposes no default for a quantity, fall back to
-        # 0.0 — AnalysisConfig will then refuse to run unless the user
-        # supplies a non-zero override (matching the API contract).
+            # Seed the toughness / strength inputs from the chosen material
+            # so users only have to override values they care about. When
+            # the material exposes no default for a quantity, fall back to
+            # 0.0 — AnalysisConfig will then refuse to run unless the user
+            # supplies a non-zero override (matching the API contract).
+            _mat_seed = OrthotropicMaterial.from_dict(material_dict)
+            _gic_seed = float(_mat_seed.GIc) if _mat_seed.GIc is not None else 0.30
+            _giic_seed = float(_mat_seed.GIIc) if _mat_seed.GIIc is not None else 0.80
+            _sigma_seed = float(_mat_seed.sigma_max)
+            _tau_seed = float(_mat_seed.tau_max)
+
+            if enable_czm:
+                czm_GIc = st.number_input(
+                    "Mode-I toughness G_Ic [N/mm]",
+                    min_value=0.0, value=_gic_seed, step=0.01,
+                    format="%.4f", key="sb_czm_GIc",
+                    help=(
+                        "Mode-I (opening) fracture toughness. Default seeded "
+                        "from the selected material's library value."
+                    ),
+                )
+                czm_GIIc = st.number_input(
+                    "Mode-II toughness G_IIc [N/mm]",
+                    min_value=0.0, value=_giic_seed, step=0.01,
+                    format="%.4f", key="sb_czm_GIIc",
+                    help=(
+                        "Mode-II (shear) fracture toughness. Default seeded "
+                        "from the selected material's library value."
+                    ),
+                )
+                czm_sigma_max = st.number_input(
+                    "Mode-I peak strength σ_max [MPa]",
+                    min_value=0.0, value=_sigma_seed, step=1.0,
+                    format="%.1f", key="sb_czm_sigma_max",
+                    help="Peak normal traction at which interface damage initiates.",
+                )
+                czm_tau_max = st.number_input(
+                    "Mode-II peak strength τ_max [MPa]",
+                    min_value=0.0, value=_tau_seed, step=1.0,
+                    format="%.1f", key="sb_czm_tau_max",
+                    help="Peak shear traction at which interface damage initiates.",
+                )
+                czm_interfaces_choice = st.selectbox(
+                    "Interface placement",
+                    ["near_crest", "all"],
+                    index=["near_crest", "all"].index(DEFAULT_CZM_INTERFACES),
+                    key="sb_czm_interfaces",
+                    help=(
+                        "*near_crest* (default) inserts cohesive elements at "
+                        "the single ply interface closest to the wrinkle "
+                        "peak. *all* inserts cohesive elements at every "
+                        "interior ply interface (slower)."
+                    ),
+                )
+                czm_load_increments = st.number_input(
+                    "Newton load increments",
+                    min_value=5, max_value=100,
+                    value=int(DEFAULT_CZM_LOAD_INCREMENTS), step=1,
+                    key="sb_czm_load_increments",
+                    help=(
+                        "Number of incremental load steps used by the "
+                        "Newton-Raphson solver. More increments improve "
+                        "robustness for stiff damage problems at the cost "
+                        "of run time."
+                    ),
+                )
+                czm_newton_tol = st.number_input(
+                    "Newton residual tolerance",
+                    min_value=1.0e-8, max_value=1.0e-2,
+                    value=float(DEFAULT_CZM_NEWTON_TOL),
+                    step=1.0e-5, format="%.1e",
+                    key="sb_czm_newton_tol",
+                    help=(
+                        "Relative residual tolerance for Newton convergence "
+                        "at each load increment."
+                    ),
+                )
+                st.caption(
+                    ":hourglass_flowing_sand: CZM run time is typically "
+                    "5–20x the linear FE path. Use a small mesh "
+                    "(nx ≤ 8) for first explorations."
+                )
+            else:
+                # Defaults still need to be defined so the run handler can
+                # reference them unconditionally.
+                czm_GIc = _gic_seed
+                czm_GIIc = _giic_seed
+                czm_sigma_max = _sigma_seed
+                czm_tau_max = _tau_seed
+                czm_interfaces_choice = DEFAULT_CZM_INTERFACES
+                czm_load_increments = DEFAULT_CZM_LOAD_INCREMENTS
+                czm_newton_tol = DEFAULT_CZM_NEWTON_TOL
+    else:
+        # Novice path: CZM is unavailable because the FE solve it depends
+        # on is expert-only. Define the variables the run handler
+        # references unconditionally so the analytical run still works.
+        enable_czm = False
         _mat_seed = OrthotropicMaterial.from_dict(material_dict)
-        _gic_seed = float(_mat_seed.GIc) if _mat_seed.GIc is not None else 0.30
-        _giic_seed = float(_mat_seed.GIIc) if _mat_seed.GIIc is not None else 0.80
-        _sigma_seed = float(_mat_seed.sigma_max)
-        _tau_seed = float(_mat_seed.tau_max)
-
-        if enable_czm:
-            czm_GIc = st.number_input(
-                "Mode-I toughness G_Ic [N/mm]",
-                min_value=0.0, value=_gic_seed, step=0.01,
-                format="%.4f", key="sb_czm_GIc",
-                help=(
-                    "Mode-I (opening) fracture toughness. Default seeded "
-                    "from the selected material's library value."
-                ),
-            )
-            czm_GIIc = st.number_input(
-                "Mode-II toughness G_IIc [N/mm]",
-                min_value=0.0, value=_giic_seed, step=0.01,
-                format="%.4f", key="sb_czm_GIIc",
-                help=(
-                    "Mode-II (shear) fracture toughness. Default seeded "
-                    "from the selected material's library value."
-                ),
-            )
-            czm_sigma_max = st.number_input(
-                "Mode-I peak strength σ_max [MPa]",
-                min_value=0.0, value=_sigma_seed, step=1.0,
-                format="%.1f", key="sb_czm_sigma_max",
-                help="Peak normal traction at which interface damage initiates.",
-            )
-            czm_tau_max = st.number_input(
-                "Mode-II peak strength τ_max [MPa]",
-                min_value=0.0, value=_tau_seed, step=1.0,
-                format="%.1f", key="sb_czm_tau_max",
-                help="Peak shear traction at which interface damage initiates.",
-            )
-            czm_interfaces_choice = st.selectbox(
-                "Interface placement",
-                ["near_crest", "all"],
-                index=["near_crest", "all"].index(DEFAULT_CZM_INTERFACES),
-                key="sb_czm_interfaces",
-                help=(
-                    "*near_crest* (default) inserts cohesive elements at "
-                    "the single ply interface closest to the wrinkle "
-                    "peak. *all* inserts cohesive elements at every "
-                    "interior ply interface (slower)."
-                ),
-            )
-            czm_load_increments = st.number_input(
-                "Newton load increments",
-                min_value=5, max_value=100,
-                value=int(DEFAULT_CZM_LOAD_INCREMENTS), step=1,
-                key="sb_czm_load_increments",
-                help=(
-                    "Number of incremental load steps used by the "
-                    "Newton-Raphson solver. More increments improve "
-                    "robustness for stiff damage problems at the cost "
-                    "of run time."
-                ),
-            )
-            czm_newton_tol = st.number_input(
-                "Newton residual tolerance",
-                min_value=1.0e-8, max_value=1.0e-2,
-                value=float(DEFAULT_CZM_NEWTON_TOL),
-                step=1.0e-5, format="%.1e",
-                key="sb_czm_newton_tol",
-                help=(
-                    "Relative residual tolerance for Newton convergence "
-                    "at each load increment."
-                ),
-            )
-            st.caption(
-                ":hourglass_flowing_sand: CZM run time is typically "
-                "5–20x the linear FE path. Use a small mesh "
-                "(nx ≤ 8) for first explorations."
-            )
-        else:
-            # Defaults still need to be defined so the run handler can
-            # reference them unconditionally.
-            czm_GIc = _gic_seed
-            czm_GIIc = _giic_seed
-            czm_sigma_max = _sigma_seed
-            czm_tau_max = _tau_seed
-            czm_interfaces_choice = DEFAULT_CZM_INTERFACES
-            czm_load_increments = DEFAULT_CZM_LOAD_INCREMENTS
-            czm_newton_tol = DEFAULT_CZM_NEWTON_TOL
+        czm_GIc = float(_mat_seed.GIc) if _mat_seed.GIc is not None else 0.30
+        czm_GIIc = float(_mat_seed.GIIc) if _mat_seed.GIIc is not None else 0.80
+        czm_sigma_max = float(_mat_seed.sigma_max)
+        czm_tau_max = float(_mat_seed.tau_max)
+        czm_interfaces_choice = DEFAULT_CZM_INTERFACES
+        czm_load_increments = DEFAULT_CZM_LOAD_INCREMENTS
+        czm_newton_tol = DEFAULT_CZM_NEWTON_TOL
 
     run_disabled = bool(mesh_diag is not None and mesh_diag.will_invert)
     run_clicked = st.button(
@@ -1569,6 +1698,53 @@ with tab_configure:
         f"Closed-form approx arctan(2πA/λ) = "
         f"{np.degrees(profile.max_angle_approx()):.2f}°"
     )
+
+    st.subheader("Through-thickness cross-section")
+    st.caption(
+        "How the wrinkle manifests through the laminate thickness. Each "
+        "band is one ply, coloured by its fibre angle (same hue mapping as "
+        "the layup visualizer below); the section is deformed by the real "
+        "morphology field the FE mesh uses, so it tracks the amplitude, "
+        "wavelength, envelope width"
+        + (
+            ", morphology, and decay-floor"
+            if expert_mode else " (switch on Expert mode to vary morphology)"
+        )
+        + " you set in the sidebar."
+    )
+    try:
+        _tt_angles = parse_layup(layup_str)
+    except Exception as e:  # noqa: BLE001 — surface parse errors to the user
+        st.warning(f"Could not parse layup: {e}")
+    else:
+        if len(_tt_angles) < 1:
+            st.info("Enter a layup to render the cross-section.")
+        else:
+            fig_tt = _through_thickness_cross_section(
+                morphology=morphology,
+                amplitude=amplitude,
+                wavelength=wavelength,
+                width=width,
+                angles=_tt_angles,
+                ply_thickness=ply_thickness,
+                decay_floor=decay_floor,
+                amplitude_profile=amplitude_profile,
+                amplitude_profile_decay_length=amplitude_profile_decay_length,
+                amplitude_profile_axis=amplitude_profile_axis,
+            )
+            st.pyplot(fig_tt, clear_figure=True)
+            _total_t = len(_tt_angles) * ply_thickness
+            st.caption(
+                f"{len(_tt_angles)} plies · total thickness "
+                f"{_total_t:.2f} mm · θ_max = {theta_max_deg:.2f}° · "
+                "red outlines mark the wrinkle-interface plies. Vertical "
+                "scale is exaggerated relative to x for visibility."
+                if morphology in ("stack", "convex", "concave")
+                else
+                f"{len(_tt_angles)} plies · total thickness "
+                f"{_total_t:.2f} mm · θ_max = {theta_max_deg:.2f}°. "
+                "Vertical scale is exaggerated relative to x for visibility."
+            )
 
     if morphology == "graded":
         with st.expander("Through-thickness amplitude profile", expanded=False):
