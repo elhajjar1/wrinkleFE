@@ -22,5 +22,5 @@ plotly>=6.7.0
 # Used by usage_tracking.py. Import is fail-soft: if these are absent or no
 # gcp_service_account secret is configured, the app still runs and logging is
 # silently skipped (see usage_tracking.py and docs/internal/DEPLOYMENT_STREAMLIT.md).
-gspread>=6.0
-google-auth>=2.0
+gspread>=6.2.1
+google-auth>=2.55.1

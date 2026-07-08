@@ -1,5 +1,5 @@
 # Test-only dependencies. Install alongside requirements.txt:
 #   pip install -r requirements.txt -r requirements-test.txt
 
-pytest==9.0.3
+pytest==9.1.1
 pytest-cov>=4.0
