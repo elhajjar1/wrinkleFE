@@ -289,6 +289,16 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- `AnalysisConfig` now validates ply angles at construction (issue #344)
+  — **breaking only for previously-accepted invalid inputs**: a config
+  with `|angle| > 90` (e.g. `angles=[900.0, 0.0, 452.0]`) now raises
+  `ValueError` naming the offending index and value instead of silently
+  flowing a non-canonical angle into CLT trig, where the tension-mechanism
+  heuristic mis-classified it (a 900° ply read as a 90° ply). The check
+  reuses the shared `validate_ply_angle` rule from `core.layup` (issue
+  #343), so the parser and the config validator can never drift. Valid
+  layups (decimals, `±90`, long stacks) are unaffected. Follow-up:
+  `Laminate.from_angles` is intentionally left unvalidated for now.
 - `parse_layup` input strictness (issue #308) — **breaking for inputs
   that previously parsed**: ply-angle tokens with `|angle| > 90` (e.g.
   the repeat-count-like `[02/902]s`, which silently parsed as 2° and

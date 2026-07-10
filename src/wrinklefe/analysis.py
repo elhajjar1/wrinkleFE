@@ -49,6 +49,7 @@ import numpy as np
 
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface
 from wrinklefe.core.laminate import Laminate, LoadState
+from wrinklefe.core.layup import validate_ply_angle
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.mesh import MeshData, WrinkleMesh
 from wrinklefe.core.morphology import (
@@ -1223,6 +1224,15 @@ class AnalysisConfig:
         """
         # ``angles`` is filled in __post_init__ before _validate runs.
         assert self.angles is not None
+        # --- Ply angles ------------------------------------------------
+        # Enforce the canonical fibre-angle range (|angle| <= 90) using
+        # the shared parser rule so a mis-typed layup (e.g. 900°) fails
+        # loudly at construction instead of flowing into CLT trig and
+        # being silently mis-classified by the tension-mechanism heuristic.
+        for i, angle in enumerate(self.angles):
+            validate_ply_angle(
+                float(angle), context=f"AnalysisConfig.angles[{i}] = "
+            )
         # --- Wrinkle geometry -----------------------------------------
         # amplitude == 0 is a legitimate "no wrinkle" (flat) case: the
         # mid-surface profile z(x) = A * envelope reduces to 0, so the

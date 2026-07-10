@@ -134,11 +134,23 @@ def test_boundary_valid_values_accepted():
         ({"nx": 0}, r"nx must be >= 1.*got 0"),
         ({"ny": 0}, r"ny must be >= 1.*got 0"),
         ({"nz_per_ply": -2}, r"nz_per_ply must be >= 1.*got -2"),
+        ({"angles": [900.0]},
+         r"AnalysisConfig\.angles\[0\] = .*900.*\[-90, 90\]"),
+        ({"angles": [0.0, 452.0, 0.0]},
+         r"AnalysisConfig\.angles\[1\] = .*452.*\[-90, 90\]"),
+        ({"angles": [0.0, 90.0, -95.0, 0.0]},
+         r"AnalysisConfig\.angles\[2\] = .*-95.*\[-90, 90\]"),
     ],
 )
 def test_invalid_config_raises_value_error(kwargs, match):
     with pytest.raises(ValueError, match=match):
         AnalysisConfig(**kwargs)
+
+
+def test_canonical_angles_accepted():
+    """Boundary and decimal canonical angles construct fine."""
+    cfg = AnalysisConfig(angles=[90.0, -90.0, 0.0, 45.5], analytical_only=True)
+    assert cfg.angles == [90.0, -90.0, 0.0, 45.5]
 
 
 def test_explicit_phase_does_not_require_dual_wrinkle_name():
