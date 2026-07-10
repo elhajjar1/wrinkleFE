@@ -26,10 +26,36 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-__all__ = ["parse_layup", "to_contracted_layup"]
+__all__ = ["parse_layup", "to_contracted_layup", "validate_ply_angle"]
 
 
 _MAX_PLY_ANGLE = 90.0
+
+_CANONICAL_RANGE_MSG = (
+    "Ply angle {angle:g}° is outside the canonical fibre-angle range [-90, 90]."
+)
+
+
+def validate_ply_angle(angle: float, *, context: str = "") -> float:
+    """Raise :class:`ValueError` if ``|angle| > 90``; return the angle unchanged.
+
+    This is the single source of truth for the canonical fibre-angle rule
+    (``|angle| <= 90``) shared by the layup parser
+    (:func:`parse_layup` / :func:`to_contracted_layup`) and downstream
+    validators such as ``AnalysisConfig``. ``0``, ``±90``, decimals, and
+    negatives are all valid.
+
+    Parameters
+    ----------
+    angle:
+        The ply angle in degrees.
+    context:
+        Optional prefix for the error message (e.g. ``"AnalysisConfig.angles[0] = "``)
+        so callers can name the offending field or index.
+    """
+    if abs(angle) > _MAX_PLY_ANGLE:
+        raise ValueError(context + _CANONICAL_RANGE_MSG.format(angle=angle))
+    return angle
 
 
 _PLY_TOKEN_RE = re.compile(
@@ -107,10 +133,7 @@ def _expand_ply_token(token: str) -> list[float]:
             if hint
             else ""
         )
-        raise ValueError(
-            f"Ply angle {angle:g}° is outside the canonical fibre-angle "
-            f"range [-90, 90].{suggestion}"
-        )
+        raise ValueError(_CANONICAL_RANGE_MSG.format(angle=angle) + suggestion)
 
     sign = m.group("sign")
     if sign in ("±", "+-"):
@@ -206,8 +229,15 @@ def to_contracted_layup(angles: Sequence[float]) -> str:
     when no contraction applies the full bracketed angle list is
     returned, so the output is never ambiguous.
 
-    Round-trip property: ``parse_layup(to_contracted_layup(a)) == a``
-    for any non-empty list of angles.
+    Round-trip property: ``parse_layup(to_contracted_layup(a)) == a`` for
+    any non-empty list of canonical angles (``|angle| <= 90``).
+
+    Raises
+    ------
+    ValueError
+        If ``angles`` is empty, or if any angle is non-canonical
+        (``|angle| > 90``) and therefore cannot be represented in
+        contracted notation.
 
     Examples
     --------
@@ -221,6 +251,12 @@ def to_contracted_layup(angles: Sequence[float]) -> str:
     plies = [float(a) for a in angles]
     if not plies:
         raise ValueError("Layup is empty.")
+    for a in plies:
+        if abs(a) > _MAX_PLY_ANGLE:
+            raise ValueError(
+                f"Cannot render non-canonical ply angle {a:g}° in contracted "
+                "notation; angles must be within [-90, 90]."
+            )
 
     candidates: list[str] = []
     n = len(plies)

@@ -13,7 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from wrinklefe.core.layup import parse_layup, to_contracted_layup
+from wrinklefe.core.layup import (
+    parse_layup,
+    to_contracted_layup,
+    validate_ply_angle,
+)
 
 # --------------------------------------------------------------------------- #
 # Contracted notation
@@ -198,6 +202,44 @@ def test_contracted_asymmetric_falls_back_to_expanded():
 def test_contracted_empty_raises():
     with pytest.raises(ValueError):
         to_contracted_layup([])
+
+
+@pytest.mark.parametrize("bad", [100.0, -95.0, 900.0])
+def test_contracted_non_canonical_raises(bad):
+    """Non-canonical angles raise a renderer error, not a parser error."""
+    with pytest.raises(ValueError) as exc:
+        to_contracted_layup([0.0, bad, 45.0])
+    msg = str(exc.value)
+    assert f"{bad:g}" in msg
+    assert "[-90, 90]" in msg
+    # Must read as a renderer error, not leak contracted-string syntax.
+    assert "_n" not in msg
+    assert "Did you mean" not in msg
+
+
+def test_contracted_boundary_angles_round_trip():
+    """±90 and 0 are canonical and still render/round-trip."""
+    angles = [90.0, -90.0, 0.0]
+    out = to_contracted_layup(angles)
+    assert parse_layup(out) == angles
+
+
+def test_validate_ply_angle_accepts_canonical():
+    for a in (0.0, 90.0, -90.0, 45.5, -12.345):
+        assert validate_ply_angle(a) == a
+
+
+@pytest.mark.parametrize("bad", [90.1, -90.1, 900.0, -450.0])
+def test_validate_ply_angle_rejects_non_canonical(bad):
+    with pytest.raises(ValueError) as exc:
+        validate_ply_angle(bad)
+    assert "[-90, 90]" in str(exc.value)
+
+
+def test_validate_ply_angle_context_prefix():
+    with pytest.raises(ValueError) as exc:
+        validate_ply_angle(900.0, context="AnalysisConfig.angles[0] = ")
+    assert str(exc.value).startswith("AnalysisConfig.angles[0] = ")
 
 
 # --------------------------------------------------------------------------- #
