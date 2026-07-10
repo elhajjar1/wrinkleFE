@@ -233,6 +233,20 @@ version produced a given file.
 - GitHub issue forms, pull-request template, and this changelog.
 
 ### Fixed
+- Results-export schema drift (issue #345): the structured JSON export
+  (`wrinklefe.io.results.results_to_dict` / `export_results_json`) and the
+  NCR validation summary (`wrinklefe.io.export.build_analysis_summary`)
+  silently dropped several `AnalysisResults` fields. `results_to_dict`
+  now serialises `modulus_retention_global` and `analytical_onset_knockdown`,
+  and — for progressive-damage runs — a gated `progressive` block
+  (`strength_MPa`, `pristine_strength_MPa`, `knockdown`, `n_increments`,
+  and the `(strain, stress)` load history). The NCR markdown/PDF renderers
+  now surface the global coupon modulus retention and a progressive-damage
+  section, wired end-to-end from the Streamlit Export tab. A new
+  dataclass-walking drift-guard test asserts every `AnalysisResults` field
+  is either exported or on an explicit allowlist, so a future field cannot
+  silently go unexported. Analytical-only runs are unchanged (no
+  `progressive` block, no empty NCR rows).
 - Dual-wrinkle amplitude contract in the FE mesh (issue #305): the
   `stack`/`convex`/`concave` morphologies build the mesh by summing two
   through-thickness–decayed displacement fields, and each constituent
@@ -289,6 +303,20 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Results-export `SCHEMA_VERSION` bumped `1.0` → `1.1` (issue #345): the
+  additive `modulus_retention_global`, `analytical_onset_knockdown`, and
+  gated `progressive` fields in the structured JSON export. Additive only;
+  existing consumers of 1.0 fields are unaffected.
+- `AnalysisConfig` now validates ply angles at construction (issue #344)
+  — **breaking only for previously-accepted invalid inputs**: a config
+  with `|angle| > 90` (e.g. `angles=[900.0, 0.0, 452.0]`) now raises
+  `ValueError` naming the offending index and value instead of silently
+  flowing a non-canonical angle into CLT trig, where the tension-mechanism
+  heuristic mis-classified it (a 900° ply read as a 90° ply). The check
+  reuses the shared `validate_ply_angle` rule from `core.layup` (issue
+  #343), so the parser and the config validator can never drift. Valid
+  layups (decimals, `±90`, long stacks) are unaffected. Follow-up:
+  `Laminate.from_angles` is intentionally left unvalidated for now.
 - `parse_layup` input strictness (issue #308) — **breaking for inputs
   that previously parsed**: ply-angle tokens with `|angle| > 90` (e.g.
   the repeat-count-like `[02/902]s`, which silently parsed as 2° and

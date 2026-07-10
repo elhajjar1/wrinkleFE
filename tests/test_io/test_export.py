@@ -611,6 +611,47 @@ class TestBuildAnalysisSummary:
             "hashin" in c.lower() for c in s["criteria_cited"]
         )
 
+    def test_modulus_retention_global_carried_in_fe_block(self, summary_inputs):
+        """Issue #345: the global coupon modulus retention reaches the
+        NCR fe sub-block."""
+        defect, engineering = summary_inputs
+        eng = dict(engineering)
+        eng["fe"] = {
+            "modulus_retention": 0.92,
+            "modulus_retention_global": 0.85,
+            "retention_factors": {"hashin": 0.81},
+            "critical_criterion": "hashin",
+            "critical_mode": "fiber_compression",
+            "critical_ply": 3,
+        }
+        s = build_analysis_summary(defect=defect, engineering=eng)
+        fe_block = s["engineering_analysis"]["finite_element"]
+        assert fe_block["modulus_retention_global"] == pytest.approx(0.85)
+
+    def test_progressive_block_present_and_cited(self, summary_inputs):
+        """Issue #345: a progressive-damage run reaches the NCR summary."""
+        defect, engineering = summary_inputs
+        eng = dict(engineering)
+        eng["progressive"] = {
+            "knockdown": 0.77,
+            "strength_MPa": 812.5,
+            "pristine_strength_MPa": 1050.0,
+        }
+        s = build_analysis_summary(defect=defect, engineering=eng)
+        prog = s["engineering_analysis"]["progressive_damage"]
+        assert prog is not None
+        assert prog["knockdown"] == pytest.approx(0.77)
+        assert prog["strength_MPa"] == pytest.approx(812.5)
+        assert any(
+            "progressive" in c.lower() for c in s["criteria_cited"]
+        )
+
+    def test_no_progressive_block_when_absent(self, summary_inputs):
+        """Analytical-only inputs carry no progressive sub-block."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        assert s["engineering_analysis"]["progressive_damage"] is None
+
 
 class TestRenderAndExportSummary:
     """Tests for render_summary_markdown / pdf and export_summary."""
@@ -644,6 +685,41 @@ class TestRenderAndExportSummary:
         )
         assert "- Layup: [0/±45/90]s" in md
         assert "- Layup (deg, expanded): [0.0, 45.0, -45.0, 90.0" in md
+
+    def test_markdown_shows_progressive_and_global_modulus(
+        self, summary_inputs
+    ):
+        """Issue #345: the NCR markdown renders the progressive block and
+        the global modulus retention when present."""
+        defect, engineering = summary_inputs
+        eng = dict(engineering)
+        eng["fe"] = {
+            "modulus_retention": 0.92,
+            "modulus_retention_global": 0.85,
+            "retention_factors": {"hashin": 0.81},
+            "critical_criterion": "hashin",
+            "critical_mode": "fiber_compression",
+            "critical_ply": 3,
+        }
+        eng["progressive"] = {
+            "knockdown": 0.77,
+            "strength_MPa": 812.5,
+            "pristine_strength_MPa": 1050.0,
+        }
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=eng)
+        )
+        assert "Modulus retention (global coupon E_x/E_x0): 0.85" in md
+        assert "Progressive-damage evaluation" in md
+        assert "Progressive knockdown" in md
+
+    def test_markdown_omits_progressive_when_absent(self, summary_inputs):
+        """No empty progressive rows on an analytical-only NCR."""
+        defect, engineering = summary_inputs
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
+        assert "Progressive-damage evaluation" not in md
 
     def test_export_md(self, summary_inputs, tmp_path):
         defect, engineering = summary_inputs

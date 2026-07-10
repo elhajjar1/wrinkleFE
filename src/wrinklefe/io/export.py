@@ -584,9 +584,13 @@ def build_analysis_summary(
     engineering : dict
         WrinkleFE results.  Recognised keys: ``analytical_knockdown``,
         ``analytical_strength_MPa``, ``damage_index``, ``max_angle_deg``,
-        ``effective_angle_deg``, ``morphology_factor``, and an optional
-        ``fe`` sub-dict (``modulus_retention``, ``retention_factors``,
-        ``critical_criterion``, ``critical_mode``, ``critical_ply``).
+        ``effective_angle_deg``, ``morphology_factor``, an optional
+        ``fe`` sub-dict (``modulus_retention``,
+        ``modulus_retention_global``, ``retention_factors``,
+        ``critical_criterion``, ``critical_mode``, ``critical_ply``), and
+        an optional ``progressive`` sub-dict (``knockdown``,
+        ``strength_MPa``, ``pristine_strength_MPa``) present only when a
+        progressive-damage run was performed.
     reference : str, optional
         Free-text label tying this attachment to its NCR (e.g. the NCR
         number or part reference).  Optional by design.
@@ -630,6 +634,7 @@ def build_analysis_summary(
         min_ret = min(retention.values()) if retention else None
         fe_block = {
             "modulus_retention": fe.get("modulus_retention"),
+            "modulus_retention_global": fe.get("modulus_retention_global"),
             "min_strength_retention": min_ret,
             "retention_factors": retention,
             "critical_criterion": fe.get("critical_criterion"),
@@ -645,6 +650,20 @@ def build_analysis_summary(
                    if fe.get("critical_mode") else "")
                 + "."
             )
+
+    prog = engineering.get("progressive") or None
+    progressive_block: dict | None = None
+    if prog:
+        progressive_block = {
+            "knockdown": prog.get("knockdown"),
+            "strength_MPa": prog.get("strength_MPa"),
+            "pristine_strength_MPa": prog.get("pristine_strength_MPa"),
+        }
+        criteria.append(
+            "Progressive-damage (crack-band) finite-element strength "
+            "prediction — peak carried nominal stress, wrinkled vs "
+            "pristine coupon."
+        )
     criteria.append(
         "Generic severity banding in this summary is advisory only and is "
         "superseded by the program-specific allowables, drawing "
@@ -694,6 +713,7 @@ def build_analysis_summary(
             ),
             "morphology_factor": engineering.get("morphology_factor"),
             "finite_element": fe_block,
+            "progressive_damage": progressive_block,
         },
         "criteria_cited": criteria,
         "disposition_recommendation": {
@@ -825,8 +845,14 @@ def render_summary_markdown(summary: dict) -> str:
         lines.append("**Finite-element evaluation**")
         lines.append("")
         lines.append(
-            f"- Modulus retention: {_fmt(fe_block['modulus_retention'])}"
+            f"- Modulus retention (local σ₁₁ proxy): "
+            f"{_fmt(fe_block['modulus_retention'])}"
         )
+        if fe_block.get("modulus_retention_global") is not None:
+            lines.append(
+                f"- Modulus retention (global coupon E_x/E_x0): "
+                f"{_fmt(fe_block['modulus_retention_global'])}"
+            )
         lines.append(
             f"- Min strength retention: "
             f"{_fmt(fe_block['min_strength_retention'])}"
@@ -836,6 +862,23 @@ def render_summary_markdown(summary: dict) -> str:
             f"{_fmt(fe_block['critical_criterion'])}"
             f" (mode: {_fmt(fe_block['critical_mode'])}, "
             f"ply: {_fmt(fe_block['critical_ply'])})"
+        )
+    prog_block = ea.get("progressive_damage")
+    if prog_block:
+        lines.append("")
+        lines.append("**Progressive-damage evaluation**")
+        lines.append("")
+        lines.append(
+            f"- Progressive knockdown: "
+            f"**{_fmt(prog_block['knockdown'])}**"
+        )
+        lines.append(
+            f"- Predicted strength: "
+            f"{_fmt(prog_block['strength_MPa'])} MPa"
+        )
+        lines.append(
+            f"- Pristine strength: "
+            f"{_fmt(prog_block['pristine_strength_MPa'])} MPa"
         )
     lines.append("")
     lines.append("## 4. Criteria cited")

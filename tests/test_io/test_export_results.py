@@ -18,11 +18,12 @@ from __future__ import annotations
 import csv
 import json
 import warnings
+from dataclasses import fields
 
 import numpy as np
 import pytest
 
-from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+from wrinklefe.analysis import AnalysisConfig, AnalysisResults, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
 from wrinklefe.io.results import (
     SCHEMA_VERSION,
@@ -315,3 +316,157 @@ class TestExportResultsCSV:
         out = tmp_path / "sub" / "deep" / "per_ply.csv"
         export_results_csv(fe_result, out)
         assert out.exists()
+
+
+# ----------------------------------------------------------------------
+# Progressive-damage + modulus_retention_global export (issue #345)
+# ----------------------------------------------------------------------
+
+def _minimal_config():
+    """A cheap analytical-only config for direct-construction tests."""
+    return AnalysisConfig(
+        angles=[0, 45, -45, 90, 90, -45, 45, 0],
+        analytical_only=True,
+    )
+
+
+def _progressive_result():
+    """AnalysisResults with the progressive-damage fields populated.
+
+    Built by direct construction — the exporter only reads attributes, so
+    no FE/progressive solve is needed to exercise the serialisation path.
+    """
+    return AnalysisResults(
+        config=_minimal_config(),
+        modulus_retention_global=0.87,
+        tension_mechanisms={"kd_fiber": 0.91, "mode": "fiber"},
+        retention_factors={"tsai_wu": 0.82, "hashin": 0.90},
+        progressive_strength_MPa=812.5,
+        progressive_pristine_strength_MPa=1050.0,
+        progressive_knockdown=0.7738,
+        progressive_history=[
+            (0.0, 0.0),
+            (0.001, 520.0),
+            (0.002, 812.5),
+            (0.003, 640.0),
+        ],
+    )
+
+
+class TestProgressiveExport:
+    """The progressive block appears only for progressive runs (#345)."""
+
+    def test_progressive_block_present_with_values(self):
+        payload = results_to_dict(_progressive_result())
+        assert "progressive" in payload
+        prog = payload["progressive"]
+        assert prog["strength_MPa"] == pytest.approx(812.5)
+        assert prog["pristine_strength_MPa"] == pytest.approx(1050.0)
+        assert prog["knockdown"] == pytest.approx(0.7738)
+        assert prog["n_increments"] == 4
+        assert prog["history"][2] == [pytest.approx(0.002), pytest.approx(812.5)]
+
+    def test_progressive_block_json_round_trips(self):
+        payload = results_to_dict(_progressive_result())
+        restored = json.loads(json.dumps(payload, sort_keys=True))
+        assert restored["progressive"]["n_increments"] == 4
+        assert restored["progressive"]["history"][1] == [0.001, 520.0]
+
+    def test_no_progressive_block_for_analytical_run(self, analytical_result):
+        """Analytical-only runs (history is None) carry no progressive key."""
+        payload = results_to_dict(analytical_result)
+        assert "progressive" not in payload
+
+    def test_modulus_retention_global_in_knockdown_factors(self):
+        payload = results_to_dict(_progressive_result())
+        kd = payload["knockdown_factors"]
+        assert kd["modulus_retention_global"] == pytest.approx(0.87)
+
+
+# ----------------------------------------------------------------------
+# Export drift guard — every AnalysisResults field is exported or
+# explicitly allowlisted (prevents a recurrence of issue #345).
+# ----------------------------------------------------------------------
+
+#: AnalysisResults fields whose export key differs from the field name.
+FIELD_TO_EXPORT_KEY = {
+    "retention_factors": "knockdown_factors.fe_per_criterion",
+    "progressive_strength_MPa": "progressive.strength_MPa",
+    "progressive_pristine_strength_MPa": "progressive.pristine_strength_MPa",
+    "progressive_knockdown": "progressive.knockdown",
+    "progressive_history": "progressive.history",
+}
+
+#: Fields intentionally not serialised by results_to_dict, each with a
+#: reason. Heavy objects / large arrays are summarised elsewhere or are
+#: internal intermediates; CZM results are surfaced via the app's own
+#: CZM payload rather than the structured results export.
+INTENTIONALLY_UNEXPORTED = {
+    "mesh": "heavy MeshData; summarised as the top-level 'mesh' block when present",
+    "wrinkle_config": "WrinkleConfiguration object; geometry captured under config",
+    "laminate": "Laminate object; layup captured under config.angles",
+    "field_results": "heavy FE fields; summarised as fe.stress_field_summary",
+    "failure_report": "LaminateFailureReport; flattened into per_ply/first_ply_failure",
+    "failure_indices": "per-criterion FE failure-index arrays (large)",
+    "failure_modes": "per-criterion failure-mode string arrays (large)",
+    "baseline_fi": "pristine per-criterion max FI; retention-calc intermediate",
+    "mesh_max_angle_rad": "FE-mesh diagnostic; analytical max_angle_rad is exported",
+    "czm_damage": "CZM result; surfaced via the app CZM payload, not results_to_dict",
+    "czm_separation": "CZM result; surfaced via the app CZM payload",
+    "czm_traction": "CZM result; surfaced via the app CZM payload",
+    "czm_energy_dissipated": "CZM result; surfaced via the app CZM payload",
+    "czm_energy_per_interface": "CZM result; surfaced via the app CZM payload",
+    "czm_crack_length_per_interface": "CZM result; surfaced via the app CZM payload",
+    "czm_load_displacement": "CZM result; surfaced via the app CZM payload",
+    "czm_converged": "CZM result; surfaced via the app CZM payload",
+    "czm_interfaces_used": "CZM result; surfaced via the app CZM payload",
+    "czm_delamination_report": "CZM result; surfaced via the app CZM payload",
+    "czm_element_centroids": "CZM result; surfaced via the app CZM payload",
+}
+
+
+def _collect_keys(node, acc):
+    """Recursively gather every dict key appearing in a payload."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            acc.add(k)
+            _collect_keys(v, acc)
+    elif isinstance(node, list):
+        for v in node:
+            _collect_keys(v, acc)
+
+
+def _resolve(payload, dotted):
+    """Follow a dotted export path (e.g. 'progressive.strength_MPa')."""
+    node = payload
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True
+
+
+def test_every_results_field_is_exported_or_allowlisted():
+    """Walk AnalysisResults fields; each must be exported by
+    results_to_dict (directly, or via a mapped key) or explicitly
+    allowlisted. Building the representative payload needs no FE solve —
+    the exporters only read attributes."""
+    payload = results_to_dict(_progressive_result())
+    keys: set[str] = set()
+    _collect_keys(payload, keys)
+
+    for f in fields(AnalysisResults):
+        name = f.name
+        if name in keys:
+            continue
+        if name in FIELD_TO_EXPORT_KEY:
+            assert _resolve(payload, FIELD_TO_EXPORT_KEY[name]), (
+                f"field {name!r} maps to {FIELD_TO_EXPORT_KEY[name]!r} but "
+                "that path is missing from the results_to_dict payload"
+            )
+            continue
+        assert name in INTENTIONALLY_UNEXPORTED, (
+            f"field {name!r} is neither exported by results_to_dict nor "
+            "allowlisted — wire it into io/results.py or add it to "
+            "INTENTIONALLY_UNEXPORTED with a reason."
+        )

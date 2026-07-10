@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 # ----------------------------------------------------------------------
 
 #: Bump this when the public JSON layout changes in a non-additive way.
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -249,6 +249,8 @@ def _knockdown_factors(results: AnalysisResults) -> dict:
         out["fe_per_criterion"] = {k: float(v) for k, v in retention.items()}
     if results.modulus_retention is not None:
         out["modulus_retention"] = _f(results.modulus_retention)
+    if results.modulus_retention_global is not None:
+        out["modulus_retention_global"] = _f(results.modulus_retention_global)
     return out
 
 
@@ -309,6 +311,11 @@ def results_to_dict(results: AnalysisResults) -> dict:
             "effective_angle_deg": _f(np.degrees(results.effective_angle_rad)),
             "damage_index": _f(results.damage_index),
             "analytical_knockdown": _f(results.analytical_knockdown),
+            "analytical_onset_knockdown": (
+                _f(results.analytical_onset_knockdown)
+                if results.analytical_onset_knockdown is not None
+                else None
+            ),
             "analytical_modulus_knockdown": _f(
                 results.analytical_modulus_knockdown
             ),
@@ -341,6 +348,24 @@ def results_to_dict(results: AnalysisResults) -> dict:
         payload["tension_mechanisms"] = {
             k: (_f(v) if isinstance(v, (int, float, np.floating)) else v)
             for k, v in results.tension_mechanisms.items()
+        }
+
+    # Progressive-damage block — only when a progressive run happened.
+    # ``progressive_history`` is the reliable sentinel (the scalar fields
+    # default to 0.0 / 1.0); it holds ``(applied_strain, nominal_stress)``
+    # samples from the wrinkled coupon's load history.
+    if results.progressive_history is not None:
+        payload["progressive"] = {
+            "strength_MPa": _f(results.progressive_strength_MPa),
+            "pristine_strength_MPa": _f(
+                results.progressive_pristine_strength_MPa
+            ),
+            "knockdown": _f(results.progressive_knockdown),
+            "n_increments": len(results.progressive_history),
+            "history": [
+                [_f(strain), _f(stress)]
+                for strain, stress in results.progressive_history
+            ],
         }
 
     return payload
