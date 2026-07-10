@@ -1249,6 +1249,9 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
                 fi_vmax_per_crit[crit] = 1.0
         fe = {
             "modulus_retention": float(result.modulus_retention),
+            "modulus_retention_global": float(
+                result.modulus_retention_global
+            ),
             "retention_factors": {
                 k: float(v) for k, v in (result.retention_factors or {}).items()
             },
@@ -1353,6 +1356,20 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         ),
         "fe": fe,
         "czm": czm_payload,
+        # Progressive-damage summary — only when a progressive run happened
+        # (``progressive_history`` is the reliable sentinel; the scalars
+        # default to 0.0 / 1.0).
+        "progressive": (
+            {
+                "knockdown": float(result.progressive_knockdown),
+                "strength_MPa": float(result.progressive_strength_MPa),
+                "pristine_strength_MPa": float(
+                    result.progressive_pristine_strength_MPa
+                ),
+            }
+            if result.progressive_history is not None
+            else None
+        ),
     }
 
 
@@ -2462,6 +2479,9 @@ with tab_export:
                     "fe": (
                         {
                             "modulus_retention": _fe.get("modulus_retention"),
+                            "modulus_retention_global": _fe.get(
+                                "modulus_retention_global"
+                            ),
                             "retention_factors": _fe.get(
                                 "retention_factors"
                             ),
@@ -2474,6 +2494,7 @@ with tab_export:
                         if _fe
                         else None
                     ),
+                    "progressive": _res.get("progressive"),
                 },
                 reference=summary_reference,
                 prepared_by=summary_prepared_by,
