@@ -120,6 +120,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pytest
 
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface
 from wrinklefe.core.laminate import Laminate, Ply
@@ -129,6 +130,8 @@ from wrinklefe.elements.cohesive8 import CohesiveProperties
 from wrinklefe.solver.assembler import GlobalAssembler
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 # ----------------------------------------------------------------------
 # Geometry / material / cohesive parameters

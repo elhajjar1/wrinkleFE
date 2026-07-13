@@ -29,6 +29,8 @@ pytest.importorskip("streamlit", reason="Streamlit not installed.")
 
 import usage_tracking  # noqa: E402  - test-time import after path/skip setup.
 
+pytestmark = pytest.mark.viz
+
 
 def test_gate_disabled_via_env_var(monkeypatch):
     """With the off-switch set, the gate is disabled and render_gate no-ops."""

@@ -163,6 +163,7 @@ class TestRunSweepParallel:
             assert par["results"][key] == seq["results"][key]
 
     @_FORK_ONLY
+    @pytest.mark.slow
     def test_parallel_is_faster_than_sequential(self):
         """4 workers on 8 quarter-second points must beat sequential by
         a wide margin (generous threshold to stay CI-robust)."""

@@ -24,6 +24,8 @@ pytest.importorskip("plotly")
 
 import streamlit_viz as sv  # noqa: E402
 
+pytestmark = pytest.mark.viz
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

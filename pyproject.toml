@@ -99,7 +99,17 @@ ignore = ["N802", "N803", "N806", "N815", "N816"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+# --strict-markers turns a typo'd or undeclared marker into a collection
+# error. The default -m 'not benchmark' keeps a bare `pytest` invocation
+# fast by excluding the pytest-benchmark performance suite; pass an
+# explicit -m on the CLI (e.g. -m benchmark) to override it.
+addopts = "-v --tb=short --strict-markers -m 'not benchmark'"
+markers = [
+    "slow: FE/CZM solves taking more than ~5s per test",
+    "integration: end-to-end pipeline tests",
+    "viz: requires the streamlit/plotly extras",
+    "benchmark: pytest-benchmark performance suite (excluded by default; select with -m benchmark)",
+]
 
 [tool.mypy]
 python_version = "3.10"

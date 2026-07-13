@@ -16,6 +16,7 @@ from __future__ import annotations
 import dataclasses
 
 import numpy as np
+import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
@@ -73,6 +74,7 @@ def _czm_config(**overrides) -> AnalysisConfig:
 
 class TestEnableCzmEndToEnd:
 
+    @pytest.mark.slow
     def test_enable_czm_concave_tension_runs_end_to_end(self):
         """Concave tension wrinkle drives non-zero cohesive damage at the
         crest, the Newton-Raphson loop converges, and the FE knockdown

@@ -35,6 +35,8 @@ import pytest
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
 
+pytestmark = pytest.mark.integration
+
 
 def _li_2025_base_kwargs() -> dict:
     """Common AC318_S6C10 / UD [0]_14 / S-M-2 geometry."""

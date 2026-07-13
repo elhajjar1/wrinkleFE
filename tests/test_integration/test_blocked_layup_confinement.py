@@ -45,6 +45,8 @@ from wrinklefe.analysis import (
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary
 
+pytestmark = pytest.mark.integration
+
 _MUKHOPADHYAY_LAYUP_STR = "[45_2/90_2/-45_2/0_2]_3s"
 _ELHAJJAR_LAYUP_STR = "[0/45/90/-45/0/45/-45/0]_s"
 
