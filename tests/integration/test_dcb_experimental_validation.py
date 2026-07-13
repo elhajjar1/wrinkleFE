@@ -164,6 +164,8 @@ from wrinklefe.solver.assembler import GlobalAssembler  # noqa: E402
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler  # noqa: E402
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver  # noqa: E402
 
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 # ----------------------------------------------------------------------
 # Experimental data (NASA/TM-2020-220498 Figure 32)
 # ----------------------------------------------------------------------

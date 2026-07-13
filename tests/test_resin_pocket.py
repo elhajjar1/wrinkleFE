@@ -15,6 +15,8 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.resin_pocket import ResinPocketSpec, compute_resin_mask
 
+pytestmark = pytest.mark.slow
+
 
 # ----------------------------------------------------------------------
 # Isotropic material constructor

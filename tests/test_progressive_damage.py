@@ -24,6 +24,8 @@ from wrinklefe.solver.progressive_damage import (
     _mode_family,
 )
 
+pytestmark = pytest.mark.slow
+
 ML = MaterialLibrary()
 MAT = ML.get("AC318_S6C10")
 N_PLIES = 15

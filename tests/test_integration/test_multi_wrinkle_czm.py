@@ -34,6 +34,8 @@ import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis, WrinkleSpec
 
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 _ANGLES_8 = [0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0]
 
 # Shared geometry: A=0.3, lambda=8, w=2 at ply interface 3 under 3%

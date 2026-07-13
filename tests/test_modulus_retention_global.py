@@ -30,6 +30,8 @@ import pytest
 from wrinklefe.analysis import AnalysisConfig, AnalysisResults, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
 
+pytestmark = pytest.mark.slow
+
 ML = MaterialLibrary()
 
 # A through-thickness ("uniform") UD wrinkle: the wrinkle penetrates the

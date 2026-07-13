@@ -62,6 +62,74 @@ pytest
 - Maintain or improve test coverage
 - Tests are in the `tests/` directory, organized by module
 
+### Test markers and the fast path
+
+The suite carries four registered pytest markers (declared in
+`pyproject.toml`; `--strict-markers` is on, so a typo'd or undeclared
+marker is a hard collection error rather than a silent no-op):
+
+- `slow` — FE/CZM solves taking more than ~5 s per test.
+- `integration` — end-to-end pipeline tests (`tests/integration/` and
+  `tests/test_integration/`).
+- `viz` — needs the streamlit/plotly extras.
+- `benchmark` — the pytest-benchmark performance suite, excluded from a
+  bare `pytest` run by the default `-m 'not benchmark'` in `addopts`.
+
+For the inner development loop, skip the slow integration solves:
+
+```bash
+pytest -m "not slow"
+```
+
+This deselects every `tests/integration/` file and the handful of
+individually-slow tests elsewhere, running in a small fraction of the
+full-suite time while still exercising the unit and fast-integration
+layers. CI mirrors this: the OS/Python matrix job runs `-m "not slow"`,
+and a dedicated `test-full` job runs the complete suite (`-m "not
+benchmark"`) once and owns the coverage upload. Run the full suite
+locally (`pytest`) before opening a PR when your change touches the FE,
+CZM, or analysis paths.
+
+### Benchmarks
+
+Performance micro-benchmarks for the hot kernels live in
+`tests/test_benchmarks/` and use
+[`pytest-benchmark`](https://pytest-benchmark.readthedocs.io/) (in the
+`dev` extra). Each is marked `benchmark` and `slow`, so it is excluded
+from both a bare `pytest` run and the `-m "not slow"` fast lane. Run and
+save timings explicitly:
+
+```bash
+# run the suite
+pytest tests/test_benchmarks -m benchmark
+
+# capture before/after numbers around a change
+pytest tests/test_benchmarks -m benchmark --benchmark-autosave
+```
+
+CI runs these in a dedicated `benchmarks` job that autosaves the timings
+as a downloadable artifact and, **only if** a committed baseline exists,
+fails the build on a median regression worse than 2x
+(`--benchmark-compare-fail=median:100%`). The 2x threshold is deliberate:
+shared CI runners have large run-to-run CPU variance and a tighter bound
+would flake.
+
+**No baseline is committed.** Timings captured inside an ephemeral
+container are meaningless against a CI runner, so the regression gate is
+dormant by default. To bootstrap it:
+
+1. Download the `benchmark-timings` artifact from a green `main` run of
+   the `benchmarks` job.
+2. Commit the saved `*.json` run into `tests/test_benchmarks/baseline/`
+   in a follow-up PR. The CI compare step activates automatically once
+   that directory exists.
+
+**Refreshing the baseline** is a deliberate, reviewed act — never
+automatic. When an intentional performance change (or a runner upgrade)
+shifts the numbers, capture a fresh artifact from a green `main` run and
+replace the file under `tests/test_benchmarks/baseline/` in its own PR,
+so the reviewer can see exactly which kernels moved and why.
+
 ## Adding Materials
 
 To add a new material to the built-in library, add an entry in `src/wrinklefe/core/material.py` in the `_load_builtins()` method. Include all elastic constants, strength allowables, and a literature reference.

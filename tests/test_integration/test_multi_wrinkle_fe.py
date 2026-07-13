@@ -16,6 +16,8 @@ import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis, WrinkleSpec
 
+pytestmark = pytest.mark.integration
+
 _ANGLES_8 = [0.0, 45.0, -45.0, 90.0, 90.0, -45.0, 45.0, 0.0]
 
 

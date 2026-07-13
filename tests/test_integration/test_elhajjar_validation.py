@@ -15,6 +15,8 @@ import pytest
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.material import MaterialLibrary
 
+pytestmark = pytest.mark.integration
+
 # ======================================================================
 # Fixtures
 # ======================================================================

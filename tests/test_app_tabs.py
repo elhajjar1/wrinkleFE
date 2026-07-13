@@ -21,6 +21,8 @@ pytest.importorskip("streamlit", reason="Streamlit not installed.")
 
 import matplotlib  # noqa: E402
 
+pytestmark = pytest.mark.viz
+
 matplotlib.use("Agg")
 
 

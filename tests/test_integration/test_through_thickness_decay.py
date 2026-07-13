@@ -33,6 +33,8 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.material import MaterialLibrary
 
+pytestmark = pytest.mark.integration
+
 
 def _kd(cfg: AnalysisConfig) -> float:
     return float(WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown)

@@ -25,6 +25,8 @@ import pytest
 from wrinklefe.core.wrinkle import GaussianSinusoidal
 from wrinklefe.viz import figure_context, plot_wrinkle_profile, save_figure
 
+pytestmark = pytest.mark.slow
+
 N_ITERATIONS = 30
 
 

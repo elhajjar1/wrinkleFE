@@ -20,6 +20,8 @@ from wrinklefe.analysis import (
 )
 from wrinklefe.core.material import MaterialLibrary
 
+pytestmark = pytest.mark.integration
+
 # ---------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------
