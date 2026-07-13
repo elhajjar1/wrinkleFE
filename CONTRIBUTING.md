@@ -90,6 +90,46 @@ benchmark"`) once and owns the coverage upload. Run the full suite
 locally (`pytest`) before opening a PR when your change touches the FE,
 CZM, or analysis paths.
 
+### Benchmarks
+
+Performance micro-benchmarks for the hot kernels live in
+`tests/test_benchmarks/` and use
+[`pytest-benchmark`](https://pytest-benchmark.readthedocs.io/) (in the
+`dev` extra). Each is marked `benchmark` and `slow`, so it is excluded
+from both a bare `pytest` run and the `-m "not slow"` fast lane. Run and
+save timings explicitly:
+
+```bash
+# run the suite
+pytest tests/test_benchmarks -m benchmark
+
+# capture before/after numbers around a change
+pytest tests/test_benchmarks -m benchmark --benchmark-autosave
+```
+
+CI runs these in a dedicated `benchmarks` job that autosaves the timings
+as a downloadable artifact and, **only if** a committed baseline exists,
+fails the build on a median regression worse than 2x
+(`--benchmark-compare-fail=median:100%`). The 2x threshold is deliberate:
+shared CI runners have large run-to-run CPU variance and a tighter bound
+would flake.
+
+**No baseline is committed.** Timings captured inside an ephemeral
+container are meaningless against a CI runner, so the regression gate is
+dormant by default. To bootstrap it:
+
+1. Download the `benchmark-timings` artifact from a green `main` run of
+   the `benchmarks` job.
+2. Commit the saved `*.json` run into `tests/test_benchmarks/baseline/`
+   in a follow-up PR. The CI compare step activates automatically once
+   that directory exists.
+
+**Refreshing the baseline** is a deliberate, reviewed act — never
+automatic. When an intentional performance change (or a runner upgrade)
+shifts the numbers, capture a fresh artifact from a green `main` run and
+replace the file under `tests/test_benchmarks/baseline/` in its own PR,
+so the reviewer can see exactly which kernels moved and why.
+
 ## Adding Materials
 
 To add a new material to the built-in library, add an entry in `src/wrinklefe/core/material.py` in the `_load_builtins()` method. Include all elastic constants, strength allowables, and a literature reference.

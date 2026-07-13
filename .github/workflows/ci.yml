@@ -135,3 +135,54 @@ jobs:
             python "$f"
             echo "::endgroup::"
           done
+
+  benchmarks:
+    # Runs the pytest-benchmark performance suite, autosaves the timings
+    # as a build artifact, and — only once a committed baseline exists —
+    # fails on a median regression. We ship WITHOUT a baseline: timings
+    # captured in a throwaway container are meaningless against a CI
+    # runner, so the regression gate stays dormant until a maintainer
+    # bootstraps `tests/test_benchmarks/baseline/` from a green main run
+    # (see CONTRIBUTING.md). The 2x (median:100%) threshold absorbs the
+    # substantial run-to-run CPU variance of shared CI runners; a tighter
+    # bound (e.g. 50%) would flake.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Run benchmarks (autosave)
+        run: |
+          pytest tests/test_benchmarks -m benchmark \
+            --benchmark-autosave --benchmark-storage=.benchmarks
+
+      - name: Upload benchmark timings
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-timings
+          path: .benchmarks/
+          if-no-files-found: warn
+
+      - name: Compare against committed baseline (if present)
+        run: |
+          if [ -d tests/test_benchmarks/baseline ]; then
+            echo "Baseline found — enforcing median:100% (2x) regression gate."
+            pytest tests/test_benchmarks -m benchmark \
+              --benchmark-storage=tests/test_benchmarks/baseline \
+              --benchmark-compare \
+              --benchmark-compare-fail=median:100%
+          else
+            echo "No baseline at tests/test_benchmarks/baseline — regression gate skipped."
+          fi
