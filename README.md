@@ -376,6 +376,32 @@ wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
     --no-analytical-only --parallel 4
 ```
 
+### Saving and reusing a configuration
+
+`analyze` can persist and reload a full `AnalysisConfig`. `--save-config`
+writes the *effective* configuration (after any `--config` file and CLI
+overrides are applied); `--config` reloads it. Any flag given on the same
+command line as `--config` overrides the file value, while flags left off
+keep the file's value:
+
+```bash
+# Save the effective config to a file, then reuse it verbatim
+wrinklefe analyze --amplitude 0.4 --morphology concave --save-config case.json
+wrinklefe analyze --config case.json
+
+# Reuse the file but override one parameter (0.9 wins over the file's value)
+wrinklefe analyze --config case.json --amplitude 0.9
+```
+
+The same round-trip is available programmatically via
+`AnalysisConfig.to_dict()` / `from_dict()` and the
+`save_json` / `load_json` (and extension-dispatching `save` / `load`)
+helpers. The JSON pins a `config_version` field; loading a file with an
+unknown key or a mismatched version fails loudly. YAML is supported when
+PyYAML is installed (it is not a required dependency). Library materials
+serialise by name, custom materials inline, and penetration-gate presets
+serialise by their registry name.
+
 ### Exporting results to CSV / JSON
 
 Numeric outputs (load factor, per-ply failure index, knockdown factors,

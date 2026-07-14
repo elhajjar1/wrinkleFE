@@ -285,6 +285,38 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # ------------------------------------------------------------------ #
+    # Config file save / load (issue #259).
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load an AnalysisConfig from a JSON (or .yaml/.yml, if PyYAML "
+            "is installed) file written by --save-config. Any analyze flag "
+            "given on the same command line overrides the file value; flags "
+            "left off take the file value."
+        ),
+    )
+    p_analyze.add_argument(
+        "--save-config", type=str, default=None, dest="save_config",
+        help=(
+            "Write the effective configuration (after applying any --config "
+            "file and CLI overrides) to this path as JSON (or YAML for a "
+            ".yaml/.yml extension) and continue with the analysis."
+        ),
+    )
+
+    # Config-file precedence (issue #259): give every analyze option a
+    # SUPPRESS default so ``vars(args)`` contains only the flags the user
+    # actually passed. ``_cmd_analyze`` starts from the --config file (or
+    # the AnalysisConfig defaults) and overrides only those explicit flags,
+    # so a flag left off the command line keeps the file's value. Scoped to
+    # the analyze subparser only — the other subcommands keep their
+    # ordinary defaults.
+    for _action in p_analyze._actions:
+        if _action.dest != "help":
+            _action.default = argparse.SUPPRESS
+
+    # ------------------------------------------------------------------ #
     # compare
     # ------------------------------------------------------------------ #
     p_compare = subparsers.add_parser(
@@ -635,75 +667,115 @@ def _parse_angles(angles_str: str | None) -> list[float] | None:
 
 
 def _cmd_analyze(args: argparse.Namespace) -> None:
-    """Handle the ``analyze`` subcommand."""
+    """Handle the ``analyze`` subcommand.
+
+    Config-file precedence (issue #259): the analyze subparser uses
+    ``argparse.SUPPRESS`` defaults, so ``vars(args)`` contains only the
+    flags the user actually passed. We start from the ``--config`` file
+    (or the ``AnalysisConfig`` defaults when there is no file) and apply
+    each explicitly-passed flag as an override — a flag left off keeps the
+    file's value.
+    """
+    import dataclasses
+
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
     from wrinklefe.core.material import MaterialLibrary
 
-    # Resolve material
-    material = None
-    if args.material is not None:
-        lib = MaterialLibrary()
-        material = lib.get(args.material)
+    present = vars(args)
 
-    angles = _parse_angles(args.angles)
+    def given(name: str) -> bool:
+        return name in present
+
+    # Base config: a --config file, or None (fall back to dataclass
+    # defaults built by the constructor below).
+    base: AnalysisConfig | None = None
+    if given("config"):
+        try:
+            base = AnalysisConfig.load(args.config)
+        except (OSError, ValueError, ImportError) as exc:
+            print(f"error: could not load --config: {exc}", file=sys.stderr)
+            sys.exit(2)
+
+    # Direct field overrides from explicitly-passed flags. ``strain`` and
+    # ``material`` / ``angles`` map onto renamed / parsed config fields.
+    overrides: dict = {}
+    _direct = (
+        "amplitude", "wavelength", "width", "morphology",
+        "amplitude_profile", "amplitude_profile_decay_length",
+        "amplitude_profile_axis", "loading", "interface_1", "interface_2",
+        "nx", "ny", "solver", "verbose",
+    )
+    for name in _direct:
+        if given(name):
+            overrides[name] = getattr(args, name)
+    if given("strain"):
+        overrides["applied_strain"] = args.strain
+    if given("material"):
+        overrides["material"] = (
+            MaterialLibrary().get(args.material)
+            if args.material is not None else None
+        )
+    if given("angles"):
+        overrides["angles"] = _parse_angles(args.angles)
+
+    # CZM overrides. Each maps to its AnalysisConfig field; --enable-czm is
+    # a store_true so it only appears when set.
+    if given("enable_czm"):
+        overrides["enable_czm"] = True
+    if given("czm_interfaces"):
+        overrides["czm_interfaces"] = _parse_czm_interfaces(args.czm_interfaces)
+    for name in ("czm_GIc", "czm_GIIc", "czm_sigma_max", "czm_tau_max",
+                 "czm_newton_tol"):
+        if given(name):
+            overrides[name] = getattr(args, name)
+    if given("czm_load_increments"):
+        overrides["czm_n_load_increments"] = args.czm_load_increments
 
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
-    #   1. --enable-czm      -> force full FE solve (CZM requires NR)
-    #   2. --analytical-only -> skip FE
-    #   3. --fe              -> full FE solve
-    #   4. --no-fe           -> analytical-only
-    #   5. default           -> full FE solve
-    enable_czm = bool(getattr(args, "enable_czm", False))
-    if enable_czm:
+    #   1. --enable-czm (or a config with CZM on) -> force FE (CZM needs NR)
+    #   2. --analytical-only                       -> skip FE
+    #   3. --fe / --no-fe                          -> FE / analytical-only
+    #   4. --config file's analytical_only value   -> inherit
+    #   5. default                                 -> full FE solve
+    enable_czm_eff = overrides.get("enable_czm", False) or (
+        base is not None and base.enable_czm
+    )
+    if enable_czm_eff:
         analytical_only = False
-    elif args.analytical_only:
+    elif given("analytical_only"):
         analytical_only = True
-    elif args.fe is True:
+    elif given("fe") and args.fe is True:
         analytical_only = False
-    elif args.fe is False:
+    elif given("fe") and args.fe is False:
         analytical_only = True
+    elif base is not None:
+        analytical_only = base.analytical_only
     else:
         analytical_only = False
+    overrides["analytical_only"] = analytical_only
 
-    # CZM kwargs. When --enable-czm is absent these defaults exactly
-    # match ``AnalysisConfig``'s class defaults so the resulting config
-    # is bit-identical to the pre-CZM behaviour.
-    czm_kwargs: dict = {}
-    if enable_czm:
-        czm_kwargs = dict(
-            enable_czm=True,
-            czm_interfaces=_parse_czm_interfaces(args.czm_interfaces),
-            czm_GIc=args.czm_GIc,
-            czm_GIIc=args.czm_GIIc,
-            czm_sigma_max=args.czm_sigma_max,
-            czm_tau_max=args.czm_tau_max,
-            czm_n_load_increments=args.czm_load_increments,
-            czm_newton_tol=args.czm_newton_tol,
-        )
+    try:
+        if base is None:
+            config = AnalysisConfig(**overrides)
+        else:
+            config = dataclasses.replace(base, **overrides)
+    except (ValueError, KeyError) as exc:
+        print(f"error: invalid configuration: {exc}", file=sys.stderr)
+        sys.exit(2)
 
-    config = AnalysisConfig(
-        amplitude=args.amplitude,
-        wavelength=args.wavelength,
-        width=args.width,
-        morphology=args.morphology,
-        amplitude_profile=args.amplitude_profile,
-        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
-        amplitude_profile_axis=args.amplitude_profile_axis,
-        loading=args.loading,
-        material=material,
-        angles=angles,
-        interface_1=args.interface_1,
-        interface_2=args.interface_2,
-        nx=args.nx,
-        ny=args.ny,
-        applied_strain=args.strain,
-        solver=args.solver,
-        analytical_only=analytical_only,
-        verbose=args.verbose,
-        **czm_kwargs,
-    )
+    enable_czm = config.enable_czm
+
+    # Persist the effective config before running, if requested.
+    if given("save_config"):
+        try:
+            config.save(args.save_config)
+        except (OSError, ValueError, ImportError) as exc:
+            print(f"error: could not write --save-config: {exc}",
+                  file=sys.stderr)
+            sys.exit(2)
+        print(f"Effective configuration written to: {args.save_config}")
 
     analysis = WrinkleAnalysis(config)
     try:
@@ -723,7 +795,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         _print_czm_extras(result)
 
     # Optional CZM figure export.
-    if enable_czm and args.save_czm_figure is not None:
+    if enable_czm and given("save_czm_figure") and args.save_czm_figure is not None:
         if result.czm_damage is None or not result.czm_damage.size:
             print(
                 "warning: --save-czm-figure ignored, no CZM damage data "
@@ -748,7 +820,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
                 )
 
     # Export to JSON if requested
-    if args.output_json is not None:
+    if given("output_json") and args.output_json is not None:
         from wrinklefe.io.export import export_results_json
         export_results_json(result, args.output_json)
         print(f"\nResults exported to: {args.output_json}")

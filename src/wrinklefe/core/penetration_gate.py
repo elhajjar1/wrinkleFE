@@ -106,6 +106,17 @@ GATE_LI2025_VACBAG = GateParameters(
 )
 
 
+#: Name -> :class:`GateParameters` registry of the calibrated presets.
+#: Used by :meth:`wrinklefe.analysis.AnalysisConfig.to_dict` /
+#: :meth:`~wrinklefe.analysis.AnalysisConfig.from_dict` so a saved config
+#: can reference a gate by name rather than inlining (material-realization
+#: specific) constants.  Keyed by each preset's ``.name``.
+GATE_PRESETS: dict[str, GateParameters] = {
+    GATE_LI2024_MOULDED.name: GATE_LI2024_MOULDED,
+    GATE_LI2025_VACBAG.name: GATE_LI2025_VACBAG,
+}
+
+
 def angle_floor(theta_deg, gamma_Y: float):
     """Budiansky-Fleck angle-only knockdown ``1 / (1 + theta_rad/gamma_Y)``.
 

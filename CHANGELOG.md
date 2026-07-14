@@ -15,6 +15,19 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Save / load an `AnalysisConfig` (issue #259).
+  `AnalysisConfig.to_dict()` / `from_dict()` provide a round-trippable,
+  `config_version`-stamped serialisation; `save_json` / `load_json`
+  (and extension-dispatching `save` / `load`, plus optional YAML when
+  PyYAML is installed) read and write config files. Library materials
+  serialise by preset name, custom materials inline, and penetration-gate
+  presets by their registry name (new
+  `wrinklefe.core.penetration_gate.GATE_PRESETS`). Loading rejects
+  unknown keys and version mismatches loudly. The `wrinklefe analyze`
+  CLI gains `--config PATH` (load a config, with explicitly-passed flags
+  overriding the file) and `--save-config PATH` (write the effective
+  config). A follow-up will surface the same config download/upload in
+  the Streamlit app.
 - Streamlit app — **Through-thickness cross-section** on the Configure
   tab: a new panel that draws the deformed ply stack in the (x, z) plane
   so users can see how the wrinkle manifests through the laminate

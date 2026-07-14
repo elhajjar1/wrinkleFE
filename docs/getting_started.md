@@ -82,6 +82,20 @@ wrinklefe converge --tolerance 0.01   # mesh-convergence study
 wrinklefe materials                   # list the material library
 ```
 
+An `analyze` run can be saved to a config file and reloaded later.
+`--save-config PATH` writes the effective configuration; `--config PATH`
+reloads it, with any flag on the same command line overriding the file
+value:
+
+```bash
+wrinklefe analyze --amplitude 0.4 --morphology concave --save-config case.json
+wrinklefe analyze --config case.json                  # reuse verbatim
+wrinklefe analyze --config case.json --amplitude 0.9  # override one value
+```
+
+The same round-trip is available on {class}`~wrinklefe.analysis.AnalysisConfig`
+via `to_dict` / `from_dict` and `save_json` / `load_json`.
+
 ## Runnable examples
 
 The repository's `examples/` directory contains scripts for the common

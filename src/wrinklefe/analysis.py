@@ -37,12 +37,14 @@ References
 from __future__ import annotations
 
 import itertools
+import json
 import logging
 import math
 import os
 from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, fields, replace
+from dataclasses import asdict, dataclass, fields, replace
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -59,6 +61,7 @@ from wrinklefe.core.morphology import (
     WrinklePlacement,
 )
 from wrinklefe.core.penetration_gate import (
+    GATE_PRESETS,
     GateParameters,
     penetration_gate_kd,
 )
@@ -820,6 +823,98 @@ class WrinkleSpec:
     width: float
     ply_interface: int
     phase_offset: float = 0.0
+
+
+#: Schema version stamped into :meth:`AnalysisConfig.to_dict` output and
+#: verified by :meth:`AnalysisConfig.from_dict`.  Bump this whenever the
+#: serialised config layout changes in a non-round-trippable way so old
+#: files fail loudly rather than load into a mismatched schema.
+CONFIG_VERSION = 1
+
+
+def _material_to_jsonable(mat: OrthotropicMaterial | None) -> dict | None:
+    """Serialise a material as a library-preset reference or inline custom.
+
+    A material equal (field-for-field) to the like-named library preset is
+    written as ``{"preset": name}`` so the file stays compact and tracks
+    library updates; any other material — including one that reuses a
+    library name but tweaks a property — is written as
+    ``{"custom": material.to_dict()}`` so no information is lost.
+    """
+    if mat is None:
+        return None
+    try:
+        preset = MaterialLibrary().get(mat.name)
+    except KeyError:
+        preset = None
+    if preset is not None and preset.to_dict() == mat.to_dict():
+        return {"preset": mat.name}
+    return {"custom": mat.to_dict()}
+
+
+def _material_from_jsonable(
+    value: dict | None, *, field: str
+) -> OrthotropicMaterial | None:
+    """Inverse of :func:`_material_to_jsonable`."""
+    if value is None:
+        return None
+    if (
+        not isinstance(value, dict)
+        or len(value) != 1
+        or next(iter(value)) not in ("preset", "custom")
+    ):
+        raise ValueError(
+            f"AnalysisConfig.from_dict: {field} must be null, "
+            f"{{'preset': name}}, or {{'custom': {{...}}}}, got {value!r}"
+        )
+    if "preset" in value:
+        try:
+            return MaterialLibrary().get(value["preset"])
+        except KeyError as exc:
+            raise ValueError(
+                f"AnalysisConfig.from_dict: {field} references unknown "
+                f"material preset {value['preset']!r}"
+            ) from exc
+    return OrthotropicMaterial.from_dict(value["custom"])
+
+
+def _gate_to_jsonable(gate: GateParameters | None) -> dict | None:
+    """Serialise a penetration gate as a registered-preset reference.
+
+    Only the calibrated presets in
+    :data:`wrinklefe.core.penetration_gate.GATE_PRESETS` are serialisable
+    (the parameters are material-realization specific and are not meant to
+    be hand-authored inline).  An unregistered custom gate raises so the
+    lossy write surfaces loudly instead of silently dropping data.
+    """
+    if gate is None:
+        return None
+    preset = GATE_PRESETS.get(gate.name)
+    if preset is not None and preset == gate:
+        return {"preset": gate.name}
+    raise ValueError(
+        f"AnalysisConfig.to_dict: penetration_gate {gate.name!r} is not a "
+        f"registered preset and inline custom gates are not serialisable; "
+        f"use one of {sorted(GATE_PRESETS)} or None"
+    )
+
+
+def _gate_from_jsonable(value: dict | None) -> GateParameters | None:
+    """Inverse of :func:`_gate_to_jsonable`."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"preset"}:
+        raise ValueError(
+            "AnalysisConfig.from_dict: penetration_gate must be null or "
+            f"{{'preset': name}}, got {value!r}"
+        )
+    name = value["preset"]
+    if name not in GATE_PRESETS:
+        raise ValueError(
+            f"AnalysisConfig.from_dict: unknown penetration_gate preset "
+            f"{name!r}; available {sorted(GATE_PRESETS)}"
+        )
+    return GATE_PRESETS[name]
 
 
 @dataclass
@@ -1648,6 +1743,195 @@ class AnalysisConfig:
                         f"AnalysisConfig.wrinkles[{i}].phase_offset must "
                         f"be finite, got {spec.phase_offset}"
                     )
+
+    # ------------------------------------------------------------------
+    # Serialisation (round-trippable save / load) — issue #259
+    # ------------------------------------------------------------------
+    #: Object-valued fields serialised through dedicated encoders rather
+    #: than emitted as-is.  Every remaining field is a JSON-native scalar
+    #: or list, so this list plus the plain fields covers the dataclass in
+    #: full — the completeness guard in the test-suite pins that invariant.
+    _NON_PRIMITIVE_FIELDS = frozenset(
+        {"material", "resin_pocket_material", "angles", "wrinkles",
+         "penetration_gate"}
+    )
+
+    def to_dict(self) -> dict:
+        """Serialise this config to a plain, JSON-round-trippable dict.
+
+        The dict carries a ``config_version`` key and one entry per
+        dataclass field.  Non-primitive fields are handled explicitly:
+        materials become ``{"preset": name}`` or ``{"custom": {...}}``,
+        ``angles`` the resolved ply list, ``wrinkles`` a list of plain
+        dicts, and ``penetration_gate`` a ``{"preset": name}`` reference.
+        Because the values are the *resolved* ones (post ``__post_init__``),
+        the file is self-contained and ``load`` -> ``to_dict`` is
+        idempotent.
+
+        See Also
+        --------
+        from_dict : Inverse constructor.
+        save_json, load_json : File helpers.
+        """
+        out: dict = {"config_version": CONFIG_VERSION}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if f.name in ("material", "resin_pocket_material"):
+                out[f.name] = _material_to_jsonable(value)
+            elif f.name == "wrinkles":
+                out[f.name] = (
+                    None if value is None else [asdict(s) for s in value]
+                )
+            elif f.name == "penetration_gate":
+                out[f.name] = _gate_to_jsonable(value)
+            elif f.name == "angles":
+                out[f.name] = (
+                    None if value is None else [float(a) for a in value]
+                )
+            elif isinstance(value, np.ndarray):
+                out[f.name] = value.tolist()
+            elif isinstance(value, (list, tuple)):
+                out[f.name] = [
+                    float(v) if isinstance(v, (np.integer, np.floating)) else v
+                    for v in value
+                ]
+            elif isinstance(value, np.integer):
+                out[f.name] = int(value)
+            elif isinstance(value, np.floating):
+                out[f.name] = float(value)
+            else:
+                out[f.name] = value
+        return out
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AnalysisConfig:
+        """Reconstruct an :class:`AnalysisConfig` from :meth:`to_dict` output.
+
+        The ``config_version`` must match :data:`CONFIG_VERSION` and every
+        remaining key must name a dataclass field — an unknown key or a
+        version mismatch raises :class:`ValueError` naming the offender
+        rather than being silently ignored.  Construction runs the normal
+        ``__post_init__`` / ``_validate`` path, so a malformed file fails
+        with the same messages a bad in-code config would.
+
+        Raises
+        ------
+        ValueError
+            On version mismatch, unknown keys, or invalid field values.
+        """
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"AnalysisConfig.from_dict expects a dict, got "
+                f"{type(data).__name__}"
+            )
+        payload = dict(data)
+        version = payload.pop("config_version", None)
+        if version != CONFIG_VERSION:
+            raise ValueError(
+                f"AnalysisConfig.from_dict: unsupported config_version "
+                f"{version!r} (expected {CONFIG_VERSION})"
+            )
+        valid = {f.name for f in fields(cls)}
+        unknown = set(payload) - valid
+        if unknown:
+            raise ValueError(
+                f"AnalysisConfig.from_dict: unknown key(s) "
+                f"{sorted(unknown)}; valid fields are {sorted(valid)}"
+            )
+        kwargs = dict(payload)
+        for mkey in ("material", "resin_pocket_material"):
+            if mkey in kwargs:
+                kwargs[mkey] = _material_from_jsonable(kwargs[mkey], field=mkey)
+        if kwargs.get("wrinkles") is not None:
+            specs = kwargs["wrinkles"]
+            if not isinstance(specs, list):
+                raise ValueError(
+                    "AnalysisConfig.from_dict: wrinkles must be null or a "
+                    f"list, got {type(specs).__name__}"
+                )
+            rebuilt: list[WrinkleSpec] = []
+            for i, entry in enumerate(specs):
+                if not isinstance(entry, dict):
+                    raise ValueError(
+                        f"AnalysisConfig.from_dict: wrinkles[{i}] must be a "
+                        f"dict, got {type(entry).__name__}"
+                    )
+                spec_fields = {f.name for f in fields(WrinkleSpec)}
+                extra = set(entry) - spec_fields
+                if extra:
+                    raise ValueError(
+                        f"AnalysisConfig.from_dict: wrinkles[{i}] has "
+                        f"unknown key(s) {sorted(extra)}"
+                    )
+                rebuilt.append(WrinkleSpec(**entry))
+            kwargs["wrinkles"] = rebuilt
+        if "penetration_gate" in kwargs:
+            kwargs["penetration_gate"] = _gate_from_jsonable(
+                kwargs["penetration_gate"]
+            )
+        return cls(**kwargs)
+
+    def to_json(self) -> str:
+        """Return the config as a deterministic JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True)
+
+    def save_json(self, path: str | Path) -> None:
+        """Write the config to ``path`` as JSON (parent dirs created)."""
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(self.to_json(), encoding="utf-8")
+
+    @classmethod
+    def load_json(cls, path: str | Path) -> AnalysisConfig:
+        """Load a config from a JSON file written by :meth:`save_json`."""
+        text = Path(path).read_text(encoding="utf-8")
+        return cls.from_dict(json.loads(text))
+
+    def save_yaml(self, path: str | Path) -> None:
+        """Write the config as YAML.
+
+        Optional: requires PyYAML (not a hard dependency).  Raises
+        :class:`ImportError` with an actionable message when it is absent.
+        """
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError as exc:  # pragma: no cover - env-dependent
+            raise ImportError(
+                "PyYAML is required for YAML config I/O; install it "
+                "(`pip install pyyaml`) or use the JSON helpers."
+            ) from exc
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            yaml.safe_dump(self.to_dict(), sort_keys=True), encoding="utf-8"
+        )
+
+    @classmethod
+    def load_yaml(cls, path: str | Path) -> AnalysisConfig:
+        """Load a config from a YAML file (requires PyYAML)."""
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError as exc:  # pragma: no cover - env-dependent
+            raise ImportError(
+                "PyYAML is required for YAML config I/O; install it "
+                "(`pip install pyyaml`) or use the JSON helpers."
+            ) from exc
+        text = Path(path).read_text(encoding="utf-8")
+        return cls.from_dict(yaml.safe_load(text))
+
+    def save(self, path: str | Path) -> None:
+        """Save the config, dispatching to YAML for ``.yaml`` / ``.yml``."""
+        if Path(path).suffix.lower() in (".yaml", ".yml"):
+            self.save_yaml(path)
+        else:
+            self.save_json(path)
+
+    @classmethod
+    def load(cls, path: str | Path) -> AnalysisConfig:
+        """Load a config, dispatching to YAML for ``.yaml`` / ``.yml``."""
+        if Path(path).suffix.lower() in (".yaml", ".yml"):
+            return cls.load_yaml(path)
+        return cls.load_json(path)
 
 
 # ======================================================================
