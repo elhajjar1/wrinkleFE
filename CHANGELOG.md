@@ -15,6 +15,23 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Streamlit app — **surface resin pockets in the through-thickness
+  cross-section** (issue #361, Part 4 follow-up). The Analyze-tab
+  cross-section now shades the neat-resin pockets that fill the wrinkle
+  troughs under a tool-flat surface, and an expert-mode sidebar toggle
+  (*Surface resin pockets*, with a top/bottom/both side selector) drives
+  both the preview and the FE run so a solve models exactly what the
+  picture shows. The zone is rendered *analytically* — the amber fill
+  between the flat tool line and the deformed outermost undulating ply —
+  rather than by deforming an FE mesh at render time, so the preview
+  stays responsive; a fidelity test cross-checks that rendered gap area
+  against the resin volume `compute_surface_resin_blend` tags on a coarse
+  mesh (agree within ~4%, well inside #361's 10% conservation tolerance).
+  Shown only for tool-flat morphologies (`stack`/`convex`/`concave`, or
+  `graded` with `decay_floor=0`); an incompatible morphology (`uniform`,
+  or `graded` with a non-zero floor) is withheld from the config and
+  flagged with a sidebar note, so a run can never build an invalid
+  config. Opt-in and off by default (feature-off preview unchanged).
 - Tool-flat surfaces with surface resin pockets (issue #361).
   Parts cured against rigid tooling / a caul sheet keep perfectly flat
   outer surfaces while the fibres undulate internally; the wrinkle
