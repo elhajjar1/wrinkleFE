@@ -1208,6 +1208,33 @@ class AnalysisConfig:
     resin_pocket_length_scale: float = 1.0
 
     # ------------------------------------------------------------------
+    # Surface resin pockets (tool-flat outer surface; issue #361).
+    # ------------------------------------------------------------------
+    # Parts cured against rigid tooling / a caul sheet have perfectly flat
+    # outer surfaces: the fibre undulation is confined to the interior and
+    # the wrinkle troughs fill with neat resin just under the flat surface.
+    # When ``enable_surface_resin_pockets`` is True the FE path tags, in the
+    # chosen outer band(s), the transition element that stretches to span
+    # the gap between the flat surface and the outermost undulating ply, and
+    # blends in the isotropic resin card by the excess-stretch fraction
+    # (fibre-free, misalignment angle suppressed).  This is the *complement*
+    # of the crest lens (surface-bonded, trough-following) and reuses
+    # ``resin_pocket_material`` / ``resin_pocket_graded`` for the material
+    # and blend behaviour.  FE-only effect (``modulus_retention_global`` and
+    # FPF in the resin zone); no analytical-path change.  Requires a
+    # tool-flat morphology whose decay reaches 0 at the chosen surface
+    # (``stack``/``convex``/``concave`` or ``graded`` with
+    # ``decay_floor == 0``); ``uniform`` and ``graded`` with a floor leave
+    # wavy surfaces and are rejected.
+    enable_surface_resin_pockets: bool = False
+    # Which tool-flat surface(s) to tag: "top" (+z), "bottom" (-z), "both".
+    surface_pocket_side: str = "top"
+    # Absolute gap (mm) below which an element is treated as flat, so
+    # numerically-flat regions do not produce resin "dust".  ``None`` uses
+    # the ply-thickness-scaled default (0.01 * ply_thickness).
+    surface_pocket_min_gap: float | None = None
+
+    # ------------------------------------------------------------------
     # Progressive-damage FE path (load-stepping ply-discount to ultimate
     # load).  When ``enable_progressive_damage`` is True the FE solve runs
     # the :class:`~wrinklefe.solver.progressive_damage.ProgressiveDamageSolver`
@@ -1550,6 +1577,66 @@ class AnalysisConfig:
                 raise ValueError(
                     f"AnalysisConfig.{name} must be a finite positive "
                     f"float, got {val!r}"
+                )
+
+        # --- Surface resin pockets (tool-flat surface; issue #361) ----
+        if not isinstance(self.enable_surface_resin_pockets, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_surface_resin_pockets must be a "
+                f"bool, got {self.enable_surface_resin_pockets!r}"
+            )
+        if self.surface_pocket_side not in ("top", "bottom", "both"):
+            raise ValueError(
+                f"AnalysisConfig.surface_pocket_side must be 'top', "
+                f"'bottom' or 'both', got {self.surface_pocket_side!r}"
+            )
+        if self.surface_pocket_min_gap is not None and not (
+            isinstance(self.surface_pocket_min_gap, (int, float))
+            and not isinstance(self.surface_pocket_min_gap, bool)
+            and math.isfinite(self.surface_pocket_min_gap)
+            and self.surface_pocket_min_gap >= 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.surface_pocket_min_gap must be a "
+                f"non-negative finite float or None, got "
+                f"{self.surface_pocket_min_gap!r}"
+            )
+        if self.enable_surface_resin_pockets:
+            # Surface pockets are an FE-only material effect; they have no
+            # analytical-path knockdown, so an analytical-only run would
+            # silently drop them (mirrors the FE-only nature of the crest
+            # pocket, but rejected explicitly so it cannot no-op unnoticed).
+            if self.analytical_only:
+                raise ValueError(
+                    "AnalysisConfig: enable_surface_resin_pockets requires "
+                    "the FE path (an isotropic resin zone in the mesh); it "
+                    "has no effect under analytical_only=True. Set "
+                    "analytical_only=False or disable surface resin pockets."
+                )
+            # The chosen surface must be tool-flat, i.e. the through-thickness
+            # decay must reach 0 there. ``uniform`` never decays (wavy
+            # surfaces); ``graded`` with a non-zero floor leaves residual
+            # surface waviness.  Name the conflict and the fix.
+            morph = (
+                self.morphology.lower().strip()
+                if isinstance(self.morphology, str)
+                else self.morphology
+            )
+            if morph == "uniform":
+                raise ValueError(
+                    "AnalysisConfig: uniform morphology has wavy outer "
+                    "surfaces (displacement never decays through the "
+                    "thickness); surface resin pockets require a tool-flat "
+                    "morphology. Use 'stack'/'convex'/'concave', or 'graded' "
+                    "with decay_floor=0."
+                )
+            if morph == "graded" and self.decay_floor > 0.0:
+                raise ValueError(
+                    "AnalysisConfig: graded morphology with decay_floor="
+                    f"{self.decay_floor} leaves the outer surfaces wavy "
+                    "(the floor is a residual surface amplitude); surface "
+                    "resin pockets require a tool-flat surface. Set "
+                    "decay_floor=0 (or use 'stack'/'convex'/'concave')."
                 )
 
         # --- Progressive-damage path ----------------------------------
@@ -2443,6 +2530,12 @@ class WrinkleAnalysis:
         # 4a2. Resin-pocket material zone (Li et al. 2024/2025).
         if cfg.enable_resin_pocket:
             self._attach_resin_pocket(mesh, laminate)
+
+        # 4a3. Surface resin pockets under a tool-flat surface (issue #361).
+        # Runs after the crest lens so the two compose (per-element max)
+        # rather than overwrite.
+        if cfg.enable_surface_resin_pockets:
+            self._attach_surface_resin_pockets(mesh, laminate, wrinkle_config)
 
         results.mesh = mesh
 
@@ -3937,6 +4030,75 @@ class WrinkleAnalysis:
                 "graded" if cfg.resin_pocket_graded else "binary",
                 n_resin, mesh.n_elements, spec.half_length,
                 spec.h_center, z_center,
+            )
+
+    def _attach_surface_resin_pockets(
+        self, mesh: MeshData, laminate: Laminate,
+        wrinkle_config: WrinkleConfiguration,
+    ) -> None:
+        """Tag the surface resin pockets under the tool-flat surface(s).
+
+        Computes the per-element surface-pocket blend weight from the
+        deformed mesh (:func:`compute_surface_resin_blend`) and attaches it
+        to *mesh* using the same fields the crest lens uses, so the
+        assembler / stress-recovery / failure paths pick it up unchanged.
+
+        The two pocket systems **compose**: when the crest lens has already
+        written ``resin_blend`` / ``resin_blend_materials`` (or the binary
+        ``resin_mask``), the surface weight is merged by per-element maximum
+        and the blended materials are rebuilt from the combined weight, so
+        no element is double-blended.  Both reuse ``resin_pocket_material``.
+        """
+        from wrinklefe.core.resin_pocket import (
+            SurfacePocketSpec,
+            compute_surface_resin_blend,
+        )
+
+        cfg = self.config
+        spec = SurfacePocketSpec(
+            side=cfg.surface_pocket_side,
+            min_gap_threshold=cfg.surface_pocket_min_gap,
+        )
+        weight = compute_surface_resin_blend(mesh, wrinkle_config, spec)
+
+        resin_material = cfg.resin_pocket_material
+        if resin_material is None:
+            resin_material = MaterialLibrary().get("EPOXY_S6C10")
+        mesh.resin_material = resin_material
+
+        if cfg.resin_pocket_graded:
+            # Compose with any crest-lens weight already on the mesh, then
+            # rebuild the blended materials from the combined weight so ties
+            # resolve to the larger resin fraction (no double-blend).
+            if mesh.resin_blend is not None:
+                weight = np.maximum(mesh.resin_blend, weight)
+            mesh.resin_blend = weight
+            blend_mats: dict[int, OrthotropicMaterial] = {}
+            for e_np in np.flatnonzero(weight > 0.0):
+                e = int(e_np)
+                ply_mat = laminate.plies[int(mesh.ply_ids[e])].material
+                blend_mats[e] = ply_mat.blend(resin_material, float(weight[e]))
+            mesh.resin_blend_materials = blend_mats
+            n_surface = int((weight > 0.0).sum())
+        else:
+            surface_mask = weight > 0.5
+            if mesh.resin_mask is not None:
+                surface_mask = surface_mask | mesh.resin_mask
+            mesh.resin_mask = surface_mask
+            n_surface = int(surface_mask.sum())
+
+        max_gap = 0.0
+        if np.any(weight > 0.0):
+            ez = mesh.nodes[mesh.elements][:, :, 2]
+            h = ez.max(axis=1) - ez.min(axis=1)
+            max_gap = float(np.max(weight * h))
+
+        if cfg.verbose:
+            import logging
+            logging.getLogger(__name__).info(
+                "Surface resin pockets (%s): %d/%d elements tagged "
+                "(max gap %.3g mm)",
+                cfg.surface_pocket_side, n_surface, mesh.n_elements, max_gap,
             )
 
     def _evaluate_failure(

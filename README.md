@@ -31,6 +31,7 @@ Public link, no account needed.
 - **Multi-wrinkle configurations:** Arbitrary N-wrinkle layouts via `AnalysisConfig.wrinkles` — a list of `WrinkleSpec(amplitude, wavelength, width, ply_interface, phase_offset)` — through the analytical, FE, penetration-gate (per-spec, weakest-link) and CZM paths
 - **Cohesive-zone delamination (CZM):** Bilinear traction–separation interface elements (`enable_czm=True`) with per-interface damage, energy and crack-length reporting — including continuous cohesive surfaces across adjacent wrinkles for crest-to-crest delamination link-up (see `examples/08_multi_wrinkle_czm_linkup.py`)
 - **Resin-pocket material zone:** Graded neat-epoxy lens at the wrinkle crest (modulus + fibre-angle blend, counted once) via `wrinklefe.core.resin_pocket`
+- **Tool-flat surfaces & surface resin pockets:** Parts cured against rigid tooling / a caul sheet keep perfectly flat outer surfaces while the fibres undulate internally; the wrinkle troughs fill with neat resin under the flat surface (`enable_surface_resin_pockets`, `surface_pocket_side` = `top`/`bottom`/`both`). FE-only, trough-following, volume-conserving; composes with the crest lens
 - **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
 - **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue does not capture the *fibre-scale* wrinkle knockdown (it gets the sign wrong: the bifurcation load *rises* with the wrinkle), so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
@@ -198,6 +199,42 @@ config = AnalysisConfig(
 result = WrinkleAnalysis(config).run()
 print(result.progressive_knockdown, result.progressive_strength_MPa)
 ```
+
+### Tool-flat surfaces & surface resin pockets (FE)
+
+Parts cured against rigid tooling (or under a caul sheet) keep
+**perfectly flat outer surfaces**: the fibre undulation is confined to
+the interior, and where the outermost undulating ply dips away from the
+flat surface the gap fills with **neat resin** — surface-visible pockets
+over the wrinkle troughs, thinning to nothing over the crests. WrinkleFE's
+default through-thickness decay already leaves the outer surfaces exactly
+flat (for `stack`/`convex`/`concave`, or `graded` with `decay_floor=0`);
+`enable_surface_resin_pockets` supplies the missing *material* — it tags
+the stretched transition elements as fibre-free isotropic resin (a
+stiffness hole and a matrix-cracking site where fibre-misalignment
+criteria are meaningless).
+
+```python
+config = AnalysisConfig(
+    amplitude=0.354, wavelength=7.4, width=3.7,
+    morphology="graded", loading="compression",   # graded, decay_floor=0 ⇒ flat surface
+    material=lib.get("AC318_S6C10"), angles=[0.0] * 15, ply_thickness=0.42,
+    enable_surface_resin_pockets=True,             # trough pockets under the flat surface
+    surface_pocket_side="both",                    # "top" | "bottom" | "both"
+    resin_pocket_material=lib.get("EPOXY_S6C10"),  # default if left None
+)
+result = WrinkleAnalysis(config).run()
+print(result.modulus_retention_global)
+```
+
+The pocket geometry is volume-conserving (the tagged resin equals the
+integrated kinematic gap between the flat surface and the outermost
+undulating ply) and reuses the crest-lens material plumbing, so the two
+zones **compose** (per-element maximum) when both are enabled. This is an
+**FE-only** effect: the closed-form analytical path keeps using fibre
+angles only. A `uniform` morphology (never flat) or `graded` with
+`decay_floor > 0` (wavy surface) is rejected with a message naming the
+fix.
 
 ### Penetration gate (θ, D/T, z) — UD, zero FE cost
 
