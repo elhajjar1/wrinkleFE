@@ -15,6 +15,7 @@ the app at all:
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -59,3 +60,9 @@ def test_render_gate_noop_for_bare_import(monkeypatch):
 def test_log_event_noop_without_configuration():
     """log_event swallows the missing dependency/secret case without raising."""
     usage_tracking.log_event("run", email="", props={"morphology": "stack"})
+
+
+def test_gate_copy_is_professionally_framed():
+    """The gate copy is tool-first: it must not frame WrinkleFE as 'academic'."""
+    source = inspect.getsource(usage_tracking.render_gate)
+    assert "academic" not in source.lower()
