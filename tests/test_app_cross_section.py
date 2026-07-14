@@ -171,3 +171,218 @@ def test_handles_small_and_odd_ply_counts(app_module):
         )
         assert len(fig.axes) == 1
         plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Surface resin pockets (issue #361, Part 4 follow-up)
+# ---------------------------------------------------------------------------
+#
+# The Analyze-tab cross-section shades the neat-resin pockets that fill the
+# wrinkle troughs under a tool-flat surface.  They are drawn *analytically*
+# (the fill between the flat tool line and the deformed outermost undulating
+# ply) rather than by deforming an FE mesh at render time — so the preview
+# stays responsive.  ``test_preview_gap_matches_fe_tagged_volume`` is the
+# load-bearing test: it cross-checks that analytic gap against the resin
+# volume ``compute_surface_resin_blend`` tags on a real (coarse) mesh, so the
+# cheap render is provably the same geometry the FE run models.
+
+
+def _resin_polys(fig, side):
+    """Return the resin ``PolyCollection`` for one side (or None)."""
+    ax = fig.axes[0]
+    gid = f"surface_resin_{side}"
+    for c in ax.collections:
+        if c.get_gid() == gid:
+            return c
+    return None
+
+
+def _covered_x_intervals(poly):
+    """(x_min, x_max) of each filled polygon in a fill_between collection."""
+    intervals = []
+    for path in poly.get_paths():
+        v = path.vertices
+        if len(v):
+            intervals.append((float(v[:, 0].min()), float(v[:, 0].max())))
+    return intervals
+
+
+def test_is_tool_flat_morphology_predicate(app_module):
+    """The gate matches ``AnalysisConfig`` validation: flat vs wavy."""
+    f = app_module._is_tool_flat_morphology
+    assert f("stack", 0.3) and f("convex", 0.0) and f("concave", 1.0)
+    assert f("graded", 0.0)              # graded with zero floor IS tool-flat
+    assert not f("graded", 0.2)          # a residual floor leaves waviness
+    assert not f("uniform", 0.0)         # never decays
+
+
+def test_surface_pockets_off_by_default_adds_nothing(app_module):
+    """Default (feature off) draws no resin patches — backward compatible."""
+    import matplotlib.pyplot as plt
+
+    fig = _call(app_module, "stack", decay_floor=0.0)
+    try:
+        assert getattr(fig, "surface_pocket_gap_area", None) == {}
+        assert _resin_polys(fig, "top") is None
+        assert _resin_polys(fig, "bottom") is None
+    finally:
+        plt.close(fig)
+
+
+def test_surface_pockets_render_over_troughs_not_crest(app_module):
+    """stack + toggle on tags amber patches over the troughs, none at the
+    central crest (x = 0, where the wrinkle peaks toward the top tool)."""
+    import matplotlib.pyplot as plt
+
+    fig = _call(
+        app_module, "stack", decay_floor=0.0,
+        enable_surface_resin_pockets=True, surface_pocket_side="top",
+    )
+    try:
+        poly = _resin_polys(fig, "top")
+        assert poly is not None, "expected a top surface-resin patch"
+        areas = fig.surface_pocket_gap_area
+        assert areas.get("top", 0.0) > 0.0
+        # The crest at x = 0 pokes toward the tool: no top pocket spans it.
+        intervals = _covered_x_intervals(poly)
+        assert intervals, "resin patch has no filled region"
+        assert not any(lo <= 0.0 <= hi for lo, hi in intervals), (
+            f"top resin should avoid the x=0 crest; covered {intervals}"
+        )
+    finally:
+        plt.close(fig)
+
+
+def test_surface_pockets_both_sides_and_crest_on_bottom(app_module):
+    """side='both' adds patches on both faces; at the top crest (x=0) the
+    *bottom* face troughs, so the bottom patch does span x=0."""
+    import matplotlib.pyplot as plt
+
+    fig = _call(
+        app_module, "stack", decay_floor=0.0,
+        enable_surface_resin_pockets=True, surface_pocket_side="both",
+    )
+    try:
+        top = _resin_polys(fig, "top")
+        bot = _resin_polys(fig, "bottom")
+        assert top is not None and bot is not None
+        areas = fig.surface_pocket_gap_area
+        assert areas.get("top", 0.0) > 0.0 and areas.get("bottom", 0.0) > 0.0
+        bot_intervals = _covered_x_intervals(bot)
+        assert any(lo <= 0.0 <= hi for lo, hi in bot_intervals), (
+            "bottom face should have a pocket at the x=0 crest"
+        )
+    finally:
+        plt.close(fig)
+
+
+@pytest.mark.parametrize(
+    "morphology,decay_floor",
+    [("uniform", 0.0), ("graded", 0.3)],
+)
+def test_surface_pockets_skipped_for_wavy_morphologies(
+    app_module, morphology, decay_floor
+):
+    """Wavy morphologies (uniform, graded+floor) render nothing even when the
+    toggle is on — matching what the FE run would (refuse to) do."""
+    import matplotlib.pyplot as plt
+
+    fig = _call(
+        app_module, morphology, decay_floor=decay_floor,
+        enable_surface_resin_pockets=True, surface_pocket_side="both",
+    )
+    try:
+        assert fig.surface_pocket_gap_area == {}
+        assert _resin_polys(fig, "top") is None
+        assert _resin_polys(fig, "bottom") is None
+    finally:
+        plt.close(fig)
+
+
+def test_graded_zero_floor_is_a_valid_surface_pocket_morphology(app_module):
+    """graded with decay_floor==0 is tool-flat: the toggle DOES render."""
+    import matplotlib.pyplot as plt
+
+    fig = _call(
+        app_module, "graded", decay_floor=0.0,
+        enable_surface_resin_pockets=True, surface_pocket_side="top",
+    )
+    try:
+        assert fig.surface_pocket_gap_area.get("top", 0.0) > 0.0
+        assert _resin_polys(fig, "top") is not None
+    finally:
+        plt.close(fig)
+
+
+@pytest.mark.parametrize("morphology", ["stack", "convex", "concave", "graded"])
+def test_preview_gap_matches_fe_tagged_volume(app_module, morphology):
+    """FIDELITY CROSS-CHECK — the important one.
+
+    The analytic gap area the preview shades must equal the neat-resin
+    volume ``compute_surface_resin_blend`` tags on a real deformed mesh
+    (per unit width), to within the coarse-mesh tolerance #361's own
+    conservation test uses (~10%).  This binds the cheap analytic render to
+    the shared FE function's geometry: they are the same kinematic gap
+    ``-w(x)·decay``, not two independently-derived shapes.
+    """
+    import matplotlib.pyplot as plt
+
+    from wrinklefe.core.laminate import Laminate
+    from wrinklefe.core.material import MaterialLibrary
+    from wrinklefe.core.mesh import WrinkleMesh
+    from wrinklefe.core.morphology import WrinkleConfiguration
+    from wrinklefe.core.resin_pocket import (
+        SurfacePocketSpec,
+        compute_surface_resin_blend,
+    )
+    from wrinklefe.core.wrinkle import GaussianSinusoidal
+
+    amplitude, wavelength, width, ply_t = 0.4, 16.0, 8.0, 0.183
+    angles = list(_ANGLES_12)
+    n = len(angles)
+    decay_floor = 0.0
+
+    # 1) Preview: the analytic gap area (mm² per unit width) it returns.
+    fig = _call(
+        app_module, morphology,
+        amplitude=amplitude, wavelength=wavelength, width=width,
+        ply_thickness=ply_t, decay_floor=decay_floor,
+        enable_surface_resin_pockets=True, surface_pocket_side="top",
+    )
+    preview_area = fig.surface_pocket_gap_area["top"]
+    plt.close(fig)
+    assert preview_area > 0.0
+
+    # 2) FE: build a coarse structured mesh from the SAME morphology field
+    #    the preview uses (from_morphology_name, mid = n // 2 interfaces),
+    #    tag the surface pockets, and integrate weight·height·footprint.
+    mid = n // 2
+    i1, i2 = max(0, mid - 1), min(n - 1, mid)
+    Lx, Ly = 6.0 * width, 4.0
+    prof = GaussianSinusoidal(
+        amplitude=amplitude, wavelength=wavelength, width=width, center=Lx / 2.0
+    )
+    wc = WrinkleConfiguration.from_morphology_name(
+        morphology, prof, interface1=i1, interface2=i2, decay_floor=decay_floor
+    )
+    lam = Laminate.from_angles(angles, MaterialLibrary().get("IM7_8552"), ply_t)
+    mesh = WrinkleMesh(
+        lam, wc, Lx=Lx, Ly=Ly, nx=240, ny=1, nz_per_ply=1
+    ).generate()
+    weight = compute_surface_resin_blend(mesh, wc, SurfacePocketSpec(side="top"))
+
+    ez = mesh.nodes[mesh.elements][:, :, 2]
+    ex = mesh.nodes[mesh.elements][:, :, 0]
+    ey = mesh.nodes[mesh.elements][:, :, 1]
+    height = ez.max(axis=1) - ez.min(axis=1)
+    footprint = (ex.max(axis=1) - ex.min(axis=1)) * (ey.max(axis=1) - ey.min(axis=1))
+    tagged = weight > 0
+    assert tagged.any(), "FE mesh tagged no surface resin — bad fixture"
+    fe_volume = float((weight * height * footprint)[tagged].sum())
+    fe_area_per_width = fe_volume / Ly
+
+    # The two independent computations of the same kinematic gap agree.
+    assert preview_area == pytest.approx(fe_area_per_width, rel=0.10), (
+        f"{morphology}: preview gap {preview_area:.5f} vs FE/width "
+        f"{fe_area_per_width:.5f} (ratio {preview_area / fe_area_per_width:.4f})"
+    )
