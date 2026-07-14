@@ -276,3 +276,151 @@ def test_none_wrinkle_config_is_rejected():
     mesh, _ = _build_mesh()
     with pytest.raises(ValueError, match="wrinkle"):
         compute_surface_resin_blend(mesh, None, SurfacePocketSpec())
+
+
+# ---------------------------------------------------------------------------
+# Part 2 — config validation (fast, no FE solve)
+# ---------------------------------------------------------------------------
+
+
+def _cfg(**over):
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = dict(
+        amplitude=0.354, wavelength=7.4, width=3.7, morphology="graded",
+        loading="compression",
+        material=MaterialLibrary().get("AC318_S6C10"),
+        angles=[0.0] * 15, ply_thickness=0.42,
+        nx=18, ny=3, nz_per_ply=3, domain_length=22.2, domain_width=10.0,
+        applied_strain=-0.01,
+    )
+    base.update(over)
+    return AnalysisConfig(**base)
+
+
+def test_config_accepts_flat_morphologies():
+    """stack/convex/concave and graded(decay_floor=0) are tool-flat: accepted."""
+    for morph in ("stack", "convex", "concave"):
+        _cfg(morphology=morph, enable_surface_resin_pockets=True)
+    _cfg(morphology="graded", decay_floor=0.0, enable_surface_resin_pockets=True)
+
+
+def test_config_rejects_uniform_morphology():
+    with pytest.raises(ValueError, match="uniform morphology has wavy"):
+        _cfg(morphology="uniform", enable_surface_resin_pockets=True)
+
+
+def test_config_rejects_graded_with_decay_floor():
+    with pytest.raises(ValueError, match="decay_floor"):
+        _cfg(
+            morphology="graded", decay_floor=0.2,
+            enable_surface_resin_pockets=True,
+        )
+
+
+def test_config_rejects_analytical_only():
+    with pytest.raises(ValueError, match="requires the FE path"):
+        _cfg(enable_surface_resin_pockets=True, analytical_only=True)
+
+
+def test_config_rejects_bad_side_and_gap():
+    with pytest.raises(ValueError, match="surface_pocket_side"):
+        _cfg(enable_surface_resin_pockets=True, surface_pocket_side="left")
+    with pytest.raises(ValueError, match="surface_pocket_min_gap"):
+        _cfg(enable_surface_resin_pockets=True, surface_pocket_min_gap=-1.0)
+
+
+def test_config_roundtrips_with_surface_pockets():
+    """The new fields ride the #259 dataclass-walk to_dict/from_dict."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    cfg = _cfg(
+        enable_surface_resin_pockets=True, surface_pocket_side="both",
+        surface_pocket_min_gap=0.01,
+    )
+    restored = AnalysisConfig.from_dict(cfg.to_dict())
+    assert restored.enable_surface_resin_pockets is True
+    assert restored.surface_pocket_side == "both"
+    assert restored.surface_pocket_min_gap == 0.01
+
+
+def test_disabled_by_default_is_a_noop():
+    """Off (the default) tags nothing — the mesh carries no resin fields."""
+    cfg = _cfg()
+    assert cfg.enable_surface_resin_pockets is False
+
+
+# ---------------------------------------------------------------------------
+# Part 3 — end-to-end FE wiring (integration; the solve is marked slow)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_fe_pockets_tag_elements_and_reduce_modulus():
+    """Surface pockets soften the laminate: modulus_retention_global drops."""
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    off = WrinkleAnalysis(_cfg()).run()
+    on = WrinkleAnalysis(
+        _cfg(enable_surface_resin_pockets=True, surface_pocket_side="both")
+    ).run()
+
+    assert off.mesh.resin_blend is None
+    assert on.mesh.resin_blend is not None
+    assert int((on.mesh.resin_blend > 0).sum()) > 0
+    assert on.mesh.resin_blend.max() <= 1.0
+    assert on.mesh.resin_material.name == "EPOXY_S6C10"
+    # The soft isotropic pockets reduce the global modulus retention.
+    assert on.modulus_retention_global < off.modulus_retention_global
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_fe_feature_off_is_bit_identical():
+    """Enabling then disabling the flag reproduces the baseline exactly."""
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    a = WrinkleAnalysis(_cfg()).run()
+    b = WrinkleAnalysis(_cfg(enable_surface_resin_pockets=False)).run()
+    assert a.modulus_retention_global == b.modulus_retention_global
+    assert b.mesh.resin_blend is None and b.mesh.resin_mask is None
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_fe_composes_with_crest_lens_no_double_blend():
+    """Crest lens + surface pockets compose by per-element maximum."""
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    crest = WrinkleAnalysis(_cfg(enable_resin_pocket=True)).run()
+    both = WrinkleAnalysis(
+        _cfg(
+            enable_resin_pocket=True,
+            enable_surface_resin_pockets=True, surface_pocket_side="both",
+        )
+    ).run()
+
+    cw = crest.mesh.resin_blend
+    bw = both.mesh.resin_blend
+    assert np.all(bw >= cw - 1e-12)                 # composed via maximum
+    assert int((bw > 0).sum()) >= int((cw > 0).sum())
+    # Exactly one blended material per tagged element (no double-blend).
+    assert len(both.mesh.resin_blend_materials) == int((bw > 0).sum())
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_fe_binary_mode_tags_mask():
+    """resin_pocket_graded=False routes surface pockets through resin_mask."""
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    res = WrinkleAnalysis(
+        _cfg(
+            enable_surface_resin_pockets=True, surface_pocket_side="top",
+            resin_pocket_graded=False,
+        )
+    ).run()
+    assert res.mesh.resin_mask is not None
+    assert res.mesh.resin_mask.sum() > 0
+    assert res.mesh.resin_blend is None

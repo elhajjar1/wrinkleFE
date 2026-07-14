@@ -4081,7 +4081,12 @@ class WrinkleAnalysis:
             mesh.resin_blend_materials = blend_mats
             n_surface = int((weight > 0.0).sum())
         else:
-            surface_mask = weight > 0.5
+            # Binary rule for surface pockets: any transition element with a
+            # gap above ``surface_pocket_min_gap`` is neat resin.  (Unlike the
+            # crest lens, the excess-stretch fraction is a partial fill that
+            # rarely exceeds 0.5, so a ``> 0.5`` cut would tag nothing; graded
+            # is the default and recommended path.)
+            surface_mask = weight > 0.0
             if mesh.resin_mask is not None:
                 surface_mask = surface_mask | mesh.resin_mask
             mesh.resin_mask = surface_mask
