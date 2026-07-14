@@ -305,6 +305,89 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # ------------------------------------------------------------------ #
+    # Wrinkle-defect capabilities (issue #346): surface the AnalysisConfig
+    # fields shipped by the resin-pocket / progressive-damage / penetration-
+    # gate / off-mid-plane-wrinkle work so ``analyze`` (and, via --config,
+    # ``sweep``) can express them. Added BEFORE the SUPPRESS loop below so
+    # they inherit the config-file precedence for free (a flag left off keeps
+    # the --config value; a flag passed overrides it). The long tail of finer
+    # knobs stays reachable through --config.
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--wrinkle-z-position", type=float, default=None,
+        dest="wrinkle_z_position",
+        help=(
+            "Through-thickness position of the single-wrinkle decay centre "
+            "as a fraction of the laminate thickness T: 0.0 = bottom "
+            "surface, 0.5 = midplane (default), 1.0 = top surface. Must be "
+            "in [0, 1]. Consulted by the graded morphology path; ignored "
+            "for stack/convex/concave/uniform."
+        ),
+    )
+    p_analyze.add_argument(
+        "--gate", type=str, default=None, dest="gate",
+        choices=["li2024-moulded", "li2025-vacbag"],
+        help=(
+            "Use the two-parameter (theta, D/T) penetration-gate knockdown "
+            "instead of the Budiansky-Fleck kink-band path, selecting a "
+            "calibrated preset: 'li2024-moulded' (AC318/S6C10 moulded, "
+            "Dataset E) or 'li2025-vacbag' (AC318/S6C10 vacuum-bag, Dataset "
+            "F). UD-scoped -- do not use for multidirectional/blocked "
+            "laminates. For a custom GateParameters, use --config."
+        ),
+    )
+    p_analyze.add_argument(
+        "--resin-pocket", action="store_true", default=False,
+        dest="resin_pocket",
+        help=(
+            "Enable the crest resin-pocket material zone (FE-only). Tags the "
+            "hex elements inside the cosine resin lens at the wrinkle crest "
+            "and blends in an isotropic epoxy card, capturing the soft, "
+            "fibre-free inclusion the machined insert leaves. Forces the FE "
+            "path; no effect on the analytical path."
+        ),
+    )
+    p_analyze.add_argument(
+        "--surface-resin-pockets", action="store_true", default=False,
+        dest="surface_resin_pockets",
+        help=(
+            "Enable surface resin pockets for a tool-flat outer surface "
+            "(FE-only). Tags the transition elements that span the gap "
+            "between the flat surface and the outermost undulating ply and "
+            "blends in the resin card. Requires a tool-flat morphology "
+            "(stack/convex/concave, or graded with decay_floor=0). Forces "
+            "the FE path."
+        ),
+    )
+    p_analyze.add_argument(
+        "--surface-pocket-side", type=str, default="top",
+        dest="surface_pocket_side", choices=["top", "bottom", "both"],
+        help=(
+            "Which tool-flat surface(s) receive surface resin pockets: "
+            "'top' (+z, default), 'bottom' (-z), or 'both'. Only consulted "
+            "when --surface-resin-pockets is set."
+        ),
+    )
+    p_analyze.add_argument(
+        "--progressive", action="store_true", default=False,
+        dest="progressive",
+        help=(
+            "Run the progressive-damage load-stepping solve to an ultimate "
+            "compressive strength (FE-only). Populates the progressive "
+            "strength/knockdown fields; this is the only path that carries "
+            "UD compression past first-ply failure. Forces the FE path; not "
+            "combinable with --enable-czm."
+        ),
+    )
+    p_analyze.add_argument(
+        "--increments", type=int, default=15, dest="increments",
+        help=(
+            "Number of load increments for the --progressive solve "
+            "(default: 15). Only consulted when --progressive is set."
+        ),
+    )
+
     # Config-file precedence (issue #259): give every analyze option a
     # SUPPRESS default so ``vars(args)`` contains only the flags the user
     # actually passed. ``_cmd_analyze`` starts from the --config file (or
@@ -731,10 +814,39 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     if given("czm_load_increments"):
         overrides["czm_n_load_increments"] = args.czm_load_increments
 
+    # Wrinkle-defect capabilities (issue #346). Each maps onto its
+    # AnalysisConfig field and composes with --config / --save-config.
+    if given("wrinkle_z_position"):
+        overrides["wrinkle_z_position"] = args.wrinkle_z_position
+    if given("gate"):
+        from wrinklefe.core.penetration_gate import (
+            GATE_LI2024_MOULDED,
+            GATE_LI2025_VACBAG,
+        )
+        gate_map = {
+            "li2024-moulded": GATE_LI2024_MOULDED,
+            "li2025-vacbag": GATE_LI2025_VACBAG,
+        }
+        overrides["penetration_gate"] = gate_map[args.gate]
+    if given("resin_pocket"):
+        overrides["enable_resin_pocket"] = True
+    if given("surface_resin_pockets"):
+        overrides["enable_surface_resin_pockets"] = True
+    if given("surface_pocket_side"):
+        overrides["surface_pocket_side"] = args.surface_pocket_side
+    if given("progressive"):
+        overrides["enable_progressive_damage"] = True
+    if given("increments"):
+        overrides["progressive_n_increments"] = args.increments
+
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
-    #   1. --enable-czm (or a config with CZM on) -> force FE (CZM needs NR)
+    #   1. --enable-czm, --resin-pocket, --surface-resin-pockets, or
+    #      --progressive (or a config with any of them on) -> force FE.
+    #      These are FE-only features that would silently no-op under
+    #      analytical_only, so they take precedence over --analytical-only
+    #      / --no-fe just as CZM does (issue #346).
     #   2. --analytical-only                       -> skip FE
     #   3. --fe / --no-fe                          -> FE / analytical-only
     #   4. --config file's analytical_only value   -> inherit
@@ -742,7 +854,19 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     enable_czm_eff = overrides.get("enable_czm", False) or (
         base is not None and base.enable_czm
     )
-    if enable_czm_eff:
+    fe_feature_eff = enable_czm_eff or (
+        overrides.get("enable_resin_pocket", False)
+        or overrides.get("enable_surface_resin_pockets", False)
+        or overrides.get("enable_progressive_damage", False)
+        or (
+            base is not None and (
+                base.enable_resin_pocket
+                or base.enable_surface_resin_pockets
+                or base.enable_progressive_damage
+            )
+        )
+    )
+    if fe_feature_eff:
         analytical_only = False
     elif given("analytical_only"):
         analytical_only = True

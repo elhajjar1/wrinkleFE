@@ -2258,6 +2258,16 @@ class AnalysisResults:
                 f"{self.modulus_retention_global:.4f}",
             ])
 
+        if self.progressive_history is not None:
+            lines.extend([
+                "",
+                "  Progressive Damage (ultimate strength):",
+                f"    Wrinkled strength:  {self.progressive_strength_MPa:.1f} MPa",
+                f"    Pristine strength:  "
+                f"{self.progressive_pristine_strength_MPa:.1f} MPa",
+                f"    Strength knockdown: {self.progressive_knockdown:.4f}",
+            ])
+
         if self.czm_damage is not None:
             max_d = float(np.max(self.czm_damage)) if self.czm_damage.size else 0.0
             mean_d = float(np.mean(self.czm_damage)) if self.czm_damage.size else 0.0
