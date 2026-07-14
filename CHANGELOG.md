@@ -316,6 +316,19 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Streamlit app — acknowledgment gate and intro reworded to a
+  professional-tool framing (issue #333): the gate leads with what
+  WrinkleFE computes rather than "free academic software", and the
+  supporting copy, email placeholder, and acknowledgment checkbox use
+  neutral, work-agnostic wording. Gate mechanics, the
+  `WRINKLEFE_DISABLE_GATE` off-switch, usage logging, and the
+  MIT/attribution facts are unchanged.
+- Streamlit app — the **Configure** and **Results** tabs are merged into
+  a single default **Analyze** tab (issue #334), leaving three tabs
+  `["Analyze", "Export", "Help"]`. The wrinkle/laminate preview lives in
+  an expander that is open before the first run and auto-collapses once
+  results exist, so results lead the view after a run. Export and Help
+  are unchanged. (Supersedes the #358 tab-order entry below.)
 - Results-export `SCHEMA_VERSION` bumped `1.0` → `1.1` (issue #345): the
   additive `modulus_retention_global`, `analytical_onset_knockdown`, and
   gated `progressive` fields in the structured JSON export. Additive only;

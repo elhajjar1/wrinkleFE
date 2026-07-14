@@ -1291,7 +1291,8 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
 
     # CZM payload — only populated when AnalysisConfig.enable_czm=True
     # actually drove the FE solve down the Newton-Raphson path. Kept in
-    # a sub-dict so the Results tab can quickly check ``results.get("czm")``
+    # a sub-dict so the Analyze tab's results section can quickly check
+    # ``results.get("czm")``
     # without juggling None-checks on a flat top-level structure.
     czm_payload: dict | None = None
     if cfg_dict.get("enable_czm", False) and result.czm_damage is not None:
@@ -1325,7 +1326,7 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             "crack_length_per_interface": crack_per_iface,
             "energy_per_interface": energy_per_iface,
             # Keep the full AnalysisResults object alongside the
-            # scalar metrics so the Results tab can call
+            # scalar metrics so the Analyze tab's results section can call
             # ``czm_overview_figure(result)`` without re-running the
             # solve. The object is non-pickleable in places (e.g. it
             # holds mesh handles) so the JSON export must strip it; we
@@ -1379,7 +1380,7 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
 
 
 def _render_czm_results(czm: dict) -> None:
-    """Render the *Cohesive Zone Modeling Results* section on the Results tab.
+    """Render the *Cohesive Zone Modeling Results* section on the Analyze tab.
 
     Driven by the ``czm`` sub-dict that ``run_analysis_cached`` attaches
     to the results payload. When the underlying solve was enabled but
@@ -1486,14 +1487,15 @@ def _render_czm_results(czm: dict) -> None:
 profile = GaussianSinusoidal(amplitude=amplitude, wavelength=wavelength, width=width)
 
 
-# Run handler — execute BEFORE tabs render so the Results tab sees the
+# Run handler — execute BEFORE tabs render so the Analyze tab's results
+# section sees the
 # updated session_state and the empty-state placeholder doesn't render
 # alongside the running indicator.
 _demo_pending = st.session_state.pop("_demo_pending", False)
 if run_clicked or _demo_pending:
     if _demo_pending:
-        # Hardcoded analytical-only demo so a first-time visitor can land on
-        # the Results tab in ~2 s without touching the sidebar.
+        # Hardcoded analytical-only demo so a first-time visitor sees results
+        # in the Analyze tab in ~2 s without touching the sidebar.
         _demo_seed_name = (
             "IM7_8552" if "IM7_8552" in MATERIAL_NAMES else MATERIAL_NAMES[0]
         )
@@ -1643,154 +1645,159 @@ if run_clicked or _demo_pending:
         st.success(
             "✓ Demo analysis complete with sensible defaults "
             "(IM7/8552, quasi-isotropic 24-ply, 1 % compression). "
-            "Open the **Results** tab below to see the numbers — "
+            "The results are shown below on this tab — "
             "then tweak any sidebar parameter and click *Run analysis* "
             "to compare against your own configuration."
         )
 
 
-tab_configure, tab_results, tab_export, tab_help = st.tabs(
-    ["Configure", "Results", "Export", "Help"]
+tab_analyze, tab_export, tab_help = st.tabs(
+    ["Analyze", "Export", "Help"]
 )
 
-with tab_configure:
-    # θ_max is shared by the through-thickness caption below and the
-    # mid-surface plot at the bottom of the tab, so compute it once up front.
-    theta_max_deg = np.degrees(profile.max_angle())
+with tab_analyze:
+    with st.expander(
+        "Wrinkle & laminate preview",
+        expanded=("results" not in st.session_state),
+    ):
+        # θ_max is shared by the through-thickness caption below and the
+        # mid-surface plot at the bottom of the tab, so compute it once up front.
+        theta_max_deg = np.degrees(profile.max_angle())
 
-    st.subheader("Through-thickness cross-section")
-    st.caption(
-        "How the wrinkle manifests through the laminate thickness. Each "
-        "band is one ply, coloured by its fibre angle (same hue mapping as "
-        "the layup visualizer below); the section is deformed by the real "
-        "morphology field the FE mesh uses, so it tracks the amplitude, "
-        "wavelength, envelope width"
-        + (
-            ", morphology, and decay-floor"
-            if expert_mode else " (switch on Expert mode to vary morphology)"
+        st.subheader("Through-thickness cross-section")
+        st.caption(
+            "How the wrinkle manifests through the laminate thickness. Each "
+            "band is one ply, coloured by its fibre angle (same hue mapping as "
+            "the layup visualizer below); the section is deformed by the real "
+            "morphology field the FE mesh uses, so it tracks the amplitude, "
+            "wavelength, envelope width"
+            + (
+                ", morphology, and decay-floor"
+                if expert_mode else " (switch on Expert mode to vary morphology)"
+            )
+            + " you set in the sidebar."
         )
-        + " you set in the sidebar."
-    )
-    try:
-        _tt_angles = parse_layup(layup_str)
-    except Exception as e:  # noqa: BLE001 — surface parse errors to the user
-        st.warning(f"Could not parse layup: {e}")
-    else:
-        if len(_tt_angles) < 1:
-            st.info("Enter a layup to render the cross-section.")
-        else:
-            fig_tt = _through_thickness_cross_section(
-                morphology=morphology,
-                amplitude=amplitude,
-                wavelength=wavelength,
-                width=width,
-                angles=_tt_angles,
-                ply_thickness=ply_thickness,
-                decay_floor=decay_floor,
-                amplitude_profile=amplitude_profile,
-                amplitude_profile_decay_length=amplitude_profile_decay_length,
-                amplitude_profile_axis=amplitude_profile_axis,
-            )
-            st.pyplot(fig_tt, clear_figure=True)
-            _total_t = len(_tt_angles) * ply_thickness
-            st.caption(
-                f"{len(_tt_angles)} plies · total thickness "
-                f"{_total_t:.2f} mm · θ_max = {theta_max_deg:.2f}° · "
-                "red outlines mark the wrinkle-interface plies. Vertical "
-                "scale is exaggerated relative to x for visibility."
-                if morphology in ("stack", "convex", "concave")
-                else
-                f"{len(_tt_angles)} plies · total thickness "
-                f"{_total_t:.2f} mm · θ_max = {theta_max_deg:.2f}°. "
-                "Vertical scale is exaggerated relative to x for visibility."
-            )
-
-    if morphology == "graded":
-        with st.expander("Through-thickness amplitude profile", expanded=False):
-            try:
-                _angles_preview = parse_layup(layup_str)
-            except ValueError as e:
-                st.warning(f"Could not parse layup: {e}")
-            else:
-                _n_plies = len(_angles_preview)
-                ply_idx = np.arange(_n_plies)
-                p_mid = (_n_plies - 1) / 2.0
-                raw = np.maximum(0.0, 1.0 - np.abs(ply_idx - p_mid) / max(p_mid, 1e-9))
-                decay = decay_floor + (1.0 - decay_floor) * raw
-                fig_d, ax_d = plt.subplots(figsize=(4, 3))
-                ax_d.barh(ply_idx, decay, color=MORPHOLOGY_COLORS["anti-stack"])
-                ax_d.set_xlabel("Amplitude fraction")
-                ax_d.set_ylabel("Ply index")
-                ax_d.set_xlim(0, 1.05)
-                ax_d.invert_yaxis()
-                fig_d.tight_layout()
-                st.pyplot(fig_d, clear_figure=True)
-                st.caption(
-                    f"Decay floor = {decay_floor:.2f}; surface plies retain "
-                    f"{decay_floor*100:.0f}% of the wrinkle-core amplitude."
-                )
-
-    with st.expander("Layup stack visualizer", expanded=False):
         try:
-            _angles = parse_layup(layup_str)
-        except Exception as e:
+            _tt_angles = parse_layup(layup_str)
+        except Exception as e:  # noqa: BLE001 — surface parse errors to the user
             st.warning(f"Could not parse layup: {e}")
         else:
-            cmap = plt.get_cmap("twilight")
-            n = len(_angles)
-            fig_l, ax_l = plt.subplots(figsize=(5, max(2.5, 0.18 * n)))
-            for i, a in enumerate(_angles):
-                colour = cmap(((a % 180) + 180) % 180 / 180)
-                ax_l.barh(i, 1.0, color=colour, edgecolor="white", linewidth=0.4)
-                ax_l.text(
-                    0.5, i, f"{int(a):+d}°",
-                    ha="center", va="center", fontsize=8,
-                    color="white" if abs(a) % 180 not in (0, 90) else "black",
+            if len(_tt_angles) < 1:
+                st.info("Enter a layup to render the cross-section.")
+            else:
+                fig_tt = _through_thickness_cross_section(
+                    morphology=morphology,
+                    amplitude=amplitude,
+                    wavelength=wavelength,
+                    width=width,
+                    angles=_tt_angles,
+                    ply_thickness=ply_thickness,
+                    decay_floor=decay_floor,
+                    amplitude_profile=amplitude_profile,
+                    amplitude_profile_decay_length=amplitude_profile_decay_length,
+                    amplitude_profile_axis=amplitude_profile_axis,
                 )
-            ax_l.set_xlim(0, 1)
-            ax_l.set_xticks([])
-            ax_l.set_ylabel("Ply index (top ↓ bottom)")
-            ax_l.set_yticks(range(n))
-            ax_l.invert_yaxis()
-            fig_l.tight_layout()
-            st.pyplot(fig_l, clear_figure=True)
-            st.caption(f"{n} plies · colours hue-mapped on ply angle modulo 180°.")
+                st.pyplot(fig_tt, clear_figure=True)
+                _total_t = len(_tt_angles) * ply_thickness
+                st.caption(
+                    f"{len(_tt_angles)} plies · total thickness "
+                    f"{_total_t:.2f} mm · θ_max = {theta_max_deg:.2f}° · "
+                    "red outlines mark the wrinkle-interface plies. Vertical "
+                    "scale is exaggerated relative to x for visibility."
+                    if morphology in ("stack", "convex", "concave")
+                    else
+                    f"{len(_tt_angles)} plies · total thickness "
+                    f"{_total_t:.2f} mm · θ_max = {theta_max_deg:.2f}°. "
+                    "Vertical scale is exaggerated relative to x for visibility."
+                )
 
-    st.subheader("Wrinkle mid-surface profile")
-    x = np.linspace(-3 * width, 3 * width, 800)
-    z = profile.displacement(x)
-    theta_deg = np.degrees(np.arctan(profile.slope(x)))
-    fig, (ax_z, ax_theta) = plt.subplots(
-        2, 1, figsize=(8, 4.6), sharex=True,
-        gridspec_kw={"height_ratios": [1.4, 1.0]},
-    )
-    ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
-    ax_z.axhline(0.0, color="grey", linewidth=0.5)
-    ax_z.set_ylabel("z(x) [mm]")
-    ax_z.set_title("z(x) = A · exp(−x²/w²) · cos(2π x/λ)")
-    ax_z.grid(alpha=0.3)
+        if morphology == "graded":
+            with st.expander("Through-thickness amplitude profile", expanded=False):
+                try:
+                    _angles_preview = parse_layup(layup_str)
+                except ValueError as e:
+                    st.warning(f"Could not parse layup: {e}")
+                else:
+                    _n_plies = len(_angles_preview)
+                    ply_idx = np.arange(_n_plies)
+                    p_mid = (_n_plies - 1) / 2.0
+                    raw = np.maximum(0.0, 1.0 - np.abs(ply_idx - p_mid) / max(p_mid, 1e-9))
+                    decay = decay_floor + (1.0 - decay_floor) * raw
+                    fig_d, ax_d = plt.subplots(figsize=(4, 3))
+                    ax_d.barh(ply_idx, decay, color=MORPHOLOGY_COLORS["anti-stack"])
+                    ax_d.set_xlabel("Amplitude fraction")
+                    ax_d.set_ylabel("Ply index")
+                    ax_d.set_xlim(0, 1.05)
+                    ax_d.invert_yaxis()
+                    fig_d.tight_layout()
+                    st.pyplot(fig_d, clear_figure=True)
+                    st.caption(
+                        f"Decay floor = {decay_floor:.2f}; surface plies retain "
+                        f"{decay_floor*100:.0f}% of the wrinkle-core amplitude."
+                    )
 
-    ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
-    ax_theta.axhline(theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
-    ax_theta.axhline(-theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
-    ax_theta.set_xlabel("x [mm]")
-    ax_theta.set_ylabel("θ(x) [deg]")
-    ax_theta.grid(alpha=0.3)
-    fig.tight_layout()
-    st.pyplot(fig, clear_figure=True)
-    st.caption(
-        f"Numerical θ_max = {theta_max_deg:.2f}°  ·  "
-        f"Closed-form approx arctan(2πA/λ) = "
-        f"{np.degrees(profile.max_angle_approx()):.2f}°"
-    )
+        with st.expander("Layup stack visualizer", expanded=False):
+            try:
+                _angles = parse_layup(layup_str)
+            except Exception as e:
+                st.warning(f"Could not parse layup: {e}")
+            else:
+                cmap = plt.get_cmap("twilight")
+                n = len(_angles)
+                fig_l, ax_l = plt.subplots(figsize=(5, max(2.5, 0.18 * n)))
+                for i, a in enumerate(_angles):
+                    colour = cmap(((a % 180) + 180) % 180 / 180)
+                    ax_l.barh(i, 1.0, color=colour, edgecolor="white", linewidth=0.4)
+                    ax_l.text(
+                        0.5, i, f"{int(a):+d}°",
+                        ha="center", va="center", fontsize=8,
+                        color="white" if abs(a) % 180 not in (0, 90) else "black",
+                    )
+                ax_l.set_xlim(0, 1)
+                ax_l.set_xticks([])
+                ax_l.set_ylabel("Ply index (top ↓ bottom)")
+                ax_l.set_yticks(range(n))
+                ax_l.invert_yaxis()
+                fig_l.tight_layout()
+                st.pyplot(fig_l, clear_figure=True)
+                st.caption(f"{n} plies · colours hue-mapped on ply angle modulo 180°.")
 
+        st.subheader("Wrinkle mid-surface profile")
+        x = np.linspace(-3 * width, 3 * width, 800)
+        z = profile.displacement(x)
+        theta_deg = np.degrees(np.arctan(profile.slope(x)))
+        fig, (ax_z, ax_theta) = plt.subplots(
+            2, 1, figsize=(8, 4.6), sharex=True,
+            gridspec_kw={"height_ratios": [1.4, 1.0]},
+        )
+        ax_z.plot(x, z, color=MORPHOLOGY_COLORS["stack"], linewidth=1.5)
+        ax_z.axhline(0.0, color="grey", linewidth=0.5)
+        ax_z.set_ylabel("z(x) [mm]")
+        ax_z.set_title("z(x) = A · exp(−x²/w²) · cos(2π x/λ)")
+        ax_z.grid(alpha=0.3)
 
-with tab_results:
+        ax_theta.plot(x, theta_deg, color=MORPHOLOGY_COLORS["concave"], linewidth=1.2)
+        ax_theta.axhline(theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
+        ax_theta.axhline(-theta_max_deg, color="grey", linestyle="--", linewidth=0.6)
+        ax_theta.set_xlabel("x [mm]")
+        ax_theta.set_ylabel("θ(x) [deg]")
+        ax_theta.grid(alpha=0.3)
+        fig.tight_layout()
+        st.pyplot(fig, clear_figure=True)
+        st.caption(
+            f"Numerical θ_max = {theta_max_deg:.2f}°  ·  "
+            f"Closed-form approx arctan(2πA/λ) = "
+            f"{np.degrees(profile.max_angle_approx()):.2f}°"
+        )
+
     if "results" not in st.session_state:
-        st.markdown("### No results yet")
         st.markdown(
-            "Click **▶ Run analysis** in the sidebar. Once the analysis "
-            "completes this tab will show:\n\n"
+            "**No results yet** — set up the laminate in the sidebar and "
+            "click **▶ Run analysis**. Results will appear here, below the "
+            "preview."
+        )
+        st.markdown(
+            "Once the analysis completes this view will show:\n\n"
             "- The peak fibre misalignment angle in the wrinkle\n"
             "- The analytical and FE-predicted strength knockdown\n"
             "- A breakdown by failure criterion "
@@ -2552,7 +2559,7 @@ with tab_help:
         width="stretch",
         help=(
             "One-click analytical run with IM7/8552 and a quasi-isotropic "
-            "[0/45/-45/90]_3s layup. Lands on the Results tab in ~2 s."
+            "[0/45/-45/90]_3s layup. Results appear on the Analyze tab in ~2 s."
         ),
     ):
         st.session_state["_demo_pending"] = True
@@ -2561,15 +2568,16 @@ with tab_help:
     st.markdown("---")
     st.markdown(
         "**What to do next**\n\n"
-        "1. *Configure your own laminate* on the **Configure** tab / sidebar "
+        "1. *Configure your own laminate* on the **Analyze** tab / sidebar "
         "(material, layup, wrinkle amplitude and wavelength, loading mode and "
         "strain).\n"
         "2. *Click* **▶ Run analysis** at the bottom of the sidebar.\n"
-        "3. *Review* the **Results** tab — the **Before / after** card up top "
-        "shows strength and stiffness loss in plain language.\n"
+        "3. *Review* the results on the **Analyze** tab — the **Before / "
+        "after** card up top shows strength and stiffness loss in plain "
+        "language.\n"
         "4. *Export* the run as JSON or CSV from the **Export** tab.\n\n"
         "In a hurry? *Try the demo above* for an instant analytical run with "
-        "sensible defaults — you'll land on the **Results** tab.\n\n"
+        "sensible defaults — the results appear on the **Analyze** tab.\n\n"
         "Switch on **Expert mode** at the top of the sidebar to expose the "
         "morphology selector, custom-material editor, decay floor, mesh "
         "density, and the full FE solve."

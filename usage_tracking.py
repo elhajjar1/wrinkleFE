@@ -188,7 +188,10 @@ def render_gate() -> None:
         return
 
     st.title("WrinkleFE")
-    st.subheader("Free academic software — a quick acknowledgment before you start")
+    st.subheader(
+        "Strength & stiffness knockdown for wrinkled composite laminates "
+        "— free, MIT-licensed"
+    )
     st.markdown(
         f"""
 **WrinkleFE** predicts strength and stiffness knockdown in composite
@@ -196,7 +199,7 @@ laminates containing fiber-waviness defects. It is built and maintained by
 **Rani Elhajjar (University of Wisconsin–Milwaukee)** and released free
 under the MIT license.
 
-If WrinkleFE supports your published, academic, or commercial work, please:
+If WrinkleFE supports your analysis or reporting, please:
 
 - **Cite it** — use the *Cite this repository* button on
   [GitHub]({REPO_URL}) (driven by `CITATION.cff`).
@@ -206,11 +209,11 @@ If WrinkleFE supports your published, academic, or commercial work, please:
 
     email = st.text_input(
         "Email (optional)",
-        placeholder="you@university.edu",
+        placeholder="you@company.com",
         help="Only used to send major release notes. Leave blank to skip.",
     )
     agree = st.checkbox(
-        "I'll acknowledge / cite WrinkleFE in any work that uses it."
+        "I'll acknowledge WrinkleFE in work that uses it."
     )
     st.caption(
         "We keep an anonymous usage log (and your email, if you provide one) "
