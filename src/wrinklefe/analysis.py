@@ -1894,7 +1894,7 @@ class AnalysisConfig:
         :class:`ImportError` with an actionable message when it is absent.
         """
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
         except ImportError as exc:  # pragma: no cover - env-dependent
             raise ImportError(
                 "PyYAML is required for YAML config I/O; install it "
@@ -1910,7 +1910,7 @@ class AnalysisConfig:
     def load_yaml(cls, path: str | Path) -> AnalysisConfig:
         """Load a config from a YAML file (requires PyYAML)."""
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
         except ImportError as exc:  # pragma: no cover - env-dependent
             raise ImportError(
                 "PyYAML is required for YAML config I/O; install it "
