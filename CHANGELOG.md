@@ -15,6 +15,26 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Tool-flat surfaces with surface resin pockets (issue #361).
+  Parts cured against rigid tooling / a caul sheet keep perfectly flat
+  outer surfaces while the fibres undulate internally; the wrinkle
+  troughs fill with neat resin just under the flat surface. New
+  `SurfacePocketSpec` / `compute_surface_resin_blend` in
+  `wrinklefe.core.resin_pocket` tag, per column, the transition element
+  that stretches to span the gap between the flat surface and the
+  outermost undulating ply, weighting it by the excess-stretch fraction
+  `max(0, (h - h0) / h)` — exactly volume-conserving (equal to the
+  integrated kinematic gap `-w(x)·decay_last`). Enabled via
+  `AnalysisConfig.enable_surface_resin_pockets`, `surface_pocket_side`
+  (`top`/`bottom`/`both`) and `surface_pocket_min_gap`, reusing
+  `resin_pocket_material` / `resin_pocket_graded`. FE-only effect
+  (`modulus_retention_global` and first-ply failure in the isotropic
+  resin zone); it composes with the crest lens (per-element maximum) and
+  needs no solver changes. Requires a tool-flat morphology whose decay
+  reaches 0 at the chosen surface (`stack`/`convex`/`concave`, or
+  `graded` with `decay_floor=0`); `uniform` and `graded` with a non-zero
+  floor are rejected with a message naming the fix. Disabled by default
+  (bit-identical results when off).
 - Save / load an `AnalysisConfig` (issue #259).
   `AnalysisConfig.to_dict()` / `from_dict()` provide a round-trippable,
   `config_version`-stamped serialisation; `save_json` / `load_json`
