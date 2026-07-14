@@ -1,9 +1,9 @@
 """Guards the Streamlit app's top-level tab layout.
 
-The app opens on **Configure** (Streamlit renders the first tab by
-default), with **Results** and **Export** next and the intro/**Help**
-tab last. These are AppTest smoke checks; they skip when Streamlit is
-not installed (they run under CI, where it is).
+The app opens on **Analyze** (Streamlit renders the first tab by
+default) — the merged Configure + Results view — with **Export** next and
+the intro/**Help** tab last. These are AppTest smoke checks; they skip
+when Streamlit is not installed (they run under CI, where it is).
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ def _app_path() -> str:
     return str(_REPO_ROOT / "app.py")
 
 
-def test_tab_order_defaults_to_configure():
-    """Tabs are Configure, Results, Export, Help in that order — Configure
-    first so the app defaults to it."""
+def test_tab_order_defaults_to_analyze():
+    """Tabs are Analyze, Export, Help in that order — Analyze first so the
+    app defaults to the merged configure-and-results view."""
     from streamlit.testing.v1 import AppTest
 
     at = AppTest.from_file(_app_path(), default_timeout=30)
@@ -40,9 +40,25 @@ def test_tab_order_defaults_to_configure():
     assert not at.exception, [str(e.value) for e in at.exception]
 
     labels = [t.label for t in at.tabs]
-    assert labels[:4] == ["Configure", "Results", "Export", "Help"], (
+    assert labels[:3] == ["Analyze", "Export", "Help"], (
         f"unexpected tab order: {labels}"
     )
+
+
+def test_analyze_tab_shows_call_to_run_and_preview_expander():
+    """Before any run the Analyze tab shows the call-to-run prompt and the
+    wrinkle/laminate preview expander."""
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(_app_path(), default_timeout=30)
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+
+    markdown_blob = " ".join(m.value for m in at.markdown)
+    assert "No results yet" in markdown_blob
+
+    expander_labels = [e.label for e in at.expander]
+    assert "Wrinkle & laminate preview" in expander_labels
 
 
 def test_help_tab_carries_the_intro_and_demo_button():

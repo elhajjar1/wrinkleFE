@@ -1,4 +1,4 @@
-"""Tests for the Configure tab's through-thickness cross-section helper.
+"""Tests for the Analyze tab's through-thickness cross-section helper.
 
 ``app._through_thickness_cross_section`` renders the deformed ply stack
 in the (x, z) plane so the user can see how the wrinkle manifests
