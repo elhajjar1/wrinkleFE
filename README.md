@@ -55,6 +55,12 @@ cd wrinklefe
 pip install -e ".[all]"
 ```
 
+The 3D cohesive-zone renders (`plot_interface_damage_3d` /
+`plot_crack_front_3d`) use PyVista, which pulls in VTK (~150 MB). It is an
+optional dependency, so plain `pip install wrinklefe` stays lean and
+headless-safe; install `pip install "wrinklefe[vtk]"` when you need those
+plots (it is already included in `[all]`).
+
 Verify the install:
 
 ```bash

@@ -775,7 +775,7 @@ def _require_pyvista():
     except ImportError as exc:  # pragma: no cover - exercised in sparse envs
         raise ImportError(
             "PyVista is required for 3D cohesive-zone visualizations. "
-            "Install it with `pip install pyvista`."
+            'Install it with `pip install "wrinklefe[vtk]"`.'
         ) from exc
     return pv
 
