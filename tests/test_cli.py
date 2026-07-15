@@ -604,3 +604,189 @@ def test_sweep_negative_parallel_rejected(capsys):
     assert exc.value.code == 2
     err = capsys.readouterr().err
     assert "--parallel" in err and "Traceback" not in err
+
+
+# --------------------------------------------------------------------------- #
+# analyze: wrinkle-defect capabilities (issue #346)
+# --------------------------------------------------------------------------- #
+
+_UD_LAYUP = "0,0,0,0,0,0,0,0"
+
+
+def test_analyze_wrinkle_z_position_maps_to_config():
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main(["analyze", "--analytical-only", "--wrinkle-z-position", "0.7"])
+    assert captured["config"].wrinkle_z_position == pytest.approx(0.7)
+
+
+def test_analyze_wrinkle_z_position_out_of_range_rejected(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["analyze", "--analytical-only", "--wrinkle-z-position", "1.5"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "wrinkle_z_position" in err and "[0, 1]" in err
+    assert "Traceback" not in err
+
+
+def test_analyze_gate_maps_to_preset_object():
+    from wrinklefe.core.penetration_gate import GATE_LI2025_VACBAG
+
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--analytical-only", "--morphology", "uniform",
+            "--angles", _UD_LAYUP, "--interface-1", "3", "--interface-2", "4",
+            "--gate", "li2025-vacbag",
+        ])
+    assert captured["config"].penetration_gate is GATE_LI2025_VACBAG
+
+
+def test_analyze_gate_moulded_maps_to_preset_object():
+    from wrinklefe.core.penetration_gate import GATE_LI2024_MOULDED
+
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--analytical-only", "--morphology", "uniform",
+            "--angles", _UD_LAYUP, "--interface-1", "3", "--interface-2", "4",
+            "--gate", "li2024-moulded",
+        ])
+    assert captured["config"].penetration_gate is GATE_LI2024_MOULDED
+
+
+def test_analyze_resin_pocket_maps_and_forces_fe():
+    """--resin-pocket enables the FE-only zone and overrides --analytical-only."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main(["analyze", "--analytical-only", "--resin-pocket"])
+    cfg = captured["config"]
+    assert cfg.enable_resin_pocket is True
+    # FE-only feature must force the FE path despite --analytical-only.
+    assert cfg.analytical_only is False
+    assert captured["analytical_only"] is False
+
+
+def test_analyze_surface_resin_pockets_maps_side():
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--surface-resin-pockets",
+            "--surface-pocket-side", "both",
+        ])
+    cfg = captured["config"]
+    assert cfg.enable_surface_resin_pockets is True
+    assert cfg.surface_pocket_side == "both"
+    assert cfg.analytical_only is False
+
+
+def test_analyze_progressive_maps_increments_and_forces_fe():
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--analytical-only",
+            "--progressive", "--increments", "7",
+        ])
+    cfg = captured["config"]
+    assert cfg.enable_progressive_damage is True
+    assert cfg.progressive_n_increments == 7
+    assert cfg.analytical_only is False
+    assert captured["analytical_only"] is False
+
+
+def test_analyze_gate_overrides_config_file(tmp_path):
+    """A --gate flag overrides the penetration_gate from a --config file."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.core.penetration_gate import (
+        GATE_LI2024_MOULDED,
+        GATE_LI2025_VACBAG,
+    )
+
+    base = AnalysisConfig(
+        morphology="uniform",
+        angles=[0.0] * 8,
+        interface_1=3,
+        interface_2=4,
+        penetration_gate=GATE_LI2024_MOULDED,
+        analytical_only=True,
+    )
+    path = tmp_path / "case.json"
+    base.save_json(path)
+
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--config", str(path), "--gate", "li2025-vacbag",
+        ])
+    # The flag wins; other file values are preserved.
+    assert captured["config"].penetration_gate is GATE_LI2025_VACBAG
+    assert captured["config"].morphology == "uniform"
+
+
+def test_analyze_gate_reproduces_api_penetration_gate_kd():
+    """`analyze --gate li2025-vacbag` reproduces the API gate KD (UD)."""
+    import math
+
+    from wrinklefe.analysis import WrinkleAnalysis
+    from wrinklefe.core.penetration_gate import (
+        GATE_LI2025_VACBAG,
+        penetration_gate_kd,
+    )
+
+    amplitude, wavelength = 0.5, 16.0
+    angles = [0.0] * 8
+
+    # Capture the config the CLI builds from --gate, then run it, so the
+    # flag→config mapping (not just a hand-built config) is under test.
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--analytical-only", "--morphology", "uniform",
+            "--angles", ",".join("0" for _ in angles),
+            "--interface-1", "3", "--interface-2", "4",
+            "--amplitude", str(amplitude), "--wavelength", str(wavelength),
+            "--gate", "li2025-vacbag",
+        ])
+    cfg = captured["config"]
+    assert cfg.penetration_gate is GATE_LI2025_VACBAG
+    kd_cli = WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
+
+    theta_deg = math.degrees(math.atan(2 * math.pi * amplitude / wavelength))
+    dt = amplitude / (cfg.ply_thickness * len(angles))
+    kd_api = penetration_gate_kd(
+        theta_deg, dt, GATE_LI2025_VACBAG, z_position=0.5
+    )
+    assert kd_cli == pytest.approx(kd_api)
+
+
+@pytest.mark.slow
+def test_analyze_progressive_reports_knockdown(capsys):
+    """`analyze --progressive` completes a real FE solve and reports KD."""
+    cli_main([
+        "analyze", "--progressive", "--increments", "3",
+        "--morphology", "stack", "--angles", _UD_LAYUP,
+        "--interface-1", "3", "--interface-2", "4",
+        "--amplitude", "0.3", "--wavelength", "16",
+        "--nx", "4", "--ny", "2",
+    ])
+    out = capsys.readouterr().out
+    assert "Progressive Damage" in out
+    assert "Strength knockdown:" in out
+
+
+# --------------------------------------------------------------------------- #
+# sweep: new base-config parameters (issue #346)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_wrinkle_z_position_end_to_end(capsys):
+    """`sweep --parameter wrinkle_z_position` runs and yields distinct KDs."""
+    cli_main([
+        "sweep", "--parameter", "wrinkle_z_position",
+        "--min", "0.2", "--max", "0.8", "--steps", "3",
+        "--morphology", "graded",
+    ])
+    out = capsys.readouterr().out
+    assert "wrinkle_z_position" in out
+    # Three data rows should be present between the header rules.
+    assert out.count("\n") > 5

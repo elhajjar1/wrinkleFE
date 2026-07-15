@@ -413,6 +413,46 @@ wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
     --no-analytical-only --parallel 4
 ```
 
+#### Wrinkle-defect capabilities
+
+`analyze` also exposes the newer defect models. The FE-only features
+(`--resin-pocket`, `--surface-resin-pockets`, `--progressive`) force the
+full FE solve, so they take precedence over `--analytical-only` / `--no-fe`:
+
+```bash
+# Two-parameter (theta, D/T) penetration gate — the best UD predictor —
+# selecting a calibrated preset (UD-scoped; not for multidirectional laminates)
+wrinklefe analyze --gate li2025-vacbag --morphology uniform \
+    --angles 0,0,0,0,0,0,0,0 --interface-1 3 --interface-2 4 --amplitude 0.5
+
+# Off-mid-plane wrinkle position (fraction of thickness, in [0, 1])
+wrinklefe analyze --morphology graded --wrinkle-z-position 0.7
+
+# Crest resin pocket + progressive-damage ultimate strength (FE)
+wrinklefe analyze --resin-pocket --progressive --increments 15
+
+# Surface resin pockets under a tool-flat surface (FE)
+wrinklefe analyze --surface-resin-pockets --surface-pocket-side both
+```
+
+| Flag | Config field | Notes |
+| --- | --- | --- |
+| `--wrinkle-z-position Z` | `wrinkle_z_position` | Fraction of thickness in `[0, 1]` (0.5 = midplane); graded morphology |
+| `--gate {li2024-moulded,li2025-vacbag}` | `penetration_gate` | Calibrated `GateParameters` preset; UD-scoped |
+| `--resin-pocket` | `enable_resin_pocket` | Crest resin lens (FE-only) |
+| `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}` | `enable_surface_resin_pockets` / `surface_pocket_side` | Tool-flat surface pockets (FE-only) |
+| `--progressive` / `--increments N` | `enable_progressive_damage` / `progressive_n_increments` | Load-stepping ultimate strength (FE-only) |
+
+The long tail of finer knobs (custom `GateParameters`, resin-pocket
+geometry scales, progressive load-ramp targets) stays reachable through
+`--config` (see below). `sweep` sweeps any numeric `AnalysisConfig` field,
+including `wrinkle_z_position`, over its `--config` base setup:
+
+```bash
+wrinklefe sweep --parameter wrinkle_z_position --min 0.2 --max 0.8 \
+    --steps 4 --morphology graded
+```
+
 ### Saving and reusing a configuration
 
 `analyze` can persist and reload a full `AnalysisConfig`. `--save-config`

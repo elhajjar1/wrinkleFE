@@ -15,6 +15,27 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CLI — **wrinkle-defect capabilities on `analyze`** (issue #346). The
+  new defect models shipped for the scripting API are now reachable from
+  the command line: `--wrinkle-z-position Z` (off-mid-plane wrinkle,
+  validated to `[0, 1]`), `--gate {li2024-moulded,li2025-vacbag}` (the
+  two-parameter (θ, D/T) penetration gate, selecting a calibrated
+  `GateParameters` preset), `--resin-pocket` (crest resin lens),
+  `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}`
+  (tool-flat surface pockets), and `--progressive` / `--increments N`
+  (load-stepping ultimate strength). The flags inherit the #259
+  config-file precedence, so any flag left off keeps the `--config`
+  value and any flag passed overrides it (and is written by
+  `--save-config`); the FE-only features force the FE path with the same
+  precedence as `--enable-czm` rather than silently no-op'ing under
+  `--analytical-only`. The result summary now prints the progressive
+  knockdown when a progressive run happened. `sweep --parameter
+  wrinkle_z_position` works end-to-end over a `--config` base. The
+  surface-resin-pocket flags (issue #361, newer than #346) are included
+  as part of the same CLI-reachability story. Buckling was **deferred**:
+  the linearized microbuckling solver is standalone diagnostic
+  infrastructure with no `AnalysisConfig` knob and is documented as not a
+  usable knockdown predictor, so there is no clean field to surface.
 - Streamlit app — **surface resin pockets in the through-thickness
   cross-section** (issue #361, Part 4 follow-up). The Analyze-tab
   cross-section now shades the neat-resin pockets that fill the wrinkle
