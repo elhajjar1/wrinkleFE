@@ -152,11 +152,29 @@ the docs and the dataclass cannot drift.
 | `amplitude_profile` | name | `"constant"` | Spatially varying in-plane modulation of the wrinkle amplitude `A`, applied on top of the wrinkle's own longitudinal envelope. `"constant"` (default) preserves the legacy uniform `A`; `"gaussian"` multiplies `A` by `exp(−(s/d)²)`; `"linear"` multiplies `A` by `max(0, 1 − \|s\|/d)` (clipped). `s` is the coordinate from the wrinkle centre along `amplitude_profile_axis` and `d` is `amplitude_profile_decay_length`. | one of `constant`, `gaussian`, `linear` |
 | `amplitude_profile_decay_length` | mm | `None` | Decay length `d` (mm) for the Gaussian sigma or linear-decay extent. `None` falls back to the wrinkle profile's own `width`. Ignored when `amplitude_profile == "constant"`. | finite and > 0 when set |
 | `amplitude_profile_axis` | axis | `"x"` | In-plane axis along which the amplitude modulation runs. Pick `"y"` for an independent transverse tapering of `A` that does not stack with the existing longitudinal envelope on `x`. | one of `x`, `y` |
+| `transverse_mode` | name | `"uniform"` | Through-width (transverse, y-direction) wrinkle-surface envelope `f(y)`. `"uniform"` (default) builds the bare x-only wrinkle exactly as before (bit-identical). The non-uniform modes wrap the profile in a `WrinkleSurface3D` so the crest amplitude varies across the specimen width: `"gaussian_decay"` decays it toward the edges (localized mid-width defect), `"sinusoidal_y"` ripples it across the width, and `"elliptical"` confines it to a mid-width patch. **FE-only** — a non-uniform mode requires `analytical_only=False` and is not yet combinable with multi-wrinkle (`wrinkles`) or `enable_czm` (both rejected at construction). | one of `uniform`, `gaussian_decay`, `sinusoidal_y`, `elliptical` |
+| `transverse_span` | mm | `None` | Specimen width `span_y` seen by the transverse envelope. `None` tracks `domain_width` so the envelope always spans the meshed y-extent. Ignored when `transverse_mode == "uniform"`. | finite and > 0 when set |
+| `transverse_width` | mm | `None` | Transverse localization half-width `width_y`: the Gaussian 1/e length for `"gaussian_decay"` and the ellipse half-width for `"elliptical"` (ignored by `"uniform"`/`"sinusoidal_y"`). `None` resolves to `span_y / 4` — a localized mid-width patch whose amplitude has fallen to `exp(−4) ≈ 0.018` of the crest at the edges (`gaussian_decay`) or that occupies the central half of the width (`elliptical`). | finite and > 0 when set |
 
 Peak fibre misalignment: `θ_max ≈ arctan(2πA/λ)` (exact for a pure
 cosine; dimensionless because A and λ share the mm length unit). See the
 `WrinkleProfile` class docstring in `src/wrinklefe/core/wrinkle.py` for
 the full per-profile geometric definitions.
+
+#### Through-width (transverse) variation
+
+By default a wrinkle is treated as uniform across the full specimen width
+(`transverse_mode="uniform"`). Real manufacturing wrinkles are usually
+*localized* — high amplitude mid-width, fading toward the edges — so a
+uniform-width assumption overstates the defect volume and biases the
+knockdown conservative. Set `transverse_mode` to `"gaussian_decay"`,
+`"sinusoidal_y"`, or `"elliptical"` to run the FE path with a full
+`z(x, y)` wrinkle surface (`transverse_span` and `transverse_width` tune
+the width envelope). At the same crest amplitude a localized wrinkle
+predicts a *milder* knockdown than the uniform baseline. This is FE-only
+and single-wrinkle for now (analytical-only, multi-wrinkle, and CZM runs
+are rejected at construction); the CLI/app knobs are a follow-up. See
+`examples/transverse_wrinkle_knockdown.py` for a runnable comparison.
 
 ### Tension analysis
 

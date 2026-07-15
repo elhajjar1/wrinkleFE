@@ -29,6 +29,9 @@ EXPECTED_DEFAULTS: dict[str, object] = {
     "amplitude_profile": "constant",          # one of constant/gaussian/linear
     "amplitude_profile_decay_length": None,    # mm, None -> wrinkle width
     "amplitude_profile_axis": "x",             # one of x/y
+    "transverse_mode": "uniform",              # uniform/gaussian_decay/sinusoidal_y/elliptical
+    "transverse_span": None,                   # mm, None -> domain_width
+    "transverse_width": None,                  # mm, None -> span_y / 4
 }
 
 

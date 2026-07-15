@@ -68,6 +68,8 @@ from wrinklefe.core.penetration_gate import (
 from wrinklefe.core.transforms import rotate_stiffness_3d
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
+    WrinkleProfile,
+    WrinkleSurface3D,
 )
 from wrinklefe.elements.cohesive8 import (
     Cohesive8Element,
@@ -1027,6 +1029,28 @@ class AnalysisConfig:
         Default ``"x"``.  Pick ``"y"`` (transverse axis) for an
         independent in-plane tapering of *A* that does not stack with
         the existing longitudinal envelope on *x*.
+    transverse_mode : {"uniform", "gaussian_decay", "sinusoidal_y", "elliptical"}
+        Through-width (transverse *y*) wrinkle-surface envelope (#300).
+        Default ``"uniform"`` builds the bare x-only wrinkle exactly as
+        before (bit-identical). The non-uniform modes wrap the profile in
+        a :class:`~wrinklefe.core.wrinkle.WrinkleSurface3D` so the
+        amplitude varies across the specimen width: ``"gaussian_decay"``
+        decays it toward the edges, ``"sinusoidal_y"`` ripples it across
+        the width, and ``"elliptical"`` confines it to a mid-width patch.
+        FE-only — a non-uniform mode requires ``analytical_only=False`` and
+        is not combinable with ``wrinkles`` (multi-wrinkle) or
+        ``enable_czm`` (both rejected at construction).
+    transverse_span : float or None
+        Specimen width ``span_y`` (mm) seen by the transverse envelope.
+        ``None`` (default) tracks ``domain_width`` so the envelope always
+        spans the meshed y-extent. Must be > 0 when set. Ignored when
+        ``transverse_mode == "uniform"``.
+    transverse_width : float or None
+        Transverse localization half-width ``width_y`` (mm): the Gaussian
+        1/e length for ``"gaussian_decay"`` and the ellipse half-width for
+        ``"elliptical"`` (ignored by ``"uniform"``/``"sinusoidal_y"``).
+        ``None`` (default) resolves to ``span_y / 4`` — a localized
+        mid-width patch. Must be > 0 when set.
     loading : str
         Loading mode: ``'compression'`` or ``'tension'``.
         Default is ``'compression'``.
@@ -1102,6 +1126,34 @@ class AnalysisConfig:
     amplitude_profile: str = "constant"
     amplitude_profile_decay_length: float | None = None
     amplitude_profile_axis: str = "x"
+
+    # Through-width (transverse / y-direction) wrinkle surface (#300).
+    # Selects a WrinkleSurface3D transverse envelope f(y) so the wrinkle
+    # amplitude can vary across the specimen width instead of being uniform
+    # across it (the default). ``"uniform"`` builds the bare, x-only
+    # GaussianSinusoidal exactly as before (bit-identical), so the default
+    # path is untouched. The non-uniform modes decay the amplitude toward
+    # the edges (``"gaussian_decay"``), ripple it across the width
+    # (``"sinusoidal_y"``), or confine it to a mid-width elliptical patch
+    # (``"elliptical"``) — matching real, localized manufacturing wrinkles.
+    # FE-only: the transverse variation only manifests in the mesh, so a
+    # non-uniform mode requires the FE path (analytical_only=False) and is
+    # not yet combinable with multi-wrinkle (``wrinkles``) or ``enable_czm``
+    # (rejected at validation; see __post_init__). CLI/app exposure is a
+    # deliberate follow-up.
+    transverse_mode: str = "uniform"
+    # Total specimen width span_y (mm) seen by the transverse envelope.
+    # ``None`` (default) tracks the mesh width ``domain_width`` so the
+    # envelope always spans the meshed y-extent. Must be > 0 when set.
+    transverse_span: float | None = None
+    # Transverse localization half-width width_y (mm): the Gaussian 1/e
+    # length scale for ``"gaussian_decay"`` and the ellipse half-width for
+    # ``"elliptical"`` (ignored by ``"uniform"`` / ``"sinusoidal_y"``).
+    # ``None`` (default) resolves to ``span_y / 4`` — a localized mid-width
+    # patch whose amplitude has fallen to exp(-4) ≈ 0.018 of the crest at the
+    # edges (gaussian_decay) or that occupies the central half of the width
+    # (elliptical). Must be > 0 when set.
+    transverse_width: float | None = None
 
     # Loading
     loading: str = "compression"
@@ -1466,6 +1518,65 @@ class AnalysisConfig:
                 f"a finite positive float when set, "
                 f"got {self.amplitude_profile_decay_length}"
             )
+
+        # --- Through-width (transverse) wrinkle surface (#300) --------
+        # Reuse WrinkleSurface3D's own mode set so the two never drift.
+        if (
+            not isinstance(self.transverse_mode, str)
+            or self.transverse_mode not in WrinkleSurface3D._VALID_MODES
+        ):
+            raise ValueError(
+                f"AnalysisConfig.transverse_mode must be one of "
+                f"{sorted(WrinkleSurface3D._VALID_MODES)}, "
+                f"got {self.transverse_mode!r}"
+            )
+        # span_y / width_y overrides must be positive and finite when set;
+        # ``None`` resolves to domain_width and span_y/4 at build time and is
+        # therefore always valid.
+        if self.transverse_span is not None and not (
+            self.transverse_span > 0.0 and math.isfinite(self.transverse_span)
+        ):
+            raise ValueError(
+                f"AnalysisConfig.transverse_span must be a finite positive "
+                f"float when set, got {self.transverse_span}"
+            )
+        if self.transverse_width is not None and not (
+            self.transverse_width > 0.0 and math.isfinite(self.transverse_width)
+        ):
+            raise ValueError(
+                f"AnalysisConfig.transverse_width must be a finite positive "
+                f"float when set, got {self.transverse_width}"
+            )
+        if self.transverse_mode != "uniform":
+            # The transverse envelope only manifests in the FE mesh, so it is
+            # meaningless on the x-only analytical path — fail fast instead of
+            # silently ignoring the requested surface.
+            if self.analytical_only:
+                raise ValueError(
+                    "AnalysisConfig.transverse_mode="
+                    f"{self.transverse_mode!r} requires the FE path but "
+                    "analytical_only=True. The transverse surface only "
+                    "manifests in the mesh; set analytical_only=False or "
+                    "transverse_mode='uniform'."
+                )
+            # Multi-wrinkle FE and CZM composition with a 3-D surface are out
+            # of scope for this first cut — reject the combination up front
+            # (issue #300) rather than surprising the user mid-solve.
+            if self.wrinkles is not None:
+                raise NotImplementedError(
+                    "AnalysisConfig.transverse_mode="
+                    f"{self.transverse_mode!r} is not yet supported together "
+                    "with a multi-wrinkle 'wrinkles' list. Use a single-"
+                    "wrinkle config (wrinkles=None) or transverse_mode="
+                    "'uniform'."
+                )
+            if self.enable_czm:
+                raise NotImplementedError(
+                    "AnalysisConfig.transverse_mode="
+                    f"{self.transverse_mode!r} is not yet supported together "
+                    "with enable_czm=True. Disable CZM or use "
+                    "transverse_mode='uniform'."
+                )
 
         # --- Loading --------------------------------------------------
         valid_loadings = ("compression", "tension")
@@ -2399,6 +2510,18 @@ class WrinkleAnalysis:
         if analytical_only is None:
             analytical_only = cfg.analytical_only
 
+        # A transverse surface only exists in the FE mesh, so a run-time
+        # analytical_only override must be rejected too (the construction-time
+        # _validate only sees cfg.analytical_only). Fail fast rather than
+        # silently dropping the requested through-width variation (#300).
+        if analytical_only and cfg.transverse_mode != "uniform":
+            raise ValueError(
+                "AnalysisConfig.transverse_mode="
+                f"{cfg.transverse_mode!r} requires the FE path but this run "
+                "was invoked with analytical_only=True. Run with "
+                "analytical_only=False or set transverse_mode='uniform'."
+            )
+
         # Multi-wrinkle FE solve (issue #252): overlapping and
         # non-overlapping layouts run through the linear FE path, and
         # (issue #283) through the CZM path — cohesive layers are
@@ -2470,11 +2593,23 @@ class WrinkleAnalysis:
             )
             results.wrinkle_config = wrinkle_config
         else:
-            profile = GaussianSinusoidal(
+            base_profile = GaussianSinusoidal(
                 amplitude=cfg.amplitude,
                 wavelength=cfg.wavelength,
                 width=cfg.width,
                 center=wrinkle_center,
+            )
+            # Through-width variation (#300): wrap the x-only profile in a
+            # 3-D transverse surface only when a non-uniform mode is
+            # requested. ``"uniform"`` leaves the bare GaussianSinusoidal
+            # untouched, so the default path stays bit-identical. The
+            # morphology layer already consumes WrinkleSurface3D end-to-end
+            # (node deformation + fibre-angle fields); multi-wrinkle/CZM
+            # combinations are rejected earlier in _validate.
+            profile: WrinkleProfile | WrinkleSurface3D = (
+                self._wrap_transverse_surface(base_profile)
+                if cfg.transverse_mode != "uniform"
+                else base_profile
             )
             if cfg.phase is not None and (
                 cfg.morphology.lower().strip() not in SINGLE_WRINKLE_MODES
@@ -3332,6 +3467,35 @@ class WrinkleAnalysis:
             stiffness_3d=mat.stiffness_matrix,
             ply_thickness=ply_thickness,
             E_x0=laminate.Ex,
+        )
+
+    def _wrap_transverse_surface(
+        self, profile: WrinkleProfile
+    ) -> WrinkleSurface3D:
+        """Wrap *profile* in a through-width :class:`WrinkleSurface3D` (#300).
+
+        Resolves the transverse span and localization half-width from the
+        config, defaulting ``span_y`` to the meshed ``domain_width`` and
+        ``width_y`` to ``span_y / 4`` (a localized mid-width patch). Only
+        called for a non-uniform ``transverse_mode``; validation has already
+        rejected the analytical-only, multi-wrinkle, and CZM combinations.
+        """
+        cfg = self.config
+        span_y = (
+            cfg.transverse_span
+            if cfg.transverse_span is not None
+            else cfg.domain_width
+        )
+        width_y = (
+            cfg.transverse_width
+            if cfg.transverse_width is not None
+            else span_y / 4.0
+        )
+        return WrinkleSurface3D(
+            profile,
+            transverse_mode=cfg.transverse_mode,
+            width_y=width_y,
+            span_y=span_y,
         )
 
     def _compute_analytical(
