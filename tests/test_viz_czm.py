@@ -17,6 +17,8 @@ up the new ``czm_element_centroids`` field correctly.
 
 from __future__ import annotations
 
+import sys
+
 import matplotlib
 
 matplotlib.use("Agg")  # headless; no display required
@@ -292,3 +294,28 @@ def test_plot_crack_front_3d_runs():
     plotter = plot_crack_front_3d(nodes, conn, damage, threshold=0.5)
     assert plotter is not None
     plotter.close()
+
+
+# ----------------------------------------------------------------------
+# PyVista absent — the 3D plots must raise an actionable ImportError that
+# names the `wrinklefe[vtk]` extra.  Runs on every CI job (with or without
+# PyVista installed) because it forces the import to fail deterministically
+# by planting a ``None`` sentinel in ``sys.modules`` (issue #302).
+# ----------------------------------------------------------------------
+
+
+def test_require_pyvista_raises_actionable_error_without_pyvista(monkeypatch):
+    from wrinklefe.viz.plots_3d import _require_pyvista
+
+    # A ``None`` entry makes ``import pyvista`` raise ImportError, regardless
+    # of whether PyVista is actually installed in this environment.
+    monkeypatch.setitem(sys.modules, "pyvista", None)
+    with pytest.raises(ImportError, match=r"wrinklefe\[vtk\]"):
+        _require_pyvista()
+
+
+def test_plot_interface_damage_3d_raises_without_pyvista(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pyvista", None)
+    nodes, conn, damage = _make_synthetic_interface_quads()
+    with pytest.raises(ImportError, match=r"wrinklefe\[vtk\]"):
+        plot_interface_damage_3d(nodes, conn, damage)

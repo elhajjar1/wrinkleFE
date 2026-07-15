@@ -18,8 +18,10 @@ extensions = [
     "myst_parser",
 ]
 
-# The 3-D viz module imports pyvista at module scope; mock it so the
-# docs build does not require VTK.
+# PyVista is an optional dependency (the `vtk` extra) imported lazily
+# inside the 3-D CZM plot helpers, so the docs build never needs VTK
+# installed. This mock is kept defensively: if the 3-D viz module is ever
+# autodoc'd, the mock lets the build succeed without pulling in VTK.
 autodoc_mock_imports = ["pyvista"]
 
 autosummary_generate = True

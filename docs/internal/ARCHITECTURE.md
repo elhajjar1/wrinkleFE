@@ -82,7 +82,7 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `failure/larc05.py` | LaRC05 composite failure criterion implementation |
 | `failure/evaluator.py` | `FailureEvaluator` applies criteria across all elements; `LaminateFailureReport` |
 | `viz/plots_2d.py` | 2D matplotlib plots (wrinkle profiles, knockdown curves, distributions) |
-| `viz/plots_3d.py` | 3D PyVista plots (mesh, damage contours) |
+| `viz/plots_3d.py` | 3D plots: matplotlib mesh/contour/mode-shape renders, plus optional PyVista cohesive-interface damage and crack-front plots (the `vtk` extra) |
 | `viz/style.py` | Publication styling constants and helpers |
 | `sweep/parametric_sweep.py` | Parametric sweep over amplitude/wavelength/morphology; CSV output |
 | `analysis.py` | Top-level orchestrator: `WrinkleAnalysis`, `AnalysisConfig`, `compare_morphologies`, `parametric_sweep` |

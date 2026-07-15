@@ -374,6 +374,14 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Packaging — **PyVista/VTK moved to an optional `vtk` extra** (issue
+  #302). Plain `pip install wrinklefe` no longer pulls in VTK (~150 MB
+  lighter) and stays headless-safe; the 3D cohesive-zone plots
+  (`plot_interface_damage_3d` / `plot_crack_front_3d`) now require
+  `pip install "wrinklefe[vtk]"` (also included in `[all]`). PyVista was
+  already imported lazily, so `import wrinklefe`, the CLI, the Streamlit
+  app, and the docs build are unaffected when it is absent; the
+  `_require_pyvista` error message now names the `wrinklefe[vtk]` extra.
 - Streamlit app — acknowledgment gate and intro reworded to a
   professional-tool framing (issue #333): the gate leads with what
   WrinkleFE computes rather than "free academic software", and the

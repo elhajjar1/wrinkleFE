@@ -5,10 +5,14 @@
 ```bash
 pip install wrinklefe            # core: analytical + FE pipeline
 pip install "wrinklefe[streamlit]"  # + the Streamlit web app
+pip install "wrinklefe[vtk]"        # + 3D cohesive-zone PyVista plots (pulls in VTK)
 ```
 
+The `vtk` extra is optional — plain `pip install wrinklefe` stays lean and
+headless-safe (no VTK); add it only for the 3D cohesive-zone renders.
+
 From a clone, `pip install -e ".[all]"` installs everything including
-the dev tooling.
+the dev tooling (and the `vtk` extra).
 
 ## A five-minute analysis
 

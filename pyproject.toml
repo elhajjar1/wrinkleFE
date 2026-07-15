@@ -27,7 +27,6 @@ dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "matplotlib>=3.7",
-    "pyvista>=0.42",
 ]
 
 # Note: wrinklefe is Streamlit-first / CLI-only and has no desktop GUI code.
@@ -53,7 +52,15 @@ docs = [
     "myst-parser>=4.0",
     "furo>=2024.8",
 ]
-all = ["wrinklefe[streamlit,dev,docs]"]
+# 3D cohesive-zone plots (plot_interface_damage_3d / plot_crack_front_3d)
+# render via PyVista, which pulls in VTK (~150 MB). It is imported lazily,
+# so `pip install wrinklefe` stays headless-safe and VTK-free; install this
+# extra only when you need the 3D CZM renders. (pyvistaqt/PyQt6 stay
+# excluded per the note above — this extra is pyvista-only.)
+vtk = [
+    "pyvista>=0.42",
+]
+all = ["wrinklefe[streamlit,vtk,dev,docs]"]
 
 [project.scripts]
 wrinklefe = "wrinklefe.cli:main"
