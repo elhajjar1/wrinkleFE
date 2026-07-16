@@ -327,22 +327,25 @@ def _tag_surface_side(
     height: np.ndarray,
     nonflat: np.ndarray,
     side: str,
-    nz: int,
     ncol: int,
+    n_layers: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Tag the single transition element-layer nearest one flat surface.
+    """Tag the ``n_layers`` transition element-layers nearest one flat surface.
 
-    The surface pocket lives in exactly one horizontal element-layer: the
-    layer straddling the outermost pinned/undulating interface (the pinned
-    surface plies above it are flat, the interior below undulates).  That
-    layer is the non-flat layer with the extreme k-index toward the chosen
-    surface — fixed across all columns, so a column where the wrinkle
-    happens to cross zero (locally flat) never leaks the tag onto a deeper
-    internal ply interface.
+    For the smooth-decay morphologies the surface pocket lives in exactly
+    ONE horizontal element-layer (``n_layers == 1``): the layer straddling
+    the outermost pinned/undulating interface.  The ``tool_flat`` morphology
+    (issue #371) spreads the full-amplitude mismatch over its
+    ``surface_transition_plies`` transition plies, so several stacked
+    element-layers stretch — ``n_layers`` selects the non-flat layers
+    closest to the chosen surface (fixed across all columns, so a locally
+    flat column never leaks the tag onto a deeper internal ply interface,
+    and — for ``side="both"`` — the top pass never reaches the bottom
+    transition band or vice versa).
 
-    Returns the transition-layer element indices and their blend weights
-    (0 where a column has no gap or the ply is in compression there).  When
-    no layer is non-flat (flat mesh) the returned arrays are empty.
+    Returns the tagged element indices and their blend weights (0 where a
+    column has no gap or the ply is in compression there).  When no layer is
+    non-flat (flat mesh) the returned arrays are empty.
     """
     layer_nonflat = nonflat.any(axis=1)
     layers = np.flatnonzero(layer_nonflat)
@@ -350,16 +353,20 @@ def _tag_surface_side(
         empty = np.empty(0, dtype=np.int64)
         return empty, np.empty(0, dtype=np.float64)
 
-    # Transition layer: closest non-flat layer to the chosen surface.
-    k = int(layers.max()) if side == "top" else int(layers.min())
+    # The ``n_layers`` non-flat layers closest to the chosen surface.
+    sel = layers[-n_layers:] if side == "top" else layers[:n_layers]
 
     cols = np.arange(ncol)
-    g = gap[k, cols]
-    h = height[k, cols]
-    with np.errstate(invalid="ignore", divide="ignore"):
-        w = np.where((nonflat[k, cols]) & (g > 0.0), g / h, 0.0)
-    elem_idx = k * ncol + cols
-    return elem_idx, np.asarray(w, dtype=np.float64)
+    idx_parts: list[np.ndarray] = []
+    w_parts: list[np.ndarray] = []
+    for k in (int(kk) for kk in sel):
+        g = gap[k, cols]
+        h = height[k, cols]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            w = np.where((nonflat[k, cols]) & (g > 0.0), g / h, 0.0)
+        idx_parts.append(k * ncol + cols)
+        w_parts.append(np.asarray(w, dtype=np.float64))
+    return np.concatenate(idx_parts), np.concatenate(w_parts)
 
 
 def compute_surface_resin_blend(
@@ -441,9 +448,19 @@ def compute_surface_resin_blend(
     height_grid = height.reshape(nz, ncol)
     nonflat = np.abs(gap_grid) > tol
 
+    # The ``tool_flat`` morphology (issue #371) confines the full-amplitude
+    # mismatch to a multi-ply transition band, so every stretched layer in
+    # that band is tagged (not just the single outermost one).  All other
+    # morphologies keep the single-transition-layer behaviour.
+    n_layers = 1
+    if getattr(wrinkle_config, "decay_mode", None) == "tool_flat":
+        n_layers = int(getattr(wrinkle_config, "surface_transition_plies", 1))
+
     sides = ("top", "bottom") if spec.side == "both" else (spec.side,)
     for side in sides:
-        elem_idx, w = _tag_surface_side(gap_grid, height_grid, nonflat, side, nz, ncol)
+        elem_idx, w = _tag_surface_side(
+            gap_grid, height_grid, nonflat, side, ncol, n_layers
+        )
         np.maximum.at(weight, elem_idx, w)
 
     return weight

@@ -1280,11 +1280,22 @@ class AnalysisConfig:
     # wavy surfaces and are rejected.
     enable_surface_resin_pockets: bool = False
     # Which tool-flat surface(s) to tag: "top" (+z), "bottom" (-z), "both".
+    # For the ``tool_flat`` morphology this doubles as ``tool_side`` — the
+    # surface(s) pinned exactly flat by the tooling.
     surface_pocket_side: str = "top"
     # Absolute gap (mm) below which an element is treated as flat, so
     # numerically-flat regions do not produce resin "dust".  ``None`` uses
     # the ply-thickness-scaled default (0.01 * ply_thickness).
     surface_pocket_min_gap: float | None = None
+    # ``tool_flat`` morphology only: number of plies over which the wrinkle
+    # amplitude ramps linearly from the full-amplitude core to zero at the
+    # pinned surface.  A short transition concentrates the full-amplitude
+    # trough mismatch into a thin surface band (significant pockets), but the
+    # crest-side transition elements compress by ``amplitude /
+    # surface_transition_plies`` — so the amplitude is bounded (see
+    # ``_validate``): ``A <= 0.8 * surface_transition_plies * ply_thickness /
+    # nz_per_ply``.  Must be >= 1.  Default 2.
+    surface_transition_plies: int = 2
 
     # ------------------------------------------------------------------
     # Progressive-damage FE path (load-stepping ply-discount to ultimate
@@ -1384,6 +1395,29 @@ class AnalysisConfig:
                 self.interface_1 = max(0, mid - 1)
             if self.interface_2 is None:
                 self.interface_2 = min(n_plies - 1, mid)
+
+        # Surface resin pockets ARE the physics of the ``tool_flat``
+        # morphology (the flat pinned surface would otherwise silently
+        # stretch the fibre elements over the troughs — the old #371 bug).
+        # Auto-enable them on the FE path.  Skipped for analytical_only,
+        # where the pocket has no effect and the run equals ``uniform``.
+        morph_name = (
+            self.morphology.lower().strip()
+            if isinstance(self.morphology, str)
+            else self.morphology
+        )
+        if (
+            morph_name == "tool_flat"
+            and not self.analytical_only
+            and not self.enable_surface_resin_pockets
+        ):
+            logger.warning(
+                "Surface resin pockets auto-enabled for the 'tool_flat' "
+                "morphology (they are its defining physics: the flat pinned "
+                "surface fills the wrinkle troughs with neat resin). Set "
+                "enable_surface_resin_pockets=True to silence this message."
+            )
+            self.enable_surface_resin_pockets = True
 
         self._validate()
 
@@ -1748,6 +1782,75 @@ class AnalysisConfig:
                     "(the floor is a residual surface amplitude); surface "
                     "resin pockets require a tool-flat surface. Set "
                     "decay_floor=0 (or use 'stack'/'convex'/'concave')."
+                )
+
+        # --- tool_flat morphology (issue #371) ------------------------
+        # ``surface_transition_plies`` is validated for every config (it is a
+        # dataclass field), then the tool_flat-specific geometry bound and
+        # combination rules are enforced only when the morphology is selected.
+        if (
+            not isinstance(self.surface_transition_plies, int)
+            or isinstance(self.surface_transition_plies, bool)
+            or self.surface_transition_plies < 1
+        ):
+            raise ValueError(
+                f"AnalysisConfig.surface_transition_plies must be an int "
+                f">= 1, got {self.surface_transition_plies!r}"
+            )
+        morph = (
+            self.morphology.lower().strip()
+            if isinstance(self.morphology, str)
+            else self.morphology
+        )
+        if morph == "tool_flat":
+            # Element-inversion bound (verified in the #371 spike): on the
+            # crest side each of the ``surface_transition_plies`` transition
+            # elements compresses by ``amplitude / surface_transition_plies``
+            # over an element height ``ply_thickness / nz_per_ply``, so it
+            # inverts once ``amplitude >= surface_transition_plies *
+            # ply_thickness / nz_per_ply``.  Reject above a safe 0.8 fraction,
+            # naming BOTH remedies.
+            a_safe = (
+                0.8
+                * self.surface_transition_plies
+                * self.ply_thickness
+                / self.nz_per_ply
+            )
+            if self.amplitude > a_safe:
+                raise ValueError(
+                    "AnalysisConfig: tool_flat amplitude "
+                    f"{self.amplitude:.4g} mm exceeds the safe bound "
+                    f"{a_safe:.4g} mm — the crest-side transition elements "
+                    "would invert (negative Jacobian). Either increase "
+                    "surface_transition_plies to >= "
+                    f"{math.ceil(self.amplitude * self.nz_per_ply / (0.8 * self.ply_thickness))} "
+                    f"or reduce amplitude below {a_safe:.4g} mm "
+                    "(the bound is 0.8 * surface_transition_plies * "
+                    "ply_thickness / nz_per_ply)."
+                )
+            # tool_flat is a single-wrinkle FE morphology whose pockets and
+            # decay are not verified in combination with the multi-wrinkle,
+            # CZM, or through-width paths — reject rather than silently drop
+            # the tool-flat decay (which would revert to the old linear taper).
+            if self.wrinkles is not None:
+                raise NotImplementedError(
+                    "AnalysisConfig: tool_flat morphology is single-wrinkle; "
+                    "it is not yet combinable with the multi-wrinkle "
+                    "'wrinkles' override (which would ignore the tool-flat "
+                    "decay). Use a single wrinkle or a different morphology."
+                )
+            if self.enable_czm:
+                raise NotImplementedError(
+                    "AnalysisConfig: tool_flat morphology is not yet "
+                    "combinable with enable_czm (the surface-pocket resin "
+                    "zone and cohesive elements are unverified together)."
+                )
+            if self.transverse_mode != "uniform":
+                raise NotImplementedError(
+                    "AnalysisConfig: tool_flat morphology is not yet "
+                    "combinable with a non-uniform transverse_mode "
+                    f"({self.transverse_mode!r}); the tool-flat decay is "
+                    "verified for the x-only wrinkle only."
                 )
 
         # --- Progressive-damage path ----------------------------------
@@ -2635,6 +2738,13 @@ class WrinkleAnalysis:
                     amplitude_profile=amp_profile,
                     amplitude_profile_decay_length=cfg.amplitude_profile_decay_length,
                     amplitude_profile_axis=amp_axis,
+                    # tool_flat: the tool-flat surface(s) reuse the
+                    # surface-pocket side, and the transition-zone width
+                    # controls the pocket depth / inversion margin.
+                    tool_side=cast(
+                        Literal["top", "bottom", "both"], cfg.surface_pocket_side
+                    ),
+                    surface_transition_plies=cfg.surface_transition_plies,
                 )
             results.wrinkle_config = wrinkle_config
 

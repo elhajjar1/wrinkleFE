@@ -50,7 +50,7 @@ MORPHOLOGY_PHASES: dict[str, float] = {
 }
 
 # Single-wrinkle morphology types (not phase-based)
-SINGLE_WRINKLE_MODES = {"uniform", "graded"}
+SINGLE_WRINKLE_MODES = {"uniform", "graded", "tool_flat"}
 """Canonical dual-wrinkle morphology phase offsets (radians).
 
 - ``'stack'``: phi = 0 -- peaks and troughs aligned vertically.
@@ -182,6 +182,14 @@ class WrinkleConfiguration:
       through-thickness envelope even though both have M_f = 1.0.
     - ``"graded"``: single wrinkle, ``decay_mode="graded"`` (linear
       decay from mid-ply to surfaces, modulated by ``decay_floor``).
+    - ``"tool_flat"``: single wrinkle, ``decay_mode="tool_flat"``
+      (uniform-amplitude core, a linear transition over
+      ``surface_transition_plies`` plies, and an exactly-flat pinned
+      surface on the ``tool_side`` face(s)).  The interior carries the
+      full amplitude like ``"uniform"`` — so it shares uniform's
+      M_f = 1.0 and analytical knockdown — but the pinned flat surface
+      makes the trough gap ≈ the full amplitude, producing *significant*
+      surface resin pockets (issue #371).
 
     The aggregate morphology factor for N wrinkles uses the geometric-mean
     normalisation from the N-wrinkle extension (Eq. 12)::
@@ -198,8 +206,19 @@ class WrinkleConfiguration:
     decay_mode : str, optional
         Through-thickness amplitude distribution. ``"default"`` (linear
         decay from the wrinkle interface to the laminate surfaces),
-        ``"uniform"`` (full amplitude at every ply), or ``"graded"``
-        (linear decay from mid-ply to surfaces). Default ``"default"``.
+        ``"uniform"`` (full amplitude at every ply), ``"graded"``
+        (linear decay from mid-ply to surfaces), or ``"tool_flat"``
+        (uniform-amplitude core with a linear transition over
+        ``surface_transition_plies`` plies to an exactly-flat pinned
+        surface on the ``tool_side`` face(s)). Default ``"default"``.
+    tool_side : {"top", "bottom", "both"}, optional
+        ``"tool_flat"`` mode only: which outer surface(s) are pinned
+        exactly flat (cured against rigid tooling / a caul sheet).
+        Default ``"top"``.
+    surface_transition_plies : int, optional
+        ``"tool_flat"`` mode only: number of plies over which the
+        amplitude ramps linearly from the full-amplitude core to zero at
+        the pinned surface. Must be >= 1. Default 2.
     decay_floor : float, optional
         Dimensionless fraction in ``[0, 1]`` used only by the ``"graded"``
         decay mode: the minimum fraction of the wrinkle amplitude retained
@@ -277,6 +296,8 @@ class WrinkleConfiguration:
         amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
         amplitude_profile_decay_length: float | None = None,
         amplitude_profile_axis: Literal["x", "y"] = "x",
+        tool_side: Literal["top", "bottom", "both"] = "top",
+        surface_transition_plies: int = 2,
     ) -> None:
         if not wrinkles:
             raise ValueError("At least one WrinklePlacement is required.")
@@ -285,10 +306,33 @@ class WrinkleConfiguration:
             wrinkles, key=lambda w: w.ply_interface
         )
         # Decay mode for through-thickness amplitude distribution:
-        #   "default"  — standard linear decay from wrinkle interface
-        #   "uniform"  — full amplitude at all plies (no decay)
-        #   "graded"   — linear decay from mid-ply to surfaces
+        #   "default"   — standard linear decay from wrinkle interface
+        #   "uniform"   — full amplitude at all plies (no decay)
+        #   "graded"    — linear decay from mid-ply to surfaces
+        #   "tool_flat" — uniform-amplitude core, a short linear transition
+        #                 over ``surface_transition_plies`` plies, and an
+        #                 exactly-flat pinned surface (decay = 0) on the
+        #                 ``tool_side`` face(s).  Reproduces a wrinkle cured
+        #                 against rigid tooling: the wave is confined to the
+        #                 interior and the mismatch collects as surface resin
+        #                 pockets over the troughs (issue #371).
         self.decay_mode: str = decay_mode
+        # Tool-flat parameters (consulted only by decay_mode == "tool_flat").
+        # ``tool_side`` selects which surface(s) are pinned flat;
+        # ``surface_transition_plies`` (>= 1) is the number of plies over
+        # which the amplitude ramps linearly from the full-amplitude core to
+        # zero at the pinned surface.
+        if surface_transition_plies < 1:
+            raise ValueError(
+                "surface_transition_plies must be >= 1, got "
+                f"{surface_transition_plies}"
+            )
+        if tool_side not in ("top", "bottom", "both"):
+            raise ValueError(
+                f"tool_side must be 'top', 'bottom' or 'both', got {tool_side!r}"
+            )
+        self.tool_side: str = tool_side
+        self.surface_transition_plies: int = int(surface_transition_plies)
         # Decay floor for graded mode: minimum fraction of amplitude at
         # surface plies (0.0 = full decay to zero, 1.0 = uniform).
         # Physically: surface plies retain some waviness even far from
@@ -800,6 +844,33 @@ class WrinkleConfiguration:
         if self.decay_mode == "uniform":
             return np.ones(p.shape, dtype=np.float64)
 
+        if self.decay_mode == "tool_flat":
+            # Uniform-amplitude core (decay = 1), a linear ramp over the
+            # ``surface_transition_plies`` transition plies, and an exactly
+            # flat pinned surface (decay = 0) on the chosen ``tool_side``.
+            # The trough gap between the flat surface and the outermost
+            # undulating (core) ply is therefore the full amplitude, so the
+            # surface resin pockets are significant (issue #371) — unlike the
+            # sub-quarter-ply gap the linear-decay modes leave.
+            if n_plies <= 1:
+                return np.ones(p.shape, dtype=np.float64)
+            s_trans = float(self.surface_transition_plies)
+            pf = p.astype(np.float64)
+            top_ply = float(n_plies - 1)
+            if self.tool_side in ("top", "both"):
+                # decay = 0 at the top surface ply, ramping to 1 across the
+                # top ``s_trans`` plies (and clipped to 1 in the core).
+                top = np.clip((top_ply - pf) / s_trans, 0.0, 1.0)
+            else:
+                top = np.ones_like(pf)
+            if self.tool_side in ("bottom", "both"):
+                bot = np.clip(pf / s_trans, 0.0, 1.0)
+            else:
+                bot = np.ones_like(pf)
+            # "both" pins each surface; the min keeps the core at 1 while
+            # each face ramps to 0 independently.
+            return np.asarray(np.minimum(top, bot))
+
         if self.decay_mode == "graded":
             if n_plies <= 1:
                 return np.ones(p.shape, dtype=np.float64)
@@ -1117,6 +1188,8 @@ class WrinkleConfiguration:
         amplitude_profile: Literal["constant", "gaussian", "linear"] = "constant",
         amplitude_profile_decay_length: float | None = None,
         amplitude_profile_axis: Literal["x", "y"] = "x",
+        tool_side: Literal["top", "bottom", "both"] = "top",
+        surface_transition_plies: int = 2,
     ) -> WrinkleConfiguration:
         """Create a dual-wrinkle configuration from a morphology name.
 
@@ -1127,8 +1200,12 @@ class WrinkleConfiguration:
         Parameters
         ----------
         name : str
-            Morphology name: ``'stack'``, ``'convex'``, or ``'concave'``.
-            Case-insensitive.
+            Morphology name: ``'stack'``, ``'convex'``, ``'concave'``,
+            ``'uniform'``, ``'graded'``, or ``'tool_flat'``.
+            Case-insensitive.  The single-wrinkle modes (``'uniform'``,
+            ``'graded'``, ``'tool_flat'``) place one wrinkle at the mid
+            interface; ``'tool_flat'`` additionally consults ``tool_side``
+            and ``surface_transition_plies``.
         profile : WrinkleProfile or WrinkleSurface3D
             Wrinkle geometry (shared by both wrinkles).
         interface1 : int
@@ -1175,6 +1252,8 @@ class WrinkleConfiguration:
                 amplitude_profile=amplitude_profile,
                 amplitude_profile_decay_length=amplitude_profile_decay_length,
                 amplitude_profile_axis=amplitude_profile_axis,
+                tool_side=tool_side,
+                surface_transition_plies=surface_transition_plies,
             )
 
         # Dual-wrinkle morphologies: phase-offset pair
