@@ -308,11 +308,14 @@ class BoundaryHandler:
 
     Examples
     --------
-    >>> handler = BoundaryHandler(mesh)
-    >>> bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=-0.01)
-    >>> constrained = handler.get_constrained_dofs(bcs)
-    >>> F = handler.get_force_dofs(bcs)
-    >>> K_mod, F_mod = handler.apply_penalty(K, F, constrained)
+    Illustrative usage (needs a generated ``mesh``, so the snippet is skipped
+    under ``--doctest-modules``)::
+
+    >>> handler = BoundaryHandler(mesh)  # doctest: +SKIP
+    >>> bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=-0.01)  # doctest: +SKIP
+    >>> constrained = handler.get_constrained_dofs(bcs)  # doctest: +SKIP
+    >>> F = handler.get_force_dofs(bcs)  # doctest: +SKIP
+    >>> K_mod, F_mod = handler.apply_penalty(K, F, constrained)  # doctest: +SKIP
     """
 
     def __init__(self, mesh: MeshData) -> None:
@@ -817,9 +820,12 @@ class BoundaryHandler:
 
         Examples
         --------
-        >>> bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=-0.005)
-        >>> handler = BoundaryHandler(mesh)
-        >>> constrained = handler.get_constrained_dofs(bcs)
+        Illustrative usage (needs a generated ``mesh``, so the snippet is
+        skipped under ``--doctest-modules``)::
+
+        >>> bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=-0.005)  # doctest: +SKIP
+        >>> handler = BoundaryHandler(mesh)  # doctest: +SKIP
+        >>> constrained = handler.get_constrained_dofs(bcs)  # doctest: +SKIP
         """
         Lx = mesh.domain_size[0]
         prescribed_disp = applied_strain * Lx

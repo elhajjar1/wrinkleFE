@@ -90,6 +90,39 @@ benchmark"`) once and owns the coverage upload. Run the full suite
 locally (`pytest`) before opening a PR when your change touches the FE,
 CZM, or analysis paths.
 
+### Doctests
+
+The `>>>` examples in the source docstrings are executed as tests so a
+drift between the documented output and real behaviour is caught. They
+run via a dedicated invocation (and a matching `doctests` CI job), kept
+**out** of the default `addopts` so a doc example can never block the
+core suite:
+
+```bash
+pytest --doctest-modules src/wrinklefe -q
+```
+
+`doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"` (in
+`pyproject.toml`) is applied, so `...` may stand in for volatile float
+digits and array/line-wrap whitespace is tolerated.
+
+When you add or edit a docstring example, triage it into one of:
+
+- **Make it exact** — include the setup lines and the *real* expected
+  output (run the snippet and paste the actual repr; never guess). This
+  is preferred for scalar/short-array/pure-function examples, which then
+  act as regression guards. Wrap NumPy scalar results in `bool(...)` /
+  `float(...)` so the repr is stable across NumPy versions.
+- **Mark `# doctest: +SKIP`** when a faithful example would need a heavy
+  object (a generated mesh, a full FE solve, a fitted result) or be
+  slow. An illustrative snippet is fine, but it **must** be explicitly
+  `+SKIP` — non-runnable examples are marked, never silently unrun.
+- **Convert to a plain code block** (strip the `>>>`) only if it was
+  never meant as an executable transcript.
+
+Keep the doctests fast (target < ~1 min); never let a "make exact"
+example trigger a real FE solve.
+
 ### Benchmarks
 
 Performance micro-benchmarks for the hot kernels live in

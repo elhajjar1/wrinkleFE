@@ -258,7 +258,7 @@ class WrinkleConfiguration:
         >>> config.n_wrinkles()
         2
         >>> config.aggregate_morphology_factor("compression")  # doctest: +ELLIPSIS
-        1.336...
+        1.333...
 
     References
     ----------
@@ -1071,6 +1071,8 @@ class WrinkleConfiguration:
         Create a convex dual-wrinkle at interfaces 11 and 12::
 
             >>> import numpy as np
+            >>> from wrinklefe.core.wrinkle import GaussianSinusoidal
+            >>> profile = GaussianSinusoidal(amplitude=0.366, wavelength=16.0, width=12.0)
             >>> config = WrinkleConfiguration.dual_wrinkle(
             ...     profile, interface1=11, interface2=12, phase=np.pi/2
             ... )
@@ -1148,9 +1150,13 @@ class WrinkleConfiguration:
         --------
         ::
 
+            >>> from wrinklefe.core.wrinkle import GaussianSinusoidal
+            >>> profile = GaussianSinusoidal(amplitude=0.366, wavelength=16.0, width=12.0)
             >>> config = WrinkleConfiguration.from_morphology_name(
             ...     "concave", profile, interface1=11, interface2=12
             ... )
+            >>> config.n_wrinkles()
+            2
         """
         key = name.lower().strip()
 

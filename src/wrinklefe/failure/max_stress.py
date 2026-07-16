@@ -80,8 +80,8 @@ class MaxStressCriterion(FailureCriterion):
     >>> result = criterion.evaluate(stress, mat)
     >>> result.mode
     'fiber_compression'
-    >>> result.index  # 800 / 1500
-    0.533...
+    >>> float(result.index)  # 800 / 1200 (Xc = 1200 MPa)
+    0.6666666666666666
     """
 
     name: str = "max_stress"

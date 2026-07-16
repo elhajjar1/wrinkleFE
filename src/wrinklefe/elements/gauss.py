@@ -45,8 +45,10 @@ def gauss_points_1d(n: int) -> tuple[np.ndarray, np.ndarray]:
     Examples
     --------
     >>> pts, wts = gauss_points_1d(2)
-    >>> pts  # array([-1/sqrt(3), 1/sqrt(3)])
-    >>> wts  # array([1.0, 1.0])
+    >>> pts  # +/- 1/sqrt(3)
+    array([-0.57735027,  0.57735027])
+    >>> wts
+    array([1., 1.])
     """
     if n == 1:
         points = np.array([0.0])
@@ -100,7 +102,7 @@ def gauss_points_hex(order: int = 2) -> tuple[np.ndarray, np.ndarray]:
     (8, 3)
     >>> wts.shape
     (8,)
-    >>> np.isclose(wts.sum(), 8.0)  # volume of reference cube
+    >>> bool(np.isclose(wts.sum(), 8.0))  # volume of reference cube
     True
     """
     pts_1d, wts_1d = gauss_points_1d(order)

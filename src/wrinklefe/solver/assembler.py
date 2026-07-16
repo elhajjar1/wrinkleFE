@@ -69,10 +69,13 @@ class GlobalAssembler:
 
     Examples
     --------
-    >>> assembler = GlobalAssembler(mesh, laminate)
-    >>> K = assembler.assemble_stiffness()
-    >>> dofs = assembler.element_dof_indices(0)
-    >>> dofs.shape
+    Illustrative usage (needs a generated ``mesh`` and ``laminate``, so the
+    snippet is skipped under ``--doctest-modules``)::
+
+    >>> assembler = GlobalAssembler(mesh, laminate)  # doctest: +SKIP
+    >>> K = assembler.assemble_stiffness()  # doctest: +SKIP
+    >>> dofs = assembler.element_dof_indices(0)  # doctest: +SKIP
+    >>> dofs.shape  # doctest: +SKIP
     (24,)
     """
 
