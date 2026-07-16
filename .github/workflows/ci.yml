@@ -83,6 +83,33 @@ jobs:
           files: ./coverage.xml
           fail_ci_if_error: false
 
+  doctests:
+    # Executes the `>>>` docstring examples across src/wrinklefe so a drift
+    # between the documented output and real behaviour fails CI. Kept as a
+    # dedicated job (not folded into `test`) so a doc example can never block
+    # the core unit-test suite — `--doctest-modules` is deliberately absent
+    # from the default addopts. Examples that need a heavy object (generated
+    # mesh, full FE solve) are marked `# doctest: +SKIP`; see CONTRIBUTING.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Run doctests
+        run: pytest --doctest-modules src/wrinklefe -q
+
   docs:
     runs-on: ubuntu-latest
     steps:
