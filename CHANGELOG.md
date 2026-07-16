@@ -15,6 +15,26 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Analysis — **through-width (transverse) wrinkle surfaces reachable from
+  `AnalysisConfig`** (issue #300). The already-implemented, already-tested
+  `WrinkleSurface3D` transverse modes are now selectable through three new
+  config fields: `transverse_mode`
+  (`"uniform"`/`"gaussian_decay"`/`"sinusoidal_y"`/`"elliptical"`, default
+  `"uniform"`), `transverse_span` (→ `span_y`, `None` tracks
+  `domain_width`), and `transverse_width` (→ `width_y`, `None` resolves to
+  `span_y / 4` — a localized mid-width patch). With the default
+  `"uniform"` the pipeline still builds the bare x-only
+  `GaussianSinusoidal`, so results are bit-identical (regression-safe). A
+  non-uniform mode wraps the profile in a `WrinkleSurface3D` on the FE
+  single-wrinkle path so the crest amplitude varies across the specimen
+  width; at the same crest amplitude a localized wrinkle predicts a milder
+  knockdown than the uniform baseline (real manufacturing wrinkles are
+  localized, and the uniform assumption overstates the defect volume).
+  FE-only and single-wrinkle for now: analytical-only, multi-wrinkle
+  (`wrinkles`), and `enable_czm` combinations are rejected at construction
+  with actionable messages. New `examples/transverse_wrinkle_knockdown.py`
+  demonstrates localized-vs-uniform knockdown; CLI/app exposure is a
+  deliberate follow-up.
 - CLI — **wrinkle-defect capabilities on `analyze`** (issue #346). The
   new defect models shipped for the scripting API are now reachable from
   the command line: `--wrinkle-z-position Z` (off-mid-plane wrinkle,
