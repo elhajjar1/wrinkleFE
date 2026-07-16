@@ -322,6 +322,15 @@ version produced a given file.
 - `provenance` block on JSON exports and the NCR summary recording the
   installed version, numerics stack, platform, and timestamp.
 - GitHub issue forms, pull-request template, and this changelog.
+- Docstring examples are now executed in CI (issue #296). A dedicated
+  `doctests` job runs `pytest --doctest-modules src/wrinklefe`, and
+  `doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"` is set. The
+  runnable `>>>` examples were made exact (real expected output,
+  NumPy-version-stable reprs) so they act as regression guards; examples
+  that need a generated mesh or a full FE solve are marked
+  `# doctest: +SKIP`. Kept out of the default `addopts` so a doc example
+  cannot block the core suite. Docstring-only change — no numeric
+  results shift.
 
 ### Fixed
 - Results-export schema drift (issue #345): the structured JSON export

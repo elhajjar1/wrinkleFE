@@ -24,8 +24,8 @@ Minimal compression analysis::
     ...     morphology="concave", loading="compression",
     ... )
     >>> analysis = WrinkleAnalysis(config)
-    >>> result = analysis.run()
-    >>> print(result.summary())
+    >>> result = analysis.run()  # doctest: +SKIP
+    >>> print(result.summary())  # doctest: +SKIP
 
 References
 ----------
@@ -2450,8 +2450,8 @@ class WrinkleAnalysis:
     --------
     >>> config = AnalysisConfig(morphology="concave", amplitude=0.366)
     >>> analysis = WrinkleAnalysis(config)
-    >>> result = analysis.run()
-    >>> print(f"Strength = {result.analytical_strength_MPa:.1f} MPa")
+    >>> result = analysis.run()  # doctest: +SKIP
+    >>> print(f"Strength = {result.analytical_strength_MPa:.1f} MPa")  # doctest: +SKIP
     """
 
     def __init__(self, config: AnalysisConfig) -> None:

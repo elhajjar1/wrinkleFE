@@ -108,10 +108,16 @@ class PlyDiscount(ProgressiveDamageModel):
 
     Examples
     --------
+    >>> import numpy as np
+    >>> from wrinklefe.core.material import OrthotropicMaterial
+    >>> from wrinklefe.failure.max_stress import MaxStressCriterion
+    >>> material = OrthotropicMaterial()
+    >>> stress = np.array([-1500.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # beyond Xc -> fibre failure
+    >>> failure_result = MaxStressCriterion().evaluate(stress, material)
     >>> model = PlyDiscount(residual_factor=0.01)
     >>> degraded = model.degrade(material, failure_result)
-    >>> degraded.E1  # E1 reduced if fibre failure
-    1610.0
+    >>> degraded.E1  # E1 reduced to 1% on fibre failure
+    1714.2
     """
 
     def __init__(self, residual_factor: float = 0.01):
@@ -248,6 +254,12 @@ class ContinuumDamage(ProgressiveDamageModel):
 
     Examples
     --------
+    >>> import numpy as np
+    >>> from wrinklefe.core.material import OrthotropicMaterial
+    >>> from wrinklefe.failure.max_stress import MaxStressCriterion
+    >>> material = OrthotropicMaterial()
+    >>> stress = np.array([-1500.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # beyond Xc -> fibre failure
+    >>> failure_result = MaxStressCriterion().evaluate(stress, material)
     >>> cdm = ContinuumDamage()
     >>> cdm.update_damage(failure_result)
     >>> degraded_mat = cdm.degrade(material, failure_result)

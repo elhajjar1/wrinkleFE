@@ -337,6 +337,7 @@ class InterlaminarDamage:
     >>> dmg = InterlaminarDamage()
     >>> D = dmg.damage_index(amplitude=0.366, theta=0.15, morphology_factor=1.0)
     >>> dmg.damage_to_strength(D)  # returns (1-D)^1.5
+    0.36646076482133927
     """
 
     def __init__(

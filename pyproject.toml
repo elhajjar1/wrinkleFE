@@ -112,6 +112,12 @@ testpaths = ["tests"]
 # fast by excluding the pytest-benchmark performance suite; pass an
 # explicit -m on the CLI (e.g. -m benchmark) to override it.
 addopts = "-v --tb=short --strict-markers -m 'not benchmark'"
+# Docstring examples are executed via a dedicated `pytest --doctest-modules
+# src/wrinklefe` invocation (its own `doctests` CI job), NOT as part of the
+# default suite — a doc example must never be able to block the core tests.
+# These flags apply when that invocation runs: NORMALIZE_WHITESPACE tolerates
+# array/line-wrap formatting and ELLIPSIS allows `...` for volatile floats.
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"
 markers = [
     "slow: FE/CZM solves taking more than ~5s per test",
     "integration: end-to-end pipeline tests",

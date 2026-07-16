@@ -226,10 +226,12 @@ class Laminate:
 
     Examples
     --------
+    >>> from wrinklefe.core.material import OrthotropicMaterial
+    >>> mat = OrthotropicMaterial()
     >>> lam = Laminate.from_angles([0, 45, -45, 90, 90, -45, 45, 0],
     ...                            material=mat, ply_thickness=0.183)
-    >>> lam.total_thickness
-    1.464
+    >>> lam.total_thickness  # doctest: +ELLIPSIS
+    1.464...
     >>> lam.is_symmetric
     True
     """

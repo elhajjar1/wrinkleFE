@@ -12,8 +12,8 @@ Typical Usage
 -------------
 >>> from wrinklefe.failure.evaluator import FailureEvaluator
 >>> evaluator = FailureEvaluator.default_criteria()
->>> report = evaluator.evaluate_laminate(laminate, load)
->>> print(report.summary())
+>>> report = evaluator.evaluate_laminate(laminate, load)  # doctest: +SKIP
+>>> print(report.summary())  # doctest: +SKIP
 
 References
 ----------
@@ -164,10 +164,16 @@ class FailureEvaluator:
 
     Examples
     --------
+    >>> import numpy as np
     >>> from wrinklefe.failure.max_stress import MaxStressCriterion
     >>> from wrinklefe.failure.hashin import HashinCriterion
+    >>> from wrinklefe.core.material import OrthotropicMaterial
     >>> evaluator = FailureEvaluator([MaxStressCriterion(), HashinCriterion()])
+    >>> stress = np.array([-800.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    >>> material = OrthotropicMaterial()
     >>> results = evaluator.evaluate_point(stress, material)
+    >>> sorted(results)
+    ['hashin', 'max_stress']
     """
 
     def __init__(self, criteria: list[FailureCriterion]):
@@ -274,10 +280,10 @@ class FailureEvaluator:
 
         >>> ply_contexts = [
         ...     {"misalignment_angle": phi_k} for phi_k in misalignments
-        ... ]
+        ... ]  # doctest: +SKIP
         >>> report = evaluator.evaluate_laminate(
         ...     laminate, load, ply_contexts=ply_contexts
-        ... )
+        ... )  # doctest: +SKIP
         """
         n_plies = laminate.n_plies
 

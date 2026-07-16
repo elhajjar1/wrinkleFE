@@ -104,10 +104,10 @@ class TsaiWuCriterion(FailureCriterion):
     >>> mat = OrthotropicMaterial()
     >>> criterion = TsaiWuCriterion(f12_star=-0.5)
     >>> import numpy as np
-    >>> # Pure fibre compression at Xc should give FI = 1.0
-    >>> stress = np.array([-1500.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    >>> # Pure fibre compression at Xc (=1200 MPa) should give FI = 1.0
+    >>> stress = np.array([-1200.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     >>> result = criterion.evaluate(stress, mat)
-    >>> abs(result.index - 1.0) < 1e-10
+    >>> bool(abs(result.index - 1.0) < 1e-10)
     True
     """
 

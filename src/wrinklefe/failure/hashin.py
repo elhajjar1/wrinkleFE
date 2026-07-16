@@ -72,12 +72,12 @@ class HashinCriterion(FailureCriterion):
     >>> mat = OrthotropicMaterial()
     >>> criterion = HashinCriterion()
     >>> import numpy as np
-    >>> # Pure fibre compression at 50% of Xc
+    >>> # Pure fibre compression at 62.5% of Xc (Xc = 1200 MPa)
     >>> stress = np.array([-750.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     >>> result = criterion.evaluate(stress, mat)
     >>> result.mode
     'fiber_compression'
-    >>> abs(result.index - 0.5) < 1e-10
+    >>> bool(abs(result.index - 0.625) < 1e-10)
     True
     """
 
