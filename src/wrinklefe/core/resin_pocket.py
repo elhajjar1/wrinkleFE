@@ -420,18 +420,35 @@ def compute_surface_resin_blend(
     ncol = int(mesh.nx) * int(mesh.ny)
     n_elem = int(mesh.n_elements)
 
-    # Per-element deformed height from the 8 node z-coordinates.
+    # Per-element deformed height as the *vertical* (through-thickness)
+    # stretch: the mean-z of the top face minus the mean-z of the bottom
+    # face.  This is tilt-invariant — unlike a ``z.max - z.min`` bounding
+    # box, a rigidly translated/sheared element (an interior ply riding the
+    # wrinkle at full amplitude) keeps its nominal height, so only genuine
+    # through-thickness stretch (the resin gap) registers.  Bounding-box
+    # height instead conflates the wrinkle's in-plane slope with the gap,
+    # which for a realistically-localized wrinkle swamps the true stretch
+    # and, for a one-sided tool-flat surface, tags the whole interior.
     ez = mesh.nodes[mesh.elements][:, :, 2]
-    height = ez.max(axis=1) - ez.min(axis=1)
+    # hex8 node order: 0-3 bottom face (k), 4-7 top face (k+1).
+    height = ez[:, 4:8].mean(axis=1) - ez[:, 0:4].mean(axis=1)
 
-    z_lo = float(mesh.nodes[:, 2].min())
-    z_hi = float(mesh.nodes[:, 2].max())
-    total_thickness = z_hi - z_lo
+    # Nominal (undeformed) element height.  Taken from the laminate when
+    # available so a wavy (non-tool-flat) outer surface does not inflate the
+    # reference; falls back to the deformed bounding box for the bare
+    # hand-built fixtures that carry no laminate.
+    if mesh.laminate is not None:
+        zc = np.asarray(mesh.laminate.z_coords(), dtype=np.float64)
+        nominal_thickness = float(zc[-1] - zc[0])
+    else:
+        nominal_thickness = float(mesh.nodes[:, 2].max() - mesh.nodes[:, 2].min())
     # Structured mesh: every element has the same nominal height.
-    h0 = total_thickness / nz if nz > 0 else 0.0
+    h0 = nominal_thickness / nz if nz > 0 else 0.0
 
     n_plies = int(mesh.ply_ids.max()) + 1 if mesh.ply_ids.size else 1
-    ply_thickness = total_thickness / n_plies if n_plies > 0 else total_thickness
+    ply_thickness = (
+        nominal_thickness / n_plies if n_plies > 0 else nominal_thickness
+    )
     if spec.min_gap_threshold is not None:
         tol = float(spec.min_gap_threshold)
     else:
