@@ -155,6 +155,7 @@ the docs and the dataclass cannot drift.
 | `transverse_mode` | name | `"uniform"` | Through-width (transverse, y-direction) wrinkle-surface envelope `f(y)`. `"uniform"` (default) builds the bare x-only wrinkle exactly as before (bit-identical). The non-uniform modes wrap the profile in a `WrinkleSurface3D` so the crest amplitude varies across the specimen width: `"gaussian_decay"` decays it toward the edges (localized mid-width defect), `"sinusoidal_y"` ripples it across the width, and `"elliptical"` confines it to a mid-width patch. **FE-only** — a non-uniform mode requires `analytical_only=False` and is not yet combinable with multi-wrinkle (`wrinkles`) or `enable_czm` (both rejected at construction). | one of `uniform`, `gaussian_decay`, `sinusoidal_y`, `elliptical` |
 | `transverse_span` | mm | `None` | Specimen width `span_y` seen by the transverse envelope. `None` tracks `domain_width` so the envelope always spans the meshed y-extent. Ignored when `transverse_mode == "uniform"`. | finite and > 0 when set |
 | `transverse_width` | mm | `None` | Transverse localization half-width `width_y`: the Gaussian 1/e length for `"gaussian_decay"` and the ellipse half-width for `"elliptical"` (ignored by `"uniform"`/`"sinusoidal_y"`). `None` resolves to `span_y / 4` — a localized mid-width patch whose amplitude has fallen to `exp(−4) ≈ 0.018` of the crest at the edges (`gaussian_decay`) or that occupies the central half of the width (`elliptical`). | finite and > 0 when set |
+| `surface_transition_plies` | count | `2` | `tool_flat` morphology only: number of plies over which the amplitude ramps linearly from the full-amplitude core to zero at the pinned (tool-flat) surface. A short transition concentrates the full-amplitude trough mismatch into a thin surface band (significant resin pockets), but the crest-side transition elements compress by `amplitude / surface_transition_plies`, so the amplitude is bounded: `amplitude ≤ 0.8 · surface_transition_plies · ply_thickness / nz_per_ply` (enforced at construction; exceed it and the message names both remedies). | integer ≥ 1 |
 
 Peak fibre misalignment: `θ_max ≈ arctan(2πA/λ)` (exact for a pure
 cosine; dimensionless because A and λ share the mm length unit). See the
@@ -259,6 +260,45 @@ zones **compose** (per-element maximum) when both are enabled. This is an
 angles only. A `uniform` morphology (never flat) or `graded` with
 `decay_floor > 0` (wavy surface) is rejected with a message naming the
 fix.
+
+#### The `tool_flat` morphology (significant pockets)
+
+Under the smooth-decay morphologies above (`stack`/`convex`/`concave`,
+or `graded` with `decay_floor=0`) the amplitude tapers **linearly** across
+the whole thickness, so the outermost undulating ply barely moves — at the
+24-ply defaults the trough gap is only ~0.25 of a *single* ply thickness,
+invisible in the preview and mechanically negligible. Those morphologies
+model a co-cured *gradual* wrinkle, not a tooling-dominated one.
+
+`morphology="tool_flat"` models the tooling-dominated case directly: a
+uniform-amplitude core (like `uniform`), a short linear transition over
+`surface_transition_plies` (default 2), and an **exactly-flat pinned
+surface** on `surface_pocket_side` (`"top"`/`"bottom"`/`"both"`). The
+kinematic mismatch across the transition equals the *full* amplitude, so
+the trough pocket is ≈ `amplitude` deep (≈2.7 ply thicknesses at
+defaults) — significant and visible. Surface pockets **auto-enable** for
+`tool_flat` (they are its defining physics), and the analytical path
+equals `uniform` (M_f = 1.0; the pocket effect is FE-only).
+
+```python
+config = AnalysisConfig(
+    morphology="tool_flat", amplitude=0.35, wavelength=16.0, width=12.0,
+    surface_pocket_side="both",       # tool-flat face(s), also the pocket side
+    surface_transition_plies=3,       # amplitude ramp width (>= 1)
+    material=lib.get("IM7_8552"), angles=[0.0] * 24, ply_thickness=0.183,
+)
+result = WrinkleAnalysis(config).run()   # pockets auto-enabled
+print(result.modulus_retention_global)
+```
+
+On the crest side the `surface_transition_plies` transition elements
+*compress* by `amplitude / surface_transition_plies`, so the amplitude is
+bounded — `amplitude ≤ 0.8 · surface_transition_plies · ply_thickness /
+nz_per_ply`; beyond it the elements would invert and construction fails
+with a message naming both remedies (more transition plies, or a smaller
+amplitude). The symmetric-profile limitation under rigid tooling (crests
+physically compact rather than penetrate the tool) is a documented
+follow-up.
 
 ### Penetration gate (θ, D/T, z) — UD, zero FE cost
 

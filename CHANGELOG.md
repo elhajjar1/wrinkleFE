@@ -15,6 +15,36 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Analysis — **`tool_flat` morphology with significant surface resin
+  pockets** (issue #371, Part A). A new through-thickness decay mode /
+  morphology (`morphology="tool_flat"`) models a wrinkle cured against
+  rigid tooling: a uniform-amplitude core, a short linear transition over
+  `surface_transition_plies` plies (new config field, default 2), and an
+  **exactly-flat pinned surface** on `surface_pocket_side`
+  (`"top"`/`"bottom"`/`"both"`). This fixes the root cause of the reported
+  bug that surface pockets were invisible and mechanically negligible: the
+  linear-decay morphologies (`stack`/`convex`/`concave`, `graded` with
+  `decay_floor=0`) spread the wave across the whole thickness, so at the
+  24-ply defaults (t=0.183 mm, A=0.5 mm) the outermost undulating ply moved
+  only ~0.045 mm — a trough gap of **~0.25 of one ply thickness**. Under
+  `tool_flat` the mismatch collects at the flat surface, so the trough
+  pocket is ≈ the full amplitude (**~2.7 ply thicknesses** at defaults).
+  Surface pockets **auto-enable** for `tool_flat` (they are its defining
+  physics; skipped only for `analytical_only`), and the analytical path
+  equals `uniform` (M_f = 1.0; the pocket effect is FE-only). Toggling the
+  pockets now moves `modulus_retention_global` by a clearly significant
+  margin (measured **~3.1–3.4 %** at A=0.5–0.55 mm, `surface_transition_plies=4`,
+  side `both`) versus a negligible **~0.3 %** for the legacy `stack`
+  morphology — a ~10× larger effect, the original complaint resolved.
+  `compute_surface_resin_blend` tags **all** stretched layers in the
+  multi-ply transition zone (volume-conserving), and its height metric is
+  now the tilt-invariant vertical stretch (top-face minus bottom-face
+  mean-z) so a realistically-localized wrinkle's in-plane slope no longer
+  corrupts the gap. A verified element-inversion bound (`amplitude ≤ 0.8 ·
+  surface_transition_plies · ply_thickness / nz_per_ply`) is enforced at
+  construction with a message naming both remedies; multi-wrinkle / CZM /
+  transverse combinations raise `NotImplementedError`. App/UX exposure of
+  the new morphology is a deliberate follow-up (Part B).
 - Analysis — **through-width (transverse) wrinkle surfaces reachable from
   `AnalysisConfig`** (issue #300). The already-implemented, already-tested
   `WrinkleSurface3D` transverse modes are now selectable through three new

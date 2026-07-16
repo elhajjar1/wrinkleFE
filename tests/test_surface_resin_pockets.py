@@ -76,13 +76,23 @@ def _build_mesh(
 
 
 def _element_geometry(mesh):
-    """Return (deformed height, nominal height, footprint area) per element."""
+    """Return (deformed height, nominal height, footprint area) per element.
+
+    Height is the tilt-invariant vertical stretch (top-face mean-z minus
+    bottom-face mean-z), matching ``compute_surface_resin_blend``; the
+    nominal height comes from the undeformed laminate.
+    """
     ez = mesh.nodes[mesh.elements][:, :, 2]
     ex = mesh.nodes[mesh.elements][:, :, 0]
     ey = mesh.nodes[mesh.elements][:, :, 1]
-    h = ez.max(axis=1) - ez.min(axis=1)
-    z_span = float(mesh.nodes[:, 2].max() - mesh.nodes[:, 2].min())
-    h0 = z_span / mesh.nz
+    # hex8 node order: 0-3 bottom face, 4-7 top face.
+    h = ez[:, 4:8].mean(axis=1) - ez[:, 0:4].mean(axis=1)
+    if mesh.laminate is not None:
+        zc = np.asarray(mesh.laminate.z_coords(), dtype=float)
+        nominal = float(zc[-1] - zc[0])
+    else:
+        nominal = float(mesh.nodes[:, 2].max() - mesh.nodes[:, 2].min())
+    h0 = nominal / mesh.nz
     area = (ex.max(axis=1) - ex.min(axis=1)) * (ey.max(axis=1) - ey.min(axis=1))
     return h, h0, area
 
