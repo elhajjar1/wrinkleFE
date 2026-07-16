@@ -70,7 +70,7 @@ class GlobalAssembler:
     Examples
     --------
     Illustrative usage (needs a generated ``mesh`` and ``laminate``, so the
-    snippet is skipped under ``--doctest-modules``)::
+    snippet is skipped under ``--doctest-modules``).
 
     >>> assembler = GlobalAssembler(mesh, laminate)  # doctest: +SKIP
     >>> K = assembler.assemble_stiffness()  # doctest: +SKIP

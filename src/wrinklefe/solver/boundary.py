@@ -309,7 +309,7 @@ class BoundaryHandler:
     Examples
     --------
     Illustrative usage (needs a generated ``mesh``, so the snippet is skipped
-    under ``--doctest-modules``)::
+    under ``--doctest-modules``).
 
     >>> handler = BoundaryHandler(mesh)  # doctest: +SKIP
     >>> bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=-0.01)  # doctest: +SKIP
@@ -821,7 +821,7 @@ class BoundaryHandler:
         Examples
         --------
         Illustrative usage (needs a generated ``mesh``, so the snippet is
-        skipped under ``--doctest-modules``)::
+        skipped under ``--doctest-modules``).
 
         >>> bcs = BoundaryHandler.compression_bcs(mesh, applied_strain=-0.005)  # doctest: +SKIP
         >>> handler = BoundaryHandler(mesh)  # doctest: +SKIP
