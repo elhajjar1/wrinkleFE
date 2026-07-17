@@ -32,6 +32,7 @@ EXPECTED_DEFAULTS: dict[str, object] = {
     "transverse_mode": "uniform",              # uniform/gaussian_decay/sinusoidal_y/elliptical
     "transverse_span": None,                   # mm, None -> domain_width
     "transverse_width": None,                  # mm, None -> span_y / 4
+    "surface_transition_plies": 2,             # count, tool_flat morphology (>= 1)
 }
 
 
