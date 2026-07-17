@@ -58,7 +58,8 @@ def _call(app_module, morphology, **overrides):
 
 
 @pytest.mark.parametrize(
-    "morphology", ["stack", "convex", "concave", "uniform", "graded"]
+    "morphology",
+    ["stack", "convex", "concave", "uniform", "graded", "tool_flat"],
 )
 def test_returns_figure_with_one_band_per_ply(app_module, morphology):
     """Every morphology renders a Figure with exactly one filled band per ply."""
@@ -106,7 +107,7 @@ def test_dual_morphologies_outline_interface_plies(app_module):
         assert _n_red_lines(fig) == 4, f"{morph}: expected 4 outline lines"
         plt.close(fig)
 
-    for morph in ("uniform", "graded"):
+    for morph in ("uniform", "graded", "tool_flat"):
         fig = _call(app_module, morph)
         assert _n_red_lines(fig) == 0, f"{morph}: should not outline an interface"
         plt.close(fig)
@@ -212,6 +213,7 @@ def test_is_tool_flat_morphology_predicate(app_module):
     f = app_module._is_tool_flat_morphology
     assert f("stack", 0.3) and f("convex", 0.0) and f("concave", 1.0)
     assert f("graded", 0.0)              # graded with zero floor IS tool-flat
+    assert f("tool_flat", 0.0)           # tool_flat pins the surface flat
     assert not f("graded", 0.2)          # a residual floor leaves waviness
     assert not f("uniform", 0.0)         # never decays
 
@@ -384,5 +386,138 @@ def test_preview_gap_matches_fe_tagged_volume(app_module, morphology):
     # The two independent computations of the same kinematic gap agree.
     assert preview_area == pytest.approx(fe_area_per_width, rel=0.10), (
         f"{morphology}: preview gap {preview_area:.5f} vs FE/width "
+        f"{fe_area_per_width:.5f} (ratio {preview_area / fe_area_per_width:.4f})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# tool_flat morphology (issue #371): thick, visible pockets
+# ---------------------------------------------------------------------------
+
+
+def test_tool_flat_renders_thick_flat_pockets(app_module):
+    """tool_flat renders SIGNIFICANT pockets (>= ~1 ply thickness at a safe
+    amplitude) with the pinned surface exactly flat and the core at full
+    amplitude — the preview uses the real tool_flat decay, not the sliver
+    the smooth-decay morphologies leave."""
+    import matplotlib.pyplot as plt
+
+    from wrinklefe.core.morphology import WrinkleConfiguration
+    from wrinklefe.core.wrinkle import GaussianSinusoidal
+
+    # 0.43 < 0.8*3*0.183 = 0.439 bound; a wide envelope keeps the troughs
+    # near full amplitude so the deepest pocket clears one ply thickness.
+    amp, wl, w, t = 0.43, 16.0, 20.0, 0.183
+    angles = list(_ANGLES_12)
+    fig = _call(
+        app_module, "tool_flat",
+        amplitude=amp, wavelength=wl, width=w, ply_thickness=t,
+        decay_floor=0.0, enable_surface_resin_pockets=True,
+        surface_pocket_side="top", surface_transition_plies=3,
+    )
+    try:
+        # (a) pockets present and drawn.
+        area = fig.surface_pocket_gap_area.get("top", 0.0)
+        assert area > 0.0, "tool_flat drew no surface resin pocket"
+        poly = _resin_polys(fig, "top")
+        assert poly is not None
+        # (b) thick: the deepest trough gap is at least one ply thickness
+        #     (vs the ~0.25-ply sliver the linear-decay morphologies leave).
+        zs = np.concatenate([p.vertices[:, 1] for p in poly.get_paths()])
+        max_depth = float(zs.max() - zs.min())
+        assert max_depth >= t, (
+            f"tool_flat pocket depth {max_depth:.3f} mm < 1 ply {t} mm"
+        )
+    finally:
+        plt.close(fig)
+
+    # (c) the pinned top ply is exactly flat while the core carries the full
+    #     amplitude — confirms the preview reuses the tool_flat decay field.
+    n = len(angles)
+    mid = n // 2
+    i1, i2 = max(0, mid - 1), min(n - 1, mid)
+    prof = GaussianSinusoidal(amplitude=amp, wavelength=wl, width=w, center=0.0)
+    wc = WrinkleConfiguration.from_morphology_name(
+        "tool_flat", prof, interface1=i1, interface2=i2, decay_floor=0.0,
+        tool_side="top", surface_transition_plies=3,
+    )
+    n_x = 401
+    x = np.linspace(-24.0, 24.0, n_x)
+    total = n * t
+    z0 = (np.arange(n) + 0.5) * t - total / 2.0
+    nodes = np.column_stack(
+        [np.tile(x, n), np.zeros(n * n_x), np.repeat(z0, n_x)]
+    )
+    ply_ids = np.repeat(np.arange(n), n_x)
+    dz = (
+        wc.apply_to_nodes(nodes, ply_ids, n)[:, 2].reshape(n, n_x)
+        - z0[:, None]
+    )
+    per_ply = np.abs(dz).max(axis=1)
+    assert per_ply[n - 1] < 1e-9, "pinned top ply is not flat"
+    assert per_ply[: n - 3].max() == pytest.approx(amp, rel=5e-3), (
+        "core plies do not carry the full amplitude"
+    )
+
+
+def test_preview_gap_matches_fe_tagged_volume_tool_flat(app_module):
+    """FIDELITY CROSS-CHECK for tool_flat — the analytic preview gap area
+    equals the multi-layer neat-resin volume ``compute_surface_resin_blend``
+    tags on a real mesh (per unit width, ~10% coarse-mesh tolerance)."""
+    import matplotlib.pyplot as plt
+
+    from wrinklefe.core.laminate import Laminate
+    from wrinklefe.core.material import MaterialLibrary
+    from wrinklefe.core.mesh import WrinkleMesh
+    from wrinklefe.core.morphology import WrinkleConfiguration
+    from wrinklefe.core.resin_pocket import (
+        SurfacePocketSpec,
+        compute_surface_resin_blend,
+    )
+    from wrinklefe.core.wrinkle import GaussianSinusoidal
+
+    amplitude, wavelength, width, ply_t = 0.4, 16.0, 8.0, 0.183
+    s_trans = 3  # 0.4 < 0.8 * 3 * 0.183 = 0.439 bound
+    angles = list(_ANGLES_12)
+    n = len(angles)
+
+    # 1) Preview analytic gap area (mm² per unit width).
+    fig = _call(
+        app_module, "tool_flat",
+        amplitude=amplitude, wavelength=wavelength, width=width,
+        ply_thickness=ply_t, decay_floor=0.0,
+        enable_surface_resin_pockets=True, surface_pocket_side="top",
+        surface_transition_plies=s_trans,
+    )
+    preview_area = fig.surface_pocket_gap_area["top"]
+    plt.close(fig)
+    assert preview_area > 0.0
+
+    # 2) FE volume from the SAME tool_flat field.
+    mid = n // 2
+    i1, i2 = max(0, mid - 1), min(n - 1, mid)
+    Lx, Ly = 6.0 * width, 4.0
+    prof = GaussianSinusoidal(
+        amplitude=amplitude, wavelength=wavelength, width=width, center=Lx / 2.0
+    )
+    wc = WrinkleConfiguration.from_morphology_name(
+        "tool_flat", prof, interface1=i1, interface2=i2, decay_floor=0.0,
+        tool_side="top", surface_transition_plies=s_trans,
+    )
+    lam = Laminate.from_angles(angles, MaterialLibrary().get("IM7_8552"), ply_t)
+    mesh = WrinkleMesh(lam, wc, Lx=Lx, Ly=Ly, nx=240, ny=1, nz_per_ply=1).generate()
+    weight = compute_surface_resin_blend(mesh, wc, SurfacePocketSpec(side="top"))
+
+    ez = mesh.nodes[mesh.elements][:, :, 2]
+    ex = mesh.nodes[mesh.elements][:, :, 0]
+    ey = mesh.nodes[mesh.elements][:, :, 1]
+    height = ez.max(axis=1) - ez.min(axis=1)
+    footprint = (ex.max(axis=1) - ex.min(axis=1)) * (ey.max(axis=1) - ey.min(axis=1))
+    tagged = weight > 0
+    assert tagged.any(), "FE mesh tagged no surface resin — bad fixture"
+    fe_area_per_width = float((weight * height * footprint)[tagged].sum()) / Ly
+
+    assert preview_area == pytest.approx(fe_area_per_width, rel=0.10), (
+        f"tool_flat: preview gap {preview_area:.5f} vs FE/width "
         f"{fe_area_per_width:.5f} (ratio {preview_area / fe_area_per_width:.4f})"
     )
