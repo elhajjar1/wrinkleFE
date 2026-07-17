@@ -15,6 +15,22 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- App / CLI — **`tool_flat` surface-pocket controls live in the morphology
+  definition** (issue #371, Part B — *Fixes #371*, completing the issue).
+  The Streamlit Morphology selectbox gains **`tool_flat`** (Expert mode)
+  with its own schematic cartoon (flat pinned face, uniform-amplitude core,
+  amber resin wedges at the troughs). Selecting it renders the pinned-side
+  and **surface-transition-plies** controls *directly under* the morphology
+  controls — no longer in the FE expert section — alongside a live
+  inversion-bound caption (max safe amplitude = `0.8 · S · t / nz`) and a
+  pre-run warning naming both remedies, so the config `ValueError` is never
+  the user's first feedback. Surface pockets **auto-enable** for `tool_flat`
+  (no checkbox). The Analyze-tab cross-section renders the *thick* pockets
+  via the actual `tool_flat` decay (pinned plies flat, uniform core); a
+  fidelity test binds the analytic preview gap area to the multi-layer FE
+  tagged volume (~10 %). The CLI accepts `--morphology tool-flat` (alias for
+  `tool_flat`) and `--surface-transition-plies N`, with help noting the
+  pockets auto-enable and the amplitude bound.
 - Analysis — **`tool_flat` morphology with significant surface resin
   pockets** (issue #371, Part A). A new through-thickness decay mode /
   morphology (`morphology="tool_flat"`) models a wrinkle cured against
@@ -433,6 +449,20 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- App — **surface-pocket controls relocated into the morphology
+  definition** (issue #371, Part B). The standalone *Surface resin pockets*
+  expander in the Expert FE section is gone; its controls now live directly
+  under the Morphology selector. For `tool_flat` the pockets are implicit
+  (auto-enabled, shown as a caption) with the pinned-side and
+  transition-ply controls inline; the legacy tool-flat morphologies
+  (`stack`/`convex`/`concave`, `graded` with `decay_floor=0`) keep an
+  *advanced* opt-in whose help explains their pockets are inherently small
+  (~0.25 ply thickness — use `tool_flat` for significant pockets). The
+  `sb_surface_transition_plies` widget key joins `DEFAULTS` so *Reset to
+  defaults* round-trips it. Rationale: under the linear-decay morphologies
+  the pockets were mechanically negligible by construction (measured
+  ~0.25 ply-thickness trough gap), so a tooling-dominated wrinkle belongs
+  in the morphology definition, not as an add-on toggle.
 - Packaging — **PyVista/VTK moved to an optional `vtk` extra** (issue
   #302). Plain `pip install wrinklefe` no longer pulls in VTK (~150 MB
   lighter) and stays headless-safe; the 3D cohesive-zone plots
