@@ -78,7 +78,7 @@ st.caption(
 
 LIB = MaterialLibrary()
 MATERIAL_NAMES = sorted(LIB.list_names())
-MORPHOLOGIES = ["stack", "convex", "concave", "uniform", "graded"]
+MORPHOLOGIES = ["stack", "convex", "concave", "uniform", "graded", "tool_flat"]
 
 CUSTOM_MATERIAL_LABEL = "Custom…"
 MATERIAL_OPTIONS = MATERIAL_NAMES + [CUSTOM_MATERIAL_LABEL]
@@ -174,6 +174,10 @@ DEFAULT_CZM_TAU_MAX = float(_default_mat_for_czm.tau_max)
 # expert-mode sidebar and the Reset button.
 DEFAULT_ENABLE_SURFACE_POCKETS = _CFG_DEFAULTS.enable_surface_resin_pockets
 DEFAULT_SURFACE_POCKET_SIDE = _CFG_DEFAULTS.surface_pocket_side
+# ``tool_flat`` morphology (issue #371): number of surface transition plies
+# over which the wrinkle amplitude ramps from the full-amplitude core to the
+# pinned flat surface. Mirrors ``AnalysisConfig`` so the UI cannot drift.
+DEFAULT_SURFACE_TRANSITION_PLIES = _CFG_DEFAULTS.surface_transition_plies
 
 # Single source of truth used by the "Reset to defaults" button: maps each
 # sidebar widget ``key=`` argument to the value it should hold after a reset.
@@ -207,9 +211,11 @@ DEFAULTS: dict[str, object] = {
     "sb_czm_GIIc": DEFAULT_CZM_GIIC,
     "sb_czm_sigma_max": DEFAULT_CZM_SIGMA_MAX,
     "sb_czm_tau_max": DEFAULT_CZM_TAU_MAX,
-    # Surface resin pockets (issue #361)
+    # Surface resin pockets — legacy advanced opt-in (issue #361) and the
+    # tool_flat morphology's own transition-ply control (issue #371).
     "sb_enable_surface_pockets": DEFAULT_ENABLE_SURFACE_POCKETS,
     "sb_surface_pocket_side": DEFAULT_SURFACE_POCKET_SIDE,
+    "sb_surface_transition_plies": DEFAULT_SURFACE_TRANSITION_PLIES,
 }
 
 
@@ -398,6 +404,31 @@ def _morphology_schematic(
             raw = 1.0 - abs(offset) / 0.55  # 1 at core, 0 at surfaces
             decay = decay_floor + (1.0 - decay_floor) * raw
             ax.plot(x_canvas, decay * z + offset, color=blue, lw=1.4)
+    elif morphology == "tool_flat":
+        # Uniform-amplitude core with the outer face(s) pinned exactly flat
+        # over a short transition, and amber resin wedges filling the wrinkle
+        # troughs just under the flat surface (issue #371). Seven plies:
+        # the top ply is flat (tool face), the next two ramp, the core plies
+        # carry the full wave, and the bottom face here is left undulating so
+        # the flat-vs-wavy contrast reads at a glance.
+        offsets = np.linspace(-0.55, 0.55, 7)
+        n = len(offsets)
+        # decay ramps 0 (top/flat) -> 1 across the top three plies, then
+        # stays 1 for the interior.
+        top_decays = [0.0, 0.5, 1.0]
+        for i, offset in enumerate(offsets):
+            k = n - 1 - i  # 0 at the top ply, increasing downward
+            decay = top_decays[k] if k < len(top_decays) else 1.0
+            ax.plot(x_canvas, decay * z + offset, color=blue, lw=1.4)
+        # Amber trough pockets just under the flat top ply: the gap between
+        # the flat cap (top offset) and the outermost full-amplitude core ply.
+        flat_line = np.full_like(x_canvas, offsets[-1])
+        core = z + offsets[-3]  # first full-amplitude ply below the transition
+        ax.fill_between(
+            x_canvas, core, flat_line, where=core < flat_line,
+            facecolor="#e8a33d", alpha=0.55, hatch="xxx",
+            edgecolor="#9c6a12", linewidth=0.0,
+        )
 
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-0.85, 0.85)
@@ -424,6 +455,10 @@ def _is_tool_flat_morphology(morphology: str, decay_floor: float) -> bool:
     validation so the preview never shows a zone an FE run would reject.
     """
     m = (morphology or "").lower().strip()
+    # ``tool_flat`` (issue #371) pins the outer face(s) exactly flat by
+    # construction — it is the canonical surface-pocket morphology.
+    if m == "tool_flat":
+        return True
     if m in ("stack", "convex", "concave"):
         return True
     return m == "graded" and abs(float(decay_floor)) < 1e-12
@@ -443,6 +478,7 @@ def _through_thickness_cross_section(
     amplitude_profile_axis: str,
     enable_surface_resin_pockets: bool = False,
     surface_pocket_side: str = "top",
+    surface_transition_plies: int = 2,
 ) -> Figure:
     """Deformed through-thickness (x–z) cross-section of the wrinkled stack.
 
@@ -502,6 +538,12 @@ def _through_thickness_cross_section(
         amplitude_profile_axis=cast(
             Literal["x", "y"], amplitude_profile_axis
         ),
+        # tool_flat (issue #371): the pinned face(s) and the transition-zone
+        # width define the pocket geometry; ignored by every other morphology.
+        tool_side=cast(
+            Literal["top", "bottom", "both"], surface_pocket_side
+        ),
+        surface_transition_plies=int(surface_transition_plies),
     )
 
     # x-window matches the mid-surface plot (±3·width captures the
@@ -540,18 +582,27 @@ def _through_thickness_cross_section(
             ax.plot(x, z_def[p] + t / 2, color="#d62728", linewidth=1.1)
             ax.plot(x, z_def[p] - t / 2, color="#d62728", linewidth=1.1)
 
-    # --- Surface resin pockets (issue #361, Part 4 follow-up) ----------
+    # --- Surface resin pockets (issue #361, #371) ----------------------
     # Shade the neat-resin zones filling the wrinkle troughs under a
-    # tool-flat surface.  For a tool-flat morphology the decay reaches
-    # exactly zero at the outer surface, so the outermost ply is flat and
-    # the first ply inward (``p_outer``) is the transition zone whose
-    # trough pulls away from the flat cap.  The amber wedge is the analytic
-    # kinematic gap between that ply's deformed outer edge and the flat
-    # nominal edge — identical to the gap
+    # tool-flat surface.  The amber wedge is the analytic kinematic gap
+    # between the flat tool line and the deformed outer edge of the
+    # outermost *undulating* ply — identical to the gap
     # ``compute_surface_resin_blend`` integrates on an FE mesh (bound by
-    # ``test_preview_gap_matches_fe_tagged_volume``), drawn here without a
-    # mesh deform.  Rendered in the bands' own (mm) data coordinates so it
-    # lines up with the exaggerated vertical scale.
+    # the fidelity tests), drawn here without a mesh deform.  Rendered in
+    # the bands' own (mm) data coordinates so it lines up with the
+    # exaggerated vertical scale.
+    #
+    # The morphology sets *which* ply is the outermost undulating one:
+    #   - smooth-decay modes (stack/convex/concave, graded floor 0): the
+    #     surface ply is flat and the first ply inward carries the (small)
+    #     residual displacement, so the gap is a sub-ply sliver.
+    #   - ``tool_flat`` (#371): the amplitude ramps over
+    #     ``surface_transition_plies`` plies to the flat surface, so the
+    #     outermost *full-amplitude* core ply is the one that pulls away —
+    #     its displacement (~the full amplitude) is the pocket depth.  The
+    #     summed vertical stretch the FE tags across the transition band
+    #     equals that single displacement, so measuring the gap at the core
+    #     ply matches the FE volume while giving a thick, visible pocket.
     gap_areas: dict[str, float] = {}
     if enable_surface_resin_pockets and _is_tool_flat_morphology(
         morphology, decay_floor
@@ -559,19 +610,34 @@ def _through_thickness_cross_section(
         dz_field = z_def - z0[:, None]
         max_disp = float(np.abs(dz_field).max())
         tol = 1.0e-6 * max_disp
+        per_ply_max = np.abs(dz_field).max(axis=1)
+        is_tool_flat = (morphology or "").lower().strip() == "tool_flat"
+        # Full-amplitude core plies (used by tool_flat to place the pocket at
+        # the transition/core boundary rather than the sub-amplitude surface).
+        core_mask = per_ply_max >= (1.0 - 1.0e-6) * max_disp
         sides = (
             ("top", "bottom")
             if surface_pocket_side == "both"
             else (surface_pocket_side,)
         )
         for side in sides:
-            p_seq = (
-                range(n_plies - 1, -1, -1) if side == "top" else range(n_plies)
-            )
-            p_outer: int | None = next(
-                (p for p in p_seq if float(np.abs(dz_field[p]).max()) > tol),
-                None,
-            )
+            if is_tool_flat:
+                # Outermost full-amplitude ply toward the pinned surface.
+                core_plies = np.flatnonzero(core_mask)
+                if core_plies.size == 0:
+                    continue
+                p_outer: int | None = int(
+                    core_plies.max() if side == "top" else core_plies.min()
+                )
+            else:
+                p_seq = (
+                    range(n_plies - 1, -1, -1)
+                    if side == "top" else range(n_plies)
+                )
+                p_outer = next(
+                    (p for p in p_seq if float(per_ply_max[p]) > tol),
+                    None,
+                )
             if p_outer is None:
                 continue
             if side == "top":
@@ -826,7 +892,13 @@ with st.sidebar:
                 "- *uniform*: full amplitude on *every* ply (no decay). M_f = 1.0 "
                 "but unlike *stack* the outer-surface plies are also displaced.\n"
                 "- *graded*: linear decay from wrinkle core to surfaces, controlled "
-                "by the **Decay floor** slider (0 = full decay, 1 = uniform).\n\n"
+                "by the **Decay floor** slider (0 = full decay, 1 = uniform).\n"
+                "- *tool_flat*: full-amplitude core with the outer face(s) pinned "
+                "exactly flat over a short transition, cured against rigid tooling "
+                "/ a caul sheet. Shares *uniform*'s M_f = 1.0 and analytical "
+                "knockdown, but the pinned-flat surface fills the wrinkle troughs "
+                "with *significant* surface resin pockets (auto-enabled). Its side "
+                "and transition-ply controls appear directly below.\n\n"
                 "Note: *stack* and *uniform* both report M_f = 1.0 but produce "
                 "different deformed meshes — *stack* is two wrinkles with the "
                 "envelope fading at the outer surfaces; *uniform* is one wrinkle "
@@ -867,6 +939,122 @@ with st.sidebar:
             ),
             width="stretch",
         )
+
+        # --- Surface resin pockets: part of the morphology definition ---
+        # (issue #371). For ``tool_flat`` the pockets ARE the morphology's
+        # physics — auto-enabled, with the pinned side and transition-ply
+        # controls rendered right here, plus a live inversion-bound hint so
+        # the config ValueError is never the user's first feedback. For the
+        # legacy tool-flat morphologies the pockets are inherently tiny, so
+        # they stay behind an advanced opt-in in the same visual group.
+        if morphology == "tool_flat":
+            surface_pocket_side = st.selectbox(
+                "Pinned tool-flat surface(s)",
+                ["top", "bottom", "both"],
+                index=["top", "bottom", "both"].index(
+                    DEFAULT_SURFACE_POCKET_SIDE
+                ),
+                key="sb_surface_pocket_side",
+                help=(
+                    "Which outer surface(s) the tooling / caul sheet pins "
+                    "exactly flat: *top* (+z), *bottom* (-z), or *both*. The "
+                    "wrinkle troughs just under each pinned face fill with "
+                    "neat resin."
+                ),
+            )
+            surface_transition_plies = int(
+                st.number_input(
+                    "Surface transition plies",
+                    min_value=1, max_value=12,
+                    value=int(DEFAULT_SURFACE_TRANSITION_PLIES), step=1,
+                    key="sb_surface_transition_plies",
+                    help=(
+                        "Number of plies over which the amplitude ramps from "
+                        "the full-amplitude core to the flat pinned surface. "
+                        "Fewer plies concentrate the mismatch into deeper "
+                        "pockets but tighten the amplitude bound (the "
+                        "crest-side transition elements must not invert)."
+                    ),
+                )
+            )
+            enable_surface_pockets = True  # implicit for tool_flat
+            _nz_hint = int(
+                st.session_state.get("sb_nz_per_ply", DEFAULT_NZ_PER_PLY)
+            )
+            _a_safe = (
+                0.8 * surface_transition_plies * ply_thickness
+                / max(_nz_hint, 1)
+            )
+            st.caption(
+                "Surface resin pockets are **auto-enabled** for tool_flat — "
+                "they are its defining physics. Max safe amplitude for the "
+                f"current settings ≈ **{_a_safe:.3g} mm** "
+                f"(0.8 · {surface_transition_plies} plies · "
+                f"{ply_thickness:g} mm / {max(_nz_hint, 1)} nz)."
+            )
+            if amplitude > _a_safe:
+                _need_plies = int(
+                    np.ceil(
+                        amplitude * max(_nz_hint, 1)
+                        / (0.8 * ply_thickness)
+                    )
+                )
+                st.warning(
+                    f"Amplitude {amplitude:g} mm exceeds the tool_flat "
+                    f"inversion bound ≈ {_a_safe:.3g} mm — the crest-side "
+                    "transition elements would invert. Increase **Surface "
+                    f"transition plies** to ≥ {_need_plies} or reduce the "
+                    f"amplitude below {_a_safe:.3g} mm before running."
+                )
+        else:
+            with st.expander(
+                "Surface resin pockets (advanced)", expanded=False
+            ):
+                enable_surface_pockets = st.checkbox(
+                    "Model surface resin pockets",
+                    value=DEFAULT_ENABLE_SURFACE_POCKETS,
+                    key="sb_enable_surface_pockets",
+                    help=(
+                        "Legacy opt-in for the smooth-decay tool-flat "
+                        "morphologies (stack/convex/concave, or graded with "
+                        "decay floor 0). Their linear through-thickness decay "
+                        "spreads the wave across every ply, so the trough gap "
+                        "is only ~0.25 ply thickness — the pockets are "
+                        "inherently small and barely move the result. For "
+                        "*significant* pockets choose the **tool_flat** "
+                        "morphology above, where they are the defining "
+                        "physics. Requires the full FE solve."
+                    ),
+                )
+                surface_pocket_side = st.selectbox(
+                    "Tool-flat surface(s)",
+                    ["top", "bottom", "both"],
+                    index=["top", "bottom", "both"].index(
+                        DEFAULT_SURFACE_POCKET_SIDE
+                    ),
+                    key="sb_surface_pocket_side",
+                    help=(
+                        "Which flat face(s) to tag: *top* (+z), *bottom* "
+                        "(-z), or *both*."
+                    ),
+                )
+                if enable_surface_pockets and not _is_tool_flat_morphology(
+                    morphology, decay_floor
+                ):
+                    st.warning(
+                        "Surface resin pockets need a tool-flat morphology — "
+                        "stack/convex/concave, graded with decay floor 0, or "
+                        "tool_flat. The current morphology (**"
+                        f"{morphology}**"
+                        + (
+                            f", decay floor {decay_floor:g}"
+                            if morphology == "graded" else ""
+                        )
+                        + ") leaves wavy outer surfaces, so pockets are "
+                        "disabled for this run and not drawn in the "
+                        "cross-section."
+                    )
+            surface_transition_plies = int(DEFAULT_SURFACE_TRANSITION_PLIES)
 
         st.markdown("**Amplitude profile**")
         amplitude_profile = st.selectbox(
@@ -933,6 +1121,11 @@ with st.sidebar:
         amplitude_profile = DEFAULT_AMPLITUDE_PROFILE
         amplitude_profile_decay_length = None
         amplitude_profile_axis = DEFAULT_AMPLITUDE_PROFILE_AXIS
+        # Surface resin pockets depend on the expert-only FE solve, so the
+        # novice path leaves them off with the contract defaults.
+        enable_surface_pockets = DEFAULT_ENABLE_SURFACE_POCKETS
+        surface_pocket_side = DEFAULT_SURFACE_POCKET_SIDE
+        surface_transition_plies = int(DEFAULT_SURFACE_TRANSITION_PLIES)
 
     _loading_options = ["compression", "tension"]
     _loading_default_idx = (
@@ -1197,74 +1390,28 @@ with st.sidebar:
         czm_newton_tol = DEFAULT_CZM_NEWTON_TOL
 
     # ------------------------------------------------------------------
-    # Surface resin pockets (tool-flat outer surface; issue #361). Expert
-    # only, like CZM: it is an FE-only material effect (the neat-resin
-    # zones filling the wrinkle troughs under a flat tool surface) and the
-    # FE solve it needs is itself expert-gated. When enabled for a
-    # tool-flat morphology, the Analyze-tab cross-section shades the zones
-    # and the FE run tags them; incompatible morphologies (uniform, or
-    # graded with a non-zero decay floor) leave wavy surfaces, so the flag
-    # is withheld from the run and a note explains why — the preview and
-    # the run never diverge.
+    # Surface resin pockets now live in the morphology definition (issue
+    # #371): the tool_flat side/transition controls and the legacy advanced
+    # opt-in are rendered above, directly under the Morphology selector.
+    # Here we only resolve how they thread into the run.
+    #
+    #   - ``tool_flat``: pockets are the morphology's physics — the config
+    #     auto-enables them on the FE path.  We respect *Analytical only*
+    #     (tool_flat analytical == uniform), so it does NOT force the FE
+    #     path; the side + transition-plies just travel into the config.
+    #   - legacy morphologies: the advanced checkbox is an explicit FE-only
+    #     opt-in, wired in only when the morphology is genuinely tool-flat
+    #     (so an incompatible morphology can never build an invalid config).
     # ------------------------------------------------------------------
-    if expert_mode:
-        with st.expander("Surface resin pockets (tool-flat surface)", expanded=False):
-            enable_surface_pockets = st.checkbox(
-                "Model surface resin pockets",
-                value=DEFAULT_ENABLE_SURFACE_POCKETS,
-                key="sb_enable_surface_pockets",
-                help=(
-                    "Parts cured against rigid tooling / a caul sheet keep "
-                    "perfectly flat outer surfaces while the fibres undulate "
-                    "internally; the wrinkle troughs fill with neat resin "
-                    "just under the flat surface. When enabled, the "
-                    "through-thickness cross-section shades these zones and "
-                    "the FE solve blends in the soft isotropic resin card "
-                    "(fibre-free, misalignment suppressed). Requires a "
-                    "tool-flat morphology (stack/convex/concave, or graded "
-                    "with decay floor 0) and the full FE solve (untick "
-                    "*Analytical only*; it is forced off when this is on)."
-                ),
-            )
-            surface_pocket_side = st.selectbox(
-                "Tool-flat surface(s)",
-                ["top", "bottom", "both"],
-                index=["top", "bottom", "both"].index(
-                    DEFAULT_SURFACE_POCKET_SIDE
-                ),
-                key="sb_surface_pocket_side",
-                help=(
-                    "Which flat face(s) to tag: *top* (+z), *bottom* (-z), "
-                    "or *both*. A part flat on one face only (e.g. a caul on "
-                    "top, bag on the bottom) uses a single side."
-                ),
-            )
-            if enable_surface_pockets and not _is_tool_flat_morphology(
-                morphology, decay_floor
-            ):
-                st.warning(
-                    "Surface resin pockets need a tool-flat morphology — "
-                    "stack/convex/concave, or graded with decay floor 0. The "
-                    f"current morphology (**{morphology}**"
-                    + (
-                        f", decay floor {decay_floor:g}"
-                        if morphology == "graded" else ""
-                    )
-                    + ") leaves wavy outer surfaces, so pockets are disabled "
-                    "for this run and not drawn in the cross-section."
-                )
-    else:
-        # Novice path: surface pockets depend on the expert-only FE solve.
-        enable_surface_pockets = False
-        surface_pocket_side = DEFAULT_SURFACE_POCKET_SIDE
-
-    # Surface pockets are only wired into the run when both requested and
-    # compatible, so an incompatible morphology can never build an invalid
-    # AnalysisConfig (which would raise in ``_validate``).
-    _surface_pockets_active = bool(
+    _is_tool_flat_selected = morphology == "tool_flat"
+    _legacy_pockets_active = bool(
         enable_surface_pockets
+        and not _is_tool_flat_selected
         and _is_tool_flat_morphology(morphology, decay_floor)
     )
+    # Only the explicit legacy opt-in forces the FE path (tool_flat honours
+    # the Analytical-only checkbox).
+    _surface_pockets_active = _legacy_pockets_active
 
     run_disabled = bool(mesh_diag is not None and mesh_diag.will_invert)
     run_clicked = st.button(
@@ -1343,11 +1490,22 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             czm_newton_tol=float(cfg_dict.get("czm_newton_tol", 1.0e-4)),
         )
 
-    # Surface resin pockets (issue #361) — only threaded in when the run
-    # handler flagged them active (requested + tool-flat morphology), so an
-    # incompatible morphology never reaches AnalysisConfig validation.
+    # Surface resin pockets (issues #361 / #371). For the tool_flat
+    # morphology the config auto-enables the pockets on the FE path, so we
+    # only thread through its pinned side + transition-ply width. For the
+    # legacy morphologies the run handler flags the explicit opt-in
+    # (requested + tool-flat morphology) so an incompatible morphology never
+    # reaches AnalysisConfig validation.
     surface_pocket_kwargs: dict = {}
-    if cfg_dict.get("enable_surface_resin_pockets", False):
+    _morph_name = cfg_dict.get("morphology", "stack")
+    if _morph_name == "tool_flat":
+        surface_pocket_kwargs["surface_pocket_side"] = cfg_dict.get(
+            "surface_pocket_side", "top"
+        )
+        surface_pocket_kwargs["surface_transition_plies"] = int(
+            cfg_dict.get("surface_transition_plies", 2)
+        )
+    elif cfg_dict.get("enable_surface_resin_pockets", False):
         surface_pocket_kwargs = dict(
             enable_surface_resin_pockets=True,
             surface_pocket_side=cfg_dict.get("surface_pocket_side", "top"),
@@ -1758,10 +1916,16 @@ if run_clicked or _demo_pending:
             cfg_items["czm_tau_max"] = float(czm_tau_max)
             cfg_items["czm_n_load_increments"] = int(czm_load_increments)
             cfg_items["czm_newton_tol"] = float(czm_newton_tol)
-        # Surface resin pockets — only added when requested AND the
-        # morphology is tool-flat, so the config never sees the flag with an
-        # incompatible morphology (bit-identical cache key when off).
-        if _surface_pockets_active:
+        # Surface resin pockets (issues #361 / #371).
+        #   - tool_flat: thread the pinned side + transition-ply width; the
+        #     config auto-enables the pockets on the FE path.
+        #   - legacy opt-in: only added when requested AND the morphology is
+        #     tool-flat, so the config never sees the flag with an
+        #     incompatible morphology (bit-identical cache key when off).
+        if _is_tool_flat_selected:
+            cfg_items["surface_pocket_side"] = surface_pocket_side
+            cfg_items["surface_transition_plies"] = int(surface_transition_plies)
+        elif _surface_pockets_active:
             cfg_items["enable_surface_resin_pockets"] = True
             cfg_items["surface_pocket_side"] = surface_pocket_side
         cfg_payload = tuple(sorted(cfg_items.items()))
@@ -1889,6 +2053,7 @@ with tab_analyze:
                     amplitude_profile_axis=amplitude_profile_axis,
                     enable_surface_resin_pockets=enable_surface_pockets,
                     surface_pocket_side=surface_pocket_side,
+                    surface_transition_plies=surface_transition_plies,
                 )
                 _gap_areas = getattr(fig_tt, "surface_pocket_gap_area", {})
                 st.pyplot(fig_tt, clear_figure=True)
