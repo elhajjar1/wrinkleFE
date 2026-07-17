@@ -251,6 +251,13 @@ def _knockdown_factors(results: AnalysisResults) -> dict:
         out["modulus_retention"] = _f(results.modulus_retention)
     if results.modulus_retention_global is not None:
         out["modulus_retention_global"] = _f(results.modulus_retention_global)
+    # Only emitted on failure so machine consumers can tell a fallback 1.0
+    # from a genuinely computed 1.0; absent (and byte-identical) for valid
+    # runs, preserving ledger zero-drift.
+    if results.modulus_retention_failed:
+        out["modulus_retention_failed"] = True
+    if results.modulus_retention_global_failed:
+        out["modulus_retention_global_failed"] = True
     return out
 
 

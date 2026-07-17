@@ -251,7 +251,10 @@ def calibrate_gate(theta_deg, dt, kd, *, name: str = "gate") -> GateParameters:
     k = np.asarray(kd, dtype=float)
 
     def resid(par):
-        return penetration_gate_kd(th, d, GateParameters(*par, name=name)) - k
+        gamma_Y, dt0, p = par
+        return penetration_gate_kd(
+            th, d, GateParameters(gamma_Y, dt0, p, name=name)
+        ) - k
 
     sol = least_squares(
         resid, x0=[0.3, 0.1, 3.0],

@@ -2321,6 +2321,12 @@ class AnalysisResults:
     baseline_fi: dict | None = None  # {criterion_name: float} pristine max FI
 
     # Modulus retention (E_wrinkled / E_pristine from FE)
+    modulus_retention_failed: bool = False
+    """``True`` when the local-σ₁₁ modulus-retention computation raised and
+    :attr:`modulus_retention` was forced to the ``1.0`` fallback. Lets callers
+    distinguish a genuine no-knockdown ``1.0`` from a failed computation (see
+    also the WARNING logged with ``exc_info`` when this fires)."""
+
     modulus_retention: float = 1.0
     """FE axial-modulus retention from the **local** fibre-direction-stress
     proxy: ``E_eff = <σ₁₁> / ε_applied`` (mean element-frame σ₁₁ over the
@@ -2330,6 +2336,11 @@ class AnalysisResults:
     axes) than the measured ``E_x / E_x0``.  Kept for backward
     compatibility; prefer :attr:`modulus_retention_global` for the
     coupon-level stiffness knockdown."""
+
+    modulus_retention_global_failed: bool = False
+    """``True`` when the global reaction-based modulus-retention computation
+    raised and :attr:`modulus_retention_global` was forced to the ``1.0``
+    fallback (a WARNING is logged with ``exc_info`` when this fires)."""
 
     modulus_retention_global: float = 1.0
     """FE axial-modulus retention from the **global** reaction response:
@@ -2467,9 +2478,20 @@ class AnalysisResults:
                 "",
                 "  FE Results:",
                 f"    Max displacement: {max_disp:.6e} mm",
-                f"    Modulus retention (local σ₁₁):  {self.modulus_retention:.4f}",
+                f"    Modulus retention (local σ₁₁):  "
+                f"{self.modulus_retention:.4f}"
+                + (
+                    "  (computation failed — fallback)"
+                    if self.modulus_retention_failed
+                    else ""
+                ),
                 f"    Modulus retention (global E_x): "
-                f"{self.modulus_retention_global:.4f}",
+                f"{self.modulus_retention_global:.4f}"
+                + (
+                    "  (computation failed — fallback)"
+                    if self.modulus_retention_global_failed
+                    else ""
+                ),
             ])
 
         if self.progressive_history is not None:
@@ -4538,29 +4560,18 @@ class WrinkleAnalysis:
         #     modulus knockdown more closely (and is lower than the local
         #     proxy for a wrinkled coupon).
         try:
-            applied_strain = cfg.applied_strain
-            if applied_strain == 0.0:
-                results.modulus_retention = 1.0
-            else:
-                # Set by the FE path before retention factors run; if it
-                # were ever None the except below restores the default.
-                assert results.field_results is not None
-                stress_w = results.field_results.stress_local  # (n_elem, n_gauss, 6)
-                stress_p = flat_field.stress_local
-
-                # Mean fiber-direction stress σ₁₁ (Voigt component 0)
-                s11_w = stress_w[:, :, 0].mean()
-                s11_p = stress_p[:, :, 0].mean()
-
-                E_wrinkled = s11_w / applied_strain
-                E_pristine = s11_p / applied_strain
-
-                if abs(E_pristine) > 1e-6:
-                    results.modulus_retention = float(abs(E_wrinkled) / abs(E_pristine))
-                else:
-                    results.modulus_retention = 1.0
+            results.modulus_retention = self._local_modulus_retention(
+                results, flat_field, cfg.applied_strain
+            )
         except Exception:
+            logger.warning(
+                "Local (σ₁₁ proxy) modulus-retention computation failed; "
+                "forcing modulus_retention to the 1.0 fallback "
+                "(modulus_retention_failed=True)",
+                exc_info=True,
+            )
             results.modulus_retention = 1.0
+            results.modulus_retention_failed = True
 
         # --- Global (reaction-based) modulus retention ---
         try:
@@ -4584,11 +4595,47 @@ class WrinkleAnalysis:
                 else:
                     results.modulus_retention_global = 1.0
         except Exception:
-            logger.debug(
-                "Global reaction-based modulus retention failed; "
-                "falling back to 1.0", exc_info=True
+            logger.warning(
+                "Global reaction-based modulus-retention computation failed; "
+                "forcing modulus_retention_global to the 1.0 fallback "
+                "(modulus_retention_global_failed=True)",
+                exc_info=True,
             )
             results.modulus_retention_global = 1.0
+            results.modulus_retention_global_failed = True
+
+    def _local_modulus_retention(
+        self,
+        results: AnalysisResults,
+        flat_field: FieldResults,
+        applied_strain: float,
+    ) -> float:
+        """LOCAL σ₁₁-proxy axial-modulus retention ``E_wrinkled / E_pristine``.
+
+        ``E_eff = <σ₁₁> / ε_applied`` from the mean element-frame fibre-
+        direction stress, wrinkled vs pristine. Returns ``1.0`` for the
+        degenerate zero-strain / zero-pristine-stress cases. Extracted so the
+        caller's ``except`` can flag a genuine computation failure distinctly
+        from this legitimate ``1.0`` (issue #374); numerics are unchanged.
+        """
+        if applied_strain == 0.0:
+            return 1.0
+        # Set by the FE path before retention factors run; if it were ever
+        # None the caller's except restores the default and flags failure.
+        assert results.field_results is not None
+        stress_w = results.field_results.stress_local  # (n_elem, n_gauss, 6)
+        stress_p = flat_field.stress_local
+
+        # Mean fiber-direction stress σ₁₁ (Voigt component 0)
+        s11_w = stress_w[:, :, 0].mean()
+        s11_p = stress_p[:, :, 0].mean()
+
+        E_wrinkled = s11_w / applied_strain
+        E_pristine = s11_p / applied_strain
+
+        if abs(E_pristine) > 1e-6:
+            return float(abs(E_wrinkled) / abs(E_pristine))
+        return 1.0
 
     def _reaction_modulus(
         self,
