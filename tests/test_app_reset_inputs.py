@@ -126,6 +126,27 @@ def test_reset_inputs_restores_every_default(app_module, monkeypatch):
     assert fake_state["unrelated"] == "keep me"
 
 
+def test_reset_inputs_pops_run_derived_state(app_module, monkeypatch):
+    """``reset_inputs()`` must drop the run-derived ``results`` /
+    ``cfg_payload`` so a Reset returns the Analyze tab to its empty state
+    instead of showing a stale run under default inputs (issue #374)."""
+    fake_state: dict[str, object] = {
+        "sb_amplitude": 999.0,
+        "results": {"analytical_knockdown": 0.5},
+        "cfg_payload": (("amplitude", 999.0),),
+        "unrelated": "keep me",
+    }
+    monkeypatch.setattr(app_module.st, "session_state", fake_state)
+
+    app_module.reset_inputs()
+
+    assert "results" not in fake_state
+    assert "cfg_payload" not in fake_state
+    assert fake_state["unrelated"] == "keep me"
+    # Defaults were still restored.
+    assert fake_state["sb_amplitude"] == app_module.DEFAULTS["sb_amplitude"]
+
+
 def test_defaults_cover_every_sidebar_key(app_module):
     """``DEFAULTS`` must cover every ``key=`` used by sidebar analysis inputs.
 

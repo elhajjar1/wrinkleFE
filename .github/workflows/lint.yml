@@ -22,10 +22,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Include the streamlit extra so mypy type-checks app.py /
+      # streamlit_viz.py against the REAL streamlit + plotly types rather
+      # than the Any-typed fallback (issue #374): without it CI's mypy stays
+      # green while the documented local gate fails on real type errors.
       - name: Install lint tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,streamlit]"
 
       # Full config: CI now runs ruff's complete pyproject.toml ruleset
       # (E, F, W, I, N, UP) with no --select override, completing the
