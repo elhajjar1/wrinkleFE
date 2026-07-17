@@ -82,8 +82,10 @@ required: **<https://wrinklefe.streamlit.app/>**. Pick a material from the
 sidebar (or **Custom…** to enter your own elastic constants and strength
 allowables), enter a layup in contracted notation (e.g. `[0/45/-45/90]_3s`),
 set the wrinkle geometry, and click **Run analysis**. The app ships with
-per-morphology schematic cartoons, a live wrinkle preview, and the same
-analytical + FE pipeline as the Python API. See
+per-morphology schematic cartoons (including the `tool_flat`
+surface-resin-pocket morphology, whose pinned-side and transition-ply
+controls appear inline with the Morphology selector), a live wrinkle
+preview, and the same analytical + FE pipeline as the Python API. See
 [`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for the full feature
 tour and instructions for self-hosting.
 
@@ -497,6 +499,12 @@ wrinklefe analyze --resin-pocket --progressive --increments 15
 
 # Surface resin pockets under a tool-flat surface (FE)
 wrinklefe analyze --surface-resin-pockets --surface-pocket-side both
+
+# tool_flat morphology — significant pockets (auto-enabled). The
+# hyphenated --morphology tool-flat is an alias for tool_flat; amplitude
+# is bounded by 0.8 * surface-transition-plies * ply_thickness / nz_per_ply.
+wrinklefe analyze --morphology tool-flat --amplitude 0.35 \
+    --surface-pocket-side both --surface-transition-plies 3
 ```
 
 | Flag | Config field | Notes |
@@ -504,7 +512,8 @@ wrinklefe analyze --surface-resin-pockets --surface-pocket-side both
 | `--wrinkle-z-position Z` | `wrinkle_z_position` | Fraction of thickness in `[0, 1]` (0.5 = midplane); graded morphology |
 | `--gate {li2024-moulded,li2025-vacbag}` | `penetration_gate` | Calibrated `GateParameters` preset; UD-scoped |
 | `--resin-pocket` | `enable_resin_pocket` | Crest resin lens (FE-only) |
-| `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}` | `enable_surface_resin_pockets` / `surface_pocket_side` | Tool-flat surface pockets (FE-only) |
+| `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}` | `enable_surface_resin_pockets` / `surface_pocket_side` | Tool-flat surface pockets (FE-only). Auto-enabled for `--morphology tool-flat` |
+| `--surface-transition-plies N` | `surface_transition_plies` | `tool_flat` only: amplitude-ramp width (≥ 1, default 2); bounds the amplitude |
 | `--progressive` / `--increments N` | `enable_progressive_damage` / `progressive_n_increments` | Load-stepping ultimate strength (FE-only) |
 
 The long tail of finer knobs (custom `GateParameters`, resin-pocket
@@ -683,7 +692,7 @@ amplitude varies through the thickness**. The first three names below
 are *dual-wrinkle* modes distinguished by the phase offset φ between
 two adjacent wrinkle centrelines (the through-thickness amplitude
 follows a linear taper from the wrinkle interface plies down to zero
-at the laminate outer surfaces). The last two are *single-wrinkle*
+at the laminate outer surfaces). The last three are *single-wrinkle*
 modes that swap that taper for a different through-thickness profile.
 
 | Morphology   | # wrinkles | Phase φ | Through-thickness amplitude            | M_f (compression) | When to use                                                                                                                                          |
@@ -693,6 +702,7 @@ modes that swap that taper for a different through-thickness profile.
 | `concave`    | 2          | −π/2    | Linear decay, 1 at interface → 0 at surfaces | > 1               | Two phase-shifted wrinkles whose interface pinches inward. *Most* damaging dual-wrinkle case in compression — design-driving.                       |
 | `uniform`    | 1          | n/a     | Full amplitude on **every** ply (no decay)   | 1.0 (no pairing)  | A single through-thickness-wide wrinkle — every ply wavy with the same A. Conservative bound and sanity-check baseline.                              |
 | `graded`     | 1          | n/a     | Linear decay from mid-ply to surfaces, with floor `decay_floor` ∈ [0, 1] | 1.0 (no pairing) | An embedded wrinkle that fades toward the surface plies. `decay_floor=0` is pure graded; `decay_floor=1` collapses to `uniform`.                    |
+| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Shares `uniform`'s analytical knockdown; amplitude is bounded (see below). |
 
 ### `stack` vs `uniform` — what's the difference?
 

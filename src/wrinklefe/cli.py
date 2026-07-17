@@ -37,6 +37,19 @@ from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
 MORPHOLOGY_CHOICES = sorted(set(MORPHOLOGY_PHASES.keys()) | SINGLE_WRINKLE_MODES)
 
 
+def _normalize_morphology(value: str) -> str:
+    """Normalise a ``--morphology`` argument to its canonical engine name.
+
+    The engine spells the tool-flat morphology ``tool_flat`` (underscore),
+    but a hyphenated ``tool-flat`` is the natural CLI spelling (issue #371),
+    so accept both.  Applied as the argparse ``type=`` callable, which runs
+    *before* the ``choices`` membership check, so the canonical
+    :data:`MORPHOLOGY_CHOICES` list stays authoritative and an unknown name
+    still exits with code 2.
+    """
+    return value.replace("-", "_")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -89,11 +102,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_analyze.add_argument(
-        "--morphology", type=str, default="stack",
+        "--morphology", type=_normalize_morphology, default="stack",
         choices=MORPHOLOGY_CHOICES,
         help=(
             "Wrinkle morphology type (default: stack). "
-            f"One of: {', '.join(MORPHOLOGY_CHOICES)}."
+            f"One of: {', '.join(MORPHOLOGY_CHOICES)} "
+            "(``tool-flat`` is accepted as an alias for ``tool_flat``). "
+            "For ``tool_flat`` the surface resin pockets auto-enable on the "
+            "FE path and the amplitude is bounded by "
+            "0.8 * surface_transition_plies * ply_thickness / nz_per_ply."
         ),
     )
     p_analyze.add_argument(
@@ -357,7 +374,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "between the flat surface and the outermost undulating ply and "
             "blends in the resin card. Requires a tool-flat morphology "
             "(stack/convex/concave, or graded with decay_floor=0). Forces "
-            "the FE path."
+            "the FE path. NOTE: for --morphology tool-flat the pockets "
+            "AUTO-ENABLE (they are its defining physics) — this flag is only "
+            "needed for the legacy morphologies, where the pockets are "
+            "inherently small (~0.25 ply thickness)."
         ),
     )
     p_analyze.add_argument(
@@ -365,8 +385,21 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="surface_pocket_side", choices=["top", "bottom", "both"],
         help=(
             "Which tool-flat surface(s) receive surface resin pockets: "
-            "'top' (+z, default), 'bottom' (-z), or 'both'. Only consulted "
-            "when --surface-resin-pockets is set."
+            "'top' (+z, default), 'bottom' (-z), or 'both'. Consulted when "
+            "--surface-resin-pockets is set or --morphology tool-flat is "
+            "selected (it doubles as the pinned tool_side)."
+        ),
+    )
+    p_analyze.add_argument(
+        "--surface-transition-plies", type=int, default=2,
+        dest="surface_transition_plies",
+        help=(
+            "tool_flat morphology only: number of plies over which the "
+            "wrinkle amplitude ramps from the full-amplitude core to the "
+            "flat pinned surface (default: 2, must be >= 1). Fewer plies "
+            "deepen the pockets but tighten the amplitude bound "
+            "0.8 * surface_transition_plies * ply_thickness / nz_per_ply "
+            "(the crest-side transition elements must not invert)."
         ),
     )
     p_analyze.add_argument(
@@ -834,6 +867,8 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         overrides["enable_surface_resin_pockets"] = True
     if given("surface_pocket_side"):
         overrides["surface_pocket_side"] = args.surface_pocket_side
+    if given("surface_transition_plies"):
+        overrides["surface_transition_plies"] = args.surface_transition_plies
     if given("progressive"):
         overrides["enable_progressive_damage"] = True
     if given("increments"):

@@ -421,6 +421,75 @@ def test_analyze_accepts_uniform_and_graded(morph):
     assert cfg.morphology == morph
 
 
+# --------------------------------------------------------------------------- #
+# issue #371: tool_flat morphology + surface-transition-plies
+# --------------------------------------------------------------------------- #
+
+
+def test_tool_flat_is_a_cli_morphology_choice():
+    """``tool_flat`` reaches the CLI choices via the canonical core set."""
+    from wrinklefe.cli import MORPHOLOGY_CHOICES
+
+    assert "tool_flat" in MORPHOLOGY_CHOICES
+
+
+@pytest.mark.parametrize("spelling", ["tool_flat", "tool-flat"])
+def test_analyze_accepts_tool_flat_and_hyphen_alias(spelling):
+    """Both ``tool_flat`` and the hyphenated ``tool-flat`` alias map to the
+    canonical ``tool_flat`` morphology in the AnalysisConfig."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--morphology", spelling,
+            "--amplitude", "0.2", "--analytical-only",
+        ])
+
+    cfg = captured["config"]
+    assert cfg.morphology == "tool_flat"
+
+
+def test_analyze_surface_transition_plies_maps_into_config():
+    """--surface-transition-plies threads into AnalysisConfig for tool_flat."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--morphology", "tool-flat",
+            "--amplitude", "0.3", "--surface-transition-plies", "4",
+            "--analytical-only",
+        ])
+
+    cfg = captured["config"]
+    assert cfg.morphology == "tool_flat"
+    assert cfg.surface_transition_plies == 4
+
+
+def test_analyze_tool_flat_amplitude_bound_rejected():
+    """An amplitude above the tool_flat inversion bound exits with code 2
+    (the actionable ValueError from AnalysisConfig validation)."""
+    # 0.8 * 2 * 0.183 / 1 = 0.293 mm bound at the default transition plies.
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main([
+            "analyze", "--morphology", "tool-flat",
+            "--amplitude", "0.5", "--surface-transition-plies", "2",
+        ])
+    assert exc_info.value.code == 2
+
+
+def test_analyze_tool_flat_default_fe_auto_enables_pockets():
+    """A default tool_flat FE run auto-enables surface resin pockets (they
+    are the morphology's defining physics)."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--morphology", "tool-flat", "--amplitude", "0.2",
+        ])
+
+    cfg = captured["config"]
+    assert cfg.morphology == "tool_flat"
+    assert captured["analytical_only"] is False
+    assert cfg.enable_surface_resin_pockets is True
+
+
 def test_analyze_contracted_layup_expands_to_24_plies():
     """'[0/45/-45/90]_3s' must reach AnalysisConfig as the same 24-ply
     list the Streamlit app produces."""
