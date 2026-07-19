@@ -466,14 +466,12 @@ def plot_strength_distribution(
         )
 
     if show_kde and not by_morphology:
-        try:
-            from scipy.stats import gaussian_kde
-            kde = gaussian_kde(strengths)
-            x_kde = np.linspace(strengths.min(), strengths.max(), 300)
-            ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"],
-                    linewidth=1.5, label="KDE")
-        except ImportError:
-            pass
+        # scipy is a hard dependency (see pyproject) — no ImportError guard.
+        from scipy.stats import gaussian_kde
+        kde = gaussian_kde(strengths)
+        x_kde = np.linspace(strengths.min(), strengths.max(), 300)
+        ax.plot(x_kde, kde(x_kde), color=MORPHOLOGY_COLORS["concave"],
+                linewidth=1.5, label="KDE")
 
     # Add vertical lines for statistics
     mean_s = mc_results.mean_strength

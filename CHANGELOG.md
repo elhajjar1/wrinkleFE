@@ -379,6 +379,41 @@ version produced a given file.
   results shift.
 
 ### Fixed
+- Phase 0 correctness batch (issue #374, *Fixes #374*) — six small hazards
+  from a full-codebase scan; none change numerical results for valid runs
+  (ledger zero-drift):
+  - **Silent modulus-retention fallback.** The local (σ₁₁ proxy) and global
+    (reaction-based) FE modulus-retention blocks swallowed every exception
+    and set the no-knockdown value `1.0` (the local block logged nothing),
+    so a bug in the FE stiffness path read as a clean bill of health. Both
+    now log a `WARNING` with `exc_info` and set a companion boolean flag
+    (`AnalysisResults.modulus_retention_failed` /
+    `modulus_retention_global_failed`) so a fallback `1.0` is
+    distinguishable from a genuinely computed `1.0`. The value stays a
+    `float` (its many consumers call `float()`/format it); the flag is
+    surfaced in `summary()` and serialised only when set.
+  - **Stale app results.** `reset_inputs()` now also drops the run-derived
+    `results` / `cfg_payload`, and the Analyze tab renders an "inputs have
+    changed since this run" banner when the live sidebar no longer matches
+    the payload the shown results were computed from. The Reset button moved
+    to an `on_click` callback, fixing a latent `StreamlitAPIException` from
+    writing widget-keyed state after instantiation.
+  - **CI mypy blind spot.** The lint job now installs the `streamlit` extra
+    so mypy type-checks the app against real streamlit/plotly types (was
+    `Any`), and the documented local gate passes on `main` (the `app.py`
+    `reset_inputs` loop annotation is fixed). `check_untyped_defs` is now
+    enabled repo-wide and clean; the `parametric_sweep.py` "str → float |
+    None" suspect was a typing false-positive (a legitimately heterogeneous
+    params dict inferred too narrowly), fixed by annotating `DEFAULTS`.
+  - **`.gitignore` traps.** The wholesale `examples/` and `validation/*`
+    ignores hid new scripts from `git status`; replaced by per-directory
+    `.gitignore`s that ignore only generated outputs, so drivers stay
+    visible. Added the previously phantom
+    `examples/08_multi_wrinkle_czm_linkup.py` (crest-to-crest CZM link-up)
+    that the README already listed.
+  - **Dead scipy guard.** Removed the `except ImportError: pass` around
+    `scipy.stats.gaussian_kde` in `viz/plots_2d.py` (scipy is a hard
+    dependency; the guard would have silently skipped the KDE).
 - Results-export schema drift (issue #345): the structured JSON export
   (`wrinklefe.io.results.results_to_dict` / `export_results_json`) and the
   NCR validation summary (`wrinklefe.io.export.build_analysis_summary`)
