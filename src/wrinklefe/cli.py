@@ -461,6 +461,71 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # ------------------------------------------------------------------ #
+    # Through-width (transverse / y) wrinkle surface (issue #300 CLI
+    # exposure, #375). FE-only: a non-uniform mode forces the FE path and
+    # is rejected together with a multi-wrinkle 'wrinkles' list or CZM
+    # (AnalysisConfig validation surfaces those as clean CLI errors).
+    # Added BEFORE the SUPPRESS loop so they inherit the --config precedence.
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--transverse-mode", type=str, default="uniform",
+        dest="transverse_mode", choices=list(TRANSVERSE_MODE_CHOICES),
+        help=(
+            "Through-width (transverse y) wrinkle-surface envelope "
+            "(default: uniform, the bare x-only wrinkle). 'gaussian_decay' "
+            "decays the amplitude toward the specimen edges, 'sinusoidal_y' "
+            "ripples it across the width, and 'elliptical' confines it to a "
+            "mid-width patch. FE-ONLY: any non-uniform mode forces the FE "
+            "path and is not combinable with a multi-wrinkle config or CZM."
+        ),
+    )
+    p_analyze.add_argument(
+        "--transverse-span", type=float, default=None,
+        dest="transverse_span",
+        help=(
+            "Specimen width span_y in mm seen by the transverse envelope. "
+            "Must be > 0. Defaults to the meshed domain width. Ignored when "
+            "--transverse-mode=uniform."
+        ),
+    )
+    p_analyze.add_argument(
+        "--transverse-width", type=float, default=None,
+        dest="transverse_width",
+        help=(
+            "Transverse localization half-width width_y in mm: the Gaussian "
+            "1/e length for 'gaussian_decay' and the ellipse half-width for "
+            "'elliptical' (ignored by 'uniform'/'sinusoidal_y'). Must be > 0. "
+            "Defaults to span_y / 4 (a localized mid-width patch)."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # Ergonomics (issue #375): mesh/thickness knobs and a per-run CSV that
+    # were previously config-only. --ply-thickness sets the laminate T and
+    # therefore the penetration gate's D/T. Added BEFORE the SUPPRESS loop.
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--nz-per-ply", type=int, default=1, dest="nz_per_ply",
+        help="Mesh divisions per ply through-thickness (default: 1).",
+    )
+    p_analyze.add_argument(
+        "--ply-thickness", type=float, default=0.183, dest="ply_thickness",
+        help=(
+            "Single-ply thickness in mm (default: 0.183). Sets the laminate "
+            "thickness T = n_plies * ply_thickness and hence the penetration "
+            "gate's D/T ratio."
+        ),
+    )
+    p_analyze.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write the run to a one-row tidy CSV (full float precision, "
+            "matching the sweep/compare CSV schema); the stdout summary is "
+            "still printed."
+        ),
+    )
+
     # Config-file precedence (issue #259): give every analyze option a
     # SUPPRESS default so ``vars(args)`` contains only the flags the user
     # actually passed. ``_cmd_analyze`` starts from the --config file (or
@@ -951,6 +1016,20 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     if given("increments"):
         overrides["progressive_n_increments"] = args.increments
 
+    # Transverse (through-width) surface (issue #300 / #375) and ergonomic
+    # mesh/thickness knobs. Each maps onto its AnalysisConfig field and
+    # composes with --config / --save-config.
+    if given("transverse_mode"):
+        overrides["transverse_mode"] = args.transverse_mode
+    if given("transverse_span"):
+        overrides["transverse_span"] = args.transverse_span
+    if given("transverse_width"):
+        overrides["transverse_width"] = args.transverse_width
+    if given("nz_per_ply"):
+        overrides["nz_per_ply"] = args.nz_per_ply
+    if given("ply_thickness"):
+        overrides["ply_thickness"] = args.ply_thickness
+
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
@@ -966,7 +1045,11 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     enable_czm_eff = overrides.get("enable_czm", False) or (
         base is not None and base.enable_czm
     )
-    fe_feature_eff = enable_czm_eff or (
+    transverse_eff = (
+        overrides.get("transverse_mode", "uniform") != "uniform"
+        or (base is not None and base.transverse_mode != "uniform")
+    )
+    fe_feature_eff = enable_czm_eff or transverse_eff or (
         overrides.get("enable_resin_pocket", False)
         or overrides.get("enable_surface_resin_pockets", False)
         or overrides.get("enable_progressive_damage", False)
@@ -997,7 +1080,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
             config = AnalysisConfig(**overrides)
         else:
             config = dataclasses.replace(base, **overrides)
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, NotImplementedError) as exc:
         print(f"error: invalid configuration: {exc}", file=sys.stderr)
         sys.exit(2)
 
@@ -1060,6 +1143,15 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         from wrinklefe.io.export import export_results_json
         export_results_json(result, args.output_json)
         print(f"\nResults exported to: {args.output_json}")
+
+    # Export a one-row tidy CSV if requested (issue #375), reusing the
+    # sweep/compare per-run writer so the schema matches.
+    if given("output_csv") and args.output_csv is not None:
+        _write_batch_outputs(
+            [("", "", config.morphology, result)],
+            None,
+            args.output_csv,
+        )
 
 
 def _print_czm_extras(result) -> None:

@@ -862,6 +862,95 @@ def test_sweep_wrinkle_z_position_end_to_end(capsys):
 
 
 # --------------------------------------------------------------------------- #
+# analyze: transverse modes + ergonomics (issue #375)
+# --------------------------------------------------------------------------- #
+
+
+def test_analyze_transverse_mode_maps_and_forces_fe():
+    """A non-uniform --transverse-mode reaches the config and forces FE."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--transverse-mode", "gaussian_decay",
+            "--transverse-span", "20.0", "--transverse-width", "5.0",
+        ])
+    cfg = captured["config"]
+    assert cfg.transverse_mode == "gaussian_decay"
+    assert cfg.transverse_span == pytest.approx(20.0)
+    assert cfg.transverse_width == pytest.approx(5.0)
+    # FE-only feature forces the full FE path over the analytical default.
+    assert captured["analytical_only"] is False
+
+
+def test_analyze_transverse_uniform_default_untouched():
+    """Without the flag the config keeps the uniform (x-only) default."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main(["analyze", "--analytical-only"])
+    assert captured["config"].transverse_mode == "uniform"
+    assert captured["analytical_only"] is True
+
+
+def test_analyze_transverse_czm_conflict_is_clean(capsys):
+    """--transverse-mode combined with --enable-czm surfaces a clean error,
+    not a raw traceback (the config validation rejects the combination)."""
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "analyze", "--transverse-mode", "gaussian_decay", "--enable-czm",
+        ])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "error:" in err and "Traceback" not in err
+
+
+def test_analyze_nz_per_ply_and_ply_thickness_map():
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--analytical-only",
+            "--nz-per-ply", "3", "--ply-thickness", "0.25",
+        ])
+    cfg = captured["config"]
+    assert cfg.nz_per_ply == 3
+    assert cfg.ply_thickness == pytest.approx(0.25)
+
+
+def test_analyze_output_csv(tmp_path):
+    """`analyze --output-csv` writes a one-row tidy CSV matching the
+    sweep/compare schema."""
+    import csv
+
+    csv_path = tmp_path / "run.csv"
+    cli_main([
+        "analyze", "--analytical-only",
+        "--amplitude", "0.3", "--wavelength", "16",
+        "--output-csv", str(csv_path),
+    ])
+    rows = list(csv.DictReader(csv_path.open()))
+    assert len(rows) == 1
+    assert {"parameter_name", "parameter_value", "morphology",
+            "knockdown", "predicted_strength_MPa"} <= set(rows[0])
+    assert 0.0 < float(rows[0]["knockdown"]) <= 1.0
+
+
+# --------------------------------------------------------------------------- #
+# --version (issue #375)
+# --------------------------------------------------------------------------- #
+
+
+def test_version_matches_installed_metadata(capsys):
+    """`wrinklefe --version` reports the installed distribution version, not
+    a hardcoded string."""
+    from importlib.metadata import version as _pkg_version
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert _pkg_version("wrinklefe") in out
+
+
+# --------------------------------------------------------------------------- #
 # sweep / compare: --config base (issue #375)
 # --------------------------------------------------------------------------- #
 
