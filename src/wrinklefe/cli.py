@@ -36,6 +36,45 @@ from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
 # engine / Streamlit app (see issue #83).
 MORPHOLOGY_CHOICES = sorted(set(MORPHOLOGY_PHASES.keys()) | SINGLE_WRINKLE_MODES)
 
+# Transverse (through-width) envelope modes exposed on ``analyze`` (#300 /
+# #375). Kept in sync with ``AnalysisConfig.transverse_mode`` validation.
+TRANSVERSE_MODE_CHOICES = ("uniform", "gaussian_decay", "sinusoidal_y", "elliptical")
+
+# Geometry/profile flags on ``sweep`` / ``compare`` that participate in the
+# config-file precedence (issue #375): each is given an ``argparse.SUPPRESS``
+# default so an explicit flag overrides a ``--config`` file while a flag left
+# off inherits the file value. Runtime flags (analytical_only, parallel,
+# outputs, verbose, and the sweep parameter/range) keep ordinary defaults and
+# always drive the run.
+_SWEEP_CONFIG_FLAGS = (
+    "morphology", "amplitude_profile", "amplitude_profile_decay_length",
+    "amplitude_profile_axis",
+)
+_COMPARE_CONFIG_FLAGS = (
+    "amplitude", "wavelength", "width", "amplitude_profile",
+    "amplitude_profile_decay_length", "amplitude_profile_axis",
+)
+
+
+def _resolve_version() -> str:
+    """Return the installed package version, or the source fallback.
+
+    Reads :func:`importlib.metadata.version` so ``wrinklefe --version``
+    always matches the installed distribution rather than a hard-coded
+    string (issue #375). Falls back to the package ``__version__`` when the
+    distribution metadata is unavailable (e.g. running from a source tree
+    that was never installed).
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    try:
+        return _pkg_version("wrinklefe")
+    except PackageNotFoundError:  # pragma: no cover - source-tree fallback
+        from wrinklefe import __version__
+
+        return __version__
+
 
 def _normalize_morphology(value: str) -> str:
     """Normalise a ``--morphology`` argument to its canonical engine name.
@@ -62,7 +101,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 1.0.0",
+        version=f"%(prog)s {_resolve_version()}",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -325,8 +364,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------ #
     # Wrinkle-defect capabilities (issue #346): surface the AnalysisConfig
     # fields shipped by the resin-pocket / progressive-damage / penetration-
-    # gate / off-mid-plane-wrinkle work so ``analyze`` (and, via --config,
-    # ``sweep``) can express them. Added BEFORE the SUPPRESS loop below so
+    # gate / off-mid-plane-wrinkle work so ``analyze`` — and, via their own
+    # ``--config`` flags (issue #375), ``sweep`` / ``compare`` — can express
+    # them. Added BEFORE the SUPPRESS loop below so
     # they inherit the config-file precedence for free (a flag left off keeps
     # the --config value; a flag passed overrides it). The long tail of finer
     # knobs stays reachable through --config.
@@ -521,6 +561,24 @@ def _build_parser() -> argparse.ArgumentParser:
             "logger to DEBUG with a stderr handler)"
         ),
     )
+    p_compare.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load an AnalysisConfig from a JSON (or .yaml/.yml) file as the "
+            "base for the comparison -- so all three morphologies are run "
+            "over the file's laminate, material, mesh and gate. Any geometry "
+            "flag given on the same command line overrides the file value; "
+            "flags left off keep the file value. The three morphologies "
+            "(stack/convex/concave) always override the file's morphology."
+        ),
+    )
+    # Config-file precedence for the geometry/profile flags (issue #375):
+    # a SUPPRESS default means ``vars(args)`` holds only the ones the user
+    # actually passed, so an explicit flag overrides the ``--config`` file
+    # while a flag left off inherits the file value.
+    for _action in p_compare._actions:
+        if _action.dest in _COMPARE_CONFIG_FLAGS:
+            _action.default = argparse.SUPPRESS
 
     # ------------------------------------------------------------------ #
     # sweep
@@ -622,6 +680,25 @@ def _build_parser() -> argparse.ArgumentParser:
             "logger to DEBUG with a stderr handler)"
         ),
     )
+    p_sweep.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load an AnalysisConfig from a JSON (or .yaml/.yml) file as the "
+            "base for the sweep, so the sweep runs over the file's laminate, "
+            "material, mesh and gate (e.g. a UD laminate through the "
+            "penetration gate) instead of the default IM7/8552 quasi-iso "
+            "laminate. The --parameter/--min/--max/--steps flags drive the "
+            "variation over that base; any geometry flag given on the same "
+            "command line overrides the file value."
+        ),
+    )
+    # Config-file precedence for the geometry/profile flags (issue #375):
+    # a SUPPRESS default means ``vars(args)`` holds only the ones the user
+    # actually passed, so an explicit flag overrides the ``--config`` file
+    # while a flag left off inherits the file value.
+    for _action in p_sweep._actions:
+        if _action.dest in _SWEEP_CONFIG_FLAGS:
+            _action.default = argparse.SUPPRESS
 
     # ------------------------------------------------------------------ #
     # converge
@@ -1012,18 +1089,41 @@ def _print_czm_extras(result) -> None:
 
 
 def _cmd_compare(args: argparse.Namespace) -> None:
-    """Handle the ``compare`` subcommand."""
+    """Handle the ``compare`` subcommand.
+
+    Config-file precedence (issue #375): when ``--config`` is given the file
+    supplies the base laminate/material/mesh/gate and every explicitly-passed
+    geometry flag overrides it; the three compared morphologies always drive
+    the ``morphology`` field. Without ``--config`` the behaviour is unchanged.
+    """
+    import dataclasses
+
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
-    config = AnalysisConfig(
-        amplitude=args.amplitude,
-        wavelength=args.wavelength,
-        width=args.width,
-        amplitude_profile=args.amplitude_profile,
-        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
-        amplitude_profile_axis=args.amplitude_profile_axis,
-        verbose=args.verbose,
-    )
+    present = vars(args)
+
+    def given(name: str) -> bool:
+        return name in present
+
+    _geom_defaults: dict = {
+        "amplitude": 0.366, "wavelength": 16.0, "width": 12.0,
+        "amplitude_profile": "constant",
+        "amplitude_profile_decay_length": None,
+        "amplitude_profile_axis": "x",
+    }
+    overrides = {n: getattr(args, n) for n in _geom_defaults if given(n)}
+    overrides["verbose"] = args.verbose
+
+    try:
+        if getattr(args, "config", None):
+            base = AnalysisConfig.load(args.config)
+            config = dataclasses.replace(base, **overrides)
+        else:
+            config = AnalysisConfig(**{**_geom_defaults, **overrides})
+    except (OSError, ValueError, KeyError, ImportError,
+            NotImplementedError) as exc:
+        print(f"error: could not build configuration: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     all_results = WrinkleAnalysis.compare_morphologies(
         config,
@@ -1035,9 +1135,9 @@ def _cmd_compare(args: argparse.Namespace) -> None:
     print("=" * 72)
     print("  WrinkleFE Morphology Comparison")
     print("=" * 72)
-    print(f"  Amplitude:  {args.amplitude:.3f} mm")
-    print(f"  Wavelength: {args.wavelength:.1f} mm")
-    print(f"  Width:      {args.width:.1f} mm")
+    print(f"  Amplitude:  {config.amplitude:.3f} mm")
+    print(f"  Wavelength: {config.wavelength:.1f} mm")
+    print(f"  Width:      {config.width:.1f} mm")
     print()
     print(f"  {'Morphology':<12} {'M_f':>8} {'theta_max':>10} {'theta_eff':>10} "
           f"{'Damage':>8} {'Knockdown':>10} {'Strength':>10}")
@@ -1148,7 +1248,16 @@ def _write_batch_outputs(
 
 
 def _cmd_sweep(args: argparse.Namespace) -> None:
-    """Handle the ``sweep`` subcommand."""
+    """Handle the ``sweep`` subcommand.
+
+    Config-file precedence (issue #375): when ``--config`` is given the file
+    supplies the base laminate/material/mesh/gate (so a UD amplitude sweep
+    through the penetration gate is reachable from the CLI) and every
+    explicitly-passed geometry flag overrides it; the ``--parameter``/range
+    flags drive the variation. Without ``--config`` the behaviour is unchanged.
+    """
+    import dataclasses
+
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
     # Validate the range/steps before burning any compute (issue #298).
@@ -1175,13 +1284,29 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     values = np.linspace(args.sweep_min, args.sweep_max, args.steps)
 
-    config = AnalysisConfig(
-        morphology=args.morphology,
-        amplitude_profile=args.amplitude_profile,
-        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
-        amplitude_profile_axis=args.amplitude_profile_axis,
-        verbose=args.verbose,
-    )
+    present = vars(args)
+
+    def given(name: str) -> bool:
+        return name in present
+
+    _geom_defaults: dict = {
+        "morphology": "stack", "amplitude_profile": "constant",
+        "amplitude_profile_decay_length": None,
+        "amplitude_profile_axis": "x",
+    }
+    overrides = {n: getattr(args, n) for n in _geom_defaults if given(n)}
+    overrides["verbose"] = args.verbose
+
+    try:
+        if getattr(args, "config", None):
+            base = AnalysisConfig.load(args.config)
+            config = dataclasses.replace(base, **overrides)
+        else:
+            config = AnalysisConfig(**{**_geom_defaults, **overrides})
+    except (OSError, ValueError, KeyError, ImportError,
+            NotImplementedError) as exc:
+        print(f"error: could not build configuration: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     # parametric_sweep raises AttributeError for an unknown field name;
     # catch it (and any config/solve error) and exit cleanly with a
@@ -1200,7 +1325,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     print("=" * 60)
     print(f"  WrinkleFE Parametric Sweep: {args.parameter}")
-    print(f"  Morphology: {args.morphology}")
+    print(f"  Morphology: {config.morphology}")
     print("=" * 60)
     print()
     print(f"  {args.parameter:>14} {'Knockdown':>12} {'Strength (MPa)':>16} {'Damage':>10}")
@@ -1216,7 +1341,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     _write_batch_outputs(
         [
-            (args.parameter, float(val), args.morphology, r)
+            (args.parameter, float(val), config.morphology, r)
             for val, r in zip(values, results)
         ],
         args.output_json,

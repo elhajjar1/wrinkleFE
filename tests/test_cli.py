@@ -859,3 +859,122 @@ def test_sweep_wrinkle_z_position_end_to_end(capsys):
     assert "wrinkle_z_position" in out
     # Three data rows should be present between the header rules.
     assert out.count("\n") > 5
+
+
+# --------------------------------------------------------------------------- #
+# sweep / compare: --config base (issue #375)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_config_uses_files_laminate_not_default(tmp_path):
+    """`sweep --config` runs over the file's UD laminate/gate, not the
+    default IM7/8552 quasi-iso laminate."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.core.penetration_gate import GATE_LI2025_VACBAG
+
+    base = AnalysisConfig(
+        morphology="graded",
+        angles=[0.0] * 14,
+        ply_thickness=0.44,
+        wavelength=12.9,
+        width=6.45,
+        penetration_gate=GATE_LI2025_VACBAG,
+        analytical_only=True,
+    )
+    path = tmp_path / "ud_gate.json"
+    base.save_json(path)
+
+    captured: dict = {}
+
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
+        captured["base_config"] = base_config
+        return [_make_fake_result() for _ in values]
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+        new=staticmethod(fake_sweep),
+    ):
+        cli_main([
+            "sweep", "--config", str(path),
+            "--parameter", "amplitude",
+            "--min", "0.3", "--max", "0.9", "--steps", "4",
+        ])
+
+    cfg = captured["base_config"]
+    # The file's UD laminate + gate reached the sweep engine, NOT the
+    # IM7/8552 quasi-iso default (angles=None, ply_thickness=0.183).
+    assert cfg.angles == [0.0] * 14
+    assert cfg.ply_thickness == pytest.approx(0.44)
+    assert cfg.morphology == "graded"
+    assert cfg.penetration_gate is GATE_LI2025_VACBAG
+
+
+def test_sweep_config_explicit_flag_overrides_file(tmp_path):
+    """A geometry flag on the command line overrides the --config file."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(morphology="graded", analytical_only=True)
+    path = tmp_path / "case.json"
+    base.save_json(path)
+
+    captured: dict = {}
+
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
+        captured["base_config"] = base_config
+        return [_make_fake_result() for _ in values]
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+        new=staticmethod(fake_sweep),
+    ):
+        cli_main([
+            "sweep", "--config", str(path), "--morphology", "convex",
+            "--parameter", "amplitude", "--min", "0.1", "--max", "0.3",
+            "--steps", "2",
+        ])
+
+    assert captured["base_config"].morphology == "convex"
+
+
+def test_sweep_bad_config_path_exits_cleanly(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "sweep", "--config", "/no/such/file.json",
+            "--parameter", "amplitude", "--min", "0.1", "--max", "0.3",
+        ])
+    assert exc.value.code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_compare_config_uses_files_laminate(tmp_path):
+    """`compare --config` runs the three morphologies over the file's
+    laminate/material, not the default."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(
+        angles=[0.0] * 8,
+        interface_1=3,
+        interface_2=4,
+        ply_thickness=0.25,
+        analytical_only=True,
+    )
+    path = tmp_path / "case.json"
+    base.save_json(path)
+
+    captured: dict = {}
+
+    def fake_compare(base_config, morphologies, analytical_only):
+        captured["base_config"] = base_config
+        return {m: _make_fake_result() for m in morphologies}
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.compare_morphologies",
+        new=staticmethod(fake_compare),
+    ):
+        cli_main(["compare", "--config", str(path)])
+
+    cfg = captured["base_config"]
+    assert cfg.angles == [0.0] * 8
+    assert cfg.ply_thickness == pytest.approx(0.25)
