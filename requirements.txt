@@ -23,4 +23,4 @@ plotly>=6.7.0
 # gcp_service_account secret is configured, the app still runs and logging is
 # silently skipped (see usage_tracking.py and docs/internal/DEPLOYMENT_STREAMLIT.md).
 gspread>=6.2.1
-google-auth>=2.55.1
+google-auth>=2.56.0
