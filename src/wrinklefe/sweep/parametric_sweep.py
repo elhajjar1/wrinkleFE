@@ -37,8 +37,12 @@ from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 # Valid sweep parameter names
 VALID_PARAMS = {'amplitude', 'wavelength', 'phase'}
 
-# Default parameter values (Jin et al. typical, 2A baseline)
-DEFAULTS = {
+# Default parameter values (Jin et al. typical, 2A baseline).
+# The value type is heterogeneous: geometry params are floats, ``phase`` is
+# None-or-float, and callers also stash the swept ``morphology`` string in a
+# copy of this dict — so annotate the union explicitly rather than letting
+# mypy narrow it to ``float | None`` from the literal (issue #374).
+DEFAULTS: dict[str, float | str | None] = {
     'amplitude': 0.366,   # mm (2A)
     'wavelength': 16.0,   # mm
     'width': 12.0,        # mm
@@ -136,7 +140,9 @@ def _evaluate_point(swept_params, param_vals, fine_mesh, is_phase_sweep):
         # AnalysisConfig.phase (issue #49), which overrides the
         # named-morphology phase so each point uses a distinct
         # dual-wrinkle geometry instead of an identical 'stack' one.
-        phase = float(params['phase'])
+        phase_val = params['phase']
+        assert phase_val is not None, "phase sweep requires a phase value"
+        phase = float(phase_val)
         params['morphology'] = 'stack'  # named phase is overridden anyway
         cfg = _make_config(params, fine_mesh)
         ar = WrinkleAnalysis(cfg).run()

@@ -223,15 +223,26 @@ def reset_inputs() -> None:
     """Restore every sidebar input widget to its default value.
 
     Writes each :data:`DEFAULTS` entry into :data:`st.session_state` so the
-    widget picks up the default on the next rerun. Also clears the dynamic
-    custom-material editor keys (``custom_*``), which are seeded from the
-    chosen material on each rerun and would otherwise survive the reset.
+    widget picks up the default on the next rerun. Also drops the run-derived
+    state (``results`` / ``cfg_payload``) so the Analyze tab doesn't keep
+    rendering the previous run under freshly-defaulted inputs, and clears the
+    dynamic custom-material editor keys (``custom_*``), which are seeded from
+    the chosen material on each rerun and would otherwise survive the reset
+    (issue #374).
     """
-    for k, v in DEFAULTS.items():
-        st.session_state[k] = v
-    for k in list(st.session_state.keys()):
-        if isinstance(k, str) and k.startswith("custom_"):
-            st.session_state.pop(k, None)
+    for key, value in DEFAULTS.items():
+        st.session_state[key] = value
+    # Drop the results and the payload they were computed from so a Reset
+    # returns the Analyze tab to its empty state instead of showing a stale
+    # run against default inputs.
+    for run_key in ("results", "cfg_payload"):
+        st.session_state.pop(run_key, None)
+    # st.session_state keys are ``str | int``; annotate so the reused loop
+    # variable type-checks under the app's mypy gate.
+    state_key: str | int
+    for state_key in list(st.session_state.keys()):
+        if isinstance(state_key, str) and state_key.startswith("custom_"):
+            st.session_state.pop(state_key, None)
 
 
 # Back-compat alias for older call sites.
@@ -1427,18 +1438,22 @@ with st.sidebar:
     )
 
     st.divider()
-    reset_clicked = st.button(
+    # Reset via an on_click callback (not an inline handler): the callback
+    # fires at the start of the next rerun, BEFORE the sidebar widgets are
+    # re-instantiated, so writing their defaults back into session_state is
+    # allowed. Handling the click inline instead raises a StreamlitAPI
+    # exception ("cannot be modified after the widget ... is instantiated")
+    # because the widgets already exist by the time the button is read.
+    st.button(
         "↻ Reset to defaults",
         width="stretch",
+        on_click=reset_inputs,
         help=(
             "Restore every sidebar input (material, layup, wrinkle geometry, "
             "loading, mesh) to its original default value. Modified entries "
             "are discarded; the page reruns immediately."
         ),
     )
-    if reset_clicked:
-        reset_inputs()
-        st.rerun()
 
     with st.expander("What do these terms mean?", expanded=False):
         st.markdown(
@@ -1825,6 +1840,87 @@ def _render_czm_results(czm: dict) -> None:
 profile = GaussianSinusoidal(amplitude=amplitude, wavelength=wavelength, width=width)
 
 
+def _assemble_cfg_payload(
+    layup: list, effective_analytical_only: bool
+) -> tuple:
+    """Build the immutable, hashable analysis payload from the current
+    sidebar inputs.
+
+    Single source of truth for both the run handler (which solves on it and
+    stores it) and the staleness check (which rebuilds the live sidebar
+    payload each rerun and compares it against the stored one). Reads the
+    module-level sidebar variables; ``layup`` and
+    ``effective_analytical_only`` are passed in because the caller validates
+    them first. Mesh / CZM / surface-pocket keys are added only when they
+    affect the result, so the payload stays a faithful fingerprint of the
+    run (issue #374).
+    """
+    cfg_items: dict = {
+        "amplitude": amplitude,
+        "wavelength": wavelength,
+        "width": width,
+        "morphology": morphology,
+        "decay_floor": decay_floor,
+        "amplitude_profile": amplitude_profile,
+        "amplitude_profile_decay_length": amplitude_profile_decay_length,
+        "amplitude_profile_axis": amplitude_profile_axis,
+        "loading": loading,
+        "ply_thickness": ply_thickness,
+        "angles_tuple": tuple(layup),
+        "applied_strain": applied_strain_pct / 100.0,
+        "material_tuple": tuple(sorted(material_dict.items())),
+        "analytical_only": effective_analytical_only,
+    }
+    # Mesh keys only matter for the FE path; omitting them in
+    # analytical-only mode means the cache key doesn't churn when the
+    # user tweaks nx/ny/nz.
+    if not effective_analytical_only:
+        cfg_items["nx"] = int(nx)
+        cfg_items["ny"] = int(ny)
+        cfg_items["nz_per_ply"] = int(nz_per_ply)
+    # CZM keys — only added when CZM is enabled so the cache key
+    # for non-CZM runs is bit-identical to the pre-CZM behaviour.
+    if enable_czm:
+        cfg_items["enable_czm"] = True
+        cfg_items["czm_interfaces"] = czm_interfaces_choice
+        cfg_items["czm_GIc"] = float(czm_GIc)
+        cfg_items["czm_GIIc"] = float(czm_GIIc)
+        cfg_items["czm_sigma_max"] = float(czm_sigma_max)
+        cfg_items["czm_tau_max"] = float(czm_tau_max)
+        cfg_items["czm_n_load_increments"] = int(czm_load_increments)
+        cfg_items["czm_newton_tol"] = float(czm_newton_tol)
+    # Surface resin pockets (issues #361 / #371).
+    #   - tool_flat: thread the pinned side + transition-ply width; the
+    #     config auto-enables the pockets on the FE path.
+    #   - legacy opt-in: only added when requested AND the morphology is
+    #     tool-flat, so the config never sees the flag with an
+    #     incompatible morphology (bit-identical cache key when off).
+    if _is_tool_flat_selected:
+        cfg_items["surface_pocket_side"] = surface_pocket_side
+        cfg_items["surface_transition_plies"] = int(surface_transition_plies)
+    elif _surface_pockets_active:
+        cfg_items["enable_surface_resin_pockets"] = True
+        cfg_items["surface_pocket_side"] = surface_pocket_side
+    return tuple(sorted(cfg_items.items()))
+
+
+def _live_cfg_payload() -> tuple | None:
+    """Best-effort rebuild of the live sidebar payload for the staleness
+    check. Returns ``None`` when the current inputs can't be assembled
+    (e.g. a half-typed layup) so a transient invalid state never
+    false-flags stale results."""
+    try:
+        _live_layup = parse_layup(layup_str)
+        _live_effective_ao = (
+            bool(analytical_only)
+            and not bool(enable_czm)
+            and not _surface_pockets_active
+        )
+        return _assemble_cfg_payload(_live_layup, _live_effective_ao)
+    except Exception:
+        return None
+
+
 # Run handler — execute BEFORE tabs render so the Analyze tab's results
 # section sees the
 # updated session_state and the empty-state placeholder doesn't render
@@ -1882,53 +1978,7 @@ if run_clicked or _demo_pending:
             and not _surface_pockets_active
         )
 
-        cfg_items: dict = {
-            "amplitude": amplitude,
-            "wavelength": wavelength,
-            "width": width,
-            "morphology": morphology,
-            "decay_floor": decay_floor,
-            "amplitude_profile": amplitude_profile,
-            "amplitude_profile_decay_length": amplitude_profile_decay_length,
-            "amplitude_profile_axis": amplitude_profile_axis,
-            "loading": loading,
-            "ply_thickness": ply_thickness,
-            "angles_tuple": tuple(layup),
-            "applied_strain": applied_strain_pct / 100.0,
-            "material_tuple": tuple(sorted(material_dict.items())),
-            "analytical_only": _effective_analytical_only,
-        }
-        # Mesh keys only matter for the FE path; omitting them in
-        # analytical-only mode means the cache key doesn't churn when the
-        # user tweaks nx/ny/nz.
-        if not _effective_analytical_only:
-            cfg_items["nx"] = int(nx)
-            cfg_items["ny"] = int(ny)
-            cfg_items["nz_per_ply"] = int(nz_per_ply)
-        # CZM keys — only added when CZM is enabled so the cache key
-        # for non-CZM runs is bit-identical to the pre-CZM behaviour.
-        if enable_czm:
-            cfg_items["enable_czm"] = True
-            cfg_items["czm_interfaces"] = czm_interfaces_choice
-            cfg_items["czm_GIc"] = float(czm_GIc)
-            cfg_items["czm_GIIc"] = float(czm_GIIc)
-            cfg_items["czm_sigma_max"] = float(czm_sigma_max)
-            cfg_items["czm_tau_max"] = float(czm_tau_max)
-            cfg_items["czm_n_load_increments"] = int(czm_load_increments)
-            cfg_items["czm_newton_tol"] = float(czm_newton_tol)
-        # Surface resin pockets (issues #361 / #371).
-        #   - tool_flat: thread the pinned side + transition-ply width; the
-        #     config auto-enables the pockets on the FE path.
-        #   - legacy opt-in: only added when requested AND the morphology is
-        #     tool-flat, so the config never sees the flag with an
-        #     incompatible morphology (bit-identical cache key when off).
-        if _is_tool_flat_selected:
-            cfg_items["surface_pocket_side"] = surface_pocket_side
-            cfg_items["surface_transition_plies"] = int(surface_transition_plies)
-        elif _surface_pockets_active:
-            cfg_items["enable_surface_resin_pockets"] = True
-            cfg_items["surface_pocket_side"] = surface_pocket_side
-        cfg_payload = tuple(sorted(cfg_items.items()))
+        cfg_payload = _assemble_cfg_payload(layup, _effective_analytical_only)
 
     with st.status("Running analysis…", expanded=True) as status:
         st.write("Building laminate, wrinkle geometry, and mesh…")
@@ -2182,6 +2232,27 @@ with tab_analyze:
         )
     else:
         r = st.session_state["results"]
+
+        # ------------------------------------------------------------------
+        # Staleness banner (issue #374): the displayed results were computed
+        # from st.session_state["cfg_payload"]. If the live sidebar inputs no
+        # longer hash to that payload, the results below (including the
+        # Before/after card, which mixes stored + live values) describe the
+        # PREVIOUS configuration — say so prominently rather than silently.
+        # ------------------------------------------------------------------
+        _stored_payload = st.session_state.get("cfg_payload")
+        _current_payload = _live_cfg_payload()
+        if (
+            _stored_payload is not None
+            and _current_payload is not None
+            and _current_payload != _stored_payload
+        ):
+            st.warning(
+                "⚠️ **Inputs have changed since this run.** The results below "
+                "are for the previous configuration. Click **▶ Run analysis** "
+                "to update them.",
+                icon="⚠️",
+            )
 
         # ------------------------------------------------------------------
         # Before / after comparison card (#98 item 6)

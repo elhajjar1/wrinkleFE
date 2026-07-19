@@ -402,6 +402,15 @@ FIELD_TO_EXPORT_KEY = {
 #: internal intermediates; CZM results are surfaced via the app's own
 #: CZM payload rather than the structured results export.
 INTENTIONALLY_UNEXPORTED = {
+    "modulus_retention_failed": (
+        "diagnostic flag; results_to_dict emits it only when the local "
+        "modulus-retention computation failed, so it is absent for valid "
+        "runs (keeps the export byte-identical / ledger zero-drift, #374)"
+    ),
+    "modulus_retention_global_failed": (
+        "diagnostic flag; emitted only when the global modulus-retention "
+        "computation failed, absent for valid runs (#374)"
+    ),
     "mesh": "heavy MeshData; summarised as the top-level 'mesh' block when present",
     "wrinkle_config": "WrinkleConfiguration object; geometry captured under config",
     "laminate": "Laminate object; layup captured under config.angles",
