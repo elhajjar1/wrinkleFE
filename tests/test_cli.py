@@ -934,6 +934,123 @@ def test_analyze_output_csv(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# stochastic subcommand (issue #375 CLI exposure of #301)
+# --------------------------------------------------------------------------- #
+
+
+def test_stochastic_reports_percentiles_and_is_reproducible(capsys):
+    """`stochastic` prints percentiles and a fixed --seed reproduces them."""
+    argv = [
+        "stochastic",
+        "--distribution", "amplitude:normal:0.4:0.05",
+        "--n-samples", "128", "--seed", "11",
+    ]
+    cli_main(argv)
+    out_a = capsys.readouterr().out
+    assert "Probabilistic Analysis" in out_a
+    assert "P5=" in out_a and "P50=" in out_a and "P95=" in out_a
+
+    cli_main(argv)
+    out_b = capsys.readouterr().out
+    # Same seed -> byte-identical percentile summary.
+    assert out_a == out_b
+
+
+def test_stochastic_json_and_csv_outputs(tmp_path):
+    import csv
+    import json
+
+    json_path = tmp_path / "prob.json"
+    csv_path = tmp_path / "prob.csv"
+    cli_main([
+        "stochastic",
+        "--distribution", "amplitude:normal:0.4:0.05",
+        "--distribution", "wavelength:uniform:14:18",
+        "--n-samples", "64", "--seed", "3",
+        "--output-json", str(json_path),
+        "--output-csv", str(csv_path),
+    ])
+
+    payload = json.loads(json_path.read_text())
+    assert payload["n_samples"] == 64
+    assert payload["seed"] == 3
+    assert "5.0" in payload["knockdown"]["percentiles"]
+    assert len(payload["samples"]["knockdown"]) == 64
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert len(rows) == 64
+    assert {"input_amplitude", "input_wavelength", "knockdown",
+            "strength_MPa", "modulus_knockdown"} <= set(rows[0])
+
+
+def test_stochastic_reproducible_percentile_values(tmp_path):
+    """Two seeded runs produce identical percentile knockdowns in JSON."""
+    import json
+
+    def run(dst):
+        cli_main([
+            "stochastic", "--distribution", "amplitude:normal:0.4:0.05",
+            "--n-samples", "100", "--seed", "42", "--output-json", str(dst),
+        ])
+        return json.loads(dst.read_text())["knockdown"]["percentiles"]
+
+    a = run(tmp_path / "a.json")
+    b = run(tmp_path / "b.json")
+    assert a == b
+    # A genuine spread was produced (not a degenerate constant).
+    assert a["5.0"] < a["95.0"]
+
+
+@pytest.mark.parametrize("bad", [
+    "amplitude:normal:0.4",          # too few fields
+    "amplitude:normal:0.4:0.05:1",   # too many fields
+    "amplitude:weibull:0.4:0.05",    # unknown distribution
+    "amplitude:normal:x:0.05",       # non-numeric parameter
+    ":normal:0.4:0.05",              # empty field name
+])
+def test_stochastic_bad_distribution_spec_exits_cleanly(bad, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["stochastic", "--distribution", bad, "--n-samples", "10"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "error:" in err and "--distribution" in err
+    assert "Traceback" not in err
+
+
+def test_stochastic_uses_config_base(tmp_path):
+    """`stochastic --config` samples over the file's base laminate."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(
+        angles=[0.0] * 8, interface_1=3, interface_2=4,
+        analytical_only=True,
+    )
+    path = tmp_path / "base.json"
+    base.save_json(path)
+
+    from wrinklefe.stochastic import (
+        probabilistic_analysis as _real_prob,
+    )
+
+    captured: dict = {}
+
+    def fake_prob(base_config, distributions, **kwargs):
+        captured["base_config"] = base_config
+        captured["distributions"] = distributions
+        return _real_prob(base_config, distributions, **kwargs)
+
+    with patch("wrinklefe.stochastic.probabilistic_analysis", new=fake_prob):
+        cli_main([
+            "stochastic", "--config", str(path),
+            "--distribution", "amplitude:normal:0.3:0.02",
+            "--n-samples", "16", "--seed", "1",
+        ])
+
+    assert captured["base_config"].angles == [0.0] * 8
+    assert captured["distributions"] == {"amplitude": ("normal", 0.3, 0.02)}
+
+
+# --------------------------------------------------------------------------- #
 # --version (issue #375)
 # --------------------------------------------------------------------------- #
 

@@ -857,6 +857,98 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # ------------------------------------------------------------------ #
+    # stochastic
+    # ------------------------------------------------------------------ #
+    p_stochastic = subparsers.add_parser(
+        "stochastic",
+        help="Monte-Carlo / LHS uncertainty propagation",
+        description=(
+            "Propagate input distributions through the analytical (or FE) "
+            "wrinkle analysis and report percentile knockdowns/strengths -- "
+            "the 'P5 knockdown under measurement uncertainty' number. These "
+            "are model-INPUT-propagation statistics, NOT CMH-17 A-/B-basis "
+            "allowables (see the printed disclaimer)."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load the deterministic base AnalysisConfig from a JSON (or "
+            ".yaml/.yml) file. Every non-sampled field is held at its file "
+            "value. When omitted, the AnalysisConfig defaults are used."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--distribution", action="append", default=None, dest="distribution",
+        metavar="FIELD:DIST:P1:P2", required=True,
+        help=(
+            "Sample an AnalysisConfig field from a distribution. Repeatable. "
+            "Format 'FIELD:DIST:P1:P2' where DIST is one of normal|uniform|"
+            "lognormal: 'amplitude:normal:0.5:0.05' (mean, std), "
+            "'wavelength:uniform:12:20' (lo, hi), "
+            "'amplitude:lognormal:-0.7:0.2' (mu, sigma of the underlying "
+            "normal). At least one --distribution is required."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--n-samples", type=int, default=1000, dest="n_samples",
+        help="Number of samples (default: 1000; the analytical path is fast).",
+    )
+    p_stochastic.add_argument(
+        "--seed", type=int, default=None, dest="seed",
+        help=(
+            "Sampler seed. A fixed seed makes the whole run reproducible "
+            "(same samples, same percentiles). Default: unseeded."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--method", type=str, default="lhs", choices=["lhs", "mc"],
+        help=(
+            "Sampling method: 'lhs' (Latin-hypercube, default, lower "
+            "variance) or 'mc' (plain Monte-Carlo)."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--analytical-only", action=argparse.BooleanOptionalAction,
+        default=True, dest="analytical_only",
+        help=(
+            "Run only the analytical path per sample (default). Use "
+            "--no-analytical-only for the full FE pipeline per sample "
+            "(prohibitive beyond small --n-samples; pair with --parallel)."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--parallel", type=int, default=1, metavar="N", dest="parallel",
+        help=(
+            "Worker processes for the per-sample runs (default: 1 = "
+            "in-process; 0 = all CPU cores). Sampling always happens in the "
+            "parent, so results are identical for any worker count."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the percentile summary and per-sample arrays to a JSON "
+            "file; the stdout summary is still printed."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write one row per sample (each sampled input plus knockdown, "
+            "strength and modulus knockdown) to a tidy CSV; the stdout "
+            "summary is still printed."
+        ),
+    )
+    p_stochastic.add_argument(
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
     # materials
     # ------------------------------------------------------------------ #
     subparsers.add_parser(
@@ -1517,6 +1609,171 @@ def _cmd_converge(args: argparse.Namespace) -> None:
         print(f"\nConvergence plot saved to: {args.save_plot}")
 
 
+def _parse_distribution_specs(specs: list[str]) -> dict:
+    """Parse ``--distribution FIELD:DIST:P1:P2`` specs for ``stochastic``.
+
+    Returns a ``{field: (dist, p1, p2)}`` mapping in exactly the tuple form
+    :func:`wrinklefe.stochastic.probabilistic_analysis` accepts
+    (``("normal", mean, std)`` / ``("uniform", lo, hi)`` /
+    ``("lognormal", mu, sigma)``). Any malformed spec is a fatal CLI error
+    (exit 2) with a clear message rather than a deep traceback.
+    """
+    dists: dict = {}
+    for spec in specs:
+        parts = spec.split(":")
+        if len(parts) != 4:
+            print(
+                f"error: --distribution {spec!r} must be "
+                "'FIELD:DIST:P1:P2' (e.g. 'amplitude:normal:0.5:0.05')",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        field, kind, p1, p2 = (p.strip() for p in parts)
+        kind = kind.lower()
+        if not field:
+            print(
+                f"error: --distribution {spec!r} has an empty field name",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if kind not in ("normal", "uniform", "lognormal"):
+            print(
+                f"error: --distribution {spec!r}: unknown distribution "
+                f"{kind!r}; expected normal, uniform or lognormal",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        try:
+            a, b = float(p1), float(p2)
+        except ValueError:
+            print(
+                f"error: --distribution {spec!r}: P1/P2 ({p1!r}, {p2!r}) "
+                "must be numbers",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if field in dists:
+            print(
+                f"error: --distribution field {field!r} given more than once",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        dists[field] = (kind, a, b)
+    return dists
+
+
+def _cmd_stochastic(args: argparse.Namespace) -> None:
+    """Handle the ``stochastic`` subcommand (issue #375 CLI exposure of #301)."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.stochastic import probabilistic_analysis
+
+    if args.config is not None:
+        try:
+            base = AnalysisConfig.load(args.config)
+        except (OSError, ValueError, ImportError) as exc:
+            print(f"error: could not load --config: {exc}", file=sys.stderr)
+            sys.exit(2)
+    else:
+        base = AnalysisConfig()
+
+    distributions = _parse_distribution_specs(args.distribution)
+
+    try:
+        prob = probabilistic_analysis(
+            base,
+            distributions,
+            n_samples=args.n_samples,
+            seed=args.seed,
+            method=args.method,
+            analytical_only=args.analytical_only,
+            n_workers=args.parallel,
+        )
+    except (ValueError, TypeError) as exc:
+        print(f"error: stochastic analysis failed: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    print(prob.summary())
+
+    _write_stochastic_outputs(prob, args.output_json, args.output_csv)
+
+
+def _write_stochastic_outputs(prob, output_json, output_csv) -> None:
+    """Write stochastic percentiles + per-sample data to JSON and/or CSV."""
+    if output_json is None and output_csv is None:
+        return
+
+    import csv
+    import json
+    from pathlib import Path
+
+    percentiles = [1.0, 5.0, 10.0, 25.0, 50.0, 75.0, 90.0, 95.0, 99.0]
+    input_names = sorted(prob.input_samples)
+
+    if output_json is not None:
+        payload = {
+            "n_samples": prob.n_samples,
+            "seed": prob.seed,
+            "method": prob.method,
+            "analytical_only": prob.analytical_only,
+            "knockdown": {
+                "mean": prob.knockdown_mean,
+                "std": prob.knockdown_std,
+                "percentiles": {
+                    str(q): float(prob.knockdown_percentile(q))
+                    for q in percentiles
+                },
+            },
+            "strength_MPa": {
+                "mean": prob.strength_mean,
+                "std": prob.strength_std,
+                "percentiles": {
+                    str(q): float(prob.strength_percentile(q))
+                    for q in percentiles
+                },
+            },
+            "samples": {
+                "knockdown": [float(x) for x in prob.knockdown],
+                "strength_MPa": [float(x) for x in prob.strength_MPa],
+                "modulus_knockdown": [
+                    float(x) for x in prob.modulus_knockdown
+                ],
+                **{
+                    f"input_{name}": [
+                        float(x) for x in prob.input_samples[name]
+                    ]
+                    for name in input_names
+                },
+            },
+        }
+        path = Path(output_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"\nResults written to: {path}")
+
+    if output_csv is not None:
+        fieldnames = [
+            *(f"input_{name}" for name in input_names),
+            "knockdown", "strength_MPa", "modulus_knockdown",
+        ]
+        path = Path(output_csv)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for i in range(prob.n_samples):
+                row = {
+                    f"input_{name}": repr(float(prob.input_samples[name][i]))
+                    for name in input_names
+                }
+                row["knockdown"] = repr(float(prob.knockdown[i]))
+                row["strength_MPa"] = repr(float(prob.strength_MPa[i]))
+                row["modulus_knockdown"] = repr(
+                    float(prob.modulus_knockdown[i])
+                )
+                writer.writerow(row)
+        print(f"\nResults written to: {path}")
+
+
 def _configure_logging(verbose: bool) -> None:
     """Attach a stderr handler to the package logger for ``--verbose``.
 
@@ -1558,6 +1815,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "compare": _cmd_compare,
         "sweep": _cmd_sweep,
         "converge": _cmd_converge,
+        "stochastic": _cmd_stochastic,
         "materials": _cmd_materials,
     }
 
