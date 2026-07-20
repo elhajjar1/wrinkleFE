@@ -36,6 +36,45 @@ from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
 # engine / Streamlit app (see issue #83).
 MORPHOLOGY_CHOICES = sorted(set(MORPHOLOGY_PHASES.keys()) | SINGLE_WRINKLE_MODES)
 
+# Transverse (through-width) envelope modes exposed on ``analyze`` (#300 /
+# #375). Kept in sync with ``AnalysisConfig.transverse_mode`` validation.
+TRANSVERSE_MODE_CHOICES = ("uniform", "gaussian_decay", "sinusoidal_y", "elliptical")
+
+# Geometry/profile flags on ``sweep`` / ``compare`` that participate in the
+# config-file precedence (issue #375): each is given an ``argparse.SUPPRESS``
+# default so an explicit flag overrides a ``--config`` file while a flag left
+# off inherits the file value. Runtime flags (analytical_only, parallel,
+# outputs, verbose, and the sweep parameter/range) keep ordinary defaults and
+# always drive the run.
+_SWEEP_CONFIG_FLAGS = (
+    "morphology", "amplitude_profile", "amplitude_profile_decay_length",
+    "amplitude_profile_axis",
+)
+_COMPARE_CONFIG_FLAGS = (
+    "amplitude", "wavelength", "width", "amplitude_profile",
+    "amplitude_profile_decay_length", "amplitude_profile_axis",
+)
+
+
+def _resolve_version() -> str:
+    """Return the installed package version, or the source fallback.
+
+    Reads :func:`importlib.metadata.version` so ``wrinklefe --version``
+    always matches the installed distribution rather than a hard-coded
+    string (issue #375). Falls back to the package ``__version__`` when the
+    distribution metadata is unavailable (e.g. running from a source tree
+    that was never installed).
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    try:
+        return _pkg_version("wrinklefe")
+    except PackageNotFoundError:  # pragma: no cover - source-tree fallback
+        from wrinklefe import __version__
+
+        return __version__
+
 
 def _normalize_morphology(value: str) -> str:
     """Normalise a ``--morphology`` argument to its canonical engine name.
@@ -62,7 +101,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 1.0.0",
+        version=f"%(prog)s {_resolve_version()}",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -325,8 +364,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------ #
     # Wrinkle-defect capabilities (issue #346): surface the AnalysisConfig
     # fields shipped by the resin-pocket / progressive-damage / penetration-
-    # gate / off-mid-plane-wrinkle work so ``analyze`` (and, via --config,
-    # ``sweep``) can express them. Added BEFORE the SUPPRESS loop below so
+    # gate / off-mid-plane-wrinkle work so ``analyze`` — and, via their own
+    # ``--config`` flags (issue #375), ``sweep`` / ``compare`` — can express
+    # them. Added BEFORE the SUPPRESS loop below so
     # they inherit the config-file precedence for free (a flag left off keeps
     # the --config value; a flag passed overrides it). The long tail of finer
     # knobs stays reachable through --config.
@@ -418,6 +458,71 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Number of load increments for the --progressive solve "
             "(default: 15). Only consulted when --progressive is set."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # Through-width (transverse / y) wrinkle surface (issue #300 CLI
+    # exposure, #375). FE-only: a non-uniform mode forces the FE path and
+    # is rejected together with a multi-wrinkle 'wrinkles' list or CZM
+    # (AnalysisConfig validation surfaces those as clean CLI errors).
+    # Added BEFORE the SUPPRESS loop so they inherit the --config precedence.
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--transverse-mode", type=str, default="uniform",
+        dest="transverse_mode", choices=list(TRANSVERSE_MODE_CHOICES),
+        help=(
+            "Through-width (transverse y) wrinkle-surface envelope "
+            "(default: uniform, the bare x-only wrinkle). 'gaussian_decay' "
+            "decays the amplitude toward the specimen edges, 'sinusoidal_y' "
+            "ripples it across the width, and 'elliptical' confines it to a "
+            "mid-width patch. FE-ONLY: any non-uniform mode forces the FE "
+            "path and is not combinable with a multi-wrinkle config or CZM."
+        ),
+    )
+    p_analyze.add_argument(
+        "--transverse-span", type=float, default=None,
+        dest="transverse_span",
+        help=(
+            "Specimen width span_y in mm seen by the transverse envelope. "
+            "Must be > 0. Defaults to the meshed domain width. Ignored when "
+            "--transverse-mode=uniform."
+        ),
+    )
+    p_analyze.add_argument(
+        "--transverse-width", type=float, default=None,
+        dest="transverse_width",
+        help=(
+            "Transverse localization half-width width_y in mm: the Gaussian "
+            "1/e length for 'gaussian_decay' and the ellipse half-width for "
+            "'elliptical' (ignored by 'uniform'/'sinusoidal_y'). Must be > 0. "
+            "Defaults to span_y / 4 (a localized mid-width patch)."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # Ergonomics (issue #375): mesh/thickness knobs and a per-run CSV that
+    # were previously config-only. --ply-thickness sets the laminate T and
+    # therefore the penetration gate's D/T. Added BEFORE the SUPPRESS loop.
+    # ------------------------------------------------------------------ #
+    p_analyze.add_argument(
+        "--nz-per-ply", type=int, default=1, dest="nz_per_ply",
+        help="Mesh divisions per ply through-thickness (default: 1).",
+    )
+    p_analyze.add_argument(
+        "--ply-thickness", type=float, default=0.183, dest="ply_thickness",
+        help=(
+            "Single-ply thickness in mm (default: 0.183). Sets the laminate "
+            "thickness T = n_plies * ply_thickness and hence the penetration "
+            "gate's D/T ratio."
+        ),
+    )
+    p_analyze.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write the run to a one-row tidy CSV (full float precision, "
+            "matching the sweep/compare CSV schema); the stdout summary is "
+            "still printed."
         ),
     )
 
@@ -521,6 +626,24 @@ def _build_parser() -> argparse.ArgumentParser:
             "logger to DEBUG with a stderr handler)"
         ),
     )
+    p_compare.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load an AnalysisConfig from a JSON (or .yaml/.yml) file as the "
+            "base for the comparison -- so all three morphologies are run "
+            "over the file's laminate, material, mesh and gate. Any geometry "
+            "flag given on the same command line overrides the file value; "
+            "flags left off keep the file value. The three morphologies "
+            "(stack/convex/concave) always override the file's morphology."
+        ),
+    )
+    # Config-file precedence for the geometry/profile flags (issue #375):
+    # a SUPPRESS default means ``vars(args)`` holds only the ones the user
+    # actually passed, so an explicit flag overrides the ``--config`` file
+    # while a flag left off inherits the file value.
+    for _action in p_compare._actions:
+        if _action.dest in _COMPARE_CONFIG_FLAGS:
+            _action.default = argparse.SUPPRESS
 
     # ------------------------------------------------------------------ #
     # sweep
@@ -622,6 +745,25 @@ def _build_parser() -> argparse.ArgumentParser:
             "logger to DEBUG with a stderr handler)"
         ),
     )
+    p_sweep.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load an AnalysisConfig from a JSON (or .yaml/.yml) file as the "
+            "base for the sweep, so the sweep runs over the file's laminate, "
+            "material, mesh and gate (e.g. a UD laminate through the "
+            "penetration gate) instead of the default IM7/8552 quasi-iso "
+            "laminate. The --parameter/--min/--max/--steps flags drive the "
+            "variation over that base; any geometry flag given on the same "
+            "command line overrides the file value."
+        ),
+    )
+    # Config-file precedence for the geometry/profile flags (issue #375):
+    # a SUPPRESS default means ``vars(args)`` holds only the ones the user
+    # actually passed, so an explicit flag overrides the ``--config`` file
+    # while a flag left off inherits the file value.
+    for _action in p_sweep._actions:
+        if _action.dest in _SWEEP_CONFIG_FLAGS:
+            _action.default = argparse.SUPPRESS
 
     # ------------------------------------------------------------------ #
     # converge
@@ -707,6 +849,98 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Save the QoI-vs-DOF convergence plot to this path",
     )
     p_converge.add_argument(
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # stochastic
+    # ------------------------------------------------------------------ #
+    p_stochastic = subparsers.add_parser(
+        "stochastic",
+        help="Monte-Carlo / LHS uncertainty propagation",
+        description=(
+            "Propagate input distributions through the analytical (or FE) "
+            "wrinkle analysis and report percentile knockdowns/strengths -- "
+            "the 'P5 knockdown under measurement uncertainty' number. These "
+            "are model-INPUT-propagation statistics, NOT CMH-17 A-/B-basis "
+            "allowables (see the printed disclaimer)."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load the deterministic base AnalysisConfig from a JSON (or "
+            ".yaml/.yml) file. Every non-sampled field is held at its file "
+            "value. When omitted, the AnalysisConfig defaults are used."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--distribution", action="append", default=None, dest="distribution",
+        metavar="FIELD:DIST:P1:P2", required=True,
+        help=(
+            "Sample an AnalysisConfig field from a distribution. Repeatable. "
+            "Format 'FIELD:DIST:P1:P2' where DIST is one of normal|uniform|"
+            "lognormal: 'amplitude:normal:0.5:0.05' (mean, std), "
+            "'wavelength:uniform:12:20' (lo, hi), "
+            "'amplitude:lognormal:-0.7:0.2' (mu, sigma of the underlying "
+            "normal). At least one --distribution is required."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--n-samples", type=int, default=1000, dest="n_samples",
+        help="Number of samples (default: 1000; the analytical path is fast).",
+    )
+    p_stochastic.add_argument(
+        "--seed", type=int, default=None, dest="seed",
+        help=(
+            "Sampler seed. A fixed seed makes the whole run reproducible "
+            "(same samples, same percentiles). Default: unseeded."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--method", type=str, default="lhs", choices=["lhs", "mc"],
+        help=(
+            "Sampling method: 'lhs' (Latin-hypercube, default, lower "
+            "variance) or 'mc' (plain Monte-Carlo)."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--analytical-only", action=argparse.BooleanOptionalAction,
+        default=True, dest="analytical_only",
+        help=(
+            "Run only the analytical path per sample (default). Use "
+            "--no-analytical-only for the full FE pipeline per sample "
+            "(prohibitive beyond small --n-samples; pair with --parallel)."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--parallel", type=int, default=1, metavar="N", dest="parallel",
+        help=(
+            "Worker processes for the per-sample runs (default: 1 = "
+            "in-process; 0 = all CPU cores). Sampling always happens in the "
+            "parent, so results are identical for any worker count."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the percentile summary and per-sample arrays to a JSON "
+            "file; the stdout summary is still printed."
+        ),
+    )
+    p_stochastic.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write one row per sample (each sampled input plus knockdown, "
+            "strength and modulus knockdown) to a tidy CSV; the stdout "
+            "summary is still printed."
+        ),
+    )
+    p_stochastic.add_argument(
         "-v", "--verbose", action="store_true", default=False,
         help=(
             "Show detailed pipeline progress (sets the 'wrinklefe' "
@@ -874,6 +1108,20 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     if given("increments"):
         overrides["progressive_n_increments"] = args.increments
 
+    # Transverse (through-width) surface (issue #300 / #375) and ergonomic
+    # mesh/thickness knobs. Each maps onto its AnalysisConfig field and
+    # composes with --config / --save-config.
+    if given("transverse_mode"):
+        overrides["transverse_mode"] = args.transverse_mode
+    if given("transverse_span"):
+        overrides["transverse_span"] = args.transverse_span
+    if given("transverse_width"):
+        overrides["transverse_width"] = args.transverse_width
+    if given("nz_per_ply"):
+        overrides["nz_per_ply"] = args.nz_per_ply
+    if given("ply_thickness"):
+        overrides["ply_thickness"] = args.ply_thickness
+
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
@@ -889,7 +1137,11 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     enable_czm_eff = overrides.get("enable_czm", False) or (
         base is not None and base.enable_czm
     )
-    fe_feature_eff = enable_czm_eff or (
+    transverse_eff = (
+        overrides.get("transverse_mode", "uniform") != "uniform"
+        or (base is not None and base.transverse_mode != "uniform")
+    )
+    fe_feature_eff = enable_czm_eff or transverse_eff or (
         overrides.get("enable_resin_pocket", False)
         or overrides.get("enable_surface_resin_pockets", False)
         or overrides.get("enable_progressive_damage", False)
@@ -920,7 +1172,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
             config = AnalysisConfig(**overrides)
         else:
             config = dataclasses.replace(base, **overrides)
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, NotImplementedError) as exc:
         print(f"error: invalid configuration: {exc}", file=sys.stderr)
         sys.exit(2)
 
@@ -984,6 +1236,15 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         export_results_json(result, args.output_json)
         print(f"\nResults exported to: {args.output_json}")
 
+    # Export a one-row tidy CSV if requested (issue #375), reusing the
+    # sweep/compare per-run writer so the schema matches.
+    if given("output_csv") and args.output_csv is not None:
+        _write_batch_outputs(
+            [("", "", config.morphology, result)],
+            None,
+            args.output_csv,
+        )
+
 
 def _print_czm_extras(result) -> None:
     """Print CZM crack length / damaged-interface counts after the summary.
@@ -1012,18 +1273,41 @@ def _print_czm_extras(result) -> None:
 
 
 def _cmd_compare(args: argparse.Namespace) -> None:
-    """Handle the ``compare`` subcommand."""
+    """Handle the ``compare`` subcommand.
+
+    Config-file precedence (issue #375): when ``--config`` is given the file
+    supplies the base laminate/material/mesh/gate and every explicitly-passed
+    geometry flag overrides it; the three compared morphologies always drive
+    the ``morphology`` field. Without ``--config`` the behaviour is unchanged.
+    """
+    import dataclasses
+
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
-    config = AnalysisConfig(
-        amplitude=args.amplitude,
-        wavelength=args.wavelength,
-        width=args.width,
-        amplitude_profile=args.amplitude_profile,
-        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
-        amplitude_profile_axis=args.amplitude_profile_axis,
-        verbose=args.verbose,
-    )
+    present = vars(args)
+
+    def given(name: str) -> bool:
+        return name in present
+
+    _geom_defaults: dict = {
+        "amplitude": 0.366, "wavelength": 16.0, "width": 12.0,
+        "amplitude_profile": "constant",
+        "amplitude_profile_decay_length": None,
+        "amplitude_profile_axis": "x",
+    }
+    overrides = {n: getattr(args, n) for n in _geom_defaults if given(n)}
+    overrides["verbose"] = args.verbose
+
+    try:
+        if getattr(args, "config", None):
+            base = AnalysisConfig.load(args.config)
+            config = dataclasses.replace(base, **overrides)
+        else:
+            config = AnalysisConfig(**{**_geom_defaults, **overrides})
+    except (OSError, ValueError, KeyError, ImportError,
+            NotImplementedError) as exc:
+        print(f"error: could not build configuration: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     all_results = WrinkleAnalysis.compare_morphologies(
         config,
@@ -1035,9 +1319,9 @@ def _cmd_compare(args: argparse.Namespace) -> None:
     print("=" * 72)
     print("  WrinkleFE Morphology Comparison")
     print("=" * 72)
-    print(f"  Amplitude:  {args.amplitude:.3f} mm")
-    print(f"  Wavelength: {args.wavelength:.1f} mm")
-    print(f"  Width:      {args.width:.1f} mm")
+    print(f"  Amplitude:  {config.amplitude:.3f} mm")
+    print(f"  Wavelength: {config.wavelength:.1f} mm")
+    print(f"  Width:      {config.width:.1f} mm")
     print()
     print(f"  {'Morphology':<12} {'M_f':>8} {'theta_max':>10} {'theta_eff':>10} "
           f"{'Damage':>8} {'Knockdown':>10} {'Strength':>10}")
@@ -1148,7 +1432,16 @@ def _write_batch_outputs(
 
 
 def _cmd_sweep(args: argparse.Namespace) -> None:
-    """Handle the ``sweep`` subcommand."""
+    """Handle the ``sweep`` subcommand.
+
+    Config-file precedence (issue #375): when ``--config`` is given the file
+    supplies the base laminate/material/mesh/gate (so a UD amplitude sweep
+    through the penetration gate is reachable from the CLI) and every
+    explicitly-passed geometry flag overrides it; the ``--parameter``/range
+    flags drive the variation. Without ``--config`` the behaviour is unchanged.
+    """
+    import dataclasses
+
     from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 
     # Validate the range/steps before burning any compute (issue #298).
@@ -1175,13 +1468,29 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     values = np.linspace(args.sweep_min, args.sweep_max, args.steps)
 
-    config = AnalysisConfig(
-        morphology=args.morphology,
-        amplitude_profile=args.amplitude_profile,
-        amplitude_profile_decay_length=args.amplitude_profile_decay_length,
-        amplitude_profile_axis=args.amplitude_profile_axis,
-        verbose=args.verbose,
-    )
+    present = vars(args)
+
+    def given(name: str) -> bool:
+        return name in present
+
+    _geom_defaults: dict = {
+        "morphology": "stack", "amplitude_profile": "constant",
+        "amplitude_profile_decay_length": None,
+        "amplitude_profile_axis": "x",
+    }
+    overrides = {n: getattr(args, n) for n in _geom_defaults if given(n)}
+    overrides["verbose"] = args.verbose
+
+    try:
+        if getattr(args, "config", None):
+            base = AnalysisConfig.load(args.config)
+            config = dataclasses.replace(base, **overrides)
+        else:
+            config = AnalysisConfig(**{**_geom_defaults, **overrides})
+    except (OSError, ValueError, KeyError, ImportError,
+            NotImplementedError) as exc:
+        print(f"error: could not build configuration: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     # parametric_sweep raises AttributeError for an unknown field name;
     # catch it (and any config/solve error) and exit cleanly with a
@@ -1200,7 +1509,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     print("=" * 60)
     print(f"  WrinkleFE Parametric Sweep: {args.parameter}")
-    print(f"  Morphology: {args.morphology}")
+    print(f"  Morphology: {config.morphology}")
     print("=" * 60)
     print()
     print(f"  {args.parameter:>14} {'Knockdown':>12} {'Strength (MPa)':>16} {'Damage':>10}")
@@ -1216,7 +1525,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
     _write_batch_outputs(
         [
-            (args.parameter, float(val), args.morphology, r)
+            (args.parameter, float(val), config.morphology, r)
             for val, r in zip(values, results)
         ],
         args.output_json,
@@ -1300,6 +1609,171 @@ def _cmd_converge(args: argparse.Namespace) -> None:
         print(f"\nConvergence plot saved to: {args.save_plot}")
 
 
+def _parse_distribution_specs(specs: list[str]) -> dict:
+    """Parse ``--distribution FIELD:DIST:P1:P2`` specs for ``stochastic``.
+
+    Returns a ``{field: (dist, p1, p2)}`` mapping in exactly the tuple form
+    :func:`wrinklefe.stochastic.probabilistic_analysis` accepts
+    (``("normal", mean, std)`` / ``("uniform", lo, hi)`` /
+    ``("lognormal", mu, sigma)``). Any malformed spec is a fatal CLI error
+    (exit 2) with a clear message rather than a deep traceback.
+    """
+    dists: dict = {}
+    for spec in specs:
+        parts = spec.split(":")
+        if len(parts) != 4:
+            print(
+                f"error: --distribution {spec!r} must be "
+                "'FIELD:DIST:P1:P2' (e.g. 'amplitude:normal:0.5:0.05')",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        field, kind, p1, p2 = (p.strip() for p in parts)
+        kind = kind.lower()
+        if not field:
+            print(
+                f"error: --distribution {spec!r} has an empty field name",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if kind not in ("normal", "uniform", "lognormal"):
+            print(
+                f"error: --distribution {spec!r}: unknown distribution "
+                f"{kind!r}; expected normal, uniform or lognormal",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        try:
+            a, b = float(p1), float(p2)
+        except ValueError:
+            print(
+                f"error: --distribution {spec!r}: P1/P2 ({p1!r}, {p2!r}) "
+                "must be numbers",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if field in dists:
+            print(
+                f"error: --distribution field {field!r} given more than once",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        dists[field] = (kind, a, b)
+    return dists
+
+
+def _cmd_stochastic(args: argparse.Namespace) -> None:
+    """Handle the ``stochastic`` subcommand (issue #375 CLI exposure of #301)."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.stochastic import probabilistic_analysis
+
+    if args.config is not None:
+        try:
+            base = AnalysisConfig.load(args.config)
+        except (OSError, ValueError, ImportError) as exc:
+            print(f"error: could not load --config: {exc}", file=sys.stderr)
+            sys.exit(2)
+    else:
+        base = AnalysisConfig()
+
+    distributions = _parse_distribution_specs(args.distribution)
+
+    try:
+        prob = probabilistic_analysis(
+            base,
+            distributions,
+            n_samples=args.n_samples,
+            seed=args.seed,
+            method=args.method,
+            analytical_only=args.analytical_only,
+            n_workers=args.parallel,
+        )
+    except (ValueError, TypeError) as exc:
+        print(f"error: stochastic analysis failed: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    print(prob.summary())
+
+    _write_stochastic_outputs(prob, args.output_json, args.output_csv)
+
+
+def _write_stochastic_outputs(prob, output_json, output_csv) -> None:
+    """Write stochastic percentiles + per-sample data to JSON and/or CSV."""
+    if output_json is None and output_csv is None:
+        return
+
+    import csv
+    import json
+    from pathlib import Path
+
+    percentiles = [1.0, 5.0, 10.0, 25.0, 50.0, 75.0, 90.0, 95.0, 99.0]
+    input_names = sorted(prob.input_samples)
+
+    if output_json is not None:
+        payload = {
+            "n_samples": prob.n_samples,
+            "seed": prob.seed,
+            "method": prob.method,
+            "analytical_only": prob.analytical_only,
+            "knockdown": {
+                "mean": prob.knockdown_mean,
+                "std": prob.knockdown_std,
+                "percentiles": {
+                    str(q): float(prob.knockdown_percentile(q))
+                    for q in percentiles
+                },
+            },
+            "strength_MPa": {
+                "mean": prob.strength_mean,
+                "std": prob.strength_std,
+                "percentiles": {
+                    str(q): float(prob.strength_percentile(q))
+                    for q in percentiles
+                },
+            },
+            "samples": {
+                "knockdown": [float(x) for x in prob.knockdown],
+                "strength_MPa": [float(x) for x in prob.strength_MPa],
+                "modulus_knockdown": [
+                    float(x) for x in prob.modulus_knockdown
+                ],
+                **{
+                    f"input_{name}": [
+                        float(x) for x in prob.input_samples[name]
+                    ]
+                    for name in input_names
+                },
+            },
+        }
+        path = Path(output_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"\nResults written to: {path}")
+
+    if output_csv is not None:
+        fieldnames = [
+            *(f"input_{name}" for name in input_names),
+            "knockdown", "strength_MPa", "modulus_knockdown",
+        ]
+        path = Path(output_csv)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for i in range(prob.n_samples):
+                row = {
+                    f"input_{name}": repr(float(prob.input_samples[name][i]))
+                    for name in input_names
+                }
+                row["knockdown"] = repr(float(prob.knockdown[i]))
+                row["strength_MPa"] = repr(float(prob.strength_MPa[i]))
+                row["modulus_knockdown"] = repr(
+                    float(prob.modulus_knockdown[i])
+                )
+                writer.writerow(row)
+        print(f"\nResults written to: {path}")
+
+
 def _configure_logging(verbose: bool) -> None:
     """Attach a stderr handler to the package logger for ``--verbose``.
 
@@ -1341,6 +1815,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "compare": _cmd_compare,
         "sweep": _cmd_sweep,
         "converge": _cmd_converge,
+        "stochastic": _cmd_stochastic,
         "materials": _cmd_materials,
     }
 

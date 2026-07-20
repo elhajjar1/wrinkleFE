@@ -477,6 +477,21 @@ wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 5
 # Full-FE sweep across 4 worker processes (--parallel 0 = all cores)
 wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
     --no-analytical-only --parallel 4
+
+# Sweep over a saved config's laminate/gate (the headline UD capability):
+# --config supplies the base (material, layup, gate); --parameter/--min/
+# --max/--steps drive the variation over it. `compare` takes --config too.
+wrinklefe sweep --config ud_gate.json --parameter amplitude \
+    --min 0.2 --max 0.9 --steps 6
+```
+
+Through-width (transverse) wrinkle surfaces and the mesh/thickness knobs
+are exposed on `analyze` (a non-uniform `--transverse-mode` forces the FE
+path; `--ply-thickness` sets the gate's D/T):
+
+```bash
+wrinklefe analyze --transverse-mode gaussian_decay --transverse-width 5 \
+    --nz-per-ply 2 --ply-thickness 0.25
 ```
 
 #### Wrinkle-defect capabilities
@@ -551,6 +566,26 @@ unknown key or a mismatched version fails loudly. YAML is supported when
 PyYAML is installed (it is not a required dependency). Library materials
 serialise by name, custom materials inline, and penetration-gate presets
 serialise by their registry name.
+
+### Probabilistic (stochastic) analysis
+
+`wrinklefe stochastic` propagates input distributions through the analysis
+to report percentile knockdowns — the "P5 knockdown under measurement
+uncertainty" number — from a `--config` base plus one or more repeatable
+`--distribution FIELD:DIST:P1:P2` specs (`DIST` is `normal`, `uniform`, or
+`lognormal`). A fixed `--seed` makes the whole run reproducible; results
+write to JSON (percentiles + per-sample arrays) and/or a per-sample CSV.
+
+```bash
+wrinklefe stochastic --config case.json \
+    --distribution amplitude:normal:0.5:0.05 \
+    --distribution wavelength:uniform:12:20 \
+    --n-samples 1000 --seed 42 --method lhs \
+    --output-json prob.json --output-csv prob.csv
+```
+
+These are model-**input-propagation** statistics, **not** CMH-17 A-/B-basis
+allowables (the printed summary carries the disclaimer).
 
 ### Exporting results to CSV / JSON
 

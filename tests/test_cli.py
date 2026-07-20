@@ -859,3 +859,328 @@ def test_sweep_wrinkle_z_position_end_to_end(capsys):
     assert "wrinkle_z_position" in out
     # Three data rows should be present between the header rules.
     assert out.count("\n") > 5
+
+
+# --------------------------------------------------------------------------- #
+# analyze: transverse modes + ergonomics (issue #375)
+# --------------------------------------------------------------------------- #
+
+
+def test_analyze_transverse_mode_maps_and_forces_fe():
+    """A non-uniform --transverse-mode reaches the config and forces FE."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--transverse-mode", "gaussian_decay",
+            "--transverse-span", "20.0", "--transverse-width", "5.0",
+        ])
+    cfg = captured["config"]
+    assert cfg.transverse_mode == "gaussian_decay"
+    assert cfg.transverse_span == pytest.approx(20.0)
+    assert cfg.transverse_width == pytest.approx(5.0)
+    # FE-only feature forces the full FE path over the analytical default.
+    assert captured["analytical_only"] is False
+
+
+def test_analyze_transverse_uniform_default_untouched():
+    """Without the flag the config keeps the uniform (x-only) default."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main(["analyze", "--analytical-only"])
+    assert captured["config"].transverse_mode == "uniform"
+    assert captured["analytical_only"] is True
+
+
+def test_analyze_transverse_czm_conflict_is_clean(capsys):
+    """--transverse-mode combined with --enable-czm surfaces a clean error,
+    not a raw traceback (the config validation rejects the combination)."""
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "analyze", "--transverse-mode", "gaussian_decay", "--enable-czm",
+        ])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "error:" in err and "Traceback" not in err
+
+
+def test_analyze_nz_per_ply_and_ply_thickness_map():
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--analytical-only",
+            "--nz-per-ply", "3", "--ply-thickness", "0.25",
+        ])
+    cfg = captured["config"]
+    assert cfg.nz_per_ply == 3
+    assert cfg.ply_thickness == pytest.approx(0.25)
+
+
+def test_analyze_output_csv(tmp_path):
+    """`analyze --output-csv` writes a one-row tidy CSV matching the
+    sweep/compare schema."""
+    import csv
+
+    csv_path = tmp_path / "run.csv"
+    cli_main([
+        "analyze", "--analytical-only",
+        "--amplitude", "0.3", "--wavelength", "16",
+        "--output-csv", str(csv_path),
+    ])
+    rows = list(csv.DictReader(csv_path.open()))
+    assert len(rows) == 1
+    assert {"parameter_name", "parameter_value", "morphology",
+            "knockdown", "predicted_strength_MPa"} <= set(rows[0])
+    assert 0.0 < float(rows[0]["knockdown"]) <= 1.0
+
+
+# --------------------------------------------------------------------------- #
+# stochastic subcommand (issue #375 CLI exposure of #301)
+# --------------------------------------------------------------------------- #
+
+
+def test_stochastic_reports_percentiles_and_is_reproducible(capsys):
+    """`stochastic` prints percentiles and a fixed --seed reproduces them."""
+    argv = [
+        "stochastic",
+        "--distribution", "amplitude:normal:0.4:0.05",
+        "--n-samples", "128", "--seed", "11",
+    ]
+    cli_main(argv)
+    out_a = capsys.readouterr().out
+    assert "Probabilistic Analysis" in out_a
+    assert "P5=" in out_a and "P50=" in out_a and "P95=" in out_a
+
+    cli_main(argv)
+    out_b = capsys.readouterr().out
+    # Same seed -> byte-identical percentile summary.
+    assert out_a == out_b
+
+
+def test_stochastic_json_and_csv_outputs(tmp_path):
+    import csv
+    import json
+
+    json_path = tmp_path / "prob.json"
+    csv_path = tmp_path / "prob.csv"
+    cli_main([
+        "stochastic",
+        "--distribution", "amplitude:normal:0.4:0.05",
+        "--distribution", "wavelength:uniform:14:18",
+        "--n-samples", "64", "--seed", "3",
+        "--output-json", str(json_path),
+        "--output-csv", str(csv_path),
+    ])
+
+    payload = json.loads(json_path.read_text())
+    assert payload["n_samples"] == 64
+    assert payload["seed"] == 3
+    assert "5.0" in payload["knockdown"]["percentiles"]
+    assert len(payload["samples"]["knockdown"]) == 64
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert len(rows) == 64
+    assert {"input_amplitude", "input_wavelength", "knockdown",
+            "strength_MPa", "modulus_knockdown"} <= set(rows[0])
+
+
+def test_stochastic_reproducible_percentile_values(tmp_path):
+    """Two seeded runs produce identical percentile knockdowns in JSON."""
+    import json
+
+    def run(dst):
+        cli_main([
+            "stochastic", "--distribution", "amplitude:normal:0.4:0.05",
+            "--n-samples", "100", "--seed", "42", "--output-json", str(dst),
+        ])
+        return json.loads(dst.read_text())["knockdown"]["percentiles"]
+
+    a = run(tmp_path / "a.json")
+    b = run(tmp_path / "b.json")
+    assert a == b
+    # A genuine spread was produced (not a degenerate constant).
+    assert a["5.0"] < a["95.0"]
+
+
+@pytest.mark.parametrize("bad", [
+    "amplitude:normal:0.4",          # too few fields
+    "amplitude:normal:0.4:0.05:1",   # too many fields
+    "amplitude:weibull:0.4:0.05",    # unknown distribution
+    "amplitude:normal:x:0.05",       # non-numeric parameter
+    ":normal:0.4:0.05",              # empty field name
+])
+def test_stochastic_bad_distribution_spec_exits_cleanly(bad, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["stochastic", "--distribution", bad, "--n-samples", "10"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "error:" in err and "--distribution" in err
+    assert "Traceback" not in err
+
+
+def test_stochastic_uses_config_base(tmp_path):
+    """`stochastic --config` samples over the file's base laminate."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(
+        angles=[0.0] * 8, interface_1=3, interface_2=4,
+        analytical_only=True,
+    )
+    path = tmp_path / "base.json"
+    base.save_json(path)
+
+    from wrinklefe.stochastic import (
+        probabilistic_analysis as _real_prob,
+    )
+
+    captured: dict = {}
+
+    def fake_prob(base_config, distributions, **kwargs):
+        captured["base_config"] = base_config
+        captured["distributions"] = distributions
+        return _real_prob(base_config, distributions, **kwargs)
+
+    with patch("wrinklefe.stochastic.probabilistic_analysis", new=fake_prob):
+        cli_main([
+            "stochastic", "--config", str(path),
+            "--distribution", "amplitude:normal:0.3:0.02",
+            "--n-samples", "16", "--seed", "1",
+        ])
+
+    assert captured["base_config"].angles == [0.0] * 8
+    assert captured["distributions"] == {"amplitude": ("normal", 0.3, 0.02)}
+
+
+# --------------------------------------------------------------------------- #
+# --version (issue #375)
+# --------------------------------------------------------------------------- #
+
+
+def test_version_matches_installed_metadata(capsys):
+    """`wrinklefe --version` reports the installed distribution version, not
+    a hardcoded string."""
+    from importlib.metadata import version as _pkg_version
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert _pkg_version("wrinklefe") in out
+
+
+# --------------------------------------------------------------------------- #
+# sweep / compare: --config base (issue #375)
+# --------------------------------------------------------------------------- #
+
+
+def test_sweep_config_uses_files_laminate_not_default(tmp_path):
+    """`sweep --config` runs over the file's UD laminate/gate, not the
+    default IM7/8552 quasi-iso laminate."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.core.penetration_gate import GATE_LI2025_VACBAG
+
+    base = AnalysisConfig(
+        morphology="graded",
+        angles=[0.0] * 14,
+        ply_thickness=0.44,
+        wavelength=12.9,
+        width=6.45,
+        penetration_gate=GATE_LI2025_VACBAG,
+        analytical_only=True,
+    )
+    path = tmp_path / "ud_gate.json"
+    base.save_json(path)
+
+    captured: dict = {}
+
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
+        captured["base_config"] = base_config
+        return [_make_fake_result() for _ in values]
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+        new=staticmethod(fake_sweep),
+    ):
+        cli_main([
+            "sweep", "--config", str(path),
+            "--parameter", "amplitude",
+            "--min", "0.3", "--max", "0.9", "--steps", "4",
+        ])
+
+    cfg = captured["base_config"]
+    # The file's UD laminate + gate reached the sweep engine, NOT the
+    # IM7/8552 quasi-iso default (angles=None, ply_thickness=0.183).
+    assert cfg.angles == [0.0] * 14
+    assert cfg.ply_thickness == pytest.approx(0.44)
+    assert cfg.morphology == "graded"
+    assert cfg.penetration_gate is GATE_LI2025_VACBAG
+
+
+def test_sweep_config_explicit_flag_overrides_file(tmp_path):
+    """A geometry flag on the command line overrides the --config file."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(morphology="graded", analytical_only=True)
+    path = tmp_path / "case.json"
+    base.save_json(path)
+
+    captured: dict = {}
+
+    def fake_sweep(base_config, parameter, values, analytical_only,
+                   n_workers=1):
+        captured["base_config"] = base_config
+        return [_make_fake_result() for _ in values]
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.parametric_sweep",
+        new=staticmethod(fake_sweep),
+    ):
+        cli_main([
+            "sweep", "--config", str(path), "--morphology", "convex",
+            "--parameter", "amplitude", "--min", "0.1", "--max", "0.3",
+            "--steps", "2",
+        ])
+
+    assert captured["base_config"].morphology == "convex"
+
+
+def test_sweep_bad_config_path_exits_cleanly(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "sweep", "--config", "/no/such/file.json",
+            "--parameter", "amplitude", "--min", "0.1", "--max", "0.3",
+        ])
+    assert exc.value.code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_compare_config_uses_files_laminate(tmp_path):
+    """`compare --config` runs the three morphologies over the file's
+    laminate/material, not the default."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(
+        angles=[0.0] * 8,
+        interface_1=3,
+        interface_2=4,
+        ply_thickness=0.25,
+        analytical_only=True,
+    )
+    path = tmp_path / "case.json"
+    base.save_json(path)
+
+    captured: dict = {}
+
+    def fake_compare(base_config, morphologies, analytical_only):
+        captured["base_config"] = base_config
+        return {m: _make_fake_result() for m in morphologies}
+
+    with patch(
+        "wrinklefe.analysis.WrinkleAnalysis.compare_morphologies",
+        new=staticmethod(fake_compare),
+    ):
+        cli_main(["compare", "--config", str(path)])
+
+    cfg = captured["base_config"]
+    assert cfg.angles == [0.0] * 8
+    assert cfg.ply_thickness == pytest.approx(0.25)

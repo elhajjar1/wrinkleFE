@@ -15,6 +15,26 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CLI — **config-first sweeps/compares, transverse + stochastic exposure,
+  and ergonomics** (issue #375, CLI slice). `sweep` and `compare` gain
+  `--config PATH`: the file supplies the base `AnalysisConfig` (laminate,
+  material, mesh, penetration gate) so a **UD amplitude sweep through the
+  penetration gate** — previously impossible from the CLI — is reachable
+  with `wrinklefe sweep --config ud_gate.json --parameter amplitude ...`;
+  explicitly-passed geometry flags override the file via the #259
+  SUPPRESS-default precedence. `analyze` exposes the through-width
+  transverse surface (`--transverse-mode {uniform,gaussian_decay,
+  sinusoidal_y,elliptical}`, `--transverse-span`, `--transverse-width`; a
+  non-uniform mode forces the FE path) and the previously config-only
+  `--nz-per-ply`, `--ply-thickness` (sets the gate D/T) and `--output-csv`.
+  A new **`wrinklefe stochastic`** subcommand wraps
+  `stochastic.probabilistic_analysis`: a `--config` base plus repeatable
+  `--distribution FIELD:DIST:P1:P2` specs (`normal`/`uniform`/`lognormal`),
+  `--n-samples`/`--seed`/`--method`, printing percentile knockdowns and
+  writing JSON/CSV. `wrinklefe --version` now reads the installed package
+  metadata instead of a hardcoded string. (App config upload/download and
+  the app transverse controls are a separate follow-up; this slice does not
+  complete #375.)
 - App / CLI — **`tool_flat` surface-pocket controls live in the morphology
   definition** (issue #371, Part B — *Fixes #371*, completing the issue).
   The Streamlit Morphology selectbox gains **`tool_flat`** (Expert mode)
