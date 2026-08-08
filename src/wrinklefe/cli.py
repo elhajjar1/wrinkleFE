@@ -1205,6 +1205,16 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     if enable_czm and result.czm_damage is not None and result.czm_damage.size:
         _print_czm_extras(result)
 
+    # A non-converged CZM solve is not an error (partial results are still
+    # returned), but the actionable tuning hint must be prominent on
+    # stderr rather than buried in the summary body.
+    if enable_czm and result.czm_converged is False and result.czm_failure_hint:
+        print(
+            f"warning: CZM solve did not fully converge — "
+            f"{result.czm_failure_hint}",
+            file=sys.stderr,
+        )
+
     # Optional CZM figure export.
     if enable_czm and given("save_czm_figure") and args.save_czm_figure is not None:
         if result.czm_damage is None or not result.czm_damage.size:
