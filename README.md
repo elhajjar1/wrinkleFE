@@ -85,7 +85,12 @@ set the wrinkle geometry, and click **Run analysis**. The app ships with
 per-morphology schematic cartoons (including the `tool_flat`
 surface-resin-pocket morphology, whose pinned-side and transition-ply
 controls appear inline with the Morphology selector), a live wrinkle
-preview, and the same analytical + FE pipeline as the Python API. See
+preview, and the same analytical + FE pipeline as the Python API. Expert
+mode also exposes the through-width `transverse_mode` envelope, and the
+sidebar **Config file** section can **download** the current settings as a
+portable `AnalysisConfig` JSON — round-tripping with the CLI `--config` /
+`--save-config` flags — or **load** a saved case (JSON/YAML) back into the
+sidebar. See
 [`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for the full feature
 tour and instructions for self-hosting.
 

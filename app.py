@@ -16,10 +16,11 @@ import csv
 import io
 import json
 import sys
+from collections.abc import MutableMapping
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import matplotlib
 
@@ -139,6 +140,15 @@ DEFAULT_AMPLITUDE_PROFILE = _CFG_DEFAULTS.amplitude_profile
 # legacy back-compat behaviour.
 DEFAULT_AMPLITUDE_PROFILE_DECAY_LENGTH = _CFG_DEFAULTS.width
 DEFAULT_AMPLITUDE_PROFILE_AXIS = _CFG_DEFAULTS.amplitude_profile_axis
+# Through-width (transverse / y) envelope (#300 / #375). The dataclass
+# defaults for the span / width are ``None`` (auto: track the mesh width and
+# ``span_y / 4`` respectively). Streamlit's ``number_input`` cannot hold
+# ``None``, so the sidebar uses ``0.0`` as the "auto" sentinel — a 0 value is
+# threaded back to ``AnalysisConfig`` as ``None``, preserving the auto
+# behaviour and round-tripping the default config.
+DEFAULT_TRANSVERSE_MODE = _CFG_DEFAULTS.transverse_mode
+DEFAULT_TRANSVERSE_SPAN = 0.0
+DEFAULT_TRANSVERSE_WIDTH = 0.0
 DEFAULT_ANALYTICAL_ONLY = _CFG_DEFAULTS.analytical_only
 DEFAULT_NX = _CFG_DEFAULTS.nx
 DEFAULT_NY = _CFG_DEFAULTS.ny
@@ -196,6 +206,10 @@ DEFAULTS: dict[str, object] = {
     "sb_amplitude_profile": DEFAULT_AMPLITUDE_PROFILE,
     "sb_amplitude_profile_decay_length": DEFAULT_AMPLITUDE_PROFILE_DECAY_LENGTH,
     "sb_amplitude_profile_axis": DEFAULT_AMPLITUDE_PROFILE_AXIS,
+    # Through-width transverse envelope (#300 / #375).
+    "sb_transverse_mode": DEFAULT_TRANSVERSE_MODE,
+    "sb_transverse_span": DEFAULT_TRANSVERSE_SPAN,
+    "sb_transverse_width": DEFAULT_TRANSVERSE_WIDTH,
     "sb_loading": DEFAULT_LOADING,
     "sb_strain_mag_pct": DEFAULT_STRAIN_MAG_PCT,
     "sb_analytical_only": DEFAULT_ANALYTICAL_ONLY,
@@ -247,6 +261,166 @@ def reset_inputs() -> None:
 
 # Back-compat alias for older call sites.
 _reset_sidebar_defaults = reset_inputs
+
+
+# ---------------------------------------------------------------------------
+# Config file I/O (upload / download) — issue #375 app slice.
+#
+# The download button serialises the current effective ``AnalysisConfig``
+# (built from the live sidebar payload) with :meth:`AnalysisConfig.to_json`,
+# so a case file round-trips with the CLI ``--config`` / ``--save-config``
+# flags. Upload parses a file back into an ``AnalysisConfig`` and *seeds* the
+# sidebar widgets from it — the inverse of ``_assemble_cfg_payload``. Seeding
+# writes the widget ``session_state`` keys BEFORE the widgets are
+# instantiated (a pending-upload object is staged in ``session_state`` and
+# applied at the very top of the sidebar, exactly like the Reset callback),
+# which is the only way to avoid Streamlit's "cannot be modified after the
+# widget is instantiated" error.
+# ---------------------------------------------------------------------------
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    """Clamp ``value`` into ``[lo, hi]`` so a seeded widget value can never
+    fall outside the widget's own ``min_value`` / ``max_value`` (an
+    externally-authored config could carry a physically-valid but
+    out-of-widget-range number; clamping keeps the seeding from raising a
+    ``StreamlitAPIException`` and crashing the rerun)."""
+    return float(min(max(value, lo), hi))
+
+
+def _angles_to_layup_str(angles: list[float]) -> str:
+    """Render a resolved ply-angle list as a layup string the textarea (and
+    :func:`parse_layup`) accept, e.g. ``[0, 45, -45, 90]`` -> ``"0, 45, -45,
+    90"``. Integer-valued angles print without a trailing ``.0``."""
+    return ", ".join(f"{float(a):g}" for a in angles)
+
+
+def _seed_material_state(
+    material: OrthotropicMaterial | None,
+    state: MutableMapping[str, Any],
+) -> None:
+    """Seed the material widgets from a loaded config's material.
+
+    A library preset (name known and field-for-field equal) selects the
+    matching dropdown entry; anything else routes through the custom-material
+    editor (``Custom…`` + the ``custom_*`` elastic/strength keys), mirroring
+    the sidebar's own custom path. Stale ``custom_*`` keys are cleared first
+    so a preset load doesn't inherit a previous custom edit.
+    """
+    stale_key: str
+    for stale_key in [
+        k for k in state if isinstance(k, str) and k.startswith("custom_")
+    ]:
+        state.pop(stale_key, None)
+    if material is None:
+        state["sb_material"] = DEFAULT_MATERIAL
+        return
+    if material.name in MATERIAL_NAMES:
+        try:
+            if LIB.get(material.name).to_dict() == material.to_dict():
+                state["sb_material"] = material.name
+                return
+        except KeyError:
+            pass
+    # Custom (or a tweaked preset): drive the custom editor.
+    state["sb_material"] = CUSTOM_MATERIAL_LABEL
+    state["sb_custom_name"] = material.name
+    for fkey, _label, _fmt in (
+        CUSTOM_MAT_ELASTIC_FIELDS + CUSTOM_MAT_STRENGTH_FIELDS
+    ):
+        state[f"custom_{fkey}"] = float(getattr(material, fkey))
+
+
+def _seed_state_from_config(
+    cfg: AnalysisConfig, state: MutableMapping[str, Any]
+) -> None:
+    """Seed every sidebar widget ``session_state`` key from ``cfg``.
+
+    The inverse of the sidebar-to-``AnalysisConfig`` mapping used by
+    ``_assemble_cfg_payload`` / :func:`_config_from_payload`. Loading a config
+    is an expert action (many controls only render in Expert mode), so this
+    forces ``expert_mode`` on. Numeric values are clamped to the widgets'
+    ranges so an out-of-range external config seeds without crashing.
+    """
+    state["expert_mode"] = True
+    state["sb_amplitude"] = _clamp(cfg.amplitude, 0.0, 5.0)
+    state["sb_wavelength"] = _clamp(cfg.wavelength, 1.0, 200.0)
+    state["sb_width"] = _clamp(cfg.width, 1.0, 200.0)
+    state["sb_ply_thickness"] = _clamp(cfg.ply_thickness, 0.05, 1.0)
+    if cfg.angles is not None:
+        state["sb_layup"] = _angles_to_layup_str(cfg.angles)
+    state["sb_morphology"] = cfg.morphology
+    state["sb_decay_floor"] = _clamp(cfg.decay_floor, 0.0, 1.0)
+    # Amplitude profile.
+    state["sb_amplitude_profile"] = cfg.amplitude_profile
+    state["sb_amplitude_profile_decay_length"] = (
+        max(0.0, float(cfg.amplitude_profile_decay_length))
+        if cfg.amplitude_profile_decay_length is not None
+        else float(DEFAULT_AMPLITUDE_PROFILE_DECAY_LENGTH)
+    )
+    state["sb_amplitude_profile_axis"] = cfg.amplitude_profile_axis
+    # Through-width transverse envelope (0 = auto sentinel).
+    state["sb_transverse_mode"] = cfg.transverse_mode
+    state["sb_transverse_span"] = (
+        max(0.0, float(cfg.transverse_span))
+        if cfg.transverse_span is not None
+        else 0.0
+    )
+    state["sb_transverse_width"] = (
+        max(0.0, float(cfg.transverse_width))
+        if cfg.transverse_width is not None
+        else 0.0
+    )
+    # Loading — sign lives on the radio, magnitude on the number input.
+    state["sb_loading"] = cfg.loading
+    state["sb_strain_mag_pct"] = _clamp(abs(cfg.applied_strain) * 100.0, 0.0, 5.0)
+    # Mesh.
+    state["sb_nx"] = int(_clamp(cfg.nx, 4, 64))
+    state["sb_ny"] = int(_clamp(cfg.ny, 4, 32))
+    state["sb_nz_per_ply"] = int(_clamp(cfg.nz_per_ply, 1, 4))
+    state["sb_analytical_only"] = bool(cfg.analytical_only)
+    # Material.
+    _seed_material_state(cfg.material, state)
+    # Cohesive zone modelling.
+    state["sb_enable_czm"] = bool(cfg.enable_czm)
+    if isinstance(cfg.czm_interfaces, str):
+        state["sb_czm_interfaces"] = cfg.czm_interfaces
+    if cfg.czm_GIc is not None:
+        state["sb_czm_GIc"] = float(cfg.czm_GIc)
+    if cfg.czm_GIIc is not None:
+        state["sb_czm_GIIc"] = float(cfg.czm_GIIc)
+    if cfg.czm_sigma_max is not None:
+        state["sb_czm_sigma_max"] = float(cfg.czm_sigma_max)
+    if cfg.czm_tau_max is not None:
+        state["sb_czm_tau_max"] = float(cfg.czm_tau_max)
+    state["sb_czm_load_increments"] = int(
+        _clamp(cfg.czm_n_load_increments, 5, 100)
+    )
+    state["sb_czm_newton_tol"] = _clamp(cfg.czm_newton_tol, 1.0e-8, 1.0e-2)
+    # Surface resin pockets.
+    state["sb_enable_surface_pockets"] = bool(cfg.enable_surface_resin_pockets)
+    state["sb_surface_pocket_side"] = cfg.surface_pocket_side
+    state["sb_surface_transition_plies"] = int(
+        _clamp(cfg.surface_transition_plies, 1, 12)
+    )
+
+
+def _parse_uploaded_config(name: str, data: bytes | str) -> AnalysisConfig:
+    """Parse uploaded config bytes into an :class:`AnalysisConfig`.
+
+    Dispatches on the filename suffix (``.yaml`` / ``.yml`` -> YAML, else
+    JSON) and validates through :meth:`AnalysisConfig.from_dict`, so an
+    unknown key or a version mismatch raises a :class:`ValueError` the caller
+    surfaces via ``st.error``.
+    """
+    text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data
+    if Path(name).suffix.lower() in (".yaml", ".yml"):
+        import yaml  # type: ignore[import-untyped]
+
+        raw = yaml.safe_load(text)
+    else:
+        raw = json.loads(text)
+    return AnalysisConfig.from_dict(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -704,6 +878,22 @@ _HERO_INTRO_MD = (
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    # Apply a pending uploaded config BEFORE any widget is instantiated. The
+    # file_uploader (rendered lower down) stages the parsed AnalysisConfig in
+    # ``session_state["_pending_config"]`` and reruns; here — at the top of
+    # the sidebar, before the widgets exist — we seed their keys, which is
+    # the only point Streamlit allows a widget-backed key to be written.
+    _pending_config = st.session_state.pop("_pending_config", None)
+    if _pending_config is not None:
+        _seed_state_from_config(
+            _pending_config, cast("MutableMapping[str, Any]", st.session_state)
+        )
+        # Drop any prior run so the Analyze tab doesn't show stale results
+        # under the freshly-loaded inputs (issue #374 semantics).
+        for _run_key in ("results", "cfg_payload"):
+            st.session_state.pop(_run_key, None)
+        st.session_state["_config_loaded_toast"] = True
+
     expert_mode = st.toggle(
         "Expert mode", value=DEFAULT_EXPERT_MODE, key="expert_mode",
         help=(
@@ -1124,6 +1314,72 @@ with st.sidebar:
             amplitude_profile_decay_length = float(
                 amplitude_profile_decay_length_ui
             )
+
+        # --- Through-width (transverse / y) variation (#300 / #375) --------
+        # The x-only wrinkle is uniform across the specimen width; the
+        # non-uniform modes wrap the profile in a WrinkleSurface3D so the
+        # crest amplitude varies across y (localized real-world wrinkles).
+        # FE-only, single-wrinkle — the compatibility gate below refuses to
+        # thread it alongside CZM. ``span`` / ``width`` use 0 = auto.
+        st.markdown("**Through-width (transverse) variation**")
+        _transverse_modes = [
+            "uniform", "gaussian_decay", "sinusoidal_y", "elliptical",
+        ]
+        transverse_mode = st.selectbox(
+            "Transverse mode",
+            _transverse_modes,
+            index=_transverse_modes.index(DEFAULT_TRANSVERSE_MODE),
+            key="sb_transverse_mode",
+            help=(
+                "Through-width envelope f(y) applied to the wrinkle crest "
+                "amplitude. 'uniform' (default) is the bare x-only wrinkle "
+                "(bit-identical to before). 'gaussian_decay' decays the "
+                "amplitude toward the edges (localized mid-width defect), "
+                "'sinusoidal_y' ripples it across the width, and 'elliptical' "
+                "confines it to a mid-width patch. Non-uniform modes are "
+                "**FE-only** (they force the full solve) and cannot combine "
+                "with Cohesive Zone Modeling."
+            ),
+        )
+        _transverse_ui_active = transverse_mode != "uniform"
+        transverse_span_ui = st.number_input(
+            "Transverse span span_y [mm]  (0 = auto: mesh width)",
+            min_value=0.0, max_value=1000.0,
+            value=float(DEFAULT_TRANSVERSE_SPAN), step=1.0,
+            disabled=not _transverse_ui_active,
+            key="sb_transverse_span",
+            help=(
+                "Specimen width the transverse envelope spans. 0 (auto) "
+                "tracks the meshed y-extent (domain_width). Ignored when "
+                "Transverse mode = uniform."
+            ),
+        )
+        transverse_width_ui = st.number_input(
+            "Transverse half-width width_y [mm]  (0 = auto: span/4)",
+            min_value=0.0, max_value=1000.0,
+            value=float(DEFAULT_TRANSVERSE_WIDTH), step=0.5,
+            disabled=not _transverse_ui_active,
+            key="sb_transverse_width",
+            help=(
+                "Localization half-width: the Gaussian 1/e length for "
+                "'gaussian_decay' and the ellipse half-width for "
+                "'elliptical' (ignored by 'uniform'/'sinusoidal_y'). "
+                "0 (auto) resolves to span_y / 4."
+            ),
+        )
+        # 0 is the "auto" sentinel -> hand None to AnalysisConfig.
+        transverse_span = (
+            float(transverse_span_ui) if transverse_span_ui > 0 else None
+        )
+        transverse_width = (
+            float(transverse_width_ui) if transverse_width_ui > 0 else None
+        )
+        if _transverse_ui_active:
+            st.caption(
+                f"Through-width variation active (mode = {transverse_mode}) — "
+                "forces the full FE path. The cross-section preview is an "
+                "x–z slice, so this y-effect is not drawn there."
+            )
     else:
         # Sensible defaults; the cartoon and morphology selector are exposed
         # in Expert mode for users who want to compare phase offsets.
@@ -1132,6 +1388,9 @@ with st.sidebar:
         amplitude_profile = DEFAULT_AMPLITUDE_PROFILE
         amplitude_profile_decay_length = None
         amplitude_profile_axis = DEFAULT_AMPLITUDE_PROFILE_AXIS
+        transverse_mode = DEFAULT_TRANSVERSE_MODE
+        transverse_span = None
+        transverse_width = None
         # Surface resin pockets depend on the expert-only FE solve, so the
         # novice path leaves them off with the contract defaults.
         enable_surface_pockets = DEFAULT_ENABLE_SURFACE_POCKETS
@@ -1424,6 +1683,26 @@ with st.sidebar:
     # the Analytical-only checkbox).
     _surface_pockets_active = _legacy_pockets_active
 
+    # ------------------------------------------------------------------
+    # Through-width transverse envelope compatibility gate (#300 / #375).
+    # A non-uniform transverse mode is FE-only and cannot combine with CZM
+    # (rejected at AnalysisConfig construction). Mirror the tool_flat UX:
+    # when the combo is incompatible, warn and DON'T thread the flags (so a
+    # run can never build an invalid config); otherwise mark it threaded so
+    # ``_assemble_cfg_payload`` carries it and the effective analytical-only
+    # flag is forced off (a non-uniform mode requires the FE path).
+    # ------------------------------------------------------------------
+    _transverse_active = transverse_mode != "uniform"
+    _transverse_incompatible = _transverse_active and bool(enable_czm)
+    _transverse_threaded = _transverse_active and not _transverse_incompatible
+    if _transverse_incompatible:
+        st.warning(
+            "Through-width transverse modes are FE-only and cannot combine "
+            "with Cohesive Zone Modeling (rejected at config construction). "
+            "Disable CZM or set **Transverse mode** to *uniform*. The "
+            "transverse envelope is ignored for this run."
+        )
+
     run_disabled = bool(mesh_diag is not None and mesh_diag.will_invert)
     run_clicked = st.button(
         "Run analysis",
@@ -1480,9 +1759,18 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 
-@st.cache_data(show_spinner=False)
-def run_analysis_cached(cfg_payload: tuple) -> dict:
-    """Cached analysis run. cfg_payload is a hashable tuple of config items."""
+def _config_from_payload(cfg_payload: tuple) -> AnalysisConfig:
+    """Build an :class:`AnalysisConfig` from a sidebar ``cfg_payload`` tuple.
+
+    Single source of truth for turning the hashable sidebar payload (the
+    ``angles_tuple`` / ``material_tuple`` shapes assembled by
+    :func:`_assemble_cfg_payload`) into a real :class:`AnalysisConfig`.
+    Shared by :func:`run_analysis_cached` (which solves on it) and the
+    sidebar **Download config** button (which serialises it via
+    :meth:`AnalysisConfig.to_json`), so a downloaded case file is exactly
+    the config a run would use and round-trips with the CLI ``--config`` /
+    ``--save-config`` flags.
+    """
     cfg_dict = dict(cfg_payload)
     angles = list(cfg_dict.pop("angles_tuple"))
     material_dict = dict(cfg_dict.pop("material_tuple"))
@@ -1526,7 +1814,24 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             surface_pocket_side=cfg_dict.get("surface_pocket_side", "top"),
         )
 
-    cfg = AnalysisConfig(
+    # Through-width transverse envelope (#300 / #375). Only threaded when a
+    # non-uniform mode is active — the sidebar refuses to add these keys for
+    # an incompatible combo (CZM / analytical-only), so a payload carrying a
+    # non-uniform ``transverse_mode`` is always FE-path and valid. ``span`` /
+    # ``width`` travel only when the user pinned them (``None`` = auto).
+    transverse_kwargs: dict = {}
+    if cfg_dict.get("transverse_mode", "uniform") != "uniform":
+        transverse_kwargs["transverse_mode"] = cfg_dict["transverse_mode"]
+        if cfg_dict.get("transverse_span") is not None:
+            transverse_kwargs["transverse_span"] = float(
+                cfg_dict["transverse_span"]
+            )
+        if cfg_dict.get("transverse_width") is not None:
+            transverse_kwargs["transverse_width"] = float(
+                cfg_dict["transverse_width"]
+            )
+
+    return AnalysisConfig(
         amplitude=cfg_dict["amplitude"],
         wavelength=cfg_dict["wavelength"],
         width=cfg_dict["width"],
@@ -1548,7 +1853,15 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
         analytical_only=cfg_dict["analytical_only"],
         **czm_kwargs,
         **surface_pocket_kwargs,
+        **transverse_kwargs,
     )
+
+
+@st.cache_data(show_spinner=False)
+def run_analysis_cached(cfg_payload: tuple) -> dict:
+    """Cached analysis run. cfg_payload is a hashable tuple of config items."""
+    cfg_dict = dict(cfg_payload)
+    cfg = _config_from_payload(cfg_payload)
     result = WrinkleAnalysis(cfg).run(
         analytical_only=cfg_dict["analytical_only"],
     )
@@ -1901,6 +2214,17 @@ def _assemble_cfg_payload(
     elif _surface_pockets_active:
         cfg_items["enable_surface_resin_pockets"] = True
         cfg_items["surface_pocket_side"] = surface_pocket_side
+    # Through-width transverse envelope (#300 / #375). Only threaded for a
+    # compatible non-uniform mode (the gate above clears ``_transverse_threaded``
+    # for the CZM combo), so a payload carrying ``transverse_mode`` is always a
+    # valid FE-path config. ``span`` / ``width`` travel only when pinned (a 0
+    # sentinel resolved to ``None``), keeping the default cache key untouched.
+    if _transverse_threaded:
+        cfg_items["transverse_mode"] = transverse_mode
+        if transverse_span is not None:
+            cfg_items["transverse_span"] = float(transverse_span)
+        if transverse_width is not None:
+            cfg_items["transverse_width"] = float(transverse_width)
     return tuple(sorted(cfg_items.items()))
 
 
@@ -1915,10 +2239,87 @@ def _live_cfg_payload() -> tuple | None:
             bool(analytical_only)
             and not bool(enable_czm)
             and not _surface_pockets_active
+            and not _transverse_threaded
         )
         return _assemble_cfg_payload(_live_layup, _live_effective_ao)
     except Exception:
         return None
+
+
+def _current_config_json() -> str | None:
+    """Serialise the current effective config from the live sidebar state.
+
+    Builds the same payload a run would use (:func:`_live_cfg_payload`) and
+    turns it into an :class:`AnalysisConfig` via :func:`_config_from_payload`,
+    so the downloaded file is exactly the config the current inputs describe
+    and works before any run. Returns ``None`` when the inputs can't be
+    assembled into a valid config (e.g. a half-typed layup), so the download
+    button can disable itself instead of crashing.
+    """
+    payload = _live_cfg_payload()
+    if payload is None:
+        return None
+    try:
+        return _config_from_payload(payload).to_json()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Config file I/O UI (issue #375). Rendered as a second sidebar block — it
+# lives after ``_live_cfg_payload`` / ``_config_from_payload`` are defined so
+# the download can serialise the live effective config. Appears at the bottom
+# of the sidebar (below Reset).
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    if st.session_state.pop("_config_loaded_toast", False):
+        st.success("Config loaded into the sidebar.")
+    with st.expander("Config file (save / load)", expanded=False):
+        _cfg_json = _current_config_json()
+        # Stash the serialised effective config so the download reflects the
+        # exact bytes and the round-trip is inspectable (also used by tests).
+        st.session_state["_effective_config_json"] = _cfg_json
+        st.download_button(
+            "Download config (JSON)",
+            data=(_cfg_json or "{}").encode("utf-8"),
+            file_name="wrinklefe_config.json",
+            mime="application/json",
+            disabled=_cfg_json is None,
+            width="stretch",
+            help=(
+                "Save the current sidebar settings as a portable "
+                "AnalysisConfig JSON. Round-trips with the CLI "
+                "`--config` / `--save-config` flags and can be re-loaded "
+                "below. Works before running an analysis."
+            ),
+        )
+        _uploaded_cfg = st.file_uploader(
+            "Load config (JSON / YAML)",
+            type=["json", "yaml", "yml"],
+            help=(
+                "Load a saved AnalysisConfig (from this app or the CLI "
+                "`--save-config`) back into the sidebar. Expert mode is "
+                "switched on so every loaded control is visible."
+            ),
+        )
+        if _uploaded_cfg is not None and _uploaded_cfg.file_id != (
+            st.session_state.get("_config_upload_id")
+        ):
+            # Mark this upload processed up front so a parse error doesn't
+            # re-fire the error on every rerun.
+            st.session_state["_config_upload_id"] = _uploaded_cfg.file_id
+            try:
+                _loaded_cfg = _parse_uploaded_config(
+                    _uploaded_cfg.name, _uploaded_cfg.getvalue()
+                )
+            except Exception as _exc:
+                st.error(f"Could not load config: {_exc}")
+            else:
+                # Stage for the top-of-sidebar seeding block, then rerun so
+                # the widgets pick up the loaded values before they render
+                # (avoids the set-after-instantiate error).
+                st.session_state["_pending_config"] = _loaded_cfg
+                st.rerun()
 
 
 # Run handler — execute BEFORE tabs render so the Analyze tab's results
@@ -1967,15 +2368,16 @@ if run_clicked or _demo_pending:
             st.error(f"Invalid custom material: {e}")
             st.stop()
 
-        # CZM and surface resin pockets are both FE-only material effects;
-        # force analytical_only off when either is enabled regardless of the
-        # *Analytical only* checkbox so the user can't accidentally request
-        # a run that would silently drop (CZM) or reject in validation
-        # (surface pockets) the feature.
+        # CZM, surface resin pockets, and a non-uniform transverse envelope
+        # are all FE-only effects; force analytical_only off when any is
+        # enabled regardless of the *Analytical only* checkbox so the user
+        # can't accidentally request a run that would silently drop (CZM) or
+        # reject in validation (surface pockets / transverse) the feature.
         _effective_analytical_only = (
             bool(analytical_only)
             and not bool(enable_czm)
             and not _surface_pockets_active
+            and not _transverse_threaded
         )
 
         cfg_payload = _assemble_cfg_payload(layup, _effective_analytical_only)

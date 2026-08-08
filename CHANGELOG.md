@@ -15,6 +15,23 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- App — **config upload/download and through-width transverse controls**
+  (issue #375, app slice — *Fixes #375*, completing the issue). The
+  Streamlit sidebar gains a **Config file** section: **Download config
+  (JSON)** serialises the current effective `AnalysisConfig` from the live
+  sidebar state (works before any run) and round-trips with the CLI
+  `--config` / `--save-config` flags, and **Load config (JSON/YAML)**
+  reads a saved case back into the sidebar. Loading parses via
+  `AnalysisConfig.from_dict` (bad files surface an `st.error`, never a
+  crash) and *seeds* the widgets from the config — the seed is staged in
+  `session_state` and applied at the top of the sidebar before the widgets
+  instantiate (then a rerun), so Streamlit's set-after-instantiate error is
+  avoided; custom materials route through the custom-editor keys and stale
+  results are cleared. Expert mode also exposes the through-width
+  **transverse** envelope (`transverse_mode` selectbox plus span/width
+  inputs); a non-uniform mode forces the FE path and is threaded into the
+  run config, while the incompatible transverse+CZM combo shows a sidebar
+  warning and is not threaded into an invalid config.
 - CLI — **config-first sweeps/compares, transverse + stochastic exposure,
   and ergonomics** (issue #375, CLI slice). `sweep` and `compare` gain
   `--config PATH`: the file supplies the base `AnalysisConfig` (laminate,
