@@ -411,6 +411,15 @@ INTENTIONALLY_UNEXPORTED = {
         "diagnostic flag; emitted only when the global modulus-retention "
         "computation failed, absent for valid runs (#374)"
     ),
+    "czm_failure_diagnostics": (
+        "Newton/CZM convergence-failure diagnostics; results_to_dict emits it "
+        "only on a non-converged solve (None when converged), so it is absent "
+        "for valid runs (keeps the export byte-identical / zero-drift, #262)"
+    ),
+    "czm_failure_hint": (
+        "actionable tuning hint; emitted only on a non-converged CZM solve, "
+        "absent for valid runs (#262)"
+    ),
     "mesh": "heavy MeshData; summarised as the top-level 'mesh' block when present",
     "wrinkle_config": "WrinkleConfiguration object; geometry captured under config",
     "laminate": "Laminate object; layup captured under config.angles",
