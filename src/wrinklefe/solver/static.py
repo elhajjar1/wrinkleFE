@@ -69,6 +69,28 @@ class StaticSolver:
     element_type : str, optional
         Element formulation: ``'hex8'`` (standard 2x2x2 integration).
         Default is ``'hex8'``.
+    iterative_rtol : float, optional
+        Relative-residual convergence tolerance for the iterative (CG)
+        solver.  Default ``1e-10``.
+    iterative_maxiter : int, optional
+        Maximum CG iterations for the iterative solver.  Default ``10000``.
+    ilu_drop_tol : float, optional
+        Drop tolerance for the ILU preconditioner (``spilu``).  Default
+        ``1e-4``.
+    ilu_fill_factor : float or None, optional
+        Upper bound on the ILU fill (``spilu``'s ``fill_factor``).
+        ``None`` (default) leaves SciPy's own default in place.
+    preconditioner : str, optional
+        Preconditioner for the iterative solver: ``'ilu'`` (default),
+        ``'jacobi'`` (diagonal), or ``'none'`` (unpreconditioned).
+
+    Notes
+    -----
+    The iterative-solver controls default to the values previously
+    hardcoded in :meth:`_solve_iterative`, so an iterative solve with the
+    defaults is bit-for-bit unchanged.  They are normally supplied by the
+    :class:`~wrinklefe.analysis.WrinkleAnalysis` pipeline from the
+    matching :class:`~wrinklefe.analysis.AnalysisConfig` fields.
     """
 
     def __init__(
@@ -76,11 +98,25 @@ class StaticSolver:
         mesh: MeshData,
         laminate: Laminate,
         element_type: str = "hex8",
+        *,
+        iterative_rtol: float = 1e-10,
+        iterative_maxiter: int = 10000,
+        ilu_drop_tol: float = 1e-4,
+        ilu_fill_factor: float | None = None,
+        preconditioner: str = "ilu",
     ) -> None:
         self.mesh = mesh
         self.laminate = laminate
         self.element_type = element_type
         self.assembler = GlobalAssembler(mesh, laminate, element_type)
+
+        # Iterative-solver controls (issue #265). Defaults reproduce the
+        # previously hardcoded values in ``_solve_iterative`` bit-for-bit.
+        self.iterative_rtol = iterative_rtol
+        self.iterative_maxiter = iterative_maxiter
+        self.ilu_drop_tol = ilu_drop_tol
+        self.ilu_fill_factor = ilu_fill_factor
+        self.preconditioner = preconditioner
 
         # Populated after solve
         self._displacement: np.ndarray | None = None
@@ -274,19 +310,108 @@ class StaticSolver:
             logger.debug("Direct solver residual: %.4e", residual)
         return u
 
+    def _diagonal_preconditioner(
+        self, K: sparse.csc_matrix
+    ) -> spla.LinearOperator:
+        """Build a diagonal (Jacobi) ``LinearOperator`` from ``K``.
+
+        Zero diagonal entries are replaced by 1.0 so the inverse is
+        well-defined.
+        """
+        n = K.shape[0]
+        diag = K.diagonal()
+        diag[diag == 0] = 1.0
+        return spla.LinearOperator(
+            shape=(n, n),
+            matvec=lambda x: x / diag,
+            dtype=K.dtype,
+        )
+
+    def _build_preconditioner(
+        self, K: sparse.csc_matrix
+    ) -> tuple[spla.LinearOperator | None, str]:
+        """Build the CG preconditioner and report which one is active.
+
+        Honours ``self.preconditioner`` (``'ilu'`` | ``'jacobi'`` |
+        ``'none'``).  For ``'ilu'``, a *narrow* fallback to the diagonal
+        (Jacobi) preconditioner is engaged when ``spilu`` raises one of
+        the errors it uses to signal a memory/singular/structural failure
+        (``RuntimeError``, ``MemoryError``, ``ValueError``); that fallback
+        is logged unconditionally at WARNING level.  Any other exception
+        type propagates unchanged so genuinely unexpected bugs are not
+        masked as an ILU failure.
+
+        Returns
+        -------
+        (M_op, active) : tuple
+            ``M_op`` is the ``LinearOperator`` (or ``None`` for the
+            unpreconditioned case); ``active`` is the name of the
+            preconditioner actually in effect (``'ilu'``, ``'jacobi'`` or
+            ``'none'``) — used in the non-convergence diagnostics.
+        """
+        n = K.shape[0]
+        precond = self.preconditioner.lower().strip()
+
+        if precond == "none":
+            logger.debug("Using unpreconditioned CG (preconditioner='none').")
+            return None, "none"
+
+        if precond == "jacobi":
+            logger.debug("Building diagonal (Jacobi) preconditioner...")
+            return self._diagonal_preconditioner(K), "jacobi"
+
+        # Default: incomplete-LU.
+        logger.debug("Building ILU preconditioner...")
+        spilu_kwargs: dict = {"drop_tol": self.ilu_drop_tol}
+        if self.ilu_fill_factor is not None:
+            spilu_kwargs["fill_factor"] = self.ilu_fill_factor
+        try:
+            ilu = spla.spilu(K, **spilu_kwargs)
+        except (RuntimeError, MemoryError, ValueError) as err:
+            # Narrow fallback: only the failure modes ``spilu`` uses to
+            # signal that the factorisation itself could not be built
+            # (out of memory, structurally/numerically singular input).
+            # Any other exception type is a bug and must not be masked.
+            logger.warning(
+                "ILU preconditioner failed (%s: %s); falling back to a "
+                "diagonal (Jacobi) preconditioner — the solve may be much "
+                "slower on an ill-conditioned matrix. Set "
+                "preconditioner='jacobi' to silence this, or use the "
+                "direct solver.",
+                type(err).__name__,
+                err,
+            )
+            return self._diagonal_preconditioner(K), "jacobi"
+
+        M_op = spla.LinearOperator(
+            shape=(n, n),
+            matvec=ilu.solve,
+            dtype=K.dtype,
+        )
+        return M_op, "ilu"
+
     def _solve_iterative(
         self,
         K: sparse.csc_matrix,
         F: np.ndarray,
-        tol: float = 1e-10,
-        maxiter: int = 10000,
+        tol: float | None = None,
+        maxiter: int | None = None,
         verbose: bool = False,
     ) -> np.ndarray:
-        """Iterative CG solver with ILU preconditioner.
+        """Iterative CG solver with a configurable preconditioner.
 
-        Uses ``scipy.sparse.linalg.cg`` with an incomplete LU
-        factorisation as preconditioner, wrapped in a
-        ``LinearOperator``.  Suitable for large problems (>100 k DOFs).
+        Uses ``scipy.sparse.linalg.cg`` with the preconditioner selected
+        by ``self.preconditioner`` (an incomplete-LU factorisation by
+        default), wrapped in a ``LinearOperator``.  Suitable for large
+        problems (>100 k DOFs).
+
+        The convergence tolerance, iteration cap, and preconditioner
+        controls come from the instance attributes set on
+        :class:`StaticSolver` (``iterative_rtol``, ``iterative_maxiter``,
+        ``ilu_drop_tol``, ``ilu_fill_factor``, ``preconditioner``), which
+        the :class:`~wrinklefe.analysis.WrinkleAnalysis` pipeline plumbs
+        from :class:`~wrinklefe.analysis.AnalysisConfig`.  Their defaults
+        reproduce the previously hardcoded values bit-for-bit.
 
         Parameters
         ----------
@@ -294,12 +419,15 @@ class StaticSolver:
             Global stiffness matrix with BCs applied.
         F : np.ndarray
             Shape ``(n_dof,)`` global force vector.
-        tol : float, optional
-            Convergence tolerance for the relative residual. Default 1e-10.
-        maxiter : int, optional
-            Maximum number of iterations. Default 10000.
+        tol : float or None, optional
+            Override for the CG relative-residual tolerance.  ``None``
+            (default) uses ``self.iterative_rtol``.
+        maxiter : int or None, optional
+            Override for the CG iteration cap.  ``None`` (default) uses
+            ``self.iterative_maxiter``.
         verbose : bool, optional
-            Print solver info and iteration count.
+            Deprecated and ignored; progress is reported through the
+            module logger.
 
         Returns
         -------
@@ -309,32 +437,16 @@ class StaticSolver:
         Raises
         ------
         RuntimeError
-            If the CG solver fails to converge.
+            If the CG solver fails to converge.  The message names the
+            active preconditioner, the iterations used, the iteration cap,
+            and the final relative residual.
         """
-        n = K.shape[0]
+        if tol is None:
+            tol = self.iterative_rtol
+        if maxiter is None:
+            maxiter = self.iterative_maxiter
 
-        # Build ILU preconditioner
-        logger.debug("Building ILU preconditioner...")
-        try:
-            ilu = spla.spilu(K, drop_tol=1e-4)
-            M_op = spla.LinearOperator(
-                shape=(n, n),
-                matvec=ilu.solve,
-                dtype=K.dtype,
-            )
-        except Exception:
-            # Fall back to diagonal preconditioner if ILU fails
-            logger.warning(
-                "ILU preconditioner failed; falling back to diagonal "
-                "preconditioner."
-            )
-            diag = K.diagonal()
-            diag[diag == 0] = 1.0
-            M_op = spla.LinearOperator(
-                shape=(n, n),
-                matvec=lambda x: x / diag,
-                dtype=K.dtype,
-            )
+        M_op, active_preconditioner = self._build_preconditioner(K)
 
         # Iteration counter for logging and error reporting
         iter_count = [0]
@@ -349,16 +461,26 @@ class StaticSolver:
                           callback=callback)
 
         if info != 0:
+            b_norm = float(np.linalg.norm(F))
+            rel_residual = (
+                float(np.linalg.norm(K @ u - F)) / b_norm
+                if b_norm > 0.0
+                else float(np.linalg.norm(K @ u - F))
+            )
             raise RuntimeError(
                 f"CG solver did not converge: info={info} "
-                f"(iterations={iter_count[0]}, tol={tol})"
+                f"(preconditioner={active_preconditioner!r}, "
+                f"iterations={iter_count[0]}, maxiter={maxiter}, "
+                f"rtol={tol}, final relative residual="
+                f"{rel_residual:.4e})"
             )
 
         if logger.isEnabledFor(logging.INFO):
             residual = np.linalg.norm(K @ u - F)
             logger.info(
-                "CG converged in %d iterations, residual: %.4e",
-                iter_count[0], residual,
+                "CG converged in %d iterations (preconditioner=%s), "
+                "residual: %.4e",
+                iter_count[0], active_preconditioner, residual,
             )
 
         return u
