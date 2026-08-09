@@ -2409,6 +2409,20 @@ class AnalysisResults:
     czm_converged: bool | None = None
     """Whether every load increment converged."""
 
+    czm_failure_diagnostics: dict | None = None
+    """Diagnostics record for the first load increment that failed to
+    converge (``None`` when the CZM solve converged or was not run).  Carries
+    the increment index / load fraction, iteration count, final residual /
+    BC-violation / step norms, the tail of the residual history, line-search
+    status, and a classified ``failure_reason``.  See
+    :meth:`wrinklefe.solver.nonlinear.NewtonRaphsonSolver._record_increment_diag`."""
+
+    czm_failure_hint: str | None = None
+    """A single actionable tuning hint derived from
+    :attr:`czm_failure_diagnostics` (``None`` when converged).  Names the knob
+    to reach for — ``czm_n_load_increments``, ``czm_newton_tol``, the applied
+    strain, or the Newton iteration cap."""
+
     czm_interfaces_used: list[int] | None = None
     """Ply-interface indices that actually received cohesive elements."""
 
@@ -2525,6 +2539,11 @@ class AnalysisResults:
                 f"    Energy dissipated: {energy:.4e} N*mm",
                 f"    Converged:         {self.czm_converged}",
             ])
+            # When the solve did not converge, surface the actionable
+            # tuning hint right below the convergence flag so a CLI /
+            # summary reader learns which knob to turn.
+            if self.czm_converged is False and self.czm_failure_hint:
+                lines.append(f"    Hint:              {self.czm_failure_hint}")
 
         lines.append("=" * 65)
         return "\n".join(lines)
@@ -3338,6 +3357,8 @@ class WrinkleAnalysis:
         outcome = solver.solve(verbose=cfg.verbose)
 
         results.czm_converged = bool(outcome.get("converged", False))
+        results.czm_failure_diagnostics = outcome.get("failure_diagnostics")
+        results.czm_failure_hint = outcome.get("failure_hint")
         results.czm_load_displacement = outcome.get(
             "load_displacement", None,
         )

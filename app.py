@@ -1985,6 +1985,7 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             "enabled": True,
             "converged": bool(result.czm_converged)
             if result.czm_converged is not None else None,
+            "failure_hint": result.czm_failure_hint,
             "interfaces_used": list(result.czm_interfaces_used or []),
             "max_damage": max_d,
             "n_elements_above_half": n_above_half,
@@ -2064,6 +2065,11 @@ def _render_czm_results(czm: dict) -> None:
             or not result_obj.czm_damage.size
         )
         if damage_missing:
+            # If the Newton-Raphson solve reported a failure, lead with the
+            # actionable tuning hint instead of the generic message.
+            hint = czm.get("failure_hint")
+            if czm.get("converged") is False and hint:
+                st.error(hint)
             st.warning(
                 "CZM was enabled but no damage data was produced — "
                 "the solver may have failed before the Newton-Raphson "
@@ -2116,6 +2122,19 @@ def _render_czm_results(czm: dict) -> None:
             f"Interfaces: "
             f"**{', '.join(str(i) for i in czm.get('interfaces_used', [])) or '(none)'}**"
         )
+
+        # Non-converged solve: surface the actionable tuning hint so the
+        # user learns which knob to turn rather than a bare "converged:
+        # False". Partial damage results above are still shown.
+        if czm.get("converged") is False:
+            st.error(
+                czm.get("failure_hint")
+                or (
+                    "The CZM solve did not converge. Try more load "
+                    "increments (czm_n_load_increments) or a looser Newton "
+                    "tolerance (czm_newton_tol)."
+                )
+            )
 
         # Per-interface crack-length table
         if crack_lengths:

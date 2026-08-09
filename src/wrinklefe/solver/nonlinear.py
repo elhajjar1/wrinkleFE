@@ -102,6 +102,19 @@ class NewtonRaphsonSolver:
         self.tol_displacement = float(tol_displacement)
         self.line_search = bool(line_search)
 
+        # Convergence-failure diagnostics (issue #262).  ``_increment_diag``
+        # holds a small record for the most recently *failed* increment
+        # (``None`` after a fully converged increment); ``solve()`` reads
+        # it to populate ``failure_diagnostics``.  The line-search status
+        # attributes are refreshed on every ``_backtracking_line_search``
+        # call so the diagnostics can report whether the last step
+        # exhausted its trial budget.  None of these participate in the
+        # numerical path — a converged run is bit-identical with or
+        # without them.
+        self._increment_diag: dict | None = None
+        self._ls_exhausted: bool = False
+        self._ls_last_alpha: float = 1.0
+
     # ------------------------------------------------------------------
     # Main solve
     # ------------------------------------------------------------------
@@ -121,6 +134,12 @@ class NewtonRaphsonSolver:
             ``increments_completed`` : number of increments completed.
             ``iteration_counts`` : list of Newton iterations used per
             increment (helpful for line-search comparison tests).
+            ``failure_diagnostics`` : diagnostics record for the first
+            increment that failed to converge (``None`` when every
+            increment converged).  See :meth:`_record_increment_diag` for
+            the field layout.
+            ``failure_hint`` : a single actionable tuning hint derived
+            from ``failure_diagnostics`` (``None`` when converged).
         """
         n_dof = self._n_dof()
         u = np.zeros(n_dof)
@@ -128,6 +147,7 @@ class NewtonRaphsonSolver:
         iteration_counts: list[int] = []
         converged_all = True
         completed = 0
+        failure_diag: dict | None = None
 
         constrained_full = self.bc_handler.get_constrained_dofs(
             self.boundary_conditions
@@ -151,12 +171,16 @@ class NewtonRaphsonSolver:
             F_ext_inc = lam * F_ext_full
 
             u_new, n_iter, ok = self._newton_step(
-                u, F_ext_inc, constrained_inc, verbose=verbose, inc=inc
+                u, F_ext_inc, constrained_inc, verbose=verbose, inc=inc,
+                load_fraction=lam,
             )
             iteration_counts.append(n_iter)
 
             if not ok:
                 converged_all = False
+                # ``_newton_step`` recorded the failing increment's
+                # diagnostics on the instance; capture the FIRST one.
+                failure_diag = self._increment_diag
                 logger.warning(
                     "Increment %d: Newton failed to converge.", inc
                 )
@@ -173,12 +197,18 @@ class NewtonRaphsonSolver:
             completed, self.n_increments, converged_all,
         )
 
+        failure_hint = (
+            None if converged_all else self._failure_hint(failure_diag)
+        )
+
         return {
             "displacement": u,
             "load_displacement": np.asarray(load_displacement, dtype=float),
             "converged": converged_all,
             "increments_completed": completed,
             "iteration_counts": iteration_counts,
+            "failure_diagnostics": failure_diag,
+            "failure_hint": failure_hint,
         }
 
     # ------------------------------------------------------------------
@@ -192,12 +222,25 @@ class NewtonRaphsonSolver:
         constrained_dofs: dict[int, float],
         verbose: bool,
         inc: int,
+        load_fraction: float = 1.0,
     ) -> tuple[np.ndarray, int, bool]:
         from wrinklefe.solver.boundary import _PENALTY_SCALE
 
         u = u_prev.copy()
         phys_0: float | None = None
         phys_ref: float = self.tol_absolute
+
+        # Convergence-failure diagnostics (issue #262).  Reset per
+        # increment; ``_increment_diag`` stays ``None`` unless one of the
+        # failure exits records a diagnostics dict.  ``residual_history``
+        # accumulates the free-DOF physical residual norm each iteration
+        # so a failed increment can be classified (diverging / stagnant /
+        # still-decreasing).  Purely observational — it does not feed the
+        # Newton update.
+        self._increment_diag = None
+        self._ls_exhausted = False
+        self._ls_last_alpha = 1.0
+        residual_history: list[float] = []
 
         # Build the constrained-DOF index/value arrays once per increment.
         # Used both for BC application and for the BC-violation half of
@@ -226,6 +269,9 @@ class NewtonRaphsonSolver:
         bc_tol = max(self.tol_displacement, penalty_floor) * val_scale
 
         diag_max: float = 1.0
+        # Last Newton step norm; carried out of the loop so the max-iter
+        # diagnostics can report it even though it is assigned inside.
+        du_norm: float = 0.0
 
         for it in range(1, self.max_newton_iter + 1):
             # One combined pass: assembler returns (K_t, F_int) computed
@@ -253,6 +299,7 @@ class NewtonRaphsonSolver:
             R_phys = R.copy()
             R_phys[dofs_arr] = 0.0
             phys_norm = float(np.linalg.norm(R_phys))
+            residual_history.append(phys_norm)
             # BC violation: how far the current u is from prescribed
             # values on constrained DOFs.
             if dofs_arr.size:
@@ -320,10 +367,22 @@ class NewtonRaphsonSolver:
                 du = spla.spsolve(K_bc, -R_bc)
             except RuntimeError:
                 self._revert_state()
+                self._record_increment_diag(
+                    inc=inc, load_fraction=load_fraction, n_iterations=it,
+                    phys_norm=phys_norm, bc_violation=bc_violation,
+                    du_norm=None, residual_history=residual_history,
+                    tangent_singular=True, failure_reason="tangent_singular",
+                )
                 return u, it, False
 
             if not np.all(np.isfinite(du)):
                 self._revert_state()
+                self._record_increment_diag(
+                    inc=inc, load_fraction=load_fraction, n_iterations=it,
+                    phys_norm=phys_norm, bc_violation=bc_violation,
+                    du_norm=None, residual_history=residual_history,
+                    tangent_singular=False, failure_reason="diverged",
+                )
                 return u, it, False
 
             alpha = 1.0
@@ -360,7 +419,159 @@ class NewtonRaphsonSolver:
                     return u, it, True
 
         self._revert_state()
+        # Max-iter fall-through: distinguish a still-decreasing residual
+        # (raise the iteration cap) from a stagnant/diverging one (needs
+        # smaller load steps) via the residual-history trend.
+        self._record_increment_diag(
+            inc=inc, load_fraction=load_fraction,
+            n_iterations=self.max_newton_iter,
+            phys_norm=phys_norm, bc_violation=bc_violation,
+            du_norm=du_norm, residual_history=residual_history,
+            tangent_singular=False,
+            failure_reason=self._classify_residual_trend(residual_history),
+        )
         return u, self.max_newton_iter, False
+
+    # ------------------------------------------------------------------
+    # Failure diagnostics (issue #262)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _classify_residual_trend(residual_history: list[float]) -> str:
+        """Classify a max-iteration failure from the residual history.
+
+        Looks at the last few free-DOF physical residual norms:
+
+        - strictly *increasing* over the window -> ``"diverged"``
+          (the Newton iteration is running away; smaller load steps or
+          a smaller applied strain are needed),
+        - roughly *flat* (final residual still above ~90 % of the window
+          start) -> ``"stagnated"`` (the step is too coarse for the
+          damage evolution),
+        - still *decreasing* meaningfully at the cap -> ``"iteration_cap"``
+          (the solve would likely converge with a higher iteration cap or
+          a looser tolerance).
+
+        With fewer than two samples the trend is undefined; default to
+        ``"iteration_cap"`` (the benign, cap-bound interpretation).
+        """
+        window = residual_history[-5:]
+        if len(window) < 2:
+            return "iteration_cap"
+        first = window[0]
+        last = window[-1]
+        if first <= 0.0:
+            return "iteration_cap"
+        if last > first:
+            return "diverged"
+        if last > 0.9 * first:
+            return "stagnated"
+        return "iteration_cap"
+
+    def _record_increment_diag(
+        self,
+        *,
+        inc: int,
+        load_fraction: float,
+        n_iterations: int,
+        phys_norm: float,
+        bc_violation: float,
+        du_norm: float | None,
+        residual_history: list[float],
+        tangent_singular: bool,
+        failure_reason: str | None,
+    ) -> None:
+        """Store a small diagnostics record for the current increment.
+
+        Fields (all JSON-friendly scalars/lists so the record can be
+        serialised into a results payload):
+
+        - ``increment`` / ``n_increments`` : 1-based increment index and
+          the total,
+        - ``load_fraction`` : fraction of the full load applied at this
+          increment,
+        - ``n_iterations`` : Newton iterations used,
+        - ``final_phys_norm`` / ``final_bc_violation`` / ``final_du_norm`` :
+          the last free-DOF physical residual, BC violation and step norm
+          (``final_du_norm`` is ``None`` at the singular/non-finite exits
+          where the step is unusable),
+        - ``residual_history`` : the last <=5 physical residual norms,
+        - ``line_search_exhausted`` / ``last_alpha`` : whether the last
+          line search used its whole trial budget and the alpha it landed
+          on,
+        - ``tangent_singular`` : whether the tangent factorisation failed,
+        - ``failure_reason`` : one of ``"tangent_singular"``,
+          ``"diverged"``, ``"stagnated"``, ``"iteration_cap"`` (or
+          ``None`` — reserved for a converged increment).
+        """
+        self._increment_diag = {
+            "increment": int(inc),
+            "n_increments": int(self.n_increments),
+            "load_fraction": float(load_fraction),
+            "n_iterations": int(n_iterations),
+            "final_phys_norm": float(phys_norm),
+            "final_bc_violation": float(bc_violation),
+            "final_du_norm": None if du_norm is None else float(du_norm),
+            "residual_history": [float(r) for r in residual_history[-5:]],
+            "line_search_exhausted": bool(self._ls_exhausted),
+            "last_alpha": float(self._ls_last_alpha),
+            "tangent_singular": bool(tangent_singular),
+            "failure_reason": failure_reason,
+        }
+
+    @staticmethod
+    def _failure_hint(diag: dict | None) -> str:
+        """Map a failure-diagnostics record to one actionable hint string.
+
+        The hint names the specific tunable knob to reach for
+        (``czm_n_load_increments``, ``czm_newton_tol``, the applied
+        strain, or ``max_newton_iter``) and folds in the numbers that
+        drove the classification so the user can judge how far off the
+        solve was.
+        """
+        if diag is None:
+            return (
+                "Nonlinear solve failed to converge. Try more load "
+                "increments (czm_n_load_increments), a looser Newton "
+                "tolerance (czm_newton_tol), or a smaller applied strain."
+            )
+        reason = diag.get("failure_reason")
+        i = diag.get("increment")
+        n = diag.get("n_increments")
+        pct = int(round(100.0 * float(diag.get("load_fraction", 0.0))))
+        rphys = float(diag.get("final_phys_norm", 0.0))
+        iters = diag.get("n_iterations")
+        where = f"increment {i}/{n} ({pct}% load)"
+        if reason == "tangent_singular":
+            return (
+                f"Tangent went singular at {where}, ||R||={rphys:.2e} — "
+                "likely post-peak snap-back. Increase czm_n_load_increments "
+                "or reduce the applied strain; displacement/arc-length "
+                "control is the robust fix (roadmap)."
+            )
+        if reason == "diverged":
+            return (
+                f"Residual diverged at {where} (||R||={rphys:.2e} after "
+                f"{iters} iterations) — reduce the applied strain or "
+                "increase czm_n_load_increments."
+            )
+        if reason == "stagnated":
+            return (
+                f"Residual stagnated at {where} (||R||={rphys:.2e} after "
+                f"{iters} iterations) — increase czm_n_load_increments or "
+                "loosen czm_newton_tol."
+            )
+        if reason == "iteration_cap":
+            return (
+                f"Hit the Newton iteration cap ({iters}) while the residual "
+                f"was still decreasing at {where} (||R||={rphys:.2e}) — "
+                "raise max_newton_iter or loosen czm_newton_tol."
+            )
+        return (
+            f"Newton failed to converge at {where} (||R||={rphys:.2e}). "
+            "Try more load increments (czm_n_load_increments) or a looser "
+            "Newton tolerance (czm_newton_tol)."
+        )
 
     # ------------------------------------------------------------------
     # Line search
@@ -394,11 +605,17 @@ class NewtonRaphsonSolver:
             )
             trial_norm = float(np.linalg.norm(R_trial_bc))
             if trial_norm < res_norm:
+                # A trial improved the residual — budget not exhausted.
+                self._ls_exhausted = False
+                self._ls_last_alpha = alpha
                 return alpha
             if i < max_trials - 1:
                 alpha *= shrink
         # No trial reduced the residual; return the last (smallest)
-        # tried alpha rather than an untested ``alpha * shrink``.
+        # tried alpha rather than an untested ``alpha * shrink``.  Flag
+        # the exhaustion so the failure diagnostics can surface it.
+        self._ls_exhausted = True
+        self._ls_last_alpha = alpha
         return alpha
 
     # ------------------------------------------------------------------

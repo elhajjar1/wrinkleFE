@@ -382,6 +382,27 @@ so a delamination can propagate crest-to-crest between neighbours
 (`examples/08_multi_wrinkle_czm_linkup.py` demonstrates the link-up
 vs far-separated contrast).
 
+#### When a CZM solve fails to converge
+
+CZM solves can fail for physical reasons — the tangent goes indefinite
+near peak load, the load steps are too coarse for the damage evolution,
+or the residual stagnates. When that happens the run still returns
+(partial) results with `czm_converged = False`, and the solver now
+classifies *why* and hands back one actionable hint. `AnalysisResults`
+carries `czm_failure_diagnostics` (increment index + load fraction,
+iteration count, final residual, residual history, line-search status)
+and `czm_failure_hint`; the CLI prints the hint to stderr and the
+Streamlit CZM section shows it as an error. The hint names the knob to
+turn:
+
+- **still decreasing at the iteration cap** → raise `max_newton_iter` or
+  loosen `czm_newton_tol`;
+- **stagnated / diverged** → increase `czm_n_load_increments` or reduce
+  the applied strain;
+- **tangent singular (post-peak snap-back)** → more load increments or a
+  smaller strain; displacement/arc-length control is the robust fix on
+  the roadmap.
+
 ### Uncertainty propagation (probabilistic analysis)
 
 Measured wrinkle geometry is uncertain — amplitude and wavelength come

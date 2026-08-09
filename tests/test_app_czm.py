@@ -250,3 +250,78 @@ def test_render_czm_results_handles_missing_damage(app_module):
     assert any("CZM" in t and "no damage" in t.lower() for t in warning_texts), (
         f"missing CZM-no-damage warning; saw warnings: {warning_texts!r}"
     )
+
+
+# ----------------------------------------------------------------------
+# 4. Non-converged CZM run surfaces the actionable failure hint (#262)
+# ----------------------------------------------------------------------
+
+
+def test_render_czm_results_shows_failure_hint_on_non_convergence():
+    """When the CZM solve did not converge, ``_render_czm_results`` must
+    surface the ``failure_hint`` in an error box — not just the generic
+    "converged: False"."""
+    from streamlit.testing.v1 import AppTest
+
+    from wrinklefe.analysis import AnalysisConfig, AnalysisResults
+
+    empty_result = AnalysisResults(
+        config=AnalysisConfig(),
+        morphology_factor=1.0,
+        max_angle_rad=0.0,
+        effective_angle_rad=0.0,
+        damage_index=0.0,
+        analytical_knockdown=1.0,
+        analytical_strength_MPa=1000.0,
+        gamma_Y_eff=0.05,
+        czm_damage=np.empty((0, 0)),
+    )
+    hint = (
+        "Residual diverged at increment 3/20 (15% load, ||R||=9.90e+03 "
+        "after 7 iterations) — reduce the applied strain or increase "
+        "czm_n_load_increments."
+    )
+    fake_results = {
+        "summary": "stub summary",
+        "loading": "tension",
+        "applied_strain_abs": 0.01,
+        "max_angle_deg": 0.0,
+        "effective_angle_deg": 0.0,
+        "morphology_factor": 1.0,
+        "gamma_Y_eff": 0.05,
+        "analytical_knockdown": 1.0,
+        "analytical_strength_MPa": 1000.0,
+        "damage_index": 0.0,
+        "tension_mechanisms": None,
+        "fe": None,
+        "czm": {
+            "enabled": True,
+            "converged": False,
+            "failure_hint": hint,
+            "interfaces_used": [3],
+            "max_damage": 0.0,
+            "n_elements_above_half": 0,
+            "energy_dissipated": 0.0,
+            "crack_length_per_interface": {},
+            "energy_per_interface": {},
+            "_result": empty_result,
+        },
+    }
+    fake_payload = (
+        ("amplitude", 0.3),
+        ("angles_tuple", (0, 45, -45, 90)),
+        ("material_tuple", tuple()),
+        ("wavelength", 16.0),
+    )
+
+    at = AppTest.from_file(_app_path(), default_timeout=30)
+    at.session_state["results"] = fake_results
+    at.session_state["cfg_payload"] = fake_payload
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+
+    error_texts = [e.value for e in at.error]
+    assert any("diverged" in t and "czm_n_load_increments" in t
+               for t in error_texts), (
+        f"failure hint not surfaced as an error; saw errors: {error_texts!r}"
+    )

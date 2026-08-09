@@ -15,6 +15,21 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Solver — **Newton/CZM convergence-failure diagnostics + actionable hint**
+  (issue #262). A failed nonlinear solve used to return a bare
+  `converged: False`. `NewtonRaphsonSolver.solve()` now also returns
+  `failure_diagnostics` (first failing increment: index + load fraction,
+  iteration count, final `||R_phys||` / BC violation / `||du||`, the tail
+  of the residual history, line-search status, tangent-singular flag, and a
+  classified `failure_reason` ∈ {`tangent_singular`, `diverged`,
+  `stagnated`, `iteration_cap`}) and `failure_hint`, a single string naming
+  the knob to turn (`czm_n_load_increments`, `czm_newton_tol`, the applied
+  strain, `max_newton_iter`, or the arc-length roadmap). The `_newton_step`
+  tuple return is unchanged and the numerical path is untouched, so
+  converged results are bit-identical. `AnalysisResults` gains
+  `czm_failure_diagnostics` / `czm_failure_hint`; the CLI prints the hint to
+  stderr and the Streamlit CZM section shows it as an error on a
+  non-converged `--enable-czm` run.
 - App — **config upload/download and through-width transverse controls**
   (issue #375, app slice — *Fixes #375*, completing the issue). The
   Streamlit sidebar gains a **Config file** section: **Download config

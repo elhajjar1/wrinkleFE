@@ -258,6 +258,13 @@ def _knockdown_factors(results: AnalysisResults) -> dict:
         out["modulus_retention_failed"] = True
     if results.modulus_retention_global_failed:
         out["modulus_retention_global_failed"] = True
+    # CZM/Newton convergence-failure diagnostics — present only on a
+    # non-converged nonlinear solve (both None when converged), so they are
+    # absent and byte-identical for valid runs, preserving ledger zero-drift.
+    if results.czm_failure_diagnostics is not None:
+        out["czm_failure_diagnostics"] = results.czm_failure_diagnostics
+    if results.czm_failure_hint is not None:
+        out["czm_failure_hint"] = results.czm_failure_hint
     return out
 
 
