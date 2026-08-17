@@ -15,6 +15,38 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Analysis — **inverse goal-seek: maximum acceptable wrinkle amplitude**
+  (issue #280). New `wrinklefe.goalseek.find_critical_value(base_config, *,
+  parameter='amplitude', target_knockdown=…, …)` scans the resolved search
+  range, brackets the single sign change of `objective(parameter) - target`,
+  root-finds with `scipy.optimize.brentq`, and then **backs the answer off
+  to the safe side** so the returned value satisfies the criterion under a
+  real forward evaluation rather than merely to within the root tolerance.
+  Returns a `CriticalValueResult` with the critical value, the achieved
+  knockdown and strength, a ready-to-run `critical_config`, the full scan
+  curve and the evaluation ledger (`GoalSeekEvaluation` rows, with
+  `summary()` / `plot()`). The upper bound is derived from the laminate
+  thickness for amplitude and clamped by the tool_flat validation bound and
+  by `mesh_shear_diagnostics`' `amplitude_safe` on the FE path; search
+  direction and monotonicity are *measured* from a log-spaced scan, never
+  assumed; and the search refuses — with an actionable,
+  measurement-quoting message, never a scipy traceback — when the target is
+  never crossed (`no_crossing`), never met (`target_unreachable`), reached
+  by more than one root (`non_monotonic`, e.g. graded morphology vs
+  wavelength, whose measured curve is U-shaped with an interior minimum
+  near λ ≈ 3 mm), or unresolvable because the parameter is inert for the
+  configuration (`flat`). FE-only config features (CZM, resin pockets,
+  progressive damage, non-uniform transverse mode) force or refuse the FE
+  path rather than silently no-opping, and integer mesh/ply-count fields
+  are refused by name. Targets may be a knockdown factor or an absolute
+  strength in MPa. New `wrinklefe critical` subcommand
+  (`--parameter`/`--target-knockdown`/`--target-strength`/`--objective`/
+  `--bracket`/`--max-value`/`--scan-points`/`--rtol`/`--analytical-only`/
+  `--config`/`--save-config`/`--save-plot`/`--output-json`/`--output-csv`
+  plus the `converge`-style geometry flags), defaulting to the analytical
+  path (~25 evaluations, well under a second); exit 2 for bad input, 1 when
+  no acceptable limit exists in range. New `examples/09_acceptance_limit.py`.
+  The forward model is untouched (validation-ledger zero drift).
 - Solver — **iterative-solver controls reachable from `AnalysisConfig`**
   (issue #265). The CG/ILU knobs that were hardcoded in
   `StaticSolver._solve_iterative` are now config fields, plumbed through
