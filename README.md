@@ -36,6 +36,7 @@ Public link, no account needed.
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
 - **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue does not capture the *fibre-scale* wrinkle knockdown (it gets the sign wrong: the bifurcation load *rises* with the wrinkle), so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
 - **11 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, IM6G/3501-6 carbon/epoxy — the Hsiao & Daniel 1996 wavy-UD study, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
+- **Inverse goal-seek (acceptance limits):** `wrinklefe.goalseek.find_critical_value` / `wrinklefe critical` answer the disposition question directly — the largest wrinkle amplitude (or any float config field) that still meets a target knockdown or allowable strength. The answer is backed off to the safe side and verified by a real forward run, and the search refuses with an actionable message when the curve admits no unique root
 - **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
@@ -509,6 +510,9 @@ wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
 # --max/--steps drive the variation over it. `compare` takes --config too.
 wrinklefe sweep --config ud_gate.json --parameter amplitude \
     --min 0.2 --max 0.9 --steps 6
+
+# Inverse: the largest amplitude that still meets a 0.85 knockdown
+wrinklefe critical --parameter amplitude --target-knockdown 0.85
 ```
 
 Through-width (transverse) wrinkle surfaces and the mesh/thickness knobs
@@ -639,6 +643,50 @@ wrinklefe stochastic --config case.json \
 
 These are model-**input-propagation** statistics, **not** CMH-17 A-/B-basis
 allowables (the printed summary carries the disclaimer).
+
+### Finding the maximum acceptable defect
+
+`wrinklefe critical` inverts the analysis: instead of "given this wrinkle,
+what is the knockdown?", it answers "given this allowable, what is the
+largest wrinkle we can accept?" — the number that goes into an inspection
+criterion or an NCR disposition. Pass `--target-knockdown` (a knockdown
+factor) or `--target-strength` (an absolute MPa allowable), optionally
+`--parameter` (any float `AnalysisConfig` field; default `amplitude`),
+`--objective`, `--bracket LO HI`, `--max-value`, `--scan-points` and
+`--rtol`. `--save-config` writes the config at the critical value — the
+run to attach to the disposition — and `--output-json` / `--output-csv`
+carry the scan curve and the full evaluation ledger.
+
+```bash
+# Compression: largest amplitude meeting a 0.85 knockdown
+wrinklefe critical --parameter amplitude --target-knockdown 0.85 \
+    --save-config limit.json
+
+# Tension, expressed as an absolute allowable instead
+wrinklefe critical --loading tension --target-strength 1020
+```
+
+**The returned value satisfies the criterion under a real forward
+evaluation, not merely to within the root tolerance.** `brentq` converges
+to a root, not to the side of it that satisfies the inequality, so the
+search backs the answer off toward safety and verifies it with an extra
+solve; the printed `Criterion satisfied:` line is that check.
+
+The search runs on the analytical path by default (about 25 forward
+evaluations, well under a second; `--bracket LO HI --scan-points 3` cuts
+it to about 15). `--no-analytical-only` forces the full FE pipeline, where
+each evaluation is 4 linear solves — minutes, not seconds. Root-finding is
+inherently sequential, so there is no `--parallel`.
+
+Neither monotonicity nor uniqueness is assumed: the direction is measured
+from a log-spaced scan of the search range, and when the target is never
+crossed (`no_crossing`), never met (`target_unreachable`), reached by more
+than one root (`non_monotonic` — e.g. `morphology="graded"` against
+`wavelength`, whose curve is U-shaped), or unresolvable because the
+parameter is inert for the configuration (`flat`), the search exits 1 with
+a message quoting the measurements behind the refusal — never a scipy
+traceback. "No crossing in range" is not an error: it means no defect size
+in range fails your criterion.
 
 ### Exporting results to CSV / JSON
 

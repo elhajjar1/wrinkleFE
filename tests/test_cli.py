@@ -1184,3 +1184,267 @@ def test_compare_config_uses_files_laminate(tmp_path):
     cfg = captured["base_config"]
     assert cfg.angles == [0.0] * 8
     assert cfg.ply_thickness == pytest.approx(0.25)
+
+
+# --------------------------------------------------------------------------- #
+# critical subcommand (issue #280)
+# --------------------------------------------------------------------------- #
+
+
+def _fake_critical_result(**overrides):
+    """A minimal ``CriticalValueResult`` stand-in for handler tests."""
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.goalseek import CriticalValueResult, GoalSeekEvaluation
+
+    rows = [
+        GoalSeekEvaluation(
+            index=i, value=v, objective=o, knockdown=o,
+            strength_MPa=1200.0 * o, residual=o - 0.85, phase="scan",
+            runtime_s=0.0,
+        )
+        for i, (v, o) in enumerate([(0.0, 1.0), (0.1, 0.8), (0.2, 0.6)])
+    ]
+    defaults = dict(
+        parameter="amplitude", objective_name="knockdown", target=0.85,
+        target_is_strength=False, direction="decreasing",
+        status="converged", message="", critical_value=0.0665,
+        critical_value_root=0.0666, achieved_objective=0.8500007,
+        achieved_knockdown=0.8500007, achieved_strength_MPa=1020.0,
+        critical_config=AnalysisConfig(amplitude=0.0665),
+        bounds=(0.0, 4.392), bounds_source=("zero", "laminate_thickness"),
+        scan_values=[r.value for r in rows],
+        scan_objectives=[r.objective for r in rows],
+        sign_changes=1, log_spaced=True, pristine_reference_MPa=1200.0,
+        evaluations=rows, n_evaluations=len(rows), rtol=1e-3,
+        analytical_only=True, runtime_s=0.5,
+    )
+    defaults.update(overrides)
+    return CriticalValueResult(**defaults)
+
+
+def _capture_critical():
+    """Patch the engine and record the kwargs the handler passes it."""
+    captured: dict = {}
+
+    def fake(base_config, **kwargs):
+        captured["config"] = base_config
+        captured.update(kwargs)
+        return _fake_critical_result()
+
+    return captured, patch("wrinklefe.goalseek.find_critical_value", new=fake)
+
+
+def test_critical_defaults_reach_the_engine():
+    """T-60: the documented defaults are what the engine actually sees."""
+    captured, patcher = _capture_critical()
+    with patcher, pytest.raises(SystemExit) as excinfo:
+        cli_main(["critical", "--target-knockdown", "0.85"])
+    assert excinfo.value.code == 0
+    assert captured["parameter"] == "amplitude"
+    assert captured["target_knockdown"] == pytest.approx(0.85)
+    assert captured["target_strength_MPa"] is None
+    assert captured["analytical_only"] is None
+    assert captured["rtol"] == pytest.approx(1e-3)
+    assert captured["scan_points"] == 9
+    assert captured["bracket"] is None
+
+
+def test_critical_no_analytical_only_warns(capsys):
+    """T-61: the FE opt-in reaches the engine and is announced."""
+    captured, patcher = _capture_critical()
+    with patcher, pytest.raises(SystemExit):
+        cli_main([
+            "critical", "--target-knockdown", "0.85", "--no-analytical-only",
+        ])
+    assert captured["analytical_only"] is False
+    assert "warning:" in capsys.readouterr().err
+
+
+def test_critical_config_file_precedence(tmp_path):
+    """T-62: an explicit geometry flag beats the file; an omitted one
+    inherits it (the SUPPRESS invariant)."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    base = AnalysisConfig(
+        angles=[0.0] * 8, interface_1=3, interface_2=4,
+        ply_thickness=0.25, wavelength=20.0, loading="compression",
+    )
+    path = tmp_path / "base.json"
+    base.save_json(path)
+
+    captured, patcher = _capture_critical()
+    with patcher, pytest.raises(SystemExit):
+        cli_main([
+            "critical", "--config", str(path),
+            "--target-knockdown", "0.85", "--loading", "tension",
+        ])
+    cfg = captured["config"]
+    assert cfg.angles == [0.0] * 8          # inherited from the file
+    assert cfg.ply_thickness == pytest.approx(0.25)
+    assert cfg.wavelength == pytest.approx(20.0)
+    assert cfg.loading == "tension"         # overridden on the command line
+
+
+def test_critical_tension_without_a_config_file():
+    """T-63: tension is reachable from plain flags, not only via JSON."""
+    captured, patcher = _capture_critical()
+    with patcher, pytest.raises(SystemExit):
+        cli_main([
+            "critical", "--target-knockdown", "0.9", "--loading", "tension",
+        ])
+    assert captured["config"].loading == "tension"
+
+
+@pytest.mark.parametrize("argv", [
+    ["critical"],
+    ["critical", "--target-knockdown", "0.85",
+     "--target-strength", "1020.0"],
+])
+def test_critical_target_flags_are_exclusive_and_required(argv):
+    """T-64: argparse enforces exactly one target."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main(argv)
+    assert excinfo.value.code == 2
+
+
+def test_critical_unknown_parameter_exits_2(capsys):
+    """T-65: a bad field name is a clean exit 2, not a traceback."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main([
+            "critical", "--parameter", "amplitud",
+            "--target-knockdown", "0.85",
+        ])
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+def test_critical_integer_parameter_exits_2(capsys):
+    """T-66: integer fields are refused by name."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main([
+            "critical", "--parameter", "nz_per_ply",
+            "--target-knockdown", "0.85",
+        ])
+    assert excinfo.value.code == 2
+    assert "integer AnalysisConfig field" in capsys.readouterr().err
+
+
+def test_critical_inverted_bracket_exits_before_compute(capsys):
+    """T-67."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main([
+            "critical", "--target-knockdown", "0.85",
+            "--bracket", "0.5", "0.1",
+        ])
+    assert excinfo.value.code == 2
+    assert "--bracket" in capsys.readouterr().err
+
+
+def test_critical_no_crossing_exits_1_with_the_table(capsys):
+    """T-68: a shallow target still prints the curve context."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main(["critical", "--target-knockdown", "0.30"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "Critical-Value Search" in captured.out
+    assert "Knockdown" in captured.out
+    assert "no_crossing" in captured.out
+    assert "not necessarily an error" in captured.err
+
+
+@pytest.mark.parametrize("exc", ["memory", "runtime", "linalg"])
+def test_critical_solver_failure_exits_1(capsys, exc):
+    """T-69: a blown-up forward solve is exit 1, never a traceback."""
+    import numpy as np
+
+    errors = {
+        "memory": MemoryError("out of memory"),
+        "runtime": RuntimeError("solver diverged"),
+        "linalg": np.linalg.LinAlgError("singular matrix"),
+    }
+
+    def boom(base_config, **kwargs):
+        raise errors[exc]
+
+    with patch("wrinklefe.goalseek.find_critical_value", new=boom):
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main(["critical", "--target-knockdown", "0.85"])
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+def test_critical_converged_run_prints_the_criterion_line(capsys):
+    """T-70: the visible proof of the safe-side back-off."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main(["critical", "--target-knockdown", "0.85"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "Largest acceptable amplitude" in out
+    assert "Criterion satisfied: knockdown" in out
+    assert "Strength (MPa)" in out
+
+
+def test_critical_save_config_round_trips(tmp_path):
+    """T-71: the saved config is the run to attach to a disposition."""
+    from wrinklefe.analysis import AnalysisConfig
+
+    path = tmp_path / "critical.json"
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main([
+            "critical", "--target-knockdown", "0.85",
+            "--save-config", str(path),
+        ])
+    assert excinfo.value.code == 0
+    restored = AnalysisConfig.load(path)
+    assert 0.05 < restored.amplitude < 0.09
+    assert restored.analytical_only is True
+
+
+def test_critical_save_plot(tmp_path, monkeypatch):
+    """T-72."""
+    monkeypatch.setenv("MPLBACKEND", "Agg")
+    path = tmp_path / "critical.png"
+    with pytest.raises(SystemExit):
+        cli_main([
+            "critical", "--target-knockdown", "0.85",
+            "--save-plot", str(path),
+        ])
+    assert path.exists() and path.stat().st_size > 0
+
+
+def test_critical_json_and_csv_outputs(tmp_path, capsys):
+    """T-73: both payloads land and the stdout summary still prints."""
+    import csv
+    import json
+
+    json_path = tmp_path / "critical.json"
+    csv_path = tmp_path / "critical.csv"
+    with pytest.raises(SystemExit):
+        cli_main([
+            "critical", "--target-knockdown", "0.85",
+            "--output-json", str(json_path), "--output-csv", str(csv_path),
+        ])
+
+    payload = json.loads(json_path.read_text())
+    assert isinstance(payload, dict)
+    for key in (
+        "parameter", "objective", "target", "status", "critical_value",
+        "critical_value_root", "achieved_knockdown", "bounds",
+        "bounds_source", "scan_values", "scan_objectives", "sign_changes",
+        "critical_config", "evaluations", "runs",
+    ):
+        assert key in payload
+    assert payload["status"] == "converged"
+    assert payload["critical_config"]["amplitude"] == pytest.approx(
+        payload["critical_value"]
+    )
+
+    rows = list(csv.DictReader(csv_path.open()))
+    assert len(rows) == payload["n_evaluations"]
+    assert {"parameter_name", "parameter_value", "morphology",
+            "knockdown", "predicted_strength_MPa"} <= set(rows[0])
+    assert "Critical-Value Search" in capsys.readouterr().out

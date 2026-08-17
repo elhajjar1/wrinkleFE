@@ -431,6 +431,50 @@ within ~15 %; the **DCB peak load over-predicts by ~35 %** (the bilinear
 law with no fibre-bridging R-curve), so that experimental test is marked
 `xfail` — an honest, documented partial match rather than a clean pass.
 
+### 5.2 Inverting the model — what monotonicity can and cannot be assumed
+
+The acceptance question ("what is the largest amplitude we can accept?")
+inverts every model above, and the inverse is only well posed where the
+forward curve is monotone. {func}`~wrinklefe.goalseek.find_critical_value`
+therefore **measures** the curve rather than assuming it.
+
+- **Amplitude.** $\mathrm{KD}(A)$ is monotonically decreasing at fixed
+  $\lambda$ on both pathways, so the acceptance limit is unique. For a
+  quasi-isotropic $[0/45/-45/90]_{3s}$ IM7/8552 laminate in compression
+  the curve also *saturates*: measured $\mathrm{KD} = 0.4242$ at
+  $A = 4.392$ mm, $0.4103$ at $A = 100$ mm and $0.4098$ at
+  $A = 10^{6}$ mm. That floor is a property of **this** layup — the
+  0° fraction $f_0$ bounds how much axial stiffness the misaligned plies
+  can lose — and is not a general law: on the same configuration
+  `modulus_knockdown` keeps falling well past it (0.332 at $A = 4.392$,
+  0.151 at $A = 10^{6}$), and a graded $[0]_{24}$ wrinkle at
+  $\lambda = 1$ mm, $A = 4.392$ mm reaches $\mathrm{KD} = 0.024$.
+- **Wavelength.** Monotonicity **fails** for `morphology="graded"`. The
+  through-thickness Gaussian widens with wavelength
+  ($\sigma_\text{eff} = \max(\lambda/2, A)$), so decreasing $\lambda$
+  raises $\theta_\text{eff}$ while narrowing the affected band. The
+  measured curve for $A = 0.5$ mm, $[0]_{24}$, `graded` is U-shaped with
+  an interior minimum near $\lambda \approx 3$ mm:
+
+  | $\lambda$ (mm) | 1 | 2 | 3 | 4 | 8 | 16 | 32 | 128 |
+  |---|---|---|---|---|---|---|---|---|
+  | KD | 0.443 | 0.144 | 0.123 | 0.134 | 0.228 | 0.508 | 0.796 | 0.955 |
+
+  A root-find that assumed monotonicity here would return whichever side
+  of the minimum it happened to bracket — a safe-sounding acceptance
+  limit for a configuration that fails catastrophically just inside it.
+- **Saturated parameters.** Under the penetration gate, knockdown can be
+  bit-exactly constant over a finite interval of `ply_thickness`, and a
+  near-surface wrinkle ($z = 0.042$) varies by only $1.4\times10^{-6}$
+  across three decades of amplitude. Neither admits a resolvable root.
+
+A scan proves neither monotonicity nor uniqueness — it only detects sign
+changes on the grid it evaluates. That is why the search refuses
+(`non_monotonic`, `flat`, `no_crossing`, `target_unreachable`) rather
+than returning a root it cannot justify, and why the grid is log-spaced:
+a linear grid over a wide range walks straight past an interior
+extremum.
+
 ## 6. Scope, calibration, and honest limitations
 
 - **Use the angle-based analytical models for multidirectional laminates,

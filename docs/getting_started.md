@@ -83,6 +83,9 @@ wrinklefe analyze --amplitude 0.366 --wavelength 16 --morphology stack
 wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
     --no-analytical-only --parallel 4   # full-FE sweep on 4 processes
 wrinklefe converge --tolerance 0.01   # mesh-convergence study
+wrinklefe stochastic --distribution amplitude:normal:0.4:0.05 \
+    --n-samples 1000 --seed 11        # percentile knockdowns
+wrinklefe critical --target-knockdown 0.85   # maximum acceptable amplitude
 wrinklefe materials                   # list the material library
 ```
 
@@ -105,6 +108,7 @@ via `to_dict` / `from_dict` and `save_json` / `load_json`.
 The repository's `examples/` directory contains scripts for the common
 workflows — parametric sweeps, morphology comparison, CZM delamination,
 multi-wrinkle crest-to-crest delamination link-up, export round-trips,
-custom materials, mesh convergence — each with its
-expected runtime and output in the header. CI executes them all on
-every push.
+custom materials, mesh convergence, and deriving an acceptance limit
+(the maximum wrinkle amplitude that still meets a target knockdown) —
+each with its expected runtime and output in the header. CI executes
+them all on every push.

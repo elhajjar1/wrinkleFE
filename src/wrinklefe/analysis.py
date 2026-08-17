@@ -2675,6 +2675,53 @@ def _sweep_run_one(
     return WrinkleAnalysis(cfg).run(analytical_only=analytical_only)
 
 
+def _replace_swept(
+    base_config: AnalysisConfig,
+    parameter: str,
+    value: float,
+    *,
+    analytical_only: bool | None = None,
+) -> AnalysisConfig:
+    """Clone *base_config* with *parameter* set to *value*.
+
+    Resets the ``domain_length`` sentinel when sweeping ``wavelength``
+    from a config that left it auto-derived (``domain_length ==
+    3 * wavelength``) — ``replace`` re-runs ``__post_init__`` but does
+    not clear un-passed fields, so a stale derived ``domain_length``
+    would silently hold the domain fixed while the wavelength moved.
+    An explicitly pinned ``domain_length`` is preserved untouched.
+
+    Shared by :meth:`WrinkleAnalysis.parametric_sweep` and
+    :mod:`wrinklefe.goalseek` so the two cannot diverge.
+
+    Parameters
+    ----------
+    base_config : AnalysisConfig
+        Configuration to clone.
+    parameter : str
+        Field name to override.
+    value : float
+        New value for *parameter*.
+    analytical_only : bool or None, optional
+        When not ``None``, bake this solve-path choice into the clone so
+        the returned config records the path it was actually run on.
+
+    Returns
+    -------
+    AnalysisConfig
+        Validated clone (``replace`` re-invokes ``__post_init__``).
+    """
+    overrides: dict[str, Any] = {parameter: value}
+    if (
+        parameter == "wavelength"
+        and base_config.domain_length == 3.0 * base_config.wavelength
+    ):
+        overrides["domain_length"] = 0.0
+    if analytical_only is not None:
+        overrides["analytical_only"] = analytical_only
+    return replace(base_config, **overrides)
+
+
 def _resolve_sweep_workers(n_workers: int) -> int:
     """Validate and resolve a sweep worker count (``0`` -> all cores)."""
     if not isinstance(n_workers, int) or isinstance(n_workers, bool):
@@ -3096,24 +3143,12 @@ class WrinkleAnalysis:
             )
         n_workers = _resolve_sweep_workers(n_workers)
 
-        # If domain_length was auto-derived from wavelength in the base
-        # config (i.e. user left it at the sentinel 0.0), we must reset
-        # it to the sentinel before each replace() so __post_init__
-        # re-derives it from the swept value. ``replace`` only invokes
-        # ``__post_init__``; it does not reset un-passed fields, so a
-        # previously-derived ``domain_length`` would otherwise stick.
-        reset_domain_length = (
-            parameter == "wavelength"
-            and "domain_length" in valid_field_names
-            and base_config.domain_length == 3.0 * base_config.wavelength
-        )
-
-        configs: list[AnalysisConfig] = []
-        for val in values:
-            overrides: dict[str, Any] = {parameter: val}
-            if reset_domain_length:
-                overrides["domain_length"] = 0.0
-            configs.append(replace(base_config, **overrides))
+        # ``_replace_swept`` owns the ``domain_length`` sentinel reset
+        # (auto-derived only — an explicitly pinned domain is kept), so
+        # the sweep and the goal-seek clone configs identically.
+        configs: list[AnalysisConfig] = [
+            _replace_swept(base_config, parameter, val) for val in values
+        ]
 
         if n_workers == 1:
             return [

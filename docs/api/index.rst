@@ -2,9 +2,9 @@ API reference
 =============
 
 The public surface of the package: the analysis orchestrator and its
-configuration, the convergence helper, the core geometry/material
-model, the finite-element solver layer, the failure criteria, export
-functions, and the CLI.
+configuration, the stochastic, convergence and goal-seek workflow
+helpers, the core geometry/material model, the finite-element solver
+layer, the failure criteria, export functions, and the CLI.
 
 .. toctree::
    :maxdepth: 1
@@ -12,6 +12,7 @@ functions, and the CLI.
    analysis
    stochastic
    convergence
+   goalseek
    core
    solver
    failure
