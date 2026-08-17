@@ -12,6 +12,9 @@ Usage
     wrinklefe analyze --amplitude 0.366 --morphology concave --verbose
     wrinklefe compare --amplitude 0.366 --wavelength 16.0
     wrinklefe sweep --parameter amplitude --min 0.183 --max 0.549 --steps 5
+    wrinklefe converge --levels 4 --qoi max_fi
+    wrinklefe stochastic --distribution amplitude:normal:0.5:0.05
+    wrinklefe critical --parameter amplitude --target-knockdown 0.85
     wrinklefe materials
 """
 
@@ -53,6 +56,13 @@ _SWEEP_CONFIG_FLAGS = (
 _COMPARE_CONFIG_FLAGS = (
     "amplitude", "wavelength", "width", "amplitude_profile",
     "amplitude_profile_decay_length", "amplitude_profile_axis",
+)
+# Geometry flags on ``critical`` (issue #280). Same SUPPRESS invariant:
+# the search flags (--parameter/--target-*/--bracket/--rtol/...) are
+# runtime flags and keep ordinary defaults.
+_CRITICAL_CONFIG_FLAGS = (
+    "amplitude", "wavelength", "width", "morphology", "loading",
+    "material", "angles", "nx", "ny", "nz_per_ply", "applied_strain",
 )
 
 
@@ -949,6 +959,190 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # ------------------------------------------------------------------ #
+    # critical
+    # ------------------------------------------------------------------ #
+    p_critical = subparsers.add_parser(
+        "critical",
+        help="Inverse goal-seek: maximum acceptable defect size",
+        description=(
+            "Find the largest wrinkle amplitude (or any other float "
+            "AnalysisConfig field) that still meets a target knockdown or "
+            "allowable strength -- the number an inspection criterion or "
+            "an NCR disposition is written around. The answer is verified "
+            "by a real forward evaluation, and the search refuses with an "
+            "actionable message when the curve admits no unique root."
+        ),
+    )
+    p_critical.add_argument(
+        "--config", type=str, default=None, dest="config",
+        help=(
+            "Load the base AnalysisConfig from a JSON (or .yaml/.yml) file "
+            "-- laminate, material, mesh and gate. Any geometry flag given "
+            "on the same command line overrides the file value; flags left "
+            "off keep the file value."
+        ),
+    )
+    p_critical.add_argument(
+        "--amplitude", type=float, default=0.366,
+        help="Wrinkle half-amplitude A in mm (default: 0.366)",
+    )
+    p_critical.add_argument(
+        "--wavelength", type=float, default=16.0,
+        help="Wrinkle wavelength lambda in mm (default: 16.0)",
+    )
+    p_critical.add_argument(
+        "--width", type=float, default=12.0,
+        help="Wrinkle envelope width w in mm (default: 12.0)",
+    )
+    p_critical.add_argument(
+        "--morphology", type=str, default="stack",
+        choices=MORPHOLOGY_CHOICES,
+        help="Wrinkle morphology (default: stack)",
+    )
+    p_critical.add_argument(
+        "--loading", type=str, default="compression",
+        choices=["compression", "tension"],
+        help="Loading condition (default: compression)",
+    )
+    p_critical.add_argument(
+        "--material", type=str, default=None,
+        help="Material name from MaterialLibrary (default: IM7/8552)",
+    )
+    p_critical.add_argument(
+        "--angles", "--layup", type=str, default=None, dest="angles",
+        help="Layup, contracted (e.g. '[0/45/-45/90]s') or comma-separated",
+    )
+    p_critical.add_argument(
+        "--nx", type=int, default=12,
+        help="Elements along the length (default: 12; FE path only)",
+    )
+    p_critical.add_argument(
+        "--ny", type=int, default=6,
+        help="Elements across the width (default: 6; FE path only)",
+    )
+    p_critical.add_argument(
+        "--nz-per-ply", type=int, default=1, dest="nz_per_ply",
+        help="Elements per ply through-thickness (default: 1; FE path only)",
+    )
+    p_critical.add_argument(
+        "--strain", type=float, default=-0.01, dest="applied_strain",
+        help="Applied strain (default: -0.01)",
+    )
+    p_critical.add_argument(
+        "--parameter", type=str, default="amplitude",
+        help=(
+            "Float AnalysisConfig field to search (default: amplitude). "
+            "Integer mesh/ply-count fields are not root-findable -- use "
+            "'converge' or 'sweep' for those."
+        ),
+    )
+    _critical_target = p_critical.add_mutually_exclusive_group(required=True)
+    _critical_target.add_argument(
+        "--target-knockdown", type=float, default=None,
+        dest="target_knockdown",
+        help="Target knockdown factor in (0, 1), e.g. 0.85",
+    )
+    _critical_target.add_argument(
+        "--target-strength", type=float, default=None, metavar="MPA",
+        dest="target_strength_MPa",
+        help=(
+            "Target as an absolute strength in MPa; root-finds the "
+            "'strength_MPa' objective directly"
+        ),
+    )
+    p_critical.add_argument(
+        "--objective", type=str, default="knockdown",
+        choices=["knockdown", "strength_MPa", "modulus_knockdown",
+                 "onset_knockdown", "modulus_retention_global"],
+        help=(
+            "Quantity the target applies to (default: knockdown). "
+            "'onset_knockdown' is tension-only; "
+            "'modulus_retention_global' requires the FE path."
+        ),
+    )
+    p_critical.add_argument(
+        "--bracket", type=float, nargs=2, default=None, metavar=("LO", "HI"),
+        help=(
+            "Restrict the search to [LO, HI] instead of the auto-resolved "
+            "range. Both bounds are still clamped by the tool_flat and "
+            "mesh-inversion limits."
+        ),
+    )
+    p_critical.add_argument(
+        "--max-value", type=float, default=None, dest="max_value",
+        help="Upper search bound when --bracket is not given",
+    )
+    p_critical.add_argument(
+        "--scan-points", type=int, default=9, dest="scan_points",
+        help=(
+            "Points in the bounded scan that measures direction and "
+            "monotonicity (>= 3, default: 9)"
+        ),
+    )
+    p_critical.add_argument(
+        "--rtol", type=float, default=1e-3,
+        help="Relative tolerance on the searched parameter (default: 1e-3)",
+    )
+    p_critical.add_argument(
+        "--analytical-only", action=argparse.BooleanOptionalAction,
+        default=None, dest="analytical_only",
+        help=(
+            "Root-find on the analytical path only. Default: analytical "
+            "unless the config enables an FE-only feature (CZM, resin "
+            "pockets, progressive damage, non-uniform transverse mode), "
+            "which forces the FE path. Use --no-analytical-only to force "
+            "the full FE pipeline -- about 25 forward evaluations at the "
+            "default --scan-points 9, each one 4 linear solves. Pass "
+            "--bracket LO HI --scan-points 3 to cut that to about 15. "
+            "Root-finding is inherently sequential, so there is no "
+            "--parallel."
+        ),
+    )
+    p_critical.add_argument(
+        "--save-config", type=str, default=None, dest="save_config",
+        help=(
+            "Write the config at the critical value to this path -- the "
+            "run to attach to a disposition; the stdout summary is still "
+            "printed"
+        ),
+    )
+    p_critical.add_argument(
+        "--save-plot", type=str, default=None, dest="save_plot",
+        help=(
+            "Save the objective-vs-parameter scan plot to this path; the "
+            "stdout summary is still printed"
+        ),
+    )
+    p_critical.add_argument(
+        "--output-json", type=str, default=None, dest="output_json",
+        help=(
+            "Write the search result (critical value, scan curve, "
+            "evaluation ledger, critical_config) to a JSON file; the "
+            "stdout summary is still printed"
+        ),
+    )
+    p_critical.add_argument(
+        "--output-csv", type=str, default=None, dest="output_csv",
+        help=(
+            "Write one row per forward evaluation to a tidy CSV, matching "
+            "the 'sweep' schema; the stdout summary is still printed"
+        ),
+    )
+    p_critical.add_argument(
+        "-v", "--verbose", action="store_true", default=False,
+        help=(
+            "Show detailed pipeline progress (sets the 'wrinklefe' "
+            "logger to DEBUG with a stderr handler)"
+        ),
+    )
+    # Config-file precedence for the geometry flags (issue #375's
+    # invariant): a SUPPRESS default means ``vars(args)`` holds only the
+    # ones the user actually passed.
+    for _action in p_critical._actions:
+        if _action.dest in _CRITICAL_CONFIG_FLAGS:
+            _action.default = argparse.SUPPRESS
+
+    # ------------------------------------------------------------------ #
     # materials
     # ------------------------------------------------------------------ #
     subparsers.add_parser(
@@ -1784,6 +1978,313 @@ def _write_stochastic_outputs(prob, output_json, output_csv) -> None:
         print(f"\nResults written to: {path}")
 
 
+def _cmd_critical(args: argparse.Namespace) -> None:
+    """Handle the ``critical`` subcommand (issue #280).
+
+    Exit codes follow the file's convention: ``2`` when the user handed
+    us something we cannot use, ``1`` when the inputs were valid but the
+    search produced no answer (including a solver blow-up), ``0`` only
+    on a converged, forward-verified result.
+    """
+    import dataclasses
+
+    from wrinklefe.analysis import AnalysisConfig
+    from wrinklefe.core.material import MaterialLibrary
+    from wrinklefe.goalseek import find_critical_value
+
+    # Pre-flight the search flags before burning any compute (#298).
+    if args.bracket is not None and args.bracket[0] >= args.bracket[1]:
+        print(
+            f"error: --bracket LO ({args.bracket[0]}) must be less than "
+            f"HI ({args.bracket[1]})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if args.scan_points < 3:
+        print(
+            f"error: --scan-points must be >= 3 (got {args.scan_points})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if args.analytical_only is False:
+        print(
+            "warning: FE root-finding runs about 25 full solves; expect "
+            "several minutes.",
+            file=sys.stderr,
+        )
+
+    present = vars(args)
+    geometry: dict = {}
+    for name in _CRITICAL_CONFIG_FLAGS:
+        if name not in present:
+            continue
+        value = getattr(args, name)
+        if name == "material":
+            geometry["material"] = (
+                None if value is None else MaterialLibrary().get(value)
+            )
+        elif name == "angles":
+            geometry["angles"] = _parse_angles(value)
+        else:
+            geometry[name] = value
+    geometry["verbose"] = args.verbose
+
+    try:
+        if args.config is not None:
+            base = AnalysisConfig.load(args.config)
+            config = dataclasses.replace(base, **geometry)
+        else:
+            config = AnalysisConfig(**geometry)
+    except (OSError, ValueError, KeyError, ImportError,
+            NotImplementedError) as exc:
+        print(f"error: invalid configuration: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    # --output-csv needs the per-evaluation results; --output-json only
+    # embeds them on the analytical path, where they are cheap (an FE
+    # result carries mesh and field arrays).
+    keep_results = args.output_csv is not None or (
+        args.output_json is not None and args.analytical_only is not False
+    )
+    if args.output_csv is not None and args.analytical_only is False:
+        print(
+            "warning: --output-csv retains every FE result in memory "
+            "(~25 meshes).",
+            file=sys.stderr,
+        )
+
+    try:
+        result = find_critical_value(
+            config,
+            parameter=args.parameter,
+            target_knockdown=args.target_knockdown,
+            target_strength_MPa=args.target_strength_MPa,
+            objective=args.objective,
+            bracket=(
+                None if args.bracket is None
+                else (args.bracket[0], args.bracket[1])
+            ),
+            max_value=args.max_value,
+            scan_points=args.scan_points,
+            rtol=args.rtol,
+            analytical_only=args.analytical_only,
+            keep_results=keep_results,
+        )
+    except (AttributeError, TypeError, NotImplementedError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    except ValueError as exc:
+        # Input errors from the goal-seek's validation phase are the
+        # user's problem (2); a LinAlgError from a forward solve is a
+        # ValueError subclass but is an analysis failure (1).
+        code = 1 if isinstance(exc, np.linalg.LinAlgError) else 2
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(code)
+    except Exception as exc:  # pragma: no cover - exercised via tests/CLI
+        print(f"error: critical-value search failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    _print_critical_banner(result, config)
+
+    if result.status != "converged":
+        print(f"error: {result.message}", file=sys.stderr)
+
+    if args.save_config is not None and result.critical_config is not None:
+        try:
+            result.critical_config.save(args.save_config)
+        except (OSError, ValueError, ImportError) as exc:
+            print(f"error: could not write --save-config: {exc}",
+                  file=sys.stderr)
+            sys.exit(2)
+        print(f"Critical configuration written to: {args.save_config}")
+
+    if args.save_plot is not None:
+        ax = result.plot()
+        ax.figure.savefig(args.save_plot)
+        print(f"\nSearch plot saved to: {args.save_plot}")
+
+    _write_critical_outputs(
+        result, config, args.output_json, args.output_csv
+    )
+
+    sys.exit(0 if result.status == "converged" else 1)
+
+
+def _print_critical_banner(result, config) -> None:
+    """Print the search banner, the scan table and the answer."""
+    path = "Analytical path" if result.analytical_only else "FE path"
+    print("=" * 60)
+    print(f"  WrinkleFE Critical-Value Search: {result.parameter}")
+    print(
+        f"  Morphology: {config.morphology} | Loading: {config.loading} "
+        f"| {path}"
+    )
+    print("=" * 60)
+    print()
+    unit = " MPa" if result.target_is_strength else ""
+    print(
+        f"  Objective: {result.objective_name} >= {result.target:.4f}"
+        f"{unit}   (direction: {result.direction})"
+    )
+    print(
+        f"  Range:     [{result.bounds[0]:.6f}, {result.bounds[1]:.6f}]  "
+        f"(lower: {result.bounds_source[0]}, "
+        f"upper: {result.bounds_source[1]})"
+    )
+    spacing = "log-spaced" if result.log_spaced else "linear-spaced"
+    print(
+        f"  Scan:      {len(result.scan_values)} points, {spacing}, "
+        f"{result.sign_changes} sign change"
+        f"{'' if result.sign_changes == 1 else 's'}"
+    )
+    print()
+    print(
+        f"  {result.parameter:>14} {'Knockdown':>12} "
+        f"{'Strength (MPa)':>16}   phase"
+    )
+    print("-" * 60)
+    for value, ev in zip(result.scan_values, result.scan_evaluations()):
+        print(
+            f"  {value:>14.4f} {ev.knockdown:>12.4f} "
+            f"{ev.strength_MPa:>16.1f}   {ev.phase}"
+        )
+    if result.critical_value is not None:
+        # The answer itself, marked so it stands out from the scan grid.
+        final = result.evaluations[-1]
+        print(
+            f"->{final.value:>14.4f} {final.knockdown:>12.4f} "
+            f"{final.strength_MPa:>16.1f}   {final.phase}"
+        )
+    print("-" * 60)
+    print()
+    if result.status == "converged":
+        extreme = "Largest" if result.direction == "decreasing" else "Smallest"
+        print(
+            f"  {extreme} acceptable {result.parameter}: "
+            f"{result.critical_value:.6f}"
+        )
+        print(
+            f"  Achieved {result.objective_name}:  "
+            f"{result.achieved_objective:.6f}  "
+            f"(target {result.target:.6f}, rtol {result.rtol:.1e})"
+        )
+        # The visible proof of the safe-side back-off: never format this
+        # to fewer digits than rtol implies.
+        print(
+            f"  Criterion satisfied: {result.objective_name} "
+            f"{result.achieved_objective:.6f} >= {result.target:.6f}"
+        )
+        if result.target_is_strength and result.pristine_reference_MPa:
+            print(
+                f"  Equivalent knockdown target: "
+                f"{result.target / result.pristine_reference_MPa:.6f} "
+                f"(pristine reference "
+                f"{result.pristine_reference_MPa:.1f} MPa)"
+            )
+    else:
+        print(f"  Status: {result.status} -- no acceptance limit returned")
+    print(
+        f"  Forward-model evaluations: {result.n_evaluations}   "
+        f"({result.runtime_s:.2f} s)"
+    )
+    print("=" * 60)
+
+
+def _write_critical_outputs(
+    result, config, output_json: str | None, output_csv: str | None
+) -> None:
+    """Write the critical-value search result to JSON and/or CSV."""
+    if output_json is None and output_csv is None:
+        return
+
+    import json
+    from pathlib import Path
+
+    from wrinklefe.io.export import analysis_results_to_dict
+
+    if output_json is not None:
+        payload = {
+            "parameter": result.parameter,
+            "objective": result.objective_name,
+            "target": float(result.target),
+            "target_is_strength": bool(result.target_is_strength),
+            "direction": result.direction,
+            "status": result.status,
+            "message": result.message,
+            "critical_value": (
+                None if result.critical_value is None
+                else float(result.critical_value)
+            ),
+            "critical_value_root": (
+                None if result.critical_value_root is None
+                else float(result.critical_value_root)
+            ),
+            "achieved_objective": (
+                None if result.achieved_objective is None
+                else float(result.achieved_objective)
+            ),
+            "achieved_knockdown": (
+                None if result.achieved_knockdown is None
+                else float(result.achieved_knockdown)
+            ),
+            "achieved_strength_MPa": (
+                None if result.achieved_strength_MPa is None
+                else float(result.achieved_strength_MPa)
+            ),
+            "pristine_reference_MPa": (
+                None if result.pristine_reference_MPa is None
+                else float(result.pristine_reference_MPa)
+            ),
+            "bounds": [float(b) for b in result.bounds],
+            "bounds_source": list(result.bounds_source),
+            "scan_values": [float(v) for v in result.scan_values],
+            "scan_objectives": [float(v) for v in result.scan_objectives],
+            "sign_changes": int(result.sign_changes),
+            "log_spaced": bool(result.log_spaced),
+            "rtol": float(result.rtol),
+            "analytical_only": bool(result.analytical_only),
+            "n_evaluations": int(result.n_evaluations),
+            "runtime_s": float(result.runtime_s),
+            "critical_config": (
+                None if result.critical_config is None
+                else result.critical_config.to_dict()
+            ),
+            "evaluations": [
+                {
+                    "index": int(ev.index),
+                    "value": float(ev.value),
+                    "objective": float(ev.objective),
+                    "knockdown": float(ev.knockdown),
+                    "strength_MPa": float(ev.strength_MPa),
+                    "residual": float(ev.residual),
+                    "phase": ev.phase,
+                    "runtime_s": float(ev.runtime_s),
+                }
+                for ev in result.evaluations
+            ],
+        }
+        if result.results is not None:
+            payload["runs"] = [
+                analysis_results_to_dict(r) for r in result.results
+            ]
+        path = Path(output_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"\nResults written to: {path}")
+
+    if output_csv is not None and result.results is not None:
+        # Delegate to the shared batch writer so the row schema matches
+        # 'sweep' / 'compare' / 'analyze' exactly.
+        _write_batch_outputs(
+            [
+                (result.parameter, float(ev.value), config.morphology, run)
+                for ev, run in zip(result.evaluations, result.results)
+            ],
+            None,
+            output_csv,
+        )
+
+
 def _configure_logging(verbose: bool) -> None:
     """Attach a stderr handler to the package logger for ``--verbose``.
 
@@ -1826,6 +2327,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "sweep": _cmd_sweep,
         "converge": _cmd_converge,
         "stochastic": _cmd_stochastic,
+        "critical": _cmd_critical,
         "materials": _cmd_materials,
     }
 

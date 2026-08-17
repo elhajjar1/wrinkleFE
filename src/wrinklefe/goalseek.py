@@ -279,6 +279,15 @@ class CriticalValueResult:
     """Full per-evaluation results, only when ``keep_results=True`` (they
     carry mesh and field arrays on the FE path)."""
 
+    def scan_evaluations(self) -> list[GoalSeekEvaluation]:
+        """The scan rows of the ledger, in grid order.
+
+        ``brentq`` re-evaluates the bracketing grid points, so matching
+        scan values against the whole ledger by value would relabel them
+        with a later phase.
+        """
+        return [ev for ev in self.evaluations if ev.phase == "scan"]
+
     def summary(self) -> str:
         """Human-readable search report (the caller prints it)."""
         unit = "MPa" if self.target_is_strength else ""
@@ -297,13 +306,12 @@ class CriticalValueResult:
             f"{'value':>16} {'objective':>14} {'knockdown':>12} "
             f"{'strength (MPa)':>16}",
         ]
-        by_value = {ev.value: ev for ev in self.evaluations}
-        for value, obj in zip(self.scan_values, self.scan_objectives):
-            ev = by_value.get(value)
-            kd = ev.knockdown if ev is not None else float("nan")
-            mpa = ev.strength_MPa if ev is not None else float("nan")
+        for value, obj, ev in zip(
+            self.scan_values, self.scan_objectives, self.scan_evaluations()
+        ):
             lines.append(
-                f"{value:>16.6g} {obj:>14.6g} {kd:>12.4f} {mpa:>16.1f}"
+                f"{value:>16.6g} {obj:>14.6g} {ev.knockdown:>12.4f} "
+                f"{ev.strength_MPa:>16.1f}"
             )
         lines.append("")
         if self.status == "converged":
