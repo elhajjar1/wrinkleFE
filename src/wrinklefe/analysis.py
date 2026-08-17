@@ -1085,6 +1085,27 @@ class AnalysisConfig:
         Default ``-0.01`` (1 % compression).
     solver : str
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
+    iterative_rtol : float
+        Relative-residual convergence tolerance for the iterative (CG)
+        solver.  Default ``1e-10``.  Must be > 0.  Ignored on the direct
+        path.
+    iterative_maxiter : int
+        Maximum CG iterations for the iterative solver.  Default
+        ``10000``.  Must be >= 1.  Ignored on the direct path.
+    ilu_drop_tol : float
+        Drop tolerance for the ILU preconditioner (``scipy`` ``spilu``);
+        the main preconditioner quality/memory knob.  Default ``1e-4``.
+        Must be >= 0.  Ignored unless ``preconditioner='ilu'``.
+    ilu_fill_factor : float or None
+        Upper bound on the ILU fill (``spilu``'s ``fill_factor``).
+        ``None`` (default) leaves SciPy's own default in place and is
+        only forwarded when set.  Must be >= 1 when given.  Ignored
+        unless ``preconditioner='ilu'``.
+    preconditioner : str
+        Preconditioner for the iterative solver: ``'ilu'`` (default,
+        incomplete-LU), ``'jacobi'`` (diagonal — much lower memory for
+        very large meshes), or ``'none'`` (unpreconditioned CG).  Ignored
+        on the direct path.
     verbose : bool
         Print progress information.  Default ``False``.
     through_thickness_decay_scale : float or None
@@ -1191,6 +1212,27 @@ class AnalysisConfig:
 
     # Solver
     solver: str = "direct"
+
+    # Iterative-solver controls (issue #265). Only consulted on the
+    # ``solver="iterative"`` path; inert (but validated) for the direct
+    # solver. Defaults reproduce the previously hardcoded values in
+    # ``StaticSolver._solve_iterative`` bit-for-bit, so the default
+    # iterative solve is unchanged.
+    #
+    # ``iterative_rtol``   — CG relative-residual convergence tolerance.
+    # ``iterative_maxiter``— CG iteration cap.
+    # ``ilu_drop_tol``     — ILU drop tolerance (the main preconditioner
+    #                        quality/memory knob; larger = sparser/cheaper
+    #                        factor, weaker preconditioner).
+    # ``ilu_fill_factor``  — ILU fill upper bound; ``None`` leaves SciPy's
+    #                        ``spilu`` default (only forwarded when set).
+    # ``preconditioner``   — ``"ilu"`` (default), ``"jacobi"`` (diagonal,
+    #                        low memory for huge meshes), or ``"none"``.
+    iterative_rtol: float = 1e-10
+    iterative_maxiter: int = 10000
+    ilu_drop_tol: float = 1e-4
+    ilu_fill_factor: float | None = None
+    preconditioner: str = "ilu"
 
     # Analytical-only mode (skip FE assembly)
     analytical_only: bool = False
@@ -1663,6 +1705,60 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.solver must be one of "
                 f"{list(valid_solvers)}, got {self.solver!r}"
+            )
+
+        # --- Iterative-solver controls (issue #265) -------------------
+        # Positive finite CG tolerance.
+        if not (
+            isinstance(self.iterative_rtol, (int, float))
+            and not isinstance(self.iterative_rtol, bool)
+            and math.isfinite(self.iterative_rtol)
+            and self.iterative_rtol > 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.iterative_rtol must be a finite positive "
+                f"float, got {self.iterative_rtol!r}"
+            )
+        # Positive integer iteration cap.
+        if (
+            not isinstance(self.iterative_maxiter, int)
+            or isinstance(self.iterative_maxiter, bool)
+            or self.iterative_maxiter < 1
+        ):
+            raise ValueError(
+                f"AnalysisConfig.iterative_maxiter must be an int >= 1, "
+                f"got {self.iterative_maxiter!r}"
+            )
+        # Non-negative finite ILU drop tolerance.
+        if not (
+            isinstance(self.ilu_drop_tol, (int, float))
+            and not isinstance(self.ilu_drop_tol, bool)
+            and math.isfinite(self.ilu_drop_tol)
+            and self.ilu_drop_tol >= 0.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.ilu_drop_tol must be a finite float >= 0, "
+                f"got {self.ilu_drop_tol!r}"
+            )
+        # Optional ILU fill factor: None or a finite float >= 1.
+        if self.ilu_fill_factor is not None and not (
+            isinstance(self.ilu_fill_factor, (int, float))
+            and not isinstance(self.ilu_fill_factor, bool)
+            and math.isfinite(self.ilu_fill_factor)
+            and self.ilu_fill_factor >= 1.0
+        ):
+            raise ValueError(
+                f"AnalysisConfig.ilu_fill_factor must be a finite float "
+                f">= 1 or None, got {self.ilu_fill_factor!r}"
+            )
+        valid_preconditioners = ("ilu", "jacobi", "none")
+        if (
+            not isinstance(self.preconditioner, str)
+            or self.preconditioner.lower().strip() not in valid_preconditioners
+        ):
+            raise ValueError(
+                f"AnalysisConfig.preconditioner must be one of "
+                f"{list(valid_preconditioners)}, got {self.preconditioner!r}"
             )
 
         # --- Through-thickness decay scale ----------------------------
@@ -2554,6 +2650,23 @@ class AnalysisResults:
 # ======================================================================
 
 
+def _iterative_solver_kwargs(cfg: AnalysisConfig) -> dict:
+    """Map the iterative-solver ``AnalysisConfig`` fields to
+    :class:`~wrinklefe.solver.static.StaticSolver` keyword arguments.
+
+    The controls are inert on the direct path but are threaded through
+    every solver built from ``cfg`` so the iterative path is fully driven
+    by the config (issue #265).
+    """
+    return {
+        "iterative_rtol": cfg.iterative_rtol,
+        "iterative_maxiter": cfg.iterative_maxiter,
+        "ilu_drop_tol": cfg.ilu_drop_tol,
+        "ilu_fill_factor": cfg.ilu_fill_factor,
+        "preconditioner": cfg.preconditioner,
+    }
+
+
 def _sweep_run_one(
     cfg: AnalysisConfig, analytical_only: bool
 ) -> AnalysisResults:
@@ -2861,7 +2974,9 @@ class WrinkleAnalysis:
             self._run_progressive_path(results, laminate, mesh)
 
         # Linear (legacy) path.
-        solver = StaticSolver(mesh, laminate)
+        solver = StaticSolver(
+            mesh, laminate, **_iterative_solver_kwargs(cfg)
+        )
         bcs = BoundaryHandler.compression_bcs(
             mesh, applied_strain=cfg.applied_strain
         )
@@ -3372,7 +3487,9 @@ class WrinkleAnalysis:
         # assemble_stiffness guard does not fire) and call
         # recover_element_results on the converged displacement.
         u_final = outcome["displacement"]
-        recovery_solver = StaticSolver(mesh, laminate)
+        recovery_solver = StaticSolver(
+            mesh, laminate, **_iterative_solver_kwargs(self.config)
+        )
         stress_g, stress_l, strain_g, strain_l = (
             recovery_solver.recover_element_results(u_final, verbose=False)
         )
@@ -4518,7 +4635,9 @@ class WrinkleAnalysis:
         flat_mesh = self._build_flat_mesh(laminate)
 
         # Solve with same BCs
-        flat_solver = StaticSolver(flat_mesh, laminate)
+        flat_solver = StaticSolver(
+            flat_mesh, laminate, **_iterative_solver_kwargs(cfg)
+        )
         flat_bcs = BoundaryHandler.compression_bcs(
             flat_mesh, applied_strain=cfg.applied_strain
         )
@@ -4681,7 +4800,9 @@ class WrinkleAnalysis:
         if applied_strain == 0.0:
             return None
 
-        solver = StaticSolver(mesh, laminate)
+        solver = StaticSolver(
+            mesh, laminate, **_iterative_solver_kwargs(self.config)
+        )
         bcs = BoundaryHandler.compression_bcs(
             mesh, applied_strain=applied_strain
         )

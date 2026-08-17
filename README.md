@@ -567,6 +567,33 @@ wrinklefe sweep --parameter wrinkle_z_position --min 0.2 --max 0.8 \
     --steps 4 --morphology graded
 ```
 
+### Iterative solver controls
+
+`solver="iterative"` runs conjugate gradient with an incomplete-LU (ILU)
+preconditioner — memory-efficient for large meshes (>100 k DOFs). Its
+knobs are `AnalysisConfig` fields, reachable through `--config` (their
+defaults reproduce the historical hardcoded values, so an existing
+iterative run is unchanged):
+
+| Config field | Default | Meaning |
+| --- | --- | --- |
+| `iterative_rtol` | `1e-10` | CG relative-residual convergence tolerance (> 0) |
+| `iterative_maxiter` | `10000` | CG iteration cap (≥ 1) |
+| `ilu_drop_tol` | `1e-4` | ILU drop tolerance — the main quality/memory knob; larger = sparser, cheaper, weaker (≥ 0) |
+| `ilu_fill_factor` | `None` | Upper bound on ILU fill; `None` keeps SciPy's default (≥ 1 when set) |
+| `preconditioner` | `"ilu"` | `"ilu"`, `"jacobi"` (diagonal — much lower memory for huge meshes), or `"none"` |
+
+If ILU construction fails (out of memory, or a structurally/numerically
+singular factor), the solver now emits a **`WARNING`** and falls back to
+the diagonal (Jacobi) preconditioner instead of switching silently — an
+ill-conditioned matrix can make that fallback orders of magnitude slower,
+so the warning names the original error and points at
+`preconditioner="jacobi"` (to silence it) or the direct solver. Only the
+narrow set of exceptions `spilu` uses to signal a real factorisation
+failure is caught; any other error propagates. On non-convergence the
+`RuntimeError` names the active preconditioner, the iterations used, the
+cap, and the final relative residual.
+
 ### Saving and reusing a configuration
 
 `analyze` can persist and reload a full `AnalysisConfig`. `--save-config`

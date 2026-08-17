@@ -15,6 +15,17 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Solver — **iterative-solver controls reachable from `AnalysisConfig`**
+  (issue #265). The CG/ILU knobs that were hardcoded in
+  `StaticSolver._solve_iterative` are now config fields, plumbed through
+  `StaticSolver` and reachable via `--config`: `iterative_rtol` (default
+  `1e-10`), `iterative_maxiter` (`10000`), `ilu_drop_tol` (`1e-4`),
+  `ilu_fill_factor` (`None` → SciPy default), and `preconditioner` ∈
+  {`ilu`, `jacobi`, `none`} (`ilu`) so users can pick the low-memory
+  diagonal preconditioner (or none) on huge meshes. Defaults reproduce
+  the previous hardcoded values bit-for-bit, so an existing iterative
+  solve is unchanged (validation-ledger zero drift). Round-trip through
+  `to_dict`/`from_dict`.
 - Solver — **Newton/CZM convergence-failure diagnostics + actionable hint**
   (issue #262). A failed nonlinear solve used to return a bare
   `converged: False`. `NewtonRaphsonSolver.solve()` now also returns
@@ -536,6 +547,18 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Solver — **the ILU→diagonal preconditioner fallback is now loud and
+  narrow** (issue #265). When the iterative solver's ILU factorisation
+  fails, `StaticSolver._solve_iterative` emits a `logging.WARNING`
+  *unconditionally* (previously only a `print` under `verbose`), quoting
+  the original error type and message and stating that the diagonal
+  (Jacobi) fallback is in effect. Only the exceptions `spilu` raises for a
+  genuine factorisation failure (`RuntimeError`, `MemoryError`,
+  `ValueError`) are caught; any other exception type now propagates
+  instead of masquerading as "ILU failed". The CG non-convergence
+  `RuntimeError` now also names the active preconditioner, the iterations
+  used, the cap, and the final relative residual. No change to converged
+  numerics.
 - App — **surface-pocket controls relocated into the morphology
   definition** (issue #371, Part B). The standalone *Surface resin pockets*
   expander in the Expert FE section is gone; its controls now live directly
