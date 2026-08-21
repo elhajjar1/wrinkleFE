@@ -158,10 +158,11 @@ an analysis. The required `gspread` / `google-auth` packages are already in
 
 ## App features
 
-Once the app is running, the sidebar offers three features worth calling out
-that aren't exposed through the Python API. All three live in `app.py` and
-are available in both the hosted Streamlit instance and a local
-`streamlit run app.py`.
+Once the app is running, the sidebar offers four features worth calling out:
+three that aren't exposed through the Python API at all, and the
+acceptable-limit search, which is the browser form of the `wrinklefe
+critical` subcommand. All four live in `app.py` and are available in both
+the hosted Streamlit instance and a local `streamlit run app.py`.
 
 ### Morphology schematics
 
@@ -223,3 +224,49 @@ free-text **Material name** field and used for the current run only;
 **custom materials do not persist across sessions** (the app's filesystem
 is ephemeral on Streamlit Cloud and the session state resets on reload).
 For permanent additions to the library see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+### Acceptable-limit mode ("Find acceptable limit")
+
+**Run analysis** answers *"given this wrinkle, what is the knockdown?"*.
+The button directly beneath it inverts the question — *"what is the largest
+wrinkle these inputs can carry?"* — which is the number an inspection
+criterion or an NCR disposition is written around. It runs
+`wrinklefe.goalseek.find_critical_value` on exactly the configuration a run
+would solve; the *Acceptable-limit settings* expander holds the searched
+parameter (`amplitude` or `wavelength`), the target (a knockdown factor or
+an absolute MPa allowable) and, in Expert mode, the bracket, scan-point
+count and root tolerance.
+
+Cost is stated before the click. The search runs on the analytical path —
+about 25 forward evaluations, well under a second — unless the
+configuration enables an FE-only feature (CZM, surface resin pockets, a
+non-uniform transverse mode, `tool_flat`), in which case the expander warns
+that the same 25 evaluations become full FE solves.
+
+Three things about the result are worth knowing:
+
+- **The reported value is the conservative one.** `brentq` converges *to*
+  the root, not to the acceptable side of it, so the search backs the
+  answer off toward safety and confirms it with an extra forward run. The
+  achieved knockdown shown next to the limit is that confirming
+  measurement, not an interpolation; the raw root is quoted only for
+  transparency and should never be the number that leaves the app.
+- **A refusal is shown verbatim.** When the scanned curve admits no unique
+  answer the app prints the engine's own message, which quotes the
+  measurements behind the refusal and names the knob that has to move.
+  `no_crossing` renders as a warning rather than an error — it can simply
+  mean that no defect size in range fails the criterion. The scan curve and
+  the per-evaluation ledger are rendered either way, because the curve *is*
+  the diagnosis.
+- **The limit only reaches an NCR when it belongs to that NCR.** The
+  Export tab attaches an *Acceptance limit (goal-seek)* block to the
+  validation summary only when the search converged **and** its
+  configuration payload equals the payload the displayed results were
+  computed from. A limit derived for a different laminate, loading or
+  morphology is left off, and the tab says so rather than omitting it
+  silently.
+
+**Apply this limit to the sidebar** seeds the geometry widget with the
+limit (clamped to the widget's range) so the full analysis can be run at
+it. Doing so changes the inputs, so the search above is then correctly
+flagged as computed for the previous configuration.

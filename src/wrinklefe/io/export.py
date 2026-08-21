@@ -557,6 +557,24 @@ def recommend_disposition(
     }
 
 
+# Disclaimer carried on the acceptance-limit block (issue #280). Composed
+# from the two sentences this module already uses -- the disposition note's
+# opening and the closing clause of ``criteria_cited`` -- so a goal-seek
+# limit inherits exactly the MRB language the rest of the summary is
+# written in, rather than new legal wording of its own.
+_CRITICAL_LIMIT_NOTE = (
+    "Decision support only. This limit is advisory and is superseded by "
+    "the program-specific allowables, drawing requirements, and process "
+    "specifications applied by the MRB."
+)
+
+_CRITICAL_LIMIT_BASIS = (
+    "Largest value still satisfying the target under a real forward "
+    "evaluation: the root-find is backed off to the safe side and "
+    "re-verified, so this is not an interpolation of the scan curve."
+)
+
+
 def build_analysis_summary(
     *,
     defect: dict,
@@ -565,6 +583,7 @@ def build_analysis_summary(
     prepared_by: str | None = None,
     notes: str | None = None,
     tool_version: str | None = None,
+    critical_limit: dict | None = None,
 ) -> dict:
     """Assemble a wrinkle-analysis validation summary for an NCR.
 
@@ -602,6 +621,20 @@ def build_analysis_summary(
         WrinkleFE version string, recorded for traceability. Defaults to
         the real installed version (``wrinklefe.__version__``); pass an
         explicit value only to override it (e.g. in tests).
+    critical_limit : dict, optional
+        Acceptance limit from an inverse goal-seek
+        (:func:`wrinklefe.goalseek.find_critical_value`, issue #280) —
+        the largest defect size that still meets the target.  Recognised
+        keys: ``parameter``, ``parameter_units``, ``direction``,
+        ``objective``, ``target``, ``target_units``, ``critical_value``,
+        ``achieved_knockdown``, ``achieved_strength_MPa``, ``method``
+        (``'analytical'`` | ``'fe'``), ``n_evaluations``, ``rtol``.
+        Omitted entirely when ``None`` (the default), so a summary only
+        carries a limit when one was actually computed **for this
+        configuration** — a limit derived for different inputs must never
+        ride along on an NCR attachment.  ``critical_value`` must be the
+        engine's conservative, forward-verified value, never the raw
+        ``brentq`` root.
 
     Returns
     -------
@@ -664,6 +697,42 @@ def build_analysis_summary(
             "prediction — peak carried nominal stress, wrinkled vs "
             "pristine coupon."
         )
+
+    critical_block: dict | None = None
+    if critical_limit:
+        critical_block = {
+            "parameter": critical_limit.get("parameter"),
+            "parameter_units": critical_limit.get("parameter_units"),
+            "direction": critical_limit.get("direction"),
+            "objective": critical_limit.get("objective"),
+            "target": critical_limit.get("target"),
+            "target_units": critical_limit.get("target_units"),
+            "critical_value": critical_limit.get("critical_value"),
+            "achieved_knockdown": critical_limit.get("achieved_knockdown"),
+            "achieved_strength_MPa": critical_limit.get(
+                "achieved_strength_MPa"
+            ),
+            "method": critical_limit.get("method"),
+            "n_evaluations": critical_limit.get("n_evaluations"),
+            "rtol": critical_limit.get("rtol"),
+            "basis": _CRITICAL_LIMIT_BASIS,
+            "note": _CRITICAL_LIMIT_NOTE,
+        }
+        _limit_units = critical_block["parameter_units"]
+        _target_units = critical_block["target_units"]
+        criteria.append(
+            "Inverse goal-seek acceptance limit — bracketed root-find on "
+            f"{_fmt(critical_block['objective'])} against "
+            f"{_fmt(critical_block['parameter'])}, target "
+            f"{_fmt(critical_block['target'])}"
+            + (f" {_target_units}" if _target_units else "")
+            + f", answer backed off to the safe side and verified by a "
+            f"forward evaluation ({_fmt(critical_block['method'])} path, "
+            f"{_fmt(critical_block['n_evaluations'])} evaluations, rtol "
+            f"{_fmt(critical_block['rtol'])})"
+            + (f"; limit in {_limit_units}." if _limit_units else ".")
+        )
+
     criteria.append(
         "Generic severity banding in this summary is advisory only and is "
         "superseded by the program-specific allowables, drawing "
@@ -715,6 +784,10 @@ def build_analysis_summary(
             "finite_element": fe_block,
             "progressive_damage": progressive_block,
         },
+        # Acceptance limit from an inverse goal-seek (issue #280). Always
+        # present as a key, ``None`` unless a limit was computed for THIS
+        # configuration — same convention as ``finite_element``.
+        "critical_limit": critical_block,
         "criteria_cited": criteria,
         "disposition_recommendation": {
             "severity": disposition["severity"],
@@ -880,6 +953,50 @@ def render_summary_markdown(summary: dict) -> str:
             f"- Pristine strength: "
             f"{_fmt(prog_block['pristine_strength_MPa'])} MPa"
         )
+    # Acceptance limit (issue #280). Rendered as a sub-block of section 3
+    # rather than a section of its own: it is only present when a limit was
+    # computed, and a conditionally-renumbered section would make two
+    # attachments of the same case cite different section numbers.
+    cl_block = summary.get("critical_limit")
+    if cl_block:
+        p_unit = (
+            f" {cl_block['parameter_units']}"
+            if cl_block.get("parameter_units") else ""
+        )
+        t_unit = (
+            f" {cl_block['target_units']}"
+            if cl_block.get("target_units") else ""
+        )
+        extreme = (
+            "Smallest" if cl_block.get("direction") == "increasing"
+            else "Largest"
+        )
+        lines.append("")
+        lines.append("**Acceptance limit (goal-seek)**")
+        lines.append("")
+        lines.append(
+            f"- {extreme} acceptable {_fmt(cl_block['parameter'])}: "
+            f"**{_fmt(cl_block['critical_value'])}**{p_unit}"
+        )
+        lines.append(
+            f"- Criterion: {_fmt(cl_block['objective'])} ≥ "
+            f"{_fmt(cl_block['target'])}{t_unit}"
+        )
+        achieved = f"- Achieved at that value: knockdown " \
+                   f"{_fmt(cl_block['achieved_knockdown'])}"
+        if cl_block.get("achieved_strength_MPa") is not None:
+            achieved += (
+                f"  ·  {_fmt(cl_block['achieved_strength_MPa'])} MPa"
+            )
+        lines.append(achieved)
+        lines.append(
+            f"- Method: {_fmt(cl_block['method'])} path, "
+            f"{_fmt(cl_block['n_evaluations'])} forward evaluations, "
+            f"rtol {_fmt(cl_block['rtol'])}"
+        )
+        lines.append(f"- Basis: {_fmt(cl_block['basis'])}")
+        lines.append("")
+        lines.append(f"> {cl_block['note']}")
     lines.append("")
     lines.append("## 4. Criteria cited")
     lines.append("")

@@ -91,7 +91,23 @@ mode also exposes the through-width `transverse_mode` envelope, and the
 sidebar **Config file** section can **download** the current settings as a
 portable `AnalysisConfig` JSON — round-tripping with the CLI `--config` /
 `--save-config` flags — or **load** a saved case (JSON/YAML) back into the
-sidebar. See
+sidebar.
+
+A second sidebar button, **Find acceptable limit**, runs the inverse
+search on those same inputs — the browser form of
+[`wrinklefe critical`](#finding-the-maximum-acceptable-defect). Set a
+target knockdown (or an absolute MPa allowable) in the
+*Acceptable-limit settings* expander and the app reports the largest
+amplitude the laminate can carry and still meet it, together with the
+scanned knockdown curve and the per-evaluation ledger. The reported
+number is the conservative one — backed off from the root and verified
+by a real forward run — and one click applies it back to the sidebar so
+you can run the full analysis at the limit. When the search converged
+for the *same* configuration a run was made on, the limit is carried
+onto the NCR validation summary on the **Export** tab; a limit searched
+against different inputs is deliberately left off. If the curve admits
+no unique answer the app shows the engine's diagnosis and the measured
+curve instead of a number. See
 [`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for the full feature
 tour and instructions for self-hosting.
 
@@ -687,6 +703,11 @@ parameter is inert for the configuration (`flat`), the search exits 1 with
 a message quoting the measurements behind the refusal — never a scipy
 traceback. "No crossing in range" is not an error: it means no defect size
 in range fails your criterion.
+
+The same search is a button in the Streamlit app — **Find acceptable
+limit**, directly under *Run analysis* — which additionally carries the
+limit onto the NCR validation summary when the search and the run were
+made on the same configuration.
 
 ### Exporting results to CSV / JSON
 
