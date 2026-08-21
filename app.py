@@ -45,6 +45,11 @@ from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa
 from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
 from wrinklefe.core.morphology import WrinkleConfiguration  # noqa: E402
 from wrinklefe.core.wrinkle import GaussianSinusoidal  # noqa: E402
+from wrinklefe.goalseek import (  # noqa: E402
+    DEFAULT_SCAN_POINTS,
+    CriticalValueResult,
+    find_critical_value,
+)
 from wrinklefe.io.export import (  # noqa: E402
     build_analysis_summary,
     render_summary_markdown,
@@ -189,6 +194,30 @@ DEFAULT_SURFACE_POCKET_SIDE = _CFG_DEFAULTS.surface_pocket_side
 # pinned flat surface. Mirrors ``AnalysisConfig`` so the UI cannot drift.
 DEFAULT_SURFACE_TRANSITION_PLIES = _CFG_DEFAULTS.surface_transition_plies
 
+# --- Inverse goal-seek ("Find acceptable limit", issue #280) -----------------
+# The two ways a target can be expressed. Knockdown is the headline case (it
+# is what a disposition is usually written against); an absolute MPa allowable
+# maps onto the engine's ``target_strength_MPa``.
+GS_TARGET_KNOCKDOWN = "Knockdown factor"
+GS_TARGET_STRENGTH = "Strength (MPa)"
+# Searchable parameters offered in the UI. ``find_critical_value`` accepts any
+# float ``AnalysisConfig`` field, but these two are the ones a disposition is
+# actually written around, and both have a sidebar widget to seed back.
+GS_PARAMETERS = ("amplitude", "wavelength")
+GS_PARAMETER_UNITS = {"amplitude": "mm", "wavelength": "mm"}
+DEFAULT_GS_PARAMETER = "amplitude"
+DEFAULT_GS_TARGET_MODE = GS_TARGET_KNOCKDOWN
+DEFAULT_GS_TARGET = 0.85
+DEFAULT_GS_TARGET_STRENGTH = 1000.0
+# 0.0 is the "auto" sentinel for both bracket bounds — Streamlit's
+# ``number_input`` cannot represent an empty value, and the engine derives a
+# far better range (laminate thickness, tool_flat and mesh-inversion clamps)
+# than a user typically would.
+DEFAULT_GS_BRACKET_LO = 0.0
+DEFAULT_GS_BRACKET_HI = 0.0
+DEFAULT_GS_SCAN_POINTS = DEFAULT_SCAN_POINTS
+DEFAULT_GS_RTOL = 1e-3
+
 # Single source of truth used by the "Reset to defaults" button: maps each
 # sidebar widget ``key=`` argument to the value it should hold after a reset.
 # Keep this aligned with the ``key=`` strings on the widgets below.
@@ -230,6 +259,15 @@ DEFAULTS: dict[str, object] = {
     "sb_enable_surface_pockets": DEFAULT_ENABLE_SURFACE_POCKETS,
     "sb_surface_pocket_side": DEFAULT_SURFACE_POCKET_SIDE,
     "sb_surface_transition_plies": DEFAULT_SURFACE_TRANSITION_PLIES,
+    # Inverse goal-seek — "Find acceptable limit" (issue #280).
+    "sb_gs_parameter": DEFAULT_GS_PARAMETER,
+    "sb_gs_target_mode": DEFAULT_GS_TARGET_MODE,
+    "sb_gs_target": DEFAULT_GS_TARGET,
+    "sb_gs_target_strength": DEFAULT_GS_TARGET_STRENGTH,
+    "sb_gs_bracket_lo": DEFAULT_GS_BRACKET_LO,
+    "sb_gs_bracket_hi": DEFAULT_GS_BRACKET_HI,
+    "sb_gs_scan_points": DEFAULT_GS_SCAN_POINTS,
+    "sb_gs_rtol": DEFAULT_GS_RTOL,
 }
 
 
@@ -243,13 +281,19 @@ def reset_inputs() -> None:
     dynamic custom-material editor keys (``custom_*``), which are seeded from
     the chosen material on each rerun and would otherwise survive the reset
     (issue #374).
+
+    The stored goal-seek result (issue #280) is dropped for the same reason:
+    an acceptance limit belongs to the configuration it was searched against,
+    and a Reset replaces that configuration wholesale.
     """
     for key, value in DEFAULTS.items():
         st.session_state[key] = value
     # Drop the results and the payload they were computed from so a Reset
     # returns the Analyze tab to its empty state instead of showing a stale
     # run against default inputs.
-    for run_key in ("results", "cfg_payload"):
+    for run_key in (
+        "results", "cfg_payload", "goalseek_result", "goalseek_payload",
+    ):
         st.session_state.pop(run_key, None)
     # st.session_state keys are ``str | int``; annotate so the reused loop
     # variable type-checks under the app's mypy gate.
@@ -893,6 +937,22 @@ with st.sidebar:
         for _run_key in ("results", "cfg_payload"):
             st.session_state.pop(_run_key, None)
         st.session_state["_config_loaded_toast"] = True
+
+    # Same mechanism for "Apply this limit to the sidebar" (issue #280): the
+    # Analyze tab stages ``(parameter, value)`` and reruns, and the geometry
+    # widget key is seeded here, before the widget exists. Values are clamped
+    # to the widget's own range so a limit outside it cannot raise.
+    _pending_gs_apply = st.session_state.pop("_pending_gs_apply", None)
+    if _pending_gs_apply is not None:
+        _gs_apply_param, _gs_apply_value = _pending_gs_apply
+        if _gs_apply_param == "amplitude":
+            st.session_state["sb_amplitude"] = _clamp(
+                float(_gs_apply_value), 0.0, 5.0
+            )
+        elif _gs_apply_param == "wavelength":
+            st.session_state["sb_wavelength"] = _clamp(
+                float(_gs_apply_value), 1.0, 200.0
+            )
 
     expert_mode = st.toggle(
         "Expert mode", value=DEFAULT_EXPERT_MODE, key="expert_mode",
@@ -1716,6 +1776,161 @@ with st.sidebar:
         ),
     )
 
+    # ------------------------------------------------------------------
+    # Inverse goal-seek — "Find acceptable limit" (issue #280).
+    #
+    # Run analysis answers "given this wrinkle, what is the knockdown?".
+    # A disposition is written around the inverse: "what is the largest
+    # wrinkle we can accept?". The button sits directly under Run
+    # analysis because it consumes exactly the same sidebar inputs — only
+    # the target and the searched parameter are extra, and those live in
+    # the settings expander below so the common case stays one click.
+    #
+    # The engine resolves the solve path itself (analytical unless the
+    # config enables an FE-only feature), so the cost note below is
+    # driven by the same flags the run handler uses and is shown BEFORE
+    # anything is spent.
+    # ------------------------------------------------------------------
+    goalseek_clicked = st.button(
+        "Find acceptable limit",
+        width="stretch",
+        disabled=run_disabled,
+        help=(
+            "Fix the mesh-inversion warning above before searching."
+            if run_disabled
+            else (
+                "Inverse search: the largest wrinkle these inputs can carry "
+                "while still meeting a target knockdown (or an absolute "
+                "MPa allowable). The answer is verified by a real forward "
+                "run on the safe side. Settings are in the expander below."
+            )
+        ),
+    )
+    with st.expander("Acceptable-limit settings", expanded=False):
+        gs_parameter = st.selectbox(
+            "Search parameter",
+            GS_PARAMETERS,
+            key="sb_gs_parameter",
+            help=(
+                "Which wrinkle dimension to solve for. **amplitude** is the "
+                "headline case — the number an inspection criterion is "
+                "written around. Knockdown is monotonic in amplitude but "
+                "*not* in wavelength for every morphology; the search "
+                "measures that and refuses rather than guessing."
+            ),
+        )
+        gs_target_mode = st.radio(
+            "Express the target as",
+            (GS_TARGET_KNOCKDOWN, GS_TARGET_STRENGTH),
+            key="sb_gs_target_mode",
+            horizontal=True,
+            help=(
+                "A knockdown factor (residual fraction of pristine "
+                "strength) or an absolute allowable in MPa. Both drive the "
+                "same search; the MPa form root-finds on strength directly."
+            ),
+        )
+        _gs_strength_mode = gs_target_mode == GS_TARGET_STRENGTH
+        gs_target = st.number_input(
+            "Target knockdown",
+            min_value=0.01, max_value=0.99,
+            value=DEFAULT_GS_TARGET, step=0.01, format="%.2f",
+            key="sb_gs_target",
+            disabled=_gs_strength_mode,
+            help=(
+                "Acceptance threshold as a residual-strength fraction: "
+                "0.85 means 'still carries 85 % of pristine strength'."
+            ),
+        )
+        gs_target_strength = st.number_input(
+            "Target strength [MPa]",
+            min_value=1.0, max_value=10000.0,
+            value=DEFAULT_GS_TARGET_STRENGTH, step=10.0,
+            key="sb_gs_target_strength",
+            disabled=not _gs_strength_mode,
+            help=(
+                "Acceptance threshold as an absolute predicted strength — "
+                "the design allowable for the affected location."
+            ),
+        )
+        if expert_mode:
+            st.markdown("**Advanced**")
+            gs_bracket_lo = st.number_input(
+                "Bracket lower bound (0 = auto)",
+                min_value=0.0, value=DEFAULT_GS_BRACKET_LO, step=0.01,
+                key="sb_gs_bracket_lo",
+                help=(
+                    "Leave both bounds at 0 to let the search derive the "
+                    "range (for amplitude: 0 to the laminate thickness, "
+                    "clamped by the tool_flat and mesh-inversion limits). "
+                    "A bracket is applied only when the upper bound is "
+                    "greater than 0."
+                ),
+            )
+            gs_bracket_hi = st.number_input(
+                "Bracket upper bound (0 = auto)",
+                min_value=0.0, value=DEFAULT_GS_BRACKET_HI, step=0.01,
+                key="sb_gs_bracket_hi",
+                help=(
+                    "Upper end of an explicit search range. Still clamped "
+                    "by the validation limits that would otherwise make a "
+                    "probe fail mid-search."
+                ),
+            )
+            gs_scan_points = st.number_input(
+                "Scan points", min_value=3, max_value=33,
+                value=DEFAULT_GS_SCAN_POINTS, step=2,
+                key="sb_gs_scan_points",
+                help=(
+                    "Points in the bounded scan that measures the search "
+                    "direction and monotonicity before any root-finding. "
+                    "Fewer points is cheaper but can walk past an interior "
+                    "minimum."
+                ),
+            )
+            gs_rtol = st.number_input(
+                "Root tolerance (rtol)",
+                min_value=1e-8, max_value=1e-2,
+                value=DEFAULT_GS_RTOL, step=1e-4, format="%.1e",
+                key="sb_gs_rtol",
+                help=(
+                    "Relative tolerance on the searched parameter, passed "
+                    "to scipy's brentq. The reported limit is then backed "
+                    "off to the safe side and re-verified, so this sets "
+                    "precision, not conservatism."
+                ),
+            )
+        else:
+            gs_bracket_lo = DEFAULT_GS_BRACKET_LO
+            gs_bracket_hi = DEFAULT_GS_BRACKET_HI
+            gs_scan_points = DEFAULT_GS_SCAN_POINTS
+            gs_rtol = DEFAULT_GS_RTOL
+
+        # Cost note, before the click. The search runs analytical unless
+        # the config enables an FE-only feature — the same flags the run
+        # handler resolves ``analytical_only`` from.
+        _gs_forces_fe = bool(
+            enable_czm
+            or _surface_pockets_active
+            or _transverse_threaded
+            or _is_tool_flat_selected
+        )
+        if _gs_forces_fe:
+            st.warning(
+                ":hourglass_flowing_sand: This configuration enables an "
+                "FE-only feature, so the search runs on the **full FE "
+                "path**: about 25 forward solves — minutes, not seconds. "
+                "Turn the FE-only feature off for a sub-second analytical "
+                "search."
+            )
+        else:
+            st.caption(
+                "About 25 forward evaluations on the analytical path — "
+                "well under a second. Enabling CZM, surface resin pockets "
+                "or a non-uniform transverse mode switches the search to "
+                "the FE path (minutes)."
+            )
+
     st.divider()
     # Reset via an on_click callback (not an inline handler): the callback
     # fires at the start of the next rerun, BEFORE the sidebar widgets are
@@ -2285,6 +2500,201 @@ def _current_config_json() -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Inverse goal-seek helpers (issue #280).
+# ---------------------------------------------------------------------------
+
+
+def _gs_unit_suffix(parameter: str) -> str:
+    """`` mm`` for a length parameter, empty otherwise (never a guess)."""
+    unit = GS_PARAMETER_UNITS.get(parameter)
+    return f" {unit}" if unit else ""
+
+
+def _critical_limit_block(
+    result: CriticalValueResult | None,
+    goalseek_payload: tuple | None,
+    run_payload: tuple | None,
+) -> dict | None:
+    """The NCR ``critical_limit`` block for a stored goal-seek result.
+
+    Returns ``None`` unless the search **converged** *and* it was run
+    against exactly the configuration the displayed results were computed
+    from — the stored goal-seek payload and the run payload are the same
+    hashable fingerprint ``_assemble_cfg_payload`` builds, so equality is
+    the whole test.
+
+    The guard is deliberately strict. An acceptance limit is a number a
+    Material Review Board reads off an official attachment; a limit
+    derived for a *different* laminate, loading or morphology riding
+    along on someone else's NCR is a wrong-number-on-a-controlled-
+    document hazard, and the search range itself is derived from the base
+    config (for ``wavelength`` it is scaled from the base value), so the
+    result genuinely does not transfer between configurations.
+    """
+    if result is None or goalseek_payload is None or run_payload is None:
+        return None
+    if result.status != "converged" or result.critical_value is None:
+        return None
+    if tuple(goalseek_payload) != tuple(run_payload):
+        return None
+    return {
+        "parameter": result.parameter,
+        "parameter_units": GS_PARAMETER_UNITS.get(result.parameter),
+        "objective": result.objective_name,
+        "target": float(result.target),
+        "target_units": "MPa" if result.target_is_strength else None,
+        "critical_value": float(result.critical_value),
+        "achieved_knockdown": (
+            None if result.achieved_knockdown is None
+            else float(result.achieved_knockdown)
+        ),
+        "achieved_strength_MPa": (
+            None if result.achieved_strength_MPa is None
+            else float(result.achieved_strength_MPa)
+        ),
+        "method": "analytical" if result.analytical_only else "fe",
+        "n_evaluations": int(result.n_evaluations),
+        "rtol": float(result.rtol),
+    }
+
+
+def _render_goalseek_result(
+    result: CriticalValueResult, stale: bool
+) -> None:
+    """Render a stored goal-seek result: the answer, or the refusal.
+
+    Refusal messages are shown **verbatim**. The engine's messages quote
+    the measurements behind the refusal and name the knob that has to
+    move; paraphrasing them loses the diagnosis.
+    """
+    st.subheader("Acceptable limit (inverse goal-seek)")
+    if stale:
+        st.warning(
+            "⚠️ **Inputs have changed since this search.** The limit below "
+            "was computed for the previous configuration. Click **Find "
+            "acceptable limit** to search again.",
+            icon="⚠️",
+        )
+
+    unit = _gs_unit_suffix(result.parameter)
+    target_unit = " MPa" if result.target_is_strength else ""
+    if result.status == "converged" and result.critical_value is not None:
+        extreme = (
+            "Largest" if result.direction == "decreasing" else "Smallest"
+        )
+        g1, g2, g3 = st.columns(3)
+        g1.metric(
+            f"{extreme} acceptable {result.parameter}",
+            f"{result.critical_value:.4g}{unit}",
+            help=(
+                "The conservative answer: the value on the *acceptable* "
+                "side of the root. Quote this number, not the raw root."
+            ),
+        )
+        _achieved = result.achieved_objective
+        _root = result.critical_value_root
+        g2.metric(
+            f"Achieved {result.objective_name}",
+            "—" if _achieved is None else f"{_achieved:.4f}{target_unit}",
+            help=(
+                f"Measured at the reported limit by a real forward run "
+                f"(target {result.target:.4g}{target_unit})."
+            ),
+        )
+        g3.metric(
+            "Forward evaluations",
+            f"{result.n_evaluations}",
+            help=(
+                "Full forward solves spent on the scan, the root-find and "
+                "the safe-side verification."
+            ),
+        )
+        st.success(
+            f"**{result.critical_value:.4g}{unit}** is the {extreme.lower()} "
+            f"{result.parameter} these inputs can carry with "
+            f"{result.objective_name} ≥ {result.target:.4g}{target_unit}. "
+            f"`brentq` converges *to* the root, not to the acceptable side "
+            f"of it, so the search backs the answer off toward safety and "
+            f"**verifies it with an extra forward run** — the achieved "
+            f"value above is that check, not an interpolation. The raw "
+            f"root was "
+            f"{'—' if _root is None else format(_root, '.6g')}{unit}; the "
+            f"conservative value is the one to quote."
+        )
+    elif result.status == "no_crossing":
+        st.warning(result.message, icon="ℹ️")
+        st.caption(
+            "*No crossing in range* is not necessarily an error: it can "
+            "simply mean no defect size in the searched range fails your "
+            "criterion."
+        )
+    else:
+        st.error(result.message, icon="🚫")
+
+    # The scanned curve is the evidence behind both the answer and every
+    # refusal, so it is drawn whenever there are measurements to draw.
+    if result.scan_values:
+        fig, ax = plt.subplots(figsize=(6.5, 3.6))
+        result.plot(ax=ax)
+        fig.tight_layout()
+        st.pyplot(fig, clear_figure=True)
+        st.caption(
+            f"Scan over [{result.bounds[0]:.4g}, {result.bounds[1]:.4g}]"
+            f"{unit} "
+            f"(lower bound: {result.bounds_source[0]}, upper: "
+            f"{result.bounds_source[1]}) · direction measured: "
+            f"{result.direction} · {result.sign_changes} sign change"
+            f"{'' if result.sign_changes == 1 else 's'} · "
+            f"{'analytical' if result.analytical_only else 'FE'} path"
+        )
+
+    if result.evaluations:
+        with st.expander("Evaluation ledger", expanded=False):
+            st.dataframe(
+                [
+                    {
+                        "#": ev.index,
+                        result.parameter: ev.value,
+                        result.objective_name: ev.objective,
+                        "knockdown": ev.knockdown,
+                        "strength (MPa)": ev.strength_MPa,
+                        "residual": ev.residual,
+                        "phase": ev.phase,
+                        "runtime (s)": round(ev.runtime_s, 4),
+                    }
+                    for ev in result.evaluations
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+            st.caption(
+                "Phases: `scan` measures direction and monotonicity, "
+                "`root` is the bracketed root-find, `backoff` steps to the "
+                "safe side, `verify` is the confirming forward run."
+            )
+
+    if (
+        result.status == "converged"
+        and result.critical_value is not None
+        and result.parameter in GS_PARAMETERS
+    ):
+        if st.button(
+            f"Apply this {result.parameter} to the sidebar",
+            help=(
+                f"Seed the sidebar **{result.parameter}** with "
+                f"{result.critical_value:.4g}{unit} so you can run the "
+                f"full analysis at the limit. The search above is then "
+                f"flagged as computed for the previous inputs — which it "
+                f"was."
+            ),
+        ):
+            st.session_state["_pending_gs_apply"] = (
+                result.parameter, float(result.critical_value)
+            )
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Config file I/O UI (issue #375). Rendered as a second sidebar block — it
 # lives after ``_live_cfg_payload`` / ``_config_from_payload`` are defined so
 # the download can serialise the live effective config. Appears at the bottom
@@ -2477,6 +2887,126 @@ if run_clicked or _demo_pending:
         )
 
 
+# Goal-seek handler (issue #280) — like the run handler above, it executes
+# BEFORE the tabs render so the search status appears above the tab strip and
+# the Analyze tab sees the finished result on the same rerun.
+if goalseek_clicked:
+    try:
+        _gs_layup = parse_layup(layup_str)
+    except ValueError as _gs_exc:
+        st.error(f"Could not parse layup: {_gs_exc}")
+        st.stop()
+    try:
+        OrthotropicMaterial.from_dict(material_dict)
+    except ValueError as _gs_exc:
+        st.error(f"Invalid custom material: {_gs_exc}")
+        st.stop()
+
+    # Same effective-path resolution as a run, so the searched config is
+    # bit-identical to the one Run analysis would solve. ``analytical_only``
+    # is then passed to the engine as None: its own ladder decides, and an
+    # FE-forcing feature can neither be silently dropped nor silently cost
+    # the user a 25-solve FE search without the warning shown in the sidebar.
+    _gs_effective_analytical_only = (
+        bool(analytical_only)
+        and not bool(enable_czm)
+        and not _surface_pockets_active
+        and not _transverse_threaded
+    )
+    _gs_payload = _assemble_cfg_payload(
+        _gs_layup, _gs_effective_analytical_only
+    )
+
+    _gs_bracket: tuple[float, float] | None = None
+    if float(gs_bracket_hi) > 0.0:
+        _gs_bracket = (float(gs_bracket_lo), float(gs_bracket_hi))
+        if _gs_bracket[0] >= _gs_bracket[1]:
+            st.error(
+                "Bracket lower bound must be less than the upper bound "
+                f"(got {_gs_bracket[0]:g} and {_gs_bracket[1]:g}). Leave "
+                "both at 0 to derive the range automatically."
+            )
+            st.stop()
+
+    with st.status(
+        "Searching for the acceptable limit…", expanded=True
+    ) as _gs_status:
+        st.write(
+            f"Scanning **{gs_parameter}** over the resolved range, then "
+            f"root-finding on the target…"
+        )
+        st.caption(
+            "About 25 forward evaluations, ending in a verification run "
+            "on the safe side of the root."
+        )
+        try:
+            _gs_result = find_critical_value(
+                _config_from_payload(_gs_payload),
+                parameter=str(gs_parameter),
+                target_knockdown=(
+                    None if _gs_strength_mode else float(gs_target)
+                ),
+                target_strength_MPa=(
+                    float(gs_target_strength) if _gs_strength_mode else None
+                ),
+                bracket=_gs_bracket,
+                scan_points=int(gs_scan_points),
+                rtol=float(gs_rtol),
+                analytical_only=None,
+            )
+        except ValueError as _gs_exc:
+            # Input-shaped refusals (an FE-only feature under an analytical
+            # request, tool_flat, a degenerate range). The engine's message
+            # names the knob that has to move — show it verbatim.
+            _gs_status.update(
+                label="Search refused", state="error", expanded=True
+            )
+            st.error(str(_gs_exc))
+            st.stop()
+        except MemoryError:
+            _gs_status.update(
+                label="Out of memory", state="error", expanded=True
+            )
+            st.error(
+                "Out of memory during the search. Reduce nx, ny, or "
+                "nz_per_ply, or turn off the FE-only feature that forces "
+                "the FE path."
+            )
+            st.stop()
+        except Exception as _gs_exc:  # noqa: BLE001 — surface to the user
+            _gs_status.update(
+                label="Search failed", state="error", expanded=True
+            )
+            st.error(f"Critical-value search failed: {_gs_exc}")
+            with st.expander("Traceback"):
+                st.exception(_gs_exc)
+            st.stop()
+        _gs_converged = _gs_result.status == "converged"
+        _gs_status.update(
+            label=(
+                "Acceptable limit found" if _gs_converged
+                else f"No unique limit ({_gs_result.status})"
+            ),
+            state="complete" if _gs_converged else "error",
+            expanded=False,
+        )
+
+    st.session_state["goalseek_result"] = _gs_result
+    st.session_state["goalseek_payload"] = _gs_payload
+
+    # Best-effort usage log (fail-soft; see usage_tracking).
+    usage_tracking.log_event(
+        "goalseek",
+        props={
+            "parameter": _gs_result.parameter,
+            "objective": _gs_result.objective_name,
+            "status": _gs_result.status,
+            "analytical_only": _gs_result.analytical_only,
+            "n_evaluations": _gs_result.n_evaluations,
+        },
+    )
+
+
 tab_analyze, tab_export, tab_help = st.tabs(
     ["Analyze", "Export", "Help"]
 )
@@ -2629,6 +3159,27 @@ with tab_analyze:
             f"Closed-form approx arctan(2πA/λ) = "
             f"{np.degrees(profile.max_angle_approx()):.2f}°"
         )
+
+    # ----------------------------------------------------------------------
+    # Acceptable limit (issue #280). Rendered above the run results and
+    # independently of them: the search is its own answer and is useful
+    # before any forward run has been made. Staleness is the same
+    # hash-compare the run results use (#374) — the live sidebar payload
+    # against the payload the search was performed on.
+    # ----------------------------------------------------------------------
+    _gs_stored = st.session_state.get("goalseek_result")
+    if _gs_stored is not None:
+        _gs_stored_payload = st.session_state.get("goalseek_payload")
+        _gs_live_payload = _live_cfg_payload()
+        _render_goalseek_result(
+            _gs_stored,
+            stale=bool(
+                _gs_stored_payload is not None
+                and _gs_live_payload is not None
+                and _gs_live_payload != _gs_stored_payload
+            ),
+        )
+        st.divider()
 
     if "results" not in st.session_state:
         st.markdown(
