@@ -15,6 +15,37 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- App — **"Find acceptable limit" mode and the acceptance limit on the NCR
+  attachment** (issue #280, app slice — *Fixes #280*, completing the issue).
+  The Streamlit sidebar gains a **Find acceptable limit** button directly
+  under *Run analysis* (it searches the same inputs) plus an
+  *Acceptable-limit settings* expander: the searched parameter (amplitude
+  or wavelength), the target as either a knockdown factor or an absolute
+  MPa allowable, and — in Expert mode — the bracket, scan-point count and
+  root tolerance. The cost is stated before the click: the search runs on
+  the analytical path (~25 evaluations, well under a second) unless the
+  config enables an FE-only feature, in which case the expander warns that
+  it will spend ~25 FE solves. A converged search renders the limit, the
+  objective achieved at it and the evaluation count, and says plainly that
+  the reported value is the **conservative** one — backed off from the raw
+  `brentq` root and verified by an extra forward run — with the raw root
+  quoted only for transparency. A refusal renders the engine's own message
+  **verbatim** (`no_crossing` as a warning, since it can simply mean
+  nothing in range fails the criterion; `non_monotonic` / `flat` /
+  `target_unreachable` as errors), and the scanned curve and evaluation
+  ledger are shown either way because the curve is the diagnosis. **Apply
+  this limit to the sidebar** seeds the geometry widget through the #375
+  pending-seed mechanism, and the stored search is flagged stale by the
+  same payload hash-compare the run results use (#374).
+  `io.export.build_analysis_summary` gains an optional `critical_limit=`
+  mapping (additive; existing callers unaffected) that adds a
+  `critical_limit` block to the summary and an *Acceptance limit
+  (goal-seek)* sub-block to the Markdown and PDF attachments, carrying the
+  same non-binding MRB language as the rest of the summary. The app
+  attaches it **only** when the stored search converged *and* its config
+  payload equals the payload the displayed results were computed from — an
+  acceptance limit derived for different inputs must never ride along on an
+  NCR — and captions the omission when it does not.
 - Analysis — **inverse goal-seek: maximum acceptable wrinkle amplitude**
   (issue #280). New `wrinklefe.goalseek.find_critical_value(base_config, *,
   parameter='amplitude', target_knockdown=…, …)` scans the resolved search
