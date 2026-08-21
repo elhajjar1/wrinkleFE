@@ -2540,6 +2540,7 @@ def _critical_limit_block(
     return {
         "parameter": result.parameter,
         "parameter_units": GS_PARAMETER_UNITS.get(result.parameter),
+        "direction": result.direction,
         "objective": result.objective_name,
         "target": float(result.target),
         "target_units": "MPa" if result.target_is_strength else None,
@@ -3859,6 +3860,34 @@ with tab_export:
         _angles = list(_cfg.get("angles_tuple", ()))
         _res = st.session_state["results"]
 
+        # Acceptance limit (issue #280). Attached ONLY when the stored
+        # goal-seek converged against exactly the configuration these
+        # results were computed from — an acceptance limit derived for a
+        # different laminate, loading or morphology riding along on an NCR
+        # attachment is a wrong-number-on-a-controlled-document hazard, so
+        # the guard is payload equality, not a heuristic.
+        _summary_critical_limit = _critical_limit_block(
+            st.session_state.get("goalseek_result"),
+            st.session_state.get("goalseek_payload"),
+            st.session_state.get("cfg_payload"),
+        )
+        if _summary_critical_limit is not None:
+            st.caption(
+                "✓ The acceptance limit found for this exact configuration "
+                f"(**{_summary_critical_limit['critical_value']:.4g} "
+                f"{_summary_critical_limit['parameter_units'] or ''}** "
+                f"{_summary_critical_limit['parameter']}) is included in the "
+                "summary below."
+            )
+        elif st.session_state.get("goalseek_result") is not None:
+            st.caption(
+                "The stored acceptable-limit search is **not** included: it "
+                "either did not converge or was run against different "
+                "inputs. Re-run **Find acceptable limit** and **Run "
+                "analysis** on the same configuration to carry the limit "
+                "onto this attachment."
+            )
+
         with st.form("summary_form"):
             summary_reference = st.text_input(
                 "Reference (optional)",
@@ -3919,6 +3948,7 @@ with tab_export:
                 prepared_by=summary_prepared_by,
                 notes=summary_notes,
                 tool_version=_wrinklefe_version,
+                critical_limit=_summary_critical_limit,
             )
 
             _dr = summary["disposition_recommendation"]
