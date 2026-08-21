@@ -653,6 +653,120 @@ class TestBuildAnalysisSummary:
         assert s["engineering_analysis"]["progressive_damage"] is None
 
 
+# ----------------------------------------------------------------------
+# Acceptance limit from an inverse goal-seek (issue #280)
+# ----------------------------------------------------------------------
+
+CRITICAL_LIMIT = {
+    "parameter": "amplitude",
+    "parameter_units": "mm",
+    "direction": "decreasing",
+    "objective": "knockdown",
+    "target": 0.85,
+    "target_units": None,
+    "critical_value": 0.0665159,
+    "achieved_knockdown": 0.85,
+    "achieved_strength_MPa": 1020.0,
+    "method": "analytical",
+    "n_evaluations": 24,
+    "rtol": 1e-3,
+}
+
+
+class TestSummaryCriticalLimit:
+    """The optional ``critical_limit`` block on the NCR attachment."""
+
+    def test_absent_by_default(self, summary_inputs):
+        """Existing callers are untouched: the key is present but empty."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(defect=defect, engineering=engineering)
+        assert s["critical_limit"] is None
+
+    def test_block_recorded_when_provided(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect,
+            engineering=engineering,
+            critical_limit=CRITICAL_LIMIT,
+        )
+        block = s["critical_limit"]
+        assert block is not None
+        assert block["parameter"] == "amplitude"
+        assert block["parameter_units"] == "mm"
+        assert block["objective"] == "knockdown"
+        assert block["target"] == pytest.approx(0.85)
+        assert block["critical_value"] == pytest.approx(0.0665159)
+        assert block["achieved_knockdown"] == pytest.approx(0.85)
+        assert block["method"] == "analytical"
+        assert block["n_evaluations"] == 24
+        assert block["rtol"] == pytest.approx(1e-3)
+
+    def test_block_states_the_safe_side_basis(self, summary_inputs):
+        """The attachment must say the number is forward-verified, not
+        interpolated off the scan curve."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect,
+            engineering=engineering,
+            critical_limit=CRITICAL_LIMIT,
+        )
+        basis = s["critical_limit"]["basis"]
+        assert "forward evaluation" in basis
+        assert "safe side" in basis
+
+    def test_block_carries_the_mrb_disclaimer(self, summary_inputs):
+        """The limit inherits the summary's existing non-binding language."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect,
+            engineering=engineering,
+            critical_limit=CRITICAL_LIMIT,
+        )
+        note = s["critical_limit"]["note"]
+        assert "Decision support only" in note
+        assert "MRB" in note
+
+    def test_method_is_cited(self, summary_inputs):
+        """The criteria list records how the limit was obtained."""
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect,
+            engineering=engineering,
+            critical_limit=CRITICAL_LIMIT,
+        )
+        cited = " ".join(s["criteria_cited"])
+        assert "Inverse goal-seek acceptance limit" in cited
+        assert "24 evaluations" in cited
+
+    def test_strength_target_units_survive(self, summary_inputs):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect,
+            engineering=engineering,
+            critical_limit={
+                **CRITICAL_LIMIT,
+                "objective": "strength_MPa",
+                "target": 1020.0,
+                "target_units": "MPa",
+            },
+        )
+        assert s["critical_limit"]["target_units"] == "MPa"
+        assert "1020 MPa" in " ".join(s["criteria_cited"])
+
+    def test_summary_is_json_serialisable_with_the_block(
+        self, summary_inputs
+    ):
+        defect, engineering = summary_inputs
+        s = build_analysis_summary(
+            defect=defect,
+            engineering=engineering,
+            critical_limit=CRITICAL_LIMIT,
+        )
+        assert json.loads(json.dumps(s))["critical_limit"]["parameter"] == (
+            "amplitude"
+        )
+
+
 class TestRenderAndExportSummary:
     """Tests for render_summary_markdown / pdf and export_summary."""
 
@@ -720,6 +834,69 @@ class TestRenderAndExportSummary:
             build_analysis_summary(defect=defect, engineering=engineering)
         )
         assert "Progressive-damage evaluation" not in md
+
+    def test_markdown_renders_the_acceptance_limit(self, summary_inputs):
+        """Issue #280: the goal-seek limit, its criterion, how it was
+        obtained, and the same non-binding MRB language."""
+        defect, engineering = summary_inputs
+        md = render_summary_markdown(
+            build_analysis_summary(
+                defect=defect,
+                engineering=engineering,
+                critical_limit=CRITICAL_LIMIT,
+            )
+        )
+        assert "**Acceptance limit (goal-seek)**" in md
+        assert "Largest acceptable amplitude: **0.06652** mm" in md
+        assert "Criterion: knockdown ≥ 0.85" in md
+        assert "analytical path, 24 forward evaluations" in md
+        assert "Decision support only" in md
+        # Section numbering is unconditional: two attachments for the same
+        # case must not cite different section numbers.
+        assert "## 4. Criteria cited" in md
+        assert "## 5. Recommended disposition (NON-BINDING)" in md
+
+    def test_markdown_omits_the_acceptance_limit_when_absent(
+        self, summary_inputs
+    ):
+        """No empty acceptance-limit rows when no search was run."""
+        defect, engineering = summary_inputs
+        md = render_summary_markdown(
+            build_analysis_summary(defect=defect, engineering=engineering)
+        )
+        assert "Acceptance limit" not in md
+        assert "## 4. Criteria cited" in md
+
+    def test_markdown_labels_an_increasing_direction(self, summary_inputs):
+        """For an increasing objective the answer is the *smallest*
+        acceptable value — the label follows the measured direction."""
+        defect, engineering = summary_inputs
+        md = render_summary_markdown(
+            build_analysis_summary(
+                defect=defect,
+                engineering=engineering,
+                critical_limit={**CRITICAL_LIMIT, "direction": "increasing"},
+            )
+        )
+        assert "Smallest acceptable amplitude" in md
+
+    def test_pdf_carries_the_acceptance_limit(self, summary_inputs):
+        """The PDF lays out the rendered Markdown, so the block travels."""
+        pdf = render_summary_pdf(
+            build_analysis_summary(
+                defect=summary_inputs[0],
+                engineering=summary_inputs[1],
+                critical_limit=CRITICAL_LIMIT,
+            )
+        )
+        assert pdf.startswith(b"%PDF")
+        plain = render_summary_pdf(
+            build_analysis_summary(
+                defect=summary_inputs[0], engineering=summary_inputs[1]
+            )
+        )
+        # The extra block makes for a materially longer document.
+        assert len(pdf) > len(plain)
 
     def test_export_md(self, summary_inputs, tmp_path):
         defect, engineering = summary_inputs
