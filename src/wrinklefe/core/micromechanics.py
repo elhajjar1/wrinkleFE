@@ -5,8 +5,10 @@ constants (:class:`~wrinklefe.core.material.OrthotropicMaterial`).  This
 module supplies the missing upstream step: given the **constituents** — a
 transversely isotropic fibre, an isotropic matrix, and a fibre volume
 fraction ``Vf`` — it predicts the cured-ply elastic constants and thermal
-expansion coefficients.  The mixing rules and the cited constituent presets live here; the ply
-constructor that applies them lands next.
+expansion coefficients.  The entry point for building a ply is
+:meth:`OrthotropicMaterial.from_constituents
+<wrinklefe.core.material.OrthotropicMaterial.from_constituents>`, which
+delegates to the mixing rules defined here.
 
 Why it exists
 -------------
@@ -65,6 +67,27 @@ not as a replacement for measured allowables.  The intended workflow is to
 anchor on a measured ply at a known ``Vf`` and read the *ratio* the model
 gives between that ``Vf`` and the local one.
 
+Examples
+--------
+>>> from wrinklefe.core.material import OrthotropicMaterial
+>>> from wrinklefe.core.micromechanics import FIBER_PRESETS, MATRIX_PRESETS
+>>> ply = OrthotropicMaterial.from_constituents(
+...     FIBER_PRESETS["IM10"], MATRIX_PRESETS["EPOXY_8552"], 0.60,
+...     name="IM10_8552_Vf60",
+... )
+>>> round(ply.E1 / 1000.0, 1)          # GPa
+189.7
+>>> round(ply.E2 / 1000.0, 2)          # GPa
+11.35
+>>> round(ply.nu12, 3)
+0.26
+
+Drop the fibre volume fraction and the ply softens:
+
+>>> soft = OrthotropicMaterial.from_constituents(
+...     FIBER_PRESETS["IM10"], MATRIX_PRESETS["EPOXY_8552"], 0.50)
+>>> round(soft.E1 / 1000.0, 1)
+158.8
 """
 
 from __future__ import annotations

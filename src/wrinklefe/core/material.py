@@ -18,8 +18,12 @@ import functools
 import json
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:  # pragma: no cover - typing-only import
+    from wrinklefe.core.micromechanics import FiberProperties, MatrixProperties
 
 
 @dataclass
@@ -386,6 +390,134 @@ class OrthotropicMaterial:
             S12=Ss, S13=Ss, S23=Ss,
             GIc=GIc, GIIc=GIIc,
             name=name,
+        )
+
+    @classmethod
+    def from_constituents(
+        cls,
+        fiber: FiberProperties,
+        matrix: MatrixProperties,
+        Vf: float,
+        *,
+        xi_E2: float = 2.0,
+        xi_G12: float = 1.0,
+        name: str | None = None,
+        strengths_from: OrthotropicMaterial | None = None,
+    ) -> OrthotropicMaterial:
+        """Build a ply card from its constituents and a fibre volume fraction.
+
+        Applies the mixing rules of :mod:`wrinklefe.core.micromechanics`:
+        rule of mixtures for ``E1``, ``nu12`` and ``nu23``, Halpin-Tsai for
+        ``E2`` and ``G12``, and Schapery for the thermal expansion
+        coefficients.  The ply is transversely isotropic about the fibre
+        direction (``E3 = E2``, ``G13 = G12``, ``nu13 = nu12``,
+        ``G23 = E2 / (2 (1 + nu23))``).
+
+        Parameters
+        ----------
+        fiber : FiberProperties
+            Transversely isotropic fibre constituent, e.g. from
+            :data:`~wrinklefe.core.micromechanics.FIBER_PRESETS`.
+        matrix : MatrixProperties
+            Isotropic matrix constituent, e.g. from
+            :data:`~wrinklefe.core.micromechanics.MATRIX_PRESETS` or
+            :meth:`MatrixProperties.from_material
+            <wrinklefe.core.micromechanics.MatrixProperties.from_material>`.
+        Vf : float
+            Fibre volume fraction, in [0, 1].
+        xi_E2, xi_G12 : float, optional
+            Halpin-Tsai reinforcement-geometry factors for ``E2`` and
+            ``G12``.  Defaults 2.0 and 1.0 — the standard values for
+            circular fibres in a unidirectional ply.
+        name : str or None, optional
+            Material identifier.  Defaults to
+            ``"{fiber}_{matrix}_Vf{Vf:.2f}"``.
+        strengths_from : OrthotropicMaterial or None, optional
+            Reference ply whose **non-elastic** properties are carried over:
+            the strength allowables (``Xt``, ``Xc``, ``Yt``, ``Yc``, ``Zt``,
+            ``Zc``, ``S12``, ``S13``, ``S23``), the moisture-expansion
+            coefficients, ``gamma_Y``, ``GIc``/``GIIc``, ``beta_shear``,
+            ``alpha_0`` and the cohesive tractions.  ``None`` leaves the
+            dataclass defaults.
+
+        Returns
+        -------
+        OrthotropicMaterial
+            The predicted ply.  Validation (including compliance
+            positive-definiteness) runs as usual in ``__post_init__``.
+
+        Raises
+        ------
+        ValueError
+            If ``Vf`` is outside [0, 1], or the predicted constants fail
+            :meth:`validate`.
+
+        Notes
+        -----
+        ``nu23`` is the weakest of the predictions — the rule of mixtures
+        under-predicts it by roughly 40 % against measured unidirectional
+        plies (see :func:`~wrinklefe.core.micromechanics.nu23_rule_of_mixtures`).
+        Override it on the returned card when a measured value exists.
+
+        **Strengths are not predicted.**  None of these mixing rules maps
+        ``Vf`` to a strength allowable — longitudinal strength is governed
+        by fibre-strength statistics and misalignment, transverse and shear
+        strengths by the matrix and the fibre-matrix interface.  The
+        strengths on the returned card are copied from ``strengths_from``
+        or left at the defaults; they do **not** track ``Vf``.  See the
+        :mod:`~wrinklefe.core.micromechanics` module documentation.
+
+        Examples
+        --------
+        >>> from wrinklefe.core.micromechanics import FIBER_PRESETS, MATRIX_PRESETS
+        >>> ply = OrthotropicMaterial.from_constituents(
+        ...     FIBER_PRESETS["IM10"], MATRIX_PRESETS["EPOXY_8552"], 0.60)
+        >>> ply.name
+        'IM10_EPOXY_8552_Vf0.60'
+        >>> round(ply.E1 / 1000.0, 1)
+        189.7
+        """
+        # Imported here rather than at module scope: micromechanics imports
+        # this module for its return type, so a top-level import would be
+        # circular.
+        from wrinklefe.core.micromechanics import (
+            alpha1_schapery,
+            alpha2_schapery,
+            e1_rule_of_mixtures,
+            e2_halpin_tsai,
+            g12_halpin_tsai,
+            g23_transverse_isotropy,
+            nu12_rule_of_mixtures,
+            nu23_rule_of_mixtures,
+        )
+
+        E1 = e1_rule_of_mixtures(Vf, fiber, matrix)
+        E2 = e2_halpin_tsai(Vf, fiber, matrix, xi=xi_E2)
+        G12 = g12_halpin_tsai(Vf, fiber, matrix, xi=xi_G12)
+        nu12 = nu12_rule_of_mixtures(Vf, fiber, matrix)
+        nu23 = nu23_rule_of_mixtures(Vf, fiber, matrix)
+        G23 = g23_transverse_isotropy(E2, nu23)
+        alpha1 = alpha1_schapery(Vf, fiber, matrix)
+        alpha2 = alpha2_schapery(Vf, fiber, matrix)
+
+        carried: dict[str, float | None] = {}
+        if strengths_from is not None:
+            for attr in (
+                "Xt", "Xc", "Yt", "Yc", "Zt", "Zc", "S12", "S13", "S23",
+                "beta1", "beta2", "beta3", "gamma_Y",
+                "GIc", "GIIc", "beta_shear", "alpha_0",
+                "sigma_max", "tau_max",
+            ):
+                carried[attr] = getattr(strengths_from, attr)
+
+        return cls(
+            E1=E1, E2=E2, E3=E2,
+            G12=G12, G13=G12, G23=G23,
+            nu12=nu12, nu13=nu12, nu23=nu23,
+            alpha1=alpha1, alpha2=alpha2, alpha3=alpha2,
+            name=name if name is not None
+            else f"{fiber.name}_{matrix.name}_Vf{Vf:.2f}",
+            **carried,  # type: ignore[arg-type]
         )
 
     @classmethod
