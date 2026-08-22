@@ -15,6 +15,32 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Core — **constituent-based micromechanics: fibre + matrix + fibre volume
+  fraction to a ply** (issue #379, Part A — the Vf-to-properties capability
+  #379 names as its own blocker; the compaction kinematics that consume it
+  are a separate change). New `wrinklefe.core.micromechanics` supplies
+  `FiberProperties` (transversely isotropic) and `MatrixProperties`
+  (isotropic, with `from_material` so an existing neat-resin card such as
+  `EPOXY_S6C10` can be reused rather than duplicated), the mixing rules —
+  Voigt rule of mixtures for `E1`/`nu12`/`nu23`, Halpin–Tsai for `E2`
+  (ξ = 2) and `G12` (ξ = 1), transverse isotropy for `G23`, Schapery for
+  the thermal expansion coefficients — and cited constituent presets:
+  `FIBER_PRESETS` for the nine fibres behind the library systems (AS4,
+  T300, T700S, IM7, IM10, IM6G, T800S, S-2 glass, Kevlar 49) and
+  `MATRIX_PRESETS` for the two resins with published neat-resin data
+  (3501-6, 8552). `OrthotropicMaterial.from_constituents(fiber, matrix,
+  Vf)` builds the ply and validates it like any other card. **Strengths are
+  not predicted** — no mixing rule here maps Vf to an allowable, so
+  strengths, toughnesses and cohesive tractions are carried over unchanged
+  from `strengths_from=` (or left at the defaults) and do not track Vf.
+  Accuracy is stated from measurement, not aspiration: rebuilt at the Vf
+  each preset documents in its own comment, the model lands within 12 % on
+  `E1`, 26 % on `nu12`, 33 % on `E2`, 32 % on `G12` — except Kevlar-49 /
+  epoxy `G12`, over-predicted by 84 % and recorded as an `xfail` rather
+  than tuned away — and `nu23` is under-predicted throughout.
+  `tests/test_micromechanics.py` pins every deviation. **No behaviour
+  change:** nothing in the analysis pipeline consumes the module yet, no
+  existing preset value moved, and the validation ledger is unaffected.
 - App — **"Find acceptable limit" mode and the acceptance limit on the NCR
   attachment** (issue #280, app slice — *Fixes #280*, completing the issue).
   The Streamlit sidebar gains a **Find acceptable limit** button directly
