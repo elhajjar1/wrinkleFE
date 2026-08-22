@@ -3,6 +3,12 @@
 from wrinklefe.core.laminate import Laminate, LoadState, Ply
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
 from wrinklefe.core.mesh import MeshData, WrinkleMesh
+from wrinklefe.core.micromechanics import (
+    FIBER_PRESETS,
+    MATRIX_PRESETS,
+    FiberProperties,
+    MatrixProperties,
+)
 from wrinklefe.core.morphology import WrinkleConfiguration
 from wrinklefe.core.transforms import (
     reduced_stiffness_matrix,
@@ -25,6 +31,10 @@ from wrinklefe.core.wrinkle import (
 __all__ = [
     "OrthotropicMaterial",
     "MaterialLibrary",
+    "FiberProperties",
+    "MatrixProperties",
+    "FIBER_PRESETS",
+    "MATRIX_PRESETS",
     "rotation_matrix_3d",
     "stress_transformation_3d",
     "strain_transformation_3d",

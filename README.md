@@ -745,6 +745,65 @@ The Streamlit web app exposes the same exports as **Download results as
 JSON** and **Download per-ply results as CSV** buttons on the Export
 tab.
 
+### Building a ply from its constituents (fibre volume fraction)
+
+The 11 built-in systems above are fixed cards. When the question is
+*"what if my fibre volume fraction is 0.55 rather than 0.60?"*,
+`wrinklefe.core.micromechanics` builds the ply from its constituents —
+a fibre, a neat resin, and a Vf — instead:
+
+```python
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
+from wrinklefe.core.micromechanics import FIBER_PRESETS, MATRIX_PRESETS
+
+lib = MaterialLibrary()
+
+ply = OrthotropicMaterial.from_constituents(
+    FIBER_PRESETS["IM10"],            # Hexcel HexTow IM10 carbon
+    MATRIX_PRESETS["EPOXY_8552"],     # HexPly 8552 neat resin
+    0.55,                             # fibre volume fraction
+    strengths_from=lib.get("IM10_8552"),   # allowables carried over as-is
+)
+ply.E1, ply.E2, ply.G12, ply.nu12
+```
+
+The rules are the standard ones, each cited in the module docstring:
+Voigt rule of mixtures for `E1`, `nu12` and `nu23`, Halpin–Tsai for `E2`
+(ξ = 2) and `G12` (ξ = 1), transverse isotropy for `G23`, and Schapery
+for the thermal expansion coefficients. `FIBER_PRESETS` covers the nine
+fibres behind the library systems (AS4, T300, T700S, IM7, IM10, IM6G,
+T800S, S-2 glass, Kevlar 49) and `MATRIX_PRESETS` the two resins with
+published neat-resin data (3501-6, 8552); any isotropic card already in
+the library — `EPOXY_S6C10`, say — can be used as the matrix through
+`MatrixProperties.from_material`. Every constituent constant is sourced
+in a comment: `E1f`/`alpha1f` from the manufacturer data sheet, the
+transverse set from Daniel & Ishai (2006) Table A.2/A.3.
+
+**Two limitations, both deliberate.**
+
+1. **Strengths are not predicted.** No mixing rule here maps Vf to an
+   allowable, so `Xt`/`Xc`/`Yt`/`Yc`/`S12`/… are carried over unchanged
+   from `strengths_from` (or left at the defaults) and do *not* track
+   Vf. Longitudinal strength is set by fibre-strength statistics and
+   misalignment, transverse and shear strengths by the matrix and the
+   fibre–matrix interface; a Vf-scaled strength model would be quietly
+   wrong.
+2. **The elastic predictions are approximate.** Rebuilt from
+   constituents at the Vf each preset documents in its own source
+   comment, the model lands within 12 % on `E1`, 26 % on `nu12`, 33 %
+   on `E2` and 32 % on `G12` — except Kevlar-49/epoxy `G12`, which
+   Halpin–Tsai over-predicts by 84 % (published aramid `G12f` values
+   scatter by an order of magnitude; that case is a recorded `xfail`
+   rather than a tuned fibre constant). `nu23` is under-predicted
+   throughout. `tests/test_micromechanics.py` pins every one of those
+   deviations. Use the model for the *trend* — how properties move with
+   Vf, anchored on a measured ply — not as a source of allowables.
+
+Nothing in the analysis pipeline consumes this yet: it is the
+prerequisite capability for modelling resin squeeze-out under a
+constrained wrinkle (issue #379), where the local Vf varies from
+element to element.
+
 ## Validation
 
 ### What the in-repo tests check

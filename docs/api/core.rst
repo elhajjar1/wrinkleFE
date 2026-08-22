@@ -8,6 +8,16 @@ Materials
    :members: OrthotropicMaterial, MaterialLibrary
    :show-inheritance:
 
+Constituent micromechanics
+--------------------------
+
+.. automodule:: wrinklefe.core.micromechanics
+   :members: FiberProperties, MatrixProperties, halpin_tsai,
+             e1_rule_of_mixtures, nu12_rule_of_mixtures, e2_halpin_tsai,
+             g12_halpin_tsai, nu23_rule_of_mixtures, g23_transverse_isotropy,
+             alpha1_schapery, alpha2_schapery
+   :show-inheritance:
+
 Laminate and layup
 ------------------
 
