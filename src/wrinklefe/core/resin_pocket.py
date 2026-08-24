@@ -271,6 +271,89 @@ def compute_resin_blend(mesh: MeshData, spec: ResinPocketSpec) -> np.ndarray:
 
 
 # =======================================================================
+# Shared deformed-height metric
+# =======================================================================
+
+
+def element_heights(mesh: MeshData) -> tuple[np.ndarray, float, float]:
+    """Deformed element heights, the nominal height and laminate thickness.
+
+    The single source of truth for "how tall is this element compared with
+    the pristine laminate", shared by the surface-pocket tagging here and
+    by the compaction / fibre-volume-fraction gradient
+    (:mod:`wrinklefe.core.compaction`) so the two cannot drift apart.
+
+    The deformed height is the *vertical* (through-thickness) stretch: the
+    mean-z of the element's top face minus the mean-z of its bottom face.
+    This is tilt-invariant — unlike a ``z.max - z.min`` bounding box, a
+    rigidly translated/sheared element (an interior ply riding the wrinkle
+    at full amplitude) keeps its nominal height, so only genuine
+    through-thickness stretch registers (the issue #371 fix).  Bounding-box
+    height instead conflates the wrinkle's in-plane slope with the gap,
+    which for a realistically-localized wrinkle swamps the true stretch
+    and, for a one-sided tool-flat surface, tags the whole interior.
+
+    The nominal element height ``h0`` comes from the laminate when the mesh
+    carries one, so a wavy (non-tool-flat) outer surface does not inflate
+    the reference; it falls back to the deformed bounding box for bare
+    hand-built fixtures that carry no laminate.
+
+    Parameters
+    ----------
+    mesh : MeshData
+        Generated (deformed) hex8 mesh.
+
+    Returns
+    -------
+    height : np.ndarray
+        Shape ``(n_elements,)`` deformed element heights (mm).
+    h0 : float
+        Nominal (undeformed) element height (mm); ``0.0`` when ``nz == 0``.
+    nominal_thickness : float
+        Nominal laminate thickness (mm).
+    """
+    ez = mesh.nodes[mesh.elements][:, :, 2]
+    # hex8 node order: 0-3 bottom face (k), 4-7 top face (k+1).
+    height: np.ndarray = ez[:, 4:8].mean(axis=1) - ez[:, 0:4].mean(axis=1)
+
+    if mesh.laminate is not None:
+        zc = np.asarray(mesh.laminate.z_coords(), dtype=np.float64)
+        nominal_thickness = float(zc[-1] - zc[0])
+    else:
+        nominal_thickness = float(mesh.nodes[:, 2].max() - mesh.nodes[:, 2].min())
+    nz = int(mesh.nz)
+    # Structured mesh: every element has the same nominal height.
+    h0 = nominal_thickness / nz if nz > 0 else 0.0
+    return height, h0, nominal_thickness
+
+
+def element_height_ratio(mesh: MeshData) -> np.ndarray:
+    """Per-element deformed/nominal height ratio ``h / h0``.
+
+    ``1`` where the element keeps its nominal height, ``> 1`` where it is
+    stretched (the resin-rich trough under a flat tool) and ``< 1`` where
+    it is compacted (the crest side).  Returns an all-ones array when the
+    nominal height is degenerate (``h0 == 0``), so callers get the
+    "no change" answer rather than a divide-by-zero.
+
+    Parameters
+    ----------
+    mesh : MeshData
+        Generated (deformed) hex8 mesh.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(n_elements,)`` float array of ``h / h0``.
+    """
+    height, h0, _ = element_heights(mesh)
+    if h0 <= 0.0:
+        return np.ones_like(height)
+    ratio: np.ndarray = height / h0
+    return ratio
+
+
+# =======================================================================
 # Surface resin pockets (tool-flat outer surface, trough-following)
 # =======================================================================
 
@@ -420,30 +503,7 @@ def compute_surface_resin_blend(
     ncol = int(mesh.nx) * int(mesh.ny)
     n_elem = int(mesh.n_elements)
 
-    # Per-element deformed height as the *vertical* (through-thickness)
-    # stretch: the mean-z of the top face minus the mean-z of the bottom
-    # face.  This is tilt-invariant — unlike a ``z.max - z.min`` bounding
-    # box, a rigidly translated/sheared element (an interior ply riding the
-    # wrinkle at full amplitude) keeps its nominal height, so only genuine
-    # through-thickness stretch (the resin gap) registers.  Bounding-box
-    # height instead conflates the wrinkle's in-plane slope with the gap,
-    # which for a realistically-localized wrinkle swamps the true stretch
-    # and, for a one-sided tool-flat surface, tags the whole interior.
-    ez = mesh.nodes[mesh.elements][:, :, 2]
-    # hex8 node order: 0-3 bottom face (k), 4-7 top face (k+1).
-    height = ez[:, 4:8].mean(axis=1) - ez[:, 0:4].mean(axis=1)
-
-    # Nominal (undeformed) element height.  Taken from the laminate when
-    # available so a wavy (non-tool-flat) outer surface does not inflate the
-    # reference; falls back to the deformed bounding box for the bare
-    # hand-built fixtures that carry no laminate.
-    if mesh.laminate is not None:
-        zc = np.asarray(mesh.laminate.z_coords(), dtype=np.float64)
-        nominal_thickness = float(zc[-1] - zc[0])
-    else:
-        nominal_thickness = float(mesh.nodes[:, 2].max() - mesh.nodes[:, 2].min())
-    # Structured mesh: every element has the same nominal height.
-    h0 = nominal_thickness / nz if nz > 0 else 0.0
+    height, h0, nominal_thickness = element_heights(mesh)
 
     n_plies = int(mesh.ply_ids.max()) + 1 if mesh.ply_ids.size else 1
     ply_thickness = (
