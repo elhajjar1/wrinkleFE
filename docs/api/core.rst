@@ -51,7 +51,17 @@ Resin pocket
 ------------
 
 .. automodule:: wrinklefe.core.resin_pocket
-   :members: ResinPocketSpec, compute_resin_mask, compute_resin_blend
+   :members: ResinPocketSpec, compute_resin_mask, compute_resin_blend,
+             SurfacePocketSpec, compute_surface_resin_blend,
+             element_heights, element_height_ratio
+   :show-inheritance:
+
+Compaction and fibre-volume-fraction gradient
+---------------------------------------------
+
+.. automodule:: wrinklefe.core.compaction
+   :members: VfGradientSpec, compute_vf_field, build_vf_materials,
+             scale_material_to_vf, resolve_constituents
    :show-inheritance:
 
 Penetration gate

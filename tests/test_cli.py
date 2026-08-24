@@ -749,6 +749,44 @@ def test_analyze_surface_resin_pockets_maps_side():
     assert cfg.analytical_only is False
 
 
+def test_analyze_vf_gradient_maps_and_forces_fe():
+    """--vf-gradient enables the FE-only Vf field and overrides --no-fe."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--no-fe", "--morphology", "tool-flat",
+            "--amplitude", "0.2", "--vf-gradient",
+        ])
+    cfg = captured["config"]
+    assert cfg.enable_vf_gradient is True
+    assert cfg.analytical_only is False
+    assert captured["analytical_only"] is False
+
+
+def test_analyze_vf_gradient_maps_constituent_overrides():
+    """--vf-nominal / --vf-fiber / --vf-matrix reach AnalysisConfig."""
+    captured, patcher = _stub_analysis_run()
+    with patcher:
+        cli_main([
+            "analyze", "--morphology", "tool-flat", "--amplitude", "0.2",
+            "--vf-gradient", "--vf-nominal", "0.58",
+            "--vf-fiber", "AS4", "--vf-matrix", "EPOXY_3501_6",
+        ])
+    cfg = captured["config"]
+    assert cfg.vf_nominal == 0.58
+    assert cfg.vf_fiber == "AS4"
+    assert cfg.vf_matrix == "EPOXY_3501_6"
+
+
+def test_analyze_vf_gradient_rejects_non_tool_flat():
+    """The v1 morphology restriction surfaces as a clean CLI error."""
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main([
+            "analyze", "--morphology", "stack", "--vf-gradient",
+        ])
+    assert exc_info.value.code == 2
+
+
 def test_analyze_progressive_maps_increments_and_forces_fe():
     captured, patcher = _stub_analysis_run()
     with patcher:

@@ -15,6 +15,36 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Physics — **compaction-driven ply-thickness / local fibre-volume-fraction
+  gradient** (issue #379, Part B — Fixes #379, completing the issue; builds
+  on the Part A micromechanics). New `wrinklefe.core.compaction` derives a
+  per-element local `Vf` from the deformed mesh with the kinematic rule
+  `Vf_local = vf_nominal · h0/h` — fibre content conserved per element while
+  the thickness change absorbs or expels resin — so a wrinkle constrained by
+  rigid tooling thins and thickens its plies instead of being modelled at a
+  constant ply thickness. Stretched trough elements turn resin-rich (low
+  `Vf`, softer); compacted crest elements turn resin-starved (high `Vf`,
+  stiffer), which is the treatment #371 left as a follow-up. Local materials
+  are **ratio-anchored** on the measured preset,
+  `P_local = P_preset · P_micro(Vf_local) / P_micro(vf_nominal)`, applied to
+  the stiffnesses and CTEs, so the micromechanics model contributes only its
+  `Vf` sensitivity and none of its 12–33 % absolute error; at
+  `Vf_local == vf_nominal` every ratio is exactly 1.0 and the preset object
+  itself is used. **Poisson ratios and all strengths stay at the preset
+  values** — no mixing rule maps `Vf` to an allowable, and inventing one
+  would be quietly wrong (local failure indices still move, because the
+  local stiffness redistributes stress). `Vf` is quantized onto an
+  `n_bins`-value grid anchored on the nominal value, so a mesh shares a few
+  dozen material objects rather than one per element. Enabled with
+  `AnalysisConfig(enable_vf_gradient=True)` (plus `vf_nominal`, `vf_fiber`,
+  `vf_matrix`, `vf_max`) or `wrinklefe analyze --vf-gradient`; **opt-in and
+  off by default**, FE-only, and restricted in v1 to
+  `morphology="tool_flat"`, whose flat outer envelope is what keeps the
+  per-column thickness — and hence the resin mass — conserved
+  (`surface_pocket_side="both"` is the two-caul-plate case). Elements
+  compacted past `vf_max` (default 0.75) saturate with a single counted
+  warning: the rule carries no lateral resin flow along the ply. See
+  `examples/10_vf_gradient_compaction.py`.
 - Core — **constituent-based micromechanics: fibre + matrix + fibre volume
   fraction to a ply** (issue #379, Part A — the Vf-to-properties capability
   #379 names as its own blocker; the compaction kinematics that consume it
@@ -727,6 +757,18 @@ version produced a given file.
   imported; native `.inp`/VTK writers need no extra).
 
 ### Numerical results
+- **Compaction Vf gradient (issue #379, Part B)**: opt-in and off by
+  default, so every existing result — the ledger included — is unchanged.
+  When it is switched on for a `tool_flat` run the FE numbers move, as
+  intended and as measured: on a 24-ply UD two-caul case (`tool_flat`,
+  `surface_pocket_side="both"`, A = 0.25 mm, IM7/8552, 40 × 4 mm domain)
+  `modulus_retention_global` goes 0.937591 with the binary surface pockets
+  to 0.944565 with the gradient (+0.006974, +0.744 %) — the compacted crest
+  band stiffens more than the resin-rich trough softens, and the
+  continuous field replaces a binary neat-resin tag. Against a wrinkle with
+  no trough treatment at all (0.957389) the gradient is 0.012824 *softer*,
+  so it lands between the two, as the physics implies. 64 of 1920 elements
+  saturate at the `vf_max = 0.75` cap at that amplitude.
 - **Penetration gate × multi-wrinkle (issue #342)**: with a
   `penetration_gate` preset and the geometry supplied via
   `AnalysisConfig.wrinkles`, the gate previously took its angle from the

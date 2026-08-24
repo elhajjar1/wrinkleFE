@@ -1340,6 +1340,46 @@ class AnalysisConfig:
     surface_transition_plies: int = 2
 
     # ------------------------------------------------------------------
+    # Compaction-driven fibre-volume-fraction gradient (issue #379).
+    # ------------------------------------------------------------------
+    # A wrinkle constrained by rigid tooling does not keep a constant ply
+    # thickness: resin is squeezed out of the compacted regions and pools
+    # where the geometry opens up.  When ``enable_vf_gradient`` is True the
+    # FE path derives a per-element local fibre volume fraction from the
+    # deformed element height (``Vf_local = vf_nominal * h0 / h``, fibre
+    # content conserved) and installs per-element materials obtained by
+    # scaling the preset card with the micromechanics ``Vf`` ratio
+    # (:mod:`~wrinklefe.core.compaction`): stiffnesses and CTEs move,
+    # Poisson ratios and ALL strengths stay at the preset values (the
+    # mixing rules do not predict strengths — documented limitation).
+    #
+    # Opt-in and FE-only.  v1 requires ``morphology="tool_flat"``, whose
+    # flat outer envelope makes the per-column thickness (and therefore the
+    # resin mass) conserved by construction; ``surface_pocket_side="both"``
+    # is the two-caul-plate case.  When enabled, the gradient SUPERSEDES the
+    # binary surface-pocket tagging (it is the continuous generalization of
+    # it — the resin-rich trough is the low-Vf end of the same field), while
+    # the machined crest resin lens (``enable_resin_pocket``) composes
+    # unchanged.
+    enable_vf_gradient: bool = False
+    # Fibre volume fraction the preset material card represents (the ratio
+    # anchor).  ``None`` resolves from
+    # :data:`~wrinklefe.core.compaction.CONSTITUENT_DEFAULTS` for the
+    # documented library systems; supply it for any other card.
+    vf_nominal: float | None = None
+    # Constituent presets used for the ``Vf`` ratio.  ``None`` resolves from
+    # ``CONSTITUENT_DEFAULTS``; explicit values always win.  ``vf_fiber`` is
+    # a :data:`~wrinklefe.core.micromechanics.FIBER_PRESETS` key,
+    # ``vf_matrix`` a ``MATRIX_PRESETS`` key or an isotropic material-library
+    # card name.
+    vf_fiber: str | None = None
+    vf_matrix: str | None = None
+    # Upper clamp on the local fibre volume fraction (default 0.75, just
+    # under square packing).  Elements compacted past it saturate, which is
+    # counted and warned once: the rule carries no lateral resin flow.
+    vf_max: float = 0.75
+
+    # ------------------------------------------------------------------
     # Progressive-damage FE path (load-stepping ply-discount to ultimate
     # load).  When ``enable_progressive_damage`` is True the FE solve runs
     # the :class:`~wrinklefe.solver.progressive_damage.ProgressiveDamageSolver`
@@ -1948,6 +1988,96 @@ class AnalysisConfig:
                     f"({self.transverse_mode!r}); the tool-flat decay is "
                     "verified for the x-only wrinkle only."
                 )
+
+        # --- Compaction Vf gradient (issue #379) ----------------------
+        if not isinstance(self.enable_vf_gradient, bool):
+            raise ValueError(
+                f"AnalysisConfig.enable_vf_gradient must be a bool, "
+                f"got {self.enable_vf_gradient!r}"
+            )
+        for name in ("vf_nominal",):
+            val = getattr(self, name)
+            if val is not None and not (
+                isinstance(val, (int, float))
+                and not isinstance(val, bool)
+                and math.isfinite(val)
+                and 0.0 < val < 1.0
+            ):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be a float in (0, 1) or "
+                    f"None, got {val!r}"
+                )
+        if not (
+            isinstance(self.vf_max, (int, float))
+            and not isinstance(self.vf_max, bool)
+            and math.isfinite(self.vf_max)
+            and 0.0 < self.vf_max <= 0.9
+        ):
+            raise ValueError(
+                f"AnalysisConfig.vf_max must be a float in (0, 0.9], got "
+                f"{self.vf_max!r}"
+            )
+        for name in ("vf_fiber", "vf_matrix"):
+            val = getattr(self, name)
+            if val is not None and not isinstance(val, str):
+                raise ValueError(
+                    f"AnalysisConfig.{name} must be a preset name (str) or "
+                    f"None, got {val!r}"
+                )
+        if self.enable_vf_gradient:
+            # FE-only: the gradient is a per-element material field, so an
+            # analytical-only run would silently drop it (same rule as the
+            # resin-pocket / surface-pocket features).
+            if self.analytical_only:
+                raise ValueError(
+                    "AnalysisConfig: enable_vf_gradient requires the FE "
+                    "path (it installs per-element materials in the mesh); "
+                    "it has no effect under analytical_only=True. Set "
+                    "analytical_only=False or disable the Vf gradient."
+                )
+            # v1 restriction: only the tool_flat morphology has a flat outer
+            # envelope, which is what makes the per-column thickness — and
+            # therefore the resin mass — conserved under the kinematic rule.
+            # Every other morphology leaves an undulating outer surface, so
+            # the compaction would create or destroy material.
+            if morph != "tool_flat":
+                raise ValueError(
+                    "AnalysisConfig: enable_vf_gradient is restricted to "
+                    f"morphology='tool_flat' in v1, got {self.morphology!r}. "
+                    "Only a tool-flat outer envelope conserves the "
+                    "per-column thickness (and hence the resin mass) under "
+                    "the compaction rule Vf = vf_nominal * h0/h; an "
+                    "undulating outer surface would create or destroy "
+                    "material. Use morphology='tool_flat' (with "
+                    "surface_pocket_side='both' for the two-caul-plate "
+                    "case) or disable the Vf gradient."
+                )
+            if self.enable_czm:
+                raise NotImplementedError(
+                    "AnalysisConfig: enable_vf_gradient is not yet "
+                    "combinable with enable_czm (the per-element Vf "
+                    "materials and cohesive elements are unverified "
+                    "together)."
+                )
+            # Constituents must resolve now, not deep in the mesh path.
+            from wrinklefe.core.compaction import VfGradientSpec
+
+            material_name = (
+                self.material.name if self.material is not None else ""
+            )
+            try:
+                VfGradientSpec.for_material(
+                    material_name,
+                    fiber=self.vf_fiber,
+                    matrix=self.vf_matrix,
+                    vf_nominal=self.vf_nominal,
+                    vf_max=self.vf_max,
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"AnalysisConfig: enable_vf_gradient cannot resolve the "
+                    f"micromechanics anchor: {exc}"
+                ) from exc
 
         # --- Progressive-damage path ----------------------------------
         if not isinstance(self.enable_progressive_damage, bool):
@@ -2989,9 +3119,26 @@ class WrinkleAnalysis:
 
         # 4a3. Surface resin pockets under a tool-flat surface (issue #361).
         # Runs after the crest lens so the two compose (per-element max)
-        # rather than overwrite.
-        if cfg.enable_surface_resin_pockets:
+        # rather than overwrite.  The compaction Vf gradient (#379) is the
+        # continuous generalization of this binary tag — the resin-rich
+        # trough is simply the low-Vf end of the same field — so when the
+        # gradient is on the binary tagging is skipped rather than applied
+        # on top of it (which would soften the trough twice).
+        if cfg.enable_surface_resin_pockets and not cfg.enable_vf_gradient:
             self._attach_surface_resin_pockets(mesh, laminate, wrinkle_config)
+        elif cfg.enable_surface_resin_pockets:
+            logger.info(
+                "Surface resin pockets superseded by the compaction Vf "
+                "gradient (issue #379): the binary trough tag is the "
+                "resin-rich extreme of the continuous Vf field, so it is "
+                "not applied on top of it."
+            )
+
+        # 4a4. Compaction-driven Vf / ply-thickness gradient (issue #379).
+        # Runs after the crest lens so the lens blend composes on top of the
+        # locally-compacted host material.
+        if cfg.enable_vf_gradient:
+            self._attach_vf_gradient(mesh, laminate)
 
         results.mesh = mesh
 
@@ -4584,6 +4731,98 @@ class WrinkleAnalysis:
                 "(max gap %.3g mm)",
                 cfg.surface_pocket_side, n_surface, mesh.n_elements, max_gap,
             )
+
+    def _attach_vf_gradient(
+        self, mesh: MeshData, laminate: Laminate
+    ) -> None:
+        """Install the compaction-driven local-``Vf`` materials (issue #379).
+
+        Derives the per-element fibre volume fraction from the deformed
+        element heights (``Vf_local = vf_nominal * h0 / h``; see
+        :mod:`~wrinklefe.core.compaction`) and attaches one ratio-anchored
+        material per occupied ``Vf`` bin.
+
+        Channel
+        -------
+        The materials go on ``mesh.resin_blend_materials``, **not**
+        ``mesh.element_material_override``.  The override dict is owned and
+        *mutated in place* by
+        :class:`~wrinklefe.solver.progressive_damage.ProgressiveDamageSolver`
+        as elements fail, so anything parked there would be overwritten by
+        the degraded cards (and the snapshot/restore in
+        :meth:`_run_progressive_path` restores the same mutated object).
+        ``resin_blend_materials`` sits one step lower in
+        :meth:`~wrinklefe.core.mesh.MeshData.element_material` precedence,
+        which is exactly right: damage still wins over compaction, and the
+        assembler / stress recovery / failure evaluator already consume this
+        channel with no solver change.
+
+        ``mesh.resin_blend`` (the fibre-angle suppression weight) is left
+        alone: a compacted or resin-enriched element still has fibres, and
+        they still carry the wrinkle misalignment.  Where the crest resin
+        lens has already blended an element, the blend is re-applied on top
+        of the local-``Vf`` host so the two compose without double-counting.
+        """
+        from wrinklefe.core.compaction import (
+            VfGradientSpec,
+            build_vf_materials,
+            compute_vf_field,
+        )
+
+        cfg = self.config
+        assert cfg.material is not None
+        spec = VfGradientSpec.for_material(
+            cfg.material.name,
+            fiber=cfg.vf_fiber,
+            matrix=cfg.vf_matrix,
+            vf_nominal=cfg.vf_nominal,
+            vf_max=cfg.vf_max,
+        )
+        vf_field = compute_vf_field(mesh, spec)
+
+        # One call per distinct ply material so a mixed-material laminate is
+        # scaled against the right preset card.
+        ply_ids = np.asarray(mesh.ply_ids)
+        vf_materials: dict[int, OrthotropicMaterial] = {}
+        by_material: dict[int, tuple[OrthotropicMaterial, list[int]]] = {}
+        for elem in range(int(mesh.n_elements)):
+            ply_material = laminate.plies[int(ply_ids[elem])].material
+            entry = by_material.setdefault(id(ply_material), (ply_material, []))
+            entry[1].append(elem)
+        for ply_material, elems in by_material.values():
+            vf_materials.update(
+                build_vf_materials(
+                    ply_material, vf_field, spec,
+                    element_ids=np.asarray(elems, dtype=np.int64),
+                )
+            )
+
+        # Compose with an already-attached crest resin lens: rebuild its
+        # blend from the local-Vf host rather than discarding either.
+        blend_weight = mesh.resin_blend
+        existing = dict(mesh.resin_blend_materials or {})
+        if blend_weight is not None and vf_materials:
+            resin_material = cfg.resin_pocket_material
+            if resin_material is None:
+                resin_material = MaterialLibrary().get("EPOXY_S6C10")
+            for elem, material in vf_materials.items():
+                w = float(blend_weight[elem])
+                existing[elem] = (
+                    material.blend(resin_material, w) if w > 0.0 else material
+                )
+        else:
+            existing.update(vf_materials)
+        mesh.resin_blend_materials = existing
+
+        n_sat = int(np.count_nonzero(vf_field >= spec.vf_max))
+        logger.info(
+            "Vf gradient (issue #379): %d/%d elements re-materialised "
+            "(Vf %.3f-%.3f about nominal %.3f, %d shared materials, "
+            "%d saturated at vf_max=%.3f).",
+            len(vf_materials), mesh.n_elements,
+            float(vf_field.min()), float(vf_field.max()), spec.vf_nominal,
+            len({id(m) for m in vf_materials.values()}), n_sat, spec.vf_max,
+        )
 
     def _evaluate_failure(
         self,
