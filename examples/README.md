@@ -16,6 +16,7 @@ so they cannot rot.
 | [`07_mesh_convergence.py`](07_mesh_convergence.py) | Mesh-convergence study (`mesh_convergence_study` / `wrinklefe converge`) | ~90 s |
 | [`08_multi_wrinkle_czm_linkup.py`](08_multi_wrinkle_czm_linkup.py) | Crest-to-crest delamination link-up between adjacent wrinkles (`wrinkles` + `enable_czm`) | ~5 s |
 | [`09_acceptance_limit.py`](09_acceptance_limit.py) | Maximum acceptable wrinkle amplitude for a target knockdown (`find_critical_value` / `wrinklefe critical`) | ~5 s |
+| [`10_vf_gradient_compaction.py`](10_vf_gradient_compaction.py) | Compaction Vf / ply-thickness gradient between two caul plates (`enable_vf_gradient`) vs the binary surface pockets | ~30 s |
 | [`transverse_wrinkle_knockdown.py`](transverse_wrinkle_knockdown.py) | Localized (through-width) vs uniform wrinkle knockdown (`transverse_mode`) | ~20 s |
 
 Run any of them from this directory with the package installed

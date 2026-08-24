@@ -460,15 +460,16 @@ def test_fe_off_is_the_untouched_baseline():
 def test_fe_two_caul_significance():
     """Two-caul-plate case: the gradient measurably moves the retention.
 
-    MEASURED on this configuration (24-ply UD, tool_flat, side="both",
-    A = 0.25 mm): binary surface pockets give
-    ``modulus_retention_global = 0.94824`` and the Vf gradient
-    ``0.95468`` — the gradient is +0.0064 (+0.68 %) *stiffer*, because the
-    compacted crest band (Vf up to the 0.75 cap) stiffens more than the
+    MEASURED on exactly this configuration (24-ply UD, tool_flat,
+    side="both", A = 0.25 mm, 40 x 4 mm domain): binary surface pockets
+    give ``modulus_retention_global = 0.937591`` and the Vf gradient
+    ``0.944565`` — the gradient is +0.006974 (+0.744 %) *stiffer*, because
+    the compacted crest band (Vf up to the 0.75 cap) stiffens more than the
     resin-rich trough softens, and because the continuous field replaces a
     binary neat-resin tag.  Against a wrinkle with no trough treatment at
-    all (0.96494) the gradient is 0.0103 *softer*, i.e. it lands between
-    the two, which is the physically expected ordering.
+    all (0.957389) the gradient is 0.012824 *softer*, i.e. it lands between
+    the two, which is the physically expected ordering.  64 of the 1920
+    elements saturate at the ``vf_max`` cap here.
 
     The floor below is deliberately loose (a third of the measured delta)
     so mesh/solver noise cannot flake it while a regression that silently
@@ -484,7 +485,7 @@ def test_fe_two_caul_significance():
     )
     assert abs(delta) > 0.002, (
         f"Vf gradient changed modulus_retention_global by only {delta:+.5f}; "
-        f"expected the measured ~+0.0064."
+        f"expected the measured ~+0.0070."
     )
     # Direction, as measured: the compacted band dominates.
     assert delta > 0.0

@@ -453,6 +453,48 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_analyze.add_argument(
+        "--vf-gradient", action="store_true", default=False,
+        dest="vf_gradient",
+        help=(
+            "Enable the compaction-driven fibre-volume-fraction / "
+            "ply-thickness gradient (FE-only, issue #379). Derives a local "
+            "Vf per element from the deformed element height "
+            "(Vf = vf_nominal * h0/h, fibre content conserved) and scales "
+            "the ply stiffnesses and CTEs by the micromechanics Vf ratio; "
+            "Poisson ratios and all strengths stay at the preset values. "
+            "Requires --morphology tool-flat (use --surface-pocket-side "
+            "both for the two-caul-plate case); supersedes the binary "
+            "surface resin pockets. Forces the FE path."
+        ),
+    )
+    p_analyze.add_argument(
+        "--vf-nominal", type=float, default=None, dest="vf_nominal",
+        help=(
+            "Fibre volume fraction the material card represents — the "
+            "anchor of the Vf ratio. Omit to use the documented value for "
+            "the library system (e.g. 0.60 for IM7/8552, 0.66 for "
+            "IM6G/3501-6). Required for a material card with no documented "
+            "Vf. Only consulted with --vf-gradient."
+        ),
+    )
+    p_analyze.add_argument(
+        "--vf-fiber", type=str, default=None, dest="vf_fiber",
+        help=(
+            "Fibre constituent preset for the Vf ratio (e.g. IM7, AS4, "
+            "T800S, S2_GLASS). Omit to use the documented constituent for "
+            "the library system. Only consulted with --vf-gradient."
+        ),
+    )
+    p_analyze.add_argument(
+        "--vf-matrix", type=str, default=None, dest="vf_matrix",
+        help=(
+            "Matrix constituent preset for the Vf ratio (e.g. EPOXY_8552, "
+            "EPOXY_3501_6, or an isotropic material-library card such as "
+            "EPOXY_S6C10). Omit to use the documented constituent for the "
+            "library system. Only consulted with --vf-gradient."
+        ),
+    )
+    p_analyze.add_argument(
         "--progressive", action="store_true", default=False,
         dest="progressive",
         help=(
@@ -1297,6 +1339,11 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         overrides["surface_pocket_side"] = args.surface_pocket_side
     if given("surface_transition_plies"):
         overrides["surface_transition_plies"] = args.surface_transition_plies
+    if given("vf_gradient"):
+        overrides["enable_vf_gradient"] = True
+    for name in ("vf_nominal", "vf_fiber", "vf_matrix"):
+        if given(name):
+            overrides[name] = getattr(args, name)
     if given("progressive"):
         overrides["enable_progressive_damage"] = True
     if given("increments"):
@@ -1319,8 +1366,9 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
     # Resolve analytical-only vs. full FE intent.
     #
     # Precedence (highest first):
-    #   1. --enable-czm, --resin-pocket, --surface-resin-pockets, or
-    #      --progressive (or a config with any of them on) -> force FE.
+    #   1. --enable-czm, --resin-pocket, --surface-resin-pockets,
+    #      --vf-gradient or --progressive (or a config with any of them on)
+    #      -> force FE.
     #      These are FE-only features that would silently no-op under
     #      analytical_only, so they take precedence over --analytical-only
     #      / --no-fe just as CZM does (issue #346).
@@ -1339,11 +1387,13 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         overrides.get("enable_resin_pocket", False)
         or overrides.get("enable_surface_resin_pockets", False)
         or overrides.get("enable_progressive_damage", False)
+        or overrides.get("enable_vf_gradient", False)
         or (
             base is not None and (
                 base.enable_resin_pocket
                 or base.enable_surface_resin_pockets
                 or base.enable_progressive_damage
+                or base.enable_vf_gradient
             )
         )
     )

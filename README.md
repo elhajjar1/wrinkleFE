@@ -32,6 +32,7 @@ Public link, no account needed.
 - **Cohesive-zone delamination (CZM):** Bilinear traction–separation interface elements (`enable_czm=True`) with per-interface damage, energy and crack-length reporting — including continuous cohesive surfaces across adjacent wrinkles for crest-to-crest delamination link-up (see `examples/08_multi_wrinkle_czm_linkup.py`)
 - **Resin-pocket material zone:** Graded neat-epoxy lens at the wrinkle crest (modulus + fibre-angle blend, counted once) via `wrinklefe.core.resin_pocket`
 - **Tool-flat surfaces & surface resin pockets:** Parts cured against rigid tooling / a caul sheet keep perfectly flat outer surfaces while the fibres undulate internally; the wrinkle troughs fill with neat resin under the flat surface (`enable_surface_resin_pockets`, `surface_pocket_side` = `top`/`bottom`/`both`). FE-only, trough-following, volume-conserving; composes with the crest lens
+- **Compaction Vf / ply-thickness gradient:** Under rigid tooling the resin is squeezed out of the compacted regions and pools where the geometry opens up, so ply thickness and local fibre volume fraction vary through the wrinkle (`enable_vf_gradient`, `tool_flat` only — `surface_pocket_side="both"` is the two-caul-plate case). `Vf_local = vf_nominal · h0/h` per element (fibre content conserved), and the local ply is the preset **scaled by the micromechanics Vf ratio** (`wrinklefe.core.compaction`); FE-only, opt-in, and the continuous generalization of the binary surface pockets
 - **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
 - **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue does not capture the *fibre-scale* wrinkle knockdown (it gets the sign wrong: the bifurcation load *rises* with the wrinkle), so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
@@ -320,9 +321,36 @@ On the crest side the `surface_transition_plies` transition elements
 bounded — `amplitude ≤ 0.8 · surface_transition_plies · ply_thickness /
 nz_per_ply`; beyond it the elements would invert and construction fails
 with a message naming both remedies (more transition plies, or a smaller
-amplitude). The symmetric-profile limitation under rigid tooling (crests
-physically compact rather than penetrate the tool) is a documented
-follow-up.
+amplitude).
+
+Those compressed crest-side elements are exactly what the **compaction
+Vf gradient** models (issue #379): set `enable_vf_gradient=True` and the
+local fibre volume fraction follows the thickness change,
+`Vf_local = vf_nominal · h0/h`, so the crest band compacts and stiffens
+while the trough turns resin-rich and softens — one continuous field
+instead of a binary neat-resin tag:
+
+```python
+config = AnalysisConfig(
+    morphology="tool_flat", amplitude=0.25, surface_pocket_side="both",
+    enable_vf_gradient=True,          # opt-in; tool_flat only in v1
+    vf_nominal=None,                  # None -> the card's documented Vf
+    vf_max=0.75,                      # compaction cap (square packing)
+    material=lib.get("IM7_8552"), angles=[0.0] * 24, ply_thickness=0.183,
+    analytical_only=False,
+)
+```
+
+The local card is the **preset scaled by the micromechanics ratio**
+`P_micro(Vf_local) / P_micro(vf_nominal)` for the stiffnesses and CTEs, so
+the trend is modelled without importing the micromechanics model's
+absolute error. **Poisson ratios and all strengths stay at the preset
+values** — no mixing rule predicts a strength from `Vf` (local failure
+indices still move, because the local stiffness redistributes stress).
+Elements compacted past `vf_max` saturate, counted in a single warning;
+the rule carries no lateral resin flow along the ply. When the gradient is
+on it supersedes the binary surface-pocket tag (it is its continuous
+generalization); the machined crest resin lens composes unchanged.
 
 ### Penetration gate (θ, D/T, z) — UD, zero FE cost
 
@@ -543,7 +571,8 @@ wrinklefe analyze --transverse-mode gaussian_decay --transverse-width 5 \
 #### Wrinkle-defect capabilities
 
 `analyze` also exposes the newer defect models. The FE-only features
-(`--resin-pocket`, `--surface-resin-pockets`, `--progressive`) force the
+(`--resin-pocket`, `--surface-resin-pockets`, `--vf-gradient`,
+`--progressive`) force the
 full FE solve, so they take precedence over `--analytical-only` / `--no-fe`:
 
 ```bash
@@ -566,6 +595,10 @@ wrinklefe analyze --surface-resin-pockets --surface-pocket-side both
 # is bounded by 0.8 * surface-transition-plies * ply_thickness / nz_per_ply.
 wrinklefe analyze --morphology tool-flat --amplitude 0.35 \
     --surface-pocket-side both --surface-transition-plies 3
+
+# Compaction Vf / ply-thickness gradient — two caul plates (FE, tool_flat)
+wrinklefe analyze --morphology tool-flat --amplitude 0.25 \
+    --surface-pocket-side both --vf-gradient
 ```
 
 | Flag | Config field | Notes |
@@ -575,6 +608,8 @@ wrinklefe analyze --morphology tool-flat --amplitude 0.35 \
 | `--resin-pocket` | `enable_resin_pocket` | Crest resin lens (FE-only) |
 | `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}` | `enable_surface_resin_pockets` / `surface_pocket_side` | Tool-flat surface pockets (FE-only). Auto-enabled for `--morphology tool-flat` |
 | `--surface-transition-plies N` | `surface_transition_plies` | `tool_flat` only: amplitude-ramp width (≥ 1, default 2); bounds the amplitude |
+| `--vf-gradient` | `enable_vf_gradient` | Compaction Vf / ply-thickness gradient (FE-only, `tool_flat` only); supersedes the binary surface pockets |
+| `--vf-nominal V` / `--vf-fiber F` / `--vf-matrix M` | `vf_nominal` / `vf_fiber` / `vf_matrix` | Ratio anchor and constituents; omit to use the material card's documented values |
 | `--progressive` / `--increments N` | `enable_progressive_damage` / `progressive_n_increments` | Load-stepping ultimate strength (FE-only) |
 
 The long tail of finer knobs (custom `GateParameters`, resin-pocket
