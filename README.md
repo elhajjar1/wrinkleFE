@@ -94,6 +94,13 @@ portable `AnalysisConfig` JSON — round-tripping with the CLI `--config` /
 `--save-config` flags — or **load** a saved case (JSON/YAML) back into the
 sidebar.
 
+A run reports live progress while it solves: the status box tracks the
+pipeline phase by phase (building the laminate → analytical predictions →
+assembling the FE mesh → solving → evaluating failure → retention
+factors), so a long FE or CZM solve is distinguishable from a hung one.
+Re-running an identical configuration is served from a small in-session
+result cache instead of re-solving; *Reset to defaults* clears it.
+
 A second sidebar button, **Find acceptable limit**, runs the inverse
 search on those same inputs — the browser form of
 [`wrinklefe critical`](#finding-the-maximum-acceptable-defect). Set a
