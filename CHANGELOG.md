@@ -15,6 +15,24 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- App — **live progress for FE/CZM runs** (issue #377 — Fixes #377). The
+  *Run analysis* status box now carries a real progress bar driven by the
+  engine's existing `WrinkleAnalysis.run(progress_callback=...)` hook, so a
+  long solve reports the phase it is in rather than sitting at a frozen
+  10 %: *Building laminate* (0 %) → *Computing analytical predictions*
+  (5 %) → *Assembling FE mesh* (10 %) → *Solving FE system* (25 %) →
+  *Evaluating failure criteria* (75 %) → *Computing retention factors*
+  (90 %) → *Analysis complete* (100 %), with the percentage in the bar text
+  and the current phase echoed in the status label. Users on a 30–90 s
+  Streamlit Cloud CZM run can now tell a slow solve from a hung one. The
+  callback is defensive by construction — fractions are clamped and any
+  widget error is swallowed and logged at debug — so a cosmetic update can
+  never abort a solve that is already minutes in. **Coarse during CZM and
+  progressive-damage solves:** `AnalysisResults`' CZM / progressive
+  sub-paths do not emit progress of their own, so those runs hold at
+  *Solving FE system* (25 %) for the whole Newton-Raphson / load-increment
+  loop before completing; finer emits inside those loops would be an engine
+  change and are left as a follow-up.
 - Physics — **compaction-driven ply-thickness / local fibre-volume-fraction
   gradient** (issue #379, Part B — Fixes #379, completing the issue; builds
   on the Part A micromechanics). New `wrinklefe.core.compaction` derives a
@@ -666,6 +684,21 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- App — **the analysis run is no longer wrapped in `@st.cache_data`**
+  (issue #377 — Fixes #377). That decorator was what blocked live progress
+  widgets (issue #242: Streamlit refuses element calls made inside a
+  cache-decorated function against a layout block created outside it). The
+  solve now runs uncached and the *result dict* is cached by hand in
+  `st.session_state`, keyed on exactly the same hashable `cfg_payload` the
+  decorator used to hash — so re-running an identical configuration is
+  still instant and returns the same object. Unlike `@st.cache_data`, the
+  manual cache is **bounded to the 4 most recently used payloads**: FE
+  results carry mesh, displacement, stress and failure-index arrays, and
+  keeping every distinct run of a browsing session was needless memory.
+  *Reset to defaults* clears the cache along with the displayed results.
+  `run_analysis_cached(cfg_payload, progress_callback=None)` remains the
+  entry point and returns an unchanged result-dict shape; the solve itself
+  now lives in an undecorated `_run_analysis`.
 - Solver — **the ILU→diagonal preconditioner fallback is now loud and
   narrow** (issue #265). When the iterative solver's ILU factorisation
   fails, `StaticSolver._solve_iterative` emits a `logging.WARNING`

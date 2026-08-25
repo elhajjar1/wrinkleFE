@@ -15,8 +15,10 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
+import math
 import sys
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -59,6 +61,8 @@ from wrinklefe.viz.style import (  # noqa: E402
     MORPHOLOGY_COLORS,
     TENSION_MECHANISM_COLORS,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -271,6 +275,14 @@ DEFAULTS: dict[str, object] = {
 }
 
 
+# Session-state key and size cap for the manual analysis-result cache that
+# replaced ``@st.cache_data`` on the run path (issue #377). Defined up here so
+# ``reset_inputs`` can clear the cache; the cache helpers themselves live next
+# to ``_run_analysis`` further down.
+_RUN_CACHE_KEY = "_run_cache"
+_RUN_CACHE_MAX = 4
+
+
 def reset_inputs() -> None:
     """Restore every sidebar input widget to its default value.
 
@@ -291,8 +303,12 @@ def reset_inputs() -> None:
     # Drop the results and the payload they were computed from so a Reset
     # returns the Analyze tab to its empty state instead of showing a stale
     # run against default inputs.
+    # ``_run_cache`` is the manual result cache the run handler consults
+    # instead of ``@st.cache_data`` (issue #377); a Reset drops it too so the
+    # next run genuinely re-solves rather than replaying a pre-Reset result.
     for run_key in (
         "results", "cfg_payload", "goalseek_result", "goalseek_payload",
+        _RUN_CACHE_KEY,
     ):
         st.session_state.pop(run_key, None)
     # st.session_state keys are ``str | int``; annotate so the reused loop
@@ -2072,13 +2088,77 @@ def _config_from_payload(cfg_payload: tuple) -> AnalysisConfig:
     )
 
 
-@st.cache_data(show_spinner=False)
-def run_analysis_cached(cfg_payload: tuple) -> dict:
-    """Cached analysis run. cfg_payload is a hashable tuple of config items."""
+# ---------------------------------------------------------------------------
+# Analysis run + manual result cache (issue #377)
+#
+# The solve used to sit behind ``@st.cache_data``. That made repeat-identical
+# runs instant but froze the progress bar: Streamlit refuses to record widget
+# calls made inside a cache-decorated function against a layout block created
+# outside it (issue #242), so the engine's ``progress_callback`` could not
+# drive ``st.progress`` and the bar sat at a hard-coded 10 % for the whole
+# solve — indistinguishable from a hung run on a 30-90 s CZM job.
+#
+# So the run is uncached now (``_run_analysis``) and the *result dict* is
+# cached by hand in ``st.session_state`` keyed on the hashable ``cfg_payload``
+# — the same key ``@st.cache_data`` hashed. FE result dicts carry mesh /
+# stress / failure-index arrays, so the cache is bounded to the
+# ``_RUN_CACHE_MAX`` most recently used payloads instead of growing for the
+# life of the session.
+# ---------------------------------------------------------------------------
+
+def _run_cache() -> MutableMapping[tuple, dict]:
+    """Return the session-scoped result cache, creating it on first use."""
+    cache = st.session_state.get(_RUN_CACHE_KEY)
+    if not isinstance(cache, dict):
+        cache = {}
+        st.session_state[_RUN_CACHE_KEY] = cache
+    return cache
+
+
+def _run_cache_get(cfg_payload: tuple) -> dict | None:
+    """Look up a previous run's result dict, refreshing its recency.
+
+    Returns ``None`` on a miss. A hit moves the entry to the most-recent end
+    so a payload the user keeps re-running is never the one evicted.
+    """
+    cache = _run_cache()
+    if cfg_payload not in cache:
+        return None
+    result = cache.pop(cfg_payload)
+    cache[cfg_payload] = result
+    return result
+
+
+def _run_cache_put(cfg_payload: tuple, result: dict) -> None:
+    """Store a result dict, evicting least-recently-used entries past the cap."""
+    cache = _run_cache()
+    cache.pop(cfg_payload, None)  # re-insert so the entry lands at the end
+    cache[cfg_payload] = result
+    while len(cache) > _RUN_CACHE_MAX:
+        # ``dict`` preserves insertion order, so the first key is the
+        # least-recently used one.
+        cache.pop(next(iter(cache)))
+
+
+def _run_analysis(
+    cfg_payload: tuple,
+    progress_callback: Callable[[str, float], None] | None = None,
+) -> dict:
+    """Run the analysis and package the results for the app (uncached).
+
+    ``cfg_payload`` is the hashable tuple of config items assembled by
+    :func:`_assemble_cfg_payload`. ``progress_callback`` is forwarded
+    verbatim to :meth:`WrinkleAnalysis.run`, which calls it as
+    ``callback(label, fraction)`` at every phase boundary.
+
+    Callers should go through :func:`run_analysis_cached`, which adds the
+    session-scoped result cache.
+    """
     cfg_dict = dict(cfg_payload)
     cfg = _config_from_payload(cfg_payload)
     result = WrinkleAnalysis(cfg).run(
         analytical_only=cfg_dict["analytical_only"],
+        progress_callback=progress_callback,
     )
 
     fe: dict | None = None
@@ -2254,6 +2334,28 @@ def run_analysis_cached(cfg_payload: tuple) -> dict:
             else None
         ),
     }
+
+
+def run_analysis_cached(
+    cfg_payload: tuple,
+    progress_callback: Callable[[str, float], None] | None = None,
+) -> dict:
+    """Run the analysis, reusing the result of an identical earlier run.
+
+    Thin wrapper over :func:`_run_analysis`: a session-scoped, bounded
+    lookup on ``cfg_payload`` (see :data:`_RUN_CACHE_MAX`) returns a
+    previous run's result dict instantly, and a miss solves — forwarding
+    ``progress_callback`` so the caller can drive live progress widgets
+    (issue #377). The returned dict has exactly the shape
+    :func:`_run_analysis` builds; a cache hit hands back the *same* object,
+    so callers must not mutate it.
+    """
+    cached = _run_cache_get(cfg_payload)
+    if cached is not None:
+        return cached
+    result = _run_analysis(cfg_payload, progress_callback=progress_callback)
+    _run_cache_put(cfg_payload, result)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2819,15 +2921,52 @@ if run_clicked or _demo_pending:
                 "Use the **Stop** button in the top-right toolbar to "
                 "cancel a long FE solve."
             )
-        # A streamlit progress widget can't be driven from inside the
-        # @st.cache_data-decorated solve (Streamlit refuses to record an
-        # element call against a layout block created outside the cached
-        # function — see issue #242). We keep a static progress bar for
-        # visual confirmation and let the status spinner + write lines
-        # carry the "something is happening" signal.
-        progress_bar = st.progress(0.1, text="Solving…")
+        # Live progress (issue #377). The solve runs uncached now — the old
+        # @st.cache_data boundary was what stopped a widget created out here
+        # from being driven from inside the run (issue #242), which is why
+        # this bar used to be a hard-coded, frozen 10 %. The engine's
+        # ``progress_callback`` fires at every phase boundary
+        # (mesh -> assemble -> solve -> failure -> retention), and repeat
+        # runs of an identical payload come back from the manual session
+        # cache without re-solving.
+        progress_bar = st.progress(0.0, text="Starting…")
+        # One-element list rather than a flag: this handler is defined at
+        # module scope, so it has no enclosing function to declare nonlocal
+        # against.
+        _progress_widget_warned: list[bool] = [False]
+
+        def _on_progress(label: str, fraction: float) -> None:
+            """Drive the status widgets from the engine's phase callback.
+
+            Deliberately total: a bad fraction is clamped and any widget
+            error is swallowed (logged once at debug), because a cosmetic
+            progress update must never abort a solve that is already
+            minutes in.
+            """
+            try:
+                frac = float(fraction)
+            except (TypeError, ValueError):
+                frac = 0.0
+            if not math.isfinite(frac):
+                frac = 0.0
+            frac = max(0.0, min(1.0, frac))
+            try:
+                progress_bar.progress(
+                    frac, text=f"{label}… ({int(round(frac * 100.0))} %)"
+                )
+                status.update(label=f"Running analysis — {label}…")
+            except Exception:
+                if not _progress_widget_warned[0]:
+                    _progress_widget_warned[0] = True
+                    logger.debug(
+                        "Progress widget update failed; continuing the solve.",
+                        exc_info=True,
+                    )
+
         try:
-            results = run_analysis_cached(cfg_payload)
+            results = run_analysis_cached(
+                cfg_payload, progress_callback=_on_progress
+            )
         except ValueError as exc:
             status.update(label="Invalid input", state="error", expanded=True)
             st.error(f"Invalid input: {exc}")
