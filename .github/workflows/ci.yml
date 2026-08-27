@@ -165,12 +165,12 @@ jobs:
 
   benchmarks:
     # Runs the pytest-benchmark performance suite, autosaves the timings
-    # as a build artifact, and — only once a committed baseline exists —
-    # fails on a median regression. We ship WITHOUT a baseline: timings
-    # captured in a throwaway container are meaningless against a CI
-    # runner, so the regression gate stays dormant until a maintainer
-    # bootstraps `tests/test_benchmarks/baseline/` from a green main run
-    # (see CONTRIBUTING.md). The 2x (median:100%) threshold absorbs the
+    # as a build artifact, and compares them against the committed
+    # baseline in `tests/test_benchmarks/baseline/`. That baseline is
+    # currently container-generated and the compare step is therefore on
+    # `continue-on-error` probation — see the step comments below and the
+    # "Benchmarks" section of CONTRIBUTING.md for how to promote it to a
+    # blocking gate. The 2x (median:100%) threshold absorbs the
     # substantial run-to-run CPU variance of shared CI runners; a tighter
     # bound (e.g. 50%) would flake.
     runs-on: ubuntu-latest
@@ -195,17 +195,33 @@ jobs:
           pytest tests/test_benchmarks -m benchmark \
             --benchmark-autosave --benchmark-storage=.benchmarks
 
+      # `.benchmarks/` is a DOT directory, and upload-artifact@v4 skips
+      # hidden files by default — so every previous run logged "No files
+      # were found with the provided path" and silently uploaded nothing.
+      # That is why no runner-generated baseline was ever downloadable.
       - name: Upload benchmark timings
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-timings
           path: .benchmarks/
+          include-hidden-files: true
           if-no-files-found: warn
 
+      # PROBATION — non-blocking. The committed baseline under
+      # tests/test_benchmarks/baseline/ is *container-generated* (produced
+      # on Python 3.12, so its machine id matches this job, but on
+      # different hardware from a GitHub runner). Absolute timings
+      # therefore are not comparable, and a hard failure here would be
+      # noise, not signal. It runs and reports so the gate is visible and
+      # exercised. Before dropping `continue-on-error` and making this
+      # blocking: download the `benchmark-timings` artifact from a green
+      # `main` run (now that the upload above is fixed) and replace the
+      # baseline per the "Benchmarks" section of CONTRIBUTING.md.
       - name: Compare against committed baseline (if present)
+        continue-on-error: true
         run: |
           if [ -d tests/test_benchmarks/baseline ]; then
-            echo "Baseline found — enforcing median:100% (2x) regression gate."
+            echo "Baseline found — reporting median:100% (2x) regression gate."
             pytest tests/test_benchmarks -m benchmark \
               --benchmark-storage=tests/test_benchmarks/baseline \
               --benchmark-compare \
