@@ -43,8 +43,16 @@ jobs:
       # little marginal signal. The complete suite (and the Codecov
       # upload, which needs the slow-path coverage) runs once in
       # ``test-full`` below.
+      #
+      # `--cov-fail-under=0` explicitly opts this job OUT of the
+      # `fail_under` floor in pyproject's [tool.coverage.report]. The
+      # floor was measured on the FULL suite; this lane deselects the slow
+      # integration solves, so its coverage is structurally lower and
+      # would trip a floor that is perfectly healthy. ``test-full`` is the
+      # job the floor is meant to gate. The `--cov` here stays only for
+      # the per-cell terminal report.
       - name: Run tests
-        run: pytest --tb=short -q -m "not slow" --cov=wrinklefe --cov-report=xml --cov-report=term
+        run: pytest --tb=short -q -m "not slow" --cov=wrinklefe --cov-report=xml --cov-report=term --cov-fail-under=0
 
       - name: Check import
         run: python -c "import wrinklefe; print(f'WrinkleFE {wrinklefe.__version__} imported successfully')"
@@ -56,7 +64,11 @@ jobs:
     # default addopts already exclude it, but an explicit -m on the CLI
     # overrides that default, so it is restated here). This is the job
     # that owns the Codecov upload — measuring coverage on the fast lane
-    # alone would under-report the slow integration paths.
+    # alone would under-report the slow integration paths. It is also the
+    # job the `fail_under` floor in pyproject's [tool.coverage.report]
+    # gates: this run's number is the one the floor was measured against,
+    # so no `--cov-fail-under` override appears below (unlike the matrix
+    # job above, which opts out).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -577,8 +577,65 @@ version produced a given file.
   `# doctest: +SKIP`. Kept out of the default `addopts` so a doc example
   cannot block the core suite. Docstring-only change — no numeric
   results shift.
+- Tooling — **pre-commit hooks, a coverage floor, and an armed benchmark
+  gate** (issue #376 — Fixes #376). Six tooling gaps that let quality
+  regress silently, closed together; no library code changes and the
+  validation ledger is zero-drift.
+  - **`.pre-commit-config.yaml`**, which the repo lacked entirely. Mirrors
+    the `lint` CI job exactly: `ruff check` (full pyproject ruleset) on the
+    commit stage, whole-tree `mypy src/wrinklefe app.py streamlit_viz.py`
+    on the pre-push stage. Both hooks are `language: system`, so they run
+    the tools already installed in your `[all,dev]` environment and cannot
+    drift from CI's versions — a pinned upstream mirror would install a
+    second ruff/mypy and, for mypy, one without streamlit/plotly, which is
+    the failure mode issue #374 fixed in CI. Install with
+    `pre-commit install` and `pre-commit install --hook-type pre-push`; see
+    CONTRIBUTING.md.
+  - **A coverage floor** — `[tool.coverage.report] fail_under` in
+    `pyproject.toml`. Coverage was measured and uploaded but never
+    enforced, so a new module could land at zero coverage with no signal.
+    The floor is set from a measured full-suite total, deliberately a
+    couple of points below it so ordinary variation does not flake the
+    build. It gates the `test-full` job, whose run is what the floor was
+    measured against; the OS/Python matrix job also passes `--cov` but
+    deselects the slow integration solves, so its coverage is structurally
+    lower and it explicitly opts out with `--cov-fail-under=0`. The floor
+    is a ratchet: raise it as coverage rises, never lower it to go green.
+  - **CLI tests for `converge` and `materials`**, which had zero
+    arg-parsing or wiring coverage. Sixteen tests following the existing
+    patched-engine pattern: flag→config mapping, `--refine` parsing,
+    `--layup`/`--material` threading, `--save-plot`, clean one-line error
+    handling, and bogus-argument exit-2 cases that assert the engine never
+    runs.
+  - **A requirements-consistency test.** `requirements.txt` had drifted to
+    `numpy>=2.1` against pyproject's `numpy>=1.24` with only a
+    "keep versions in sync" comment holding the line.
+    `tests/test_requirements_consistency.py` now asserts the files cannot
+    contradict pyproject (which stays the source of truth for install
+    metadata) while still allowing the deploy file's tighter pins.
+  - **The benchmark regression gate is armed.** The 2x median compare step
+    had never executed, because `tests/test_benchmarks/baseline/` was never
+    bootstrapped. A baseline is now committed. See **Fixed** for the
+    artifact-upload bug that made the documented bootstrap impossible.
+  - **The three `.claude/skills` docs are current again.**
+    `expand-mypy-coverage` and `fix-ruff-violations` still described
+    migrations that completed long ago (init-file-only mypy with ~102
+    errors; a `--select E9,F63,F7,F82` ruff starter scope with ~840
+    deferred violations), so an agent following them verbatim would have
+    *narrowed* CI scope. Both are rewritten as regression guards over the
+    real, finished scopes, and `pre-commit-hooks` now points at the actual
+    config above.
 
 ### Fixed
+- Tooling — **the `benchmark-timings` CI artifact was always empty**
+  (issue #376 — Fixes #376). `.benchmarks/` is a dot directory and
+  `actions/upload-artifact@v4` skips hidden files by default, so the
+  `benchmarks` job logged "No files were found with the provided path" and
+  uploaded nothing while still reporting success. That made CONTRIBUTING's
+  documented baseline-bootstrap procedure — "download the
+  `benchmark-timings` artifact from a green `main` run" — impossible to
+  follow, which is why the 2x regression gate stayed dormant for its whole
+  life. Fixed with `include-hidden-files: true`.
 - Phase 0 correctness batch (issue #374, *Fixes #374*) — six small hazards
   from a full-codebase scan; none change numerical results for valid runs
   (ledger zero-drift):
@@ -684,6 +741,17 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Tooling — **the benchmark compare step now runs on every build**
+  (issue #376 — Fixes #376), instead of skipping for want of a baseline.
+  Because no runner-generated artifact existed to seed it (see **Fixed**),
+  the committed baseline is container-generated: produced on Python 3.12 so
+  its pytest-benchmark machine id matches the job's storage key, but on
+  different hardware from a GitHub runner. Absolute timings are therefore
+  not comparable, so the step carries `continue-on-error: true` and runs as
+  a visible report rather than a hard gate. CONTRIBUTING.md documents the
+  three steps to promote it to blocking once a runner artifact is
+  available. Also relaxes `pytest==9.1.1` to `pytest>=9,<10` in
+  `requirements-test.txt` so patch upgrades are not frozen.
 - App — **the analysis run is no longer wrapped in `@st.cache_data`**
   (issue #377 — Fixes #377). That decorator was what blocked live progress
   widgets (issue #242: Streamlit refuses element calls made inside a
