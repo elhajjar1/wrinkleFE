@@ -1486,3 +1486,216 @@ def test_critical_json_and_csv_outputs(tmp_path, capsys):
     assert {"parameter_name", "parameter_value", "morphology",
             "knockdown", "predicted_strength_MPa"} <= set(rows[0])
     assert "Critical-Value Search" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# converge: flag -> config/study plumbing (issue #376)
+#
+# The convergence engine itself is covered by tests/test_convergence.py; these
+# tests patch ``mesh_convergence_study`` and assert only the CLI *wiring* —
+# which config the handler builds and which study keywords it threads through.
+# --------------------------------------------------------------------------- #
+
+
+def _stub_convergence_study():
+    """Patch ``mesh_convergence_study`` and capture its config/kwargs.
+
+    Returns ``(captured, patcher)``; after the CLI call ``captured`` holds
+    ``"config"`` (the AnalysisConfig the handler built) and ``"kwargs"``
+    (levels/refine/qoi/tolerance).
+    """
+    captured: dict = {}
+
+    def fake_study(base_config, **kwargs):
+        captured["config"] = base_config
+        captured["kwargs"] = kwargs
+        study = MagicMock()
+        study.summary.return_value = "<stubbed convergence summary>"
+        return study
+
+    return captured, patch(
+        "wrinklefe.convergence.mesh_convergence_study", new=fake_study
+    )
+
+
+def test_converge_defaults_thread_into_the_study():
+    captured, patcher = _stub_convergence_study()
+    with patcher:
+        cli_main(["converge"])
+
+    assert captured["kwargs"]["levels"] == 4
+    assert captured["kwargs"]["refine"] == ("nx", "nz_per_ply")
+    assert captured["kwargs"]["qoi"] == "max_fi"
+    assert captured["kwargs"]["tolerance"] == pytest.approx(0.01)
+
+    config = captured["config"]
+    assert config.amplitude == pytest.approx(0.366)
+    assert config.wavelength == pytest.approx(16.0)
+    assert config.width == pytest.approx(12.0)
+    assert config.morphology == "stack"
+    assert config.loading == "compression"
+    assert (config.nx, config.ny, config.nz_per_ply) == (12, 6, 1)
+    assert config.applied_strain == pytest.approx(-0.01)
+
+
+def test_converge_flags_map_into_config_and_study():
+    captured, patcher = _stub_convergence_study()
+    with patcher:
+        cli_main([
+            "converge",
+            "--amplitude", "0.5",
+            "--wavelength", "20.0",
+            "--width", "8.0",
+            "--morphology", "graded",
+            "--loading", "tension",
+            "--nx", "16", "--ny", "8", "--nz-per-ply", "2",
+            "--strain", "0.004",
+            "--levels", "3",
+            "--tolerance", "0.05",
+            "--refine", "nx, ny ,nz_per_ply",
+            "--qoi", "modulus_retention",
+        ])
+
+    config = captured["config"]
+    assert config.amplitude == pytest.approx(0.5)
+    assert config.wavelength == pytest.approx(20.0)
+    assert config.width == pytest.approx(8.0)
+    assert config.morphology == "graded"
+    assert config.loading == "tension"
+    assert (config.nx, config.ny, config.nz_per_ply) == (16, 8, 2)
+    assert config.applied_strain == pytest.approx(0.004)
+
+    kwargs = captured["kwargs"]
+    assert kwargs["levels"] == 3
+    assert kwargs["tolerance"] == pytest.approx(0.05)
+    assert kwargs["qoi"] == "modulus_retention"
+    # --refine is split on commas and stripped into a tuple of axis names.
+    assert kwargs["refine"] == ("nx", "ny", "nz_per_ply")
+
+
+def test_converge_layup_and_material_flags_reach_the_config():
+    captured, patcher = _stub_convergence_study()
+    with patcher:
+        cli_main([
+            "converge",
+            "--layup", "[0/45/-45/90]2s",
+            "--material", "IM7_8552",
+        ])
+
+    config = captured["config"]
+    # [0/45/-45/90]2s -> the 4-ply block twice, then mirrored (16 plies).
+    assert config.angles == [0, 45, -45, 90, 0, 45, -45, 90,
+                             90, -45, 45, 0, 90, -45, 45, 0]
+    assert config.material is not None
+    assert config.material.name == "IM7_8552"
+
+
+def test_converge_prints_the_study_summary(capsys):
+    captured, patcher = _stub_convergence_study()
+    with patcher:
+        cli_main(["converge"])
+    assert "<stubbed convergence summary>" in capsys.readouterr().out
+
+
+def test_converge_save_plot_writes_the_file(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MPLBACKEND", "Agg")
+    path = tmp_path / "converge.png"
+
+    def fake_study(base_config, **kwargs):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        study = MagicMock()
+        study.summary.return_value = "<stubbed convergence summary>"
+        _, ax = plt.subplots()
+        study.plot.return_value = ax
+        return study
+
+    with patch("wrinklefe.convergence.mesh_convergence_study", new=fake_study):
+        cli_main(["converge", "--save-plot", str(path)])
+
+    assert path.exists() and path.stat().st_size > 0
+    assert str(path) in capsys.readouterr().out
+
+
+def test_converge_engine_failure_exits_cleanly(capsys):
+    """A ValueError from the study becomes a one-line error, not a traceback."""
+    def boom(base_config, **kwargs):
+        raise ValueError("refine axis 'nope' is not a mesh parameter")
+
+    with patch("wrinklefe.convergence.mesh_convergence_study", new=boom):
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main(["converge", "--refine", "nope"])
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+@pytest.mark.parametrize("argv", [
+    ["converge", "--qoi", "not_a_qoi"],
+    ["converge", "--morphology", "not_a_morphology"],
+    ["converge", "--loading", "sideways"],
+    ["converge", "--levels", "three"],
+    ["converge", "--tolerance", "loose"],
+])
+def test_converge_bogus_arguments_exit_with_code_2(argv, capsys):
+    """argparse rejects bad choices/types before any engine work happens."""
+    called = {"n": 0}
+
+    def fake_study(*a, **k):
+        called["n"] += 1
+        raise AssertionError("engine must not run")
+
+    with patch("wrinklefe.convergence.mesh_convergence_study", new=fake_study):
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main(argv)
+    assert excinfo.value.code == 2
+    assert called["n"] == 0
+    assert capsys.readouterr().err != ""
+
+
+# --------------------------------------------------------------------------- #
+# materials: the built-in library listing (issue #376)
+# --------------------------------------------------------------------------- #
+
+
+def test_materials_lists_every_builtin_name(capsys):
+    """Every name the library reports must appear in the printed table."""
+    from wrinklefe.core.material import MaterialLibrary
+
+    cli_main(["materials"])
+    out = capsys.readouterr().out
+
+    names = MaterialLibrary().list_names()
+    assert names, "the built-in library should not be empty"
+    for name in names:
+        assert name in out
+    assert "IM7_8552" in names  # the documented default material
+
+
+def test_materials_prints_header_and_total(capsys):
+    cli_main(["materials"])
+    out = capsys.readouterr().out
+    n = len(__import__(
+        "wrinklefe.core.material", fromlist=["MaterialLibrary"]
+    ).MaterialLibrary().list_names())
+
+    assert "WrinkleFE Material Library" in out
+    for column in ("Name", "E1 (MPa)", "E2 (MPa)", "G12 (MPa)",
+                   "Xc (MPa)", "gamma_Y"):
+        assert column in out
+    assert f"Total: {n} materials available" in out
+
+
+def test_materials_exits_zero():
+    """A bare ``wrinklefe materials`` must not raise or exit non-zero."""
+    cli_main(["materials"])  # returns normally -> exit status 0
+
+
+def test_materials_rejects_unknown_flags(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main(["materials", "--not-a-flag"])
+    assert excinfo.value.code == 2
+    assert capsys.readouterr().err != ""

@@ -14,7 +14,10 @@ scipy>=1.14,<2
 matplotlib>=3.9,<4
 
 # --- Web app ---
-# Keep versions in sync with the `streamlit` extra in pyproject.toml.
+# Tracks the `streamlit` extra in pyproject.toml. The floors here must
+# satisfy pyproject's constraints (they may be tighter, never looser) —
+# enforced by tests/test_requirements_consistency.py rather than by this
+# comment alone.
 streamlit>=1.57.0
 plotly>=6.7.0
 
