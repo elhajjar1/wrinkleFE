@@ -66,6 +66,11 @@ docs = [
     "sphinx>=8.0",
     "myst-parser>=4.0",
     "furo>=2024.8",
+    # autodoc imports wrinklefe.viz.plotly_figs (docs/api/viz.rst), whose
+    # module-level plotly import raises a helpful ImportError when plotly
+    # is absent — which sphinx -W turns fatal. Keep the pin aligned with
+    # the plotly/streamlit extras.
+    "plotly>=6.7",
 ]
 # 3D cohesive-zone plots (plot_interface_damage_3d / plot_crack_front_3d)
 # render via PyVista, which pulls in VTK (~150 MB). It is imported lazily,
