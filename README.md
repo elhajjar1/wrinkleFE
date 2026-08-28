@@ -141,9 +141,22 @@ print(result.summary())
 ```
 
 Runnable scripts for the common workflows — parametric sweeps,
-morphology comparison, CZM delamination, export round-trips, custom
-materials — live in [`examples/`](examples/); each states its expected
-runtime and output, and CI executes them all so they stay current.
+morphology comparison, CZM delamination, the penetration gate,
+progressive damage, the crest resin lens, stochastic propagation, export
+round-trips, custom materials — live in [`examples/`](examples/); each
+states its expected runtime and output, and CI executes them all so they
+stay current.
+
+Three pages carry most of what a new user needs:
+
+- [Tutorial](docs/tutorial.md) — a worked walkthrough from a micrograph
+  measurement to the NCR validation attachment.
+- [Interpreting results](docs/interpreting_results.md) — what each
+  headline number means, what it does not mean, which one governs, and
+  the severity bands (`io/export.py` remains authoritative for those).
+- [Units & conventions](docs/units_conventions.md) — mm / MPa / N/mm,
+  strain and `Vf` as fractions, angle and coordinate conventions, signs.
+
 The full API reference and user guide are built from [`docs/`](docs/)
 with Sphinx (`pip install -e ".[docs]" && sphinx-build -W docs
 docs/_build`) and published at
