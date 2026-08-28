@@ -17,6 +17,10 @@ so they cannot rot.
 | [`08_multi_wrinkle_czm_linkup.py`](08_multi_wrinkle_czm_linkup.py) | Crest-to-crest delamination link-up between adjacent wrinkles (`wrinkles` + `enable_czm`) | ~5 s |
 | [`09_acceptance_limit.py`](09_acceptance_limit.py) | Maximum acceptable wrinkle amplitude for a target knockdown (`find_critical_value` / `wrinklefe critical`) | ~5 s |
 | [`10_vf_gradient_compaction.py`](10_vf_gradient_compaction.py) | Compaction Vf / ply-thickness gradient between two caul plates (`enable_vf_gradient`) vs the binary surface pockets | ~30 s |
+| [`11_penetration_gate.py`](11_penetration_gate.py) | UD (θ, D/T, z) penetration-gate knockdown vs the angle-only model, gated and ungated (`penetration_gate` / `--gate`) | ~1 s |
+| [`12_progressive_damage.py`](12_progressive_damage.py) | Load-stepping ply-discount FE to ultimate strength (`enable_progressive_damage` / `--progressive`), with the load-increment table | ~15 s |
+| [`13_crest_resin_pocket.py`](13_crest_resin_pocket.py) | Machined crest resin lens on/off, graded vs binary, and a lens-height sweep (`enable_resin_pocket`) | ~20 s |
+| [`14_stochastic_knockdown.py`](14_stochastic_knockdown.py) | Measurement uncertainty propagated to percentile knockdowns (`probabilistic_analysis` / `wrinklefe stochastic`) | ~15 s |
 | [`transverse_wrinkle_knockdown.py`](transverse_wrinkle_knockdown.py) | Localized (through-width) vs uniform wrinkle knockdown (`transverse_mode`) | ~20 s |
 
 Run any of them from this directory with the package installed
