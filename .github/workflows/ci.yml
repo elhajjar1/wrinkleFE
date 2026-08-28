@@ -216,6 +216,56 @@ jobs:
       - name: Guard sdist contents
         run: bash scripts/check_sdist_contents.sh dist
 
+      # Issue #286 acceptance criteria, checked against the built WHEEL in
+      # clean venvs — not against the checkout, where `src/` is on the path
+      # and every import would pass regardless of what the wheel contains.
+      #
+      # 1. With plotly: the Plotly figure builders must be importable from
+      #    the installed package and actually render. This is what a
+      #    notebook user gets from `pip install wrinklefe[plotly]`.
+      - name: Wheel check — Plotly figures work with the plotly extra
+        run: |
+          python -m venv /tmp/venv-plotly
+          /tmp/venv-plotly/bin/pip install --quiet dist/*.whl plotly
+          /tmp/venv-plotly/bin/python - <<'PY'
+          import numpy as np
+          import wrinklefe.viz
+          from wrinklefe.viz import mesh3d_figure
+          print("wrinklefe.viz from:", wrinklefe.viz.__file__)
+          assert "site-packages" in wrinklefe.viz.__file__
+          nodes = np.array([
+              [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+              [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+          ])
+          elements = np.arange(8).reshape(1, 8)
+          fig = mesh3d_figure(nodes, elements, cell_scalar=np.array([1.0]))
+          assert len(fig.data) == 1 and len(fig.data[0].i) == 12
+          print("OK: figure built from the installed wheel")
+          PY
+
+      # 2. Without plotly: a plain `pip install wrinklefe` must still be
+      #    able to import wrinklefe.viz (plotly must NOT be imported as a
+      #    side effect), and asking for a figure must fail with a message
+      #    naming the extra rather than a bare ModuleNotFoundError.
+      - name: Wheel check — viz imports without plotly, fails helpfully
+        run: |
+          python -m venv /tmp/venv-noplotly
+          /tmp/venv-noplotly/bin/pip install --quiet dist/*.whl
+          /tmp/venv-noplotly/bin/python - <<'PY'
+          import sys
+          import wrinklefe.viz
+          assert "plotly" not in sys.modules, "importing wrinklefe.viz pulled in plotly"
+          print("OK: import wrinklefe.viz without plotly")
+          try:
+              wrinklefe.viz.mesh3d_figure
+          except ImportError as exc:
+              print("ImportError:", exc)
+              assert "pip install" in str(exc) and "wrinklefe[plotly]" in str(exc)
+          else:
+              raise AssertionError("expected ImportError without plotly")
+          print("OK: helpful ImportError names the extra")
+          PY
+
       - name: Report artifact sizes
         run: ls -l dist
 

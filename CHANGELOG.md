@@ -846,6 +846,32 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Viz — the **Plotly figure library is now part of the package** as
+  `wrinklefe.viz.plotly_figs` (issue #286 — Fixes #286). It used to live in
+  the repository-root `streamlit_viz.py`, which the src layout keeps out of
+  the wheel: `pip install wrinklefe` shipped none of the interactive 3D
+  layer, so it was reachable only from a checkout. Notebook users can now
+  do
+  ```python
+  from wrinklefe.viz import mesh3d_figure, stress_contour_figure
+  ```
+  after `pip install 'wrinklefe[plotly]'` — a new lean extra, so the
+  interactive figures no longer require the whole Streamlit server stack
+  (the `streamlit` extra still carries plotly as before).
+  - **Plotly stays optional.** The names are re-exported through a PEP 562
+    module `__getattr__`, so `import wrinklefe.viz` never imports plotly;
+    the import happens on first attribute access, and without plotly that
+    access raises an `ImportError` naming the install command rather than a
+    bare `No module named 'plotly'`. Both halves are verified against the
+    built **wheel** in clean venvs by the `build` CI job.
+  - **`streamlit_viz.py` remains at the root as a deprecated re-export
+    shim**, so `import streamlit_viz` keeps working for the hosted
+    Streamlit deployment and any external references. The functions
+    themselves are unchanged — the shim re-exports the very same objects.
+    Deprecation is stated in its docstring only: no `DeprecationWarning`,
+    because the app re-imports it on every script rerun.
+  - The Plotly figure API is now in the Sphinx reference (`api/viz`),
+    which it could not be while the module lived outside the package.
 - Docs — **`internal/ARCHITECTURE.md`'s data flow now matches the code**
   (issue #378 — Fixes #378). The old diagram described a 2024-era pipeline
   and omitted most of what has been added since. It now follows
