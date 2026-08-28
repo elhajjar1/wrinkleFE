@@ -15,6 +15,55 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Docs — **interpretation guidance, a units/conventions reference and a
+  worked tutorial** (issue #378 — Fixes #378). Three new pages, wired into
+  the Sphinx toctree after *Getting started*:
+  - **Interpreting results** (`docs/interpreting_results.md`) — what each
+    headline number is and, just as importantly, is not:
+    `analytical_knockdown` (and why `analytical_onset_knockdown` is the
+    tension first-load-drop), the three stiffness numbers
+    (`analytical_modulus_knockdown`, the local-σ₁₁ `modulus_retention`, and
+    the coupon-level `modulus_retention_global` that should be preferred),
+    the FE first-ply-failure `retention_factors` and why they are degenerate
+    for pristine UD compression, `progressive_knockdown` as the ultimate,
+    the CZM outputs with `czm_converged` as the precondition for quoting any
+    of them, and the safe-side, forward-verified semantics of the goal-seek
+    acceptance limit (issue #280). Closes with the severity bands
+    **transcribed from `_SEVERITY_BANDS` in `wrinklefe.io.export`**, which
+    remains authoritative, carrying the export's existing non-binding MRB
+    language verbatim rather than any new wording.
+  - **Units & conventions** (`docs/units_conventions.md`) — one sourced
+    table (mm / MPa; toughness in N/mm, numerically kJ/m²; strain and `Vf`
+    as fractions; angles in degrees but misalignment stored on
+    `AnalysisResults` in radians), the x/y/z and material-frame coordinate
+    conventions, the sign conventions (compression-negative
+    `applied_strain`, unsigned strength allowables, `delta_T` from the
+    stress-free state), and the one place percent and fraction differ — the
+    Streamlit app's *Applied strain magnitude [%]* input.
+  - **Tutorial** (`docs/tutorial.md`) — a worked walkthrough of the real
+    workflow: measure *A*, *λ*, *w* off a micrograph → configure (CLI, app
+    and Python side by side, with `--save-config`) → `wrinklefe analyze` →
+    read the numbers → `wrinklefe critical` for the acceptance limit →
+    `build_analysis_summary` / `export_summary` for the NCR attachment.
+    Every command was run and every output block is real. This is the
+    issue's "notebook **or equivalent worked walkthrough**": a Markdown page
+    that `sphinx-build -W` builds and CI therefore keeps honest, rather than
+    a `.ipynb` with no execution infrastructure behind it.
+- Examples — **the four headline capabilities that had none** (issue #378 —
+  Fixes #378): `11_penetration_gate.py` (~1 s) holds `theta_max` fixed while
+  varying the laminate thickness so the angle-only model is flat by
+  construction and every difference is the gate, then sweeps the position
+  factor and runs one coupon gated vs ungated; `12_progressive_damage.py`
+  (~13 s) prints the load-increment table with its peak and post-peak load
+  drop and contrasts the ultimate-strength knockdown against the degenerate
+  UD first-ply-failure retention; `13_crest_resin_pocket.py` (~20 s)
+  compares the crest lens off / graded / binary and sweeps its height; and
+  `14_stochastic_knockdown.py` (~14 s) propagates two measurement
+  distributions to percentile knockdowns with a fixed seed, an LHS-vs-Monte
+  Carlo check and a rank-correlation sensitivity screen. All four run on the
+  minimal install the examples CI job uses (`pip install -e .`, no extras);
+  `examples/README.md` gains their rows and every existing row was
+  re-verified against the directory.
 - App — **live progress for FE/CZM runs** (issue #377 — Fixes #377). The
   *Run analysis* status box now carries a real progress bar driven by the
   engine's existing `WrinkleAnalysis.run(progress_callback=...)` hook, so a
@@ -741,6 +790,21 @@ version produced a given file.
   access in `max_angle` / `fiber_angles_at_nodes`.
 
 ### Changed
+- Docs — **`internal/ARCHITECTURE.md`'s data flow now matches the code**
+  (issue #378 — Fixes #378). The old diagram described a 2024-era pipeline
+  and omitted most of what has been added since. It now follows
+  `WrinkleAnalysis.run` as written: the wrinkle-field construction
+  (transverse surfaces, multi-wrinkle), the analytical branch through the
+  penetration gate, the ordered per-element material overrides (crest resin
+  lens → surface resin pockets → compaction `Vf` gradient), the three FE
+  branches (CZM, progressive damage, linear), and the retention-factor
+  baseline. Adds the three defect mechanisms the modelling section omitted
+  (surface resin pockets, the compaction `Vf` gradient, through-width
+  transverse surfaces) and module-table rows for the capabilities that had
+  none (`core/compaction.py`, `core/micromechanics.py`, `core/layup.py`,
+  `core/cohesive_mesh.py`, `elements/cohesive8.py`, the remaining failure
+  criteria, `convergence.py`, `goalseek.py`, `stochastic.py`,
+  `io/results.py`).
 - Tooling — **the benchmark compare step now runs on every build**
   (issue #376 — Fixes #376), instead of skipping for want of a baseline.
   Because no runner-generated artifact existed to seed it (see **Fixed**),
@@ -854,6 +918,18 @@ version produced a given file.
   plot moved to the bottom, so the through-thickness cross-section leads.
 
 ### Removed
+- Docs — **the internal CZM execution plan is no longer published**
+  (issue #378 — Fixes #378). `docs/czm_plan.md` was a one-line shim that
+  pulled `internal/CZM_PLAN.md` — a *completed* internal execution plan,
+  agent-orchestration tables and all — into the user-facing Sphinx site.
+  The shim is deleted and `czm_plan` is dropped from the toctree; the note
+  itself stays on disk for repository readers. Sphinx skips its
+  "not included in any toctree" check for any file some page `include`s,
+  which is why the remaining `internal/*.md` need no marker (their shims
+  still exist); removing this one's shim would have tripped that check under
+  `-W`, so `internal/CZM_PLAN.md` is listed in `exclude_patterns` in
+  `docs/conf.py` with the reasoning recorded there. No user-facing content
+  is lost: nothing in the published docs linked to it.
 - The dead `export` optional-dependency extra (`meshio` was never
   imported; native `.inp`/VTK writers need no extra).
 
