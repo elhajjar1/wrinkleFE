@@ -1,5 +1,13 @@
 [build-system]
-requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+# Plain setuptools. `setuptools-scm` used to be listed here but nothing
+# consumed it: there is no [tool.setuptools_scm] table and [project].version
+# below is static, so the only thing it did was install a git file-finder
+# into the isolated build environment — which is exactly what swept the
+# 17 MB `figures/` tree into the sdist (issue #264). The version is
+# single-sourced from [project].version and CI-locked against both
+# `wrinklefe.__version__` and CITATION.cff by tests/test_version.py; sdist
+# contents are declared explicitly in MANIFEST.in.
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
