@@ -1,0 +1,250 @@
+name: Release
+
+# Tag-triggered release (issue #264). Pushing an annotated tag `vX.Y.Z` is
+# the whole release procedure; see the "Release procedure" section of
+# CONTRIBUTING.md, including the one-time PyPI trusted-publisher and
+# Zenodo setup a maintainer must do on those sites (this workflow cannot).
+#
+#   tag vX.Y.Z
+#        |
+#        v
+#   build ......... sdist + wheel, twine check, sdist-content guard
+#        |
+#        +--> version-check ... tag == version in the BUILT WHEEL's metadata
+#        |
+#        +--> wheel-test ...... install the wheel on 3.10 / 3.11 / 3.12 and
+#        |                      smoke-test the INSTALLED package
+#        v
+#   publish ....... PyPI via trusted publishing (OIDC, no API token)
+#        |
+#        v
+#   github-release  GitHub Release for the tag with dist/* attached
+#
+# Nothing publishes until both checks pass: `publish` needs version-check
+# AND wheel-test, and `github-release` needs `publish`.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Read-only by default; the two jobs that need more widen it themselves.
+permissions:
+  contents: read
+
+# Never cancel an in-flight release: a half-published tag is worse than a
+# queued one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build
+        run: python -m build
+
+      - name: twine check
+        run: twine check dist/*
+
+      # Identical guard to the `build` job in ci.yml — the sdist must not
+      # carry figures/, docs/_build/, .github/, .claude/ or the
+      # regenerated validation plots and CSVs (issue #264).
+      - name: Guard sdist contents
+        run: bash scripts/check_sdist_contents.sh dist
+
+      - name: Report artifact sizes
+        run: ls -l dist
+
+      # Every downstream job consumes THESE artifacts. Nothing rebuilds:
+      # the bytes that are version-checked and smoke-tested are the exact
+      # bytes uploaded to PyPI and attached to the GitHub Release.
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  version-check:
+    name: Tag matches built wheel
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # The comparison is against the metadata of the BUILT WHEEL, read
+      # back through importlib.metadata after installing it — not against
+      # a grep of pyproject.toml. That is the point: a grep only proves
+      # what the source says, while this proves what the artifact about to
+      # be uploaded actually declares, whatever produced it. It closes the
+      # #21 class of skew (a shipped artifact whose version disagreed with
+      # the repo) permanently. `--no-deps` keeps it to a metadata read.
+      - name: Verify tag == wheel metadata version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          expected="${tag#v}"
+          python -m venv /tmp/verify-version
+          /tmp/verify-version/bin/pip install --disable-pip-version-check -q --no-deps dist/*.whl
+          built="$(/tmp/verify-version/bin/python -c 'from importlib.metadata import version; print(version("wrinklefe"))')"
+          echo "tag=${tag}  tag-without-v=${expected}  wheel metadata=${built}"
+          if [ "${expected}" != "${built}" ]; then
+            echo ""
+            echo "ERROR: release tag does not match the built wheel."
+            echo "  tag '${tag}' implies version '${expected}'"
+            echo "  the built wheel declares version '${built}'"
+            echo ""
+            echo "Nothing was published. Bump [project].version in"
+            echo "pyproject.toml (and the matching CITATION.cff version,"
+            echo "which tests/test_version.py enforces), then delete and"
+            echo "re-push the tag."
+            exit 1
+          fi
+          echo "OK: tag and wheel metadata agree on ${built}."
+
+  wheel-test:
+    name: Smoke-test installed wheel (py${{ matrix.python-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+      fail-fast: false
+    steps:
+      # How this tests the WHEEL and not the source tree:
+      #
+      #   * the checkout supplies only the *tests*; the package comes from
+      #     `pip install dist/*.whl` into a fresh venv below,
+      #   * the project is src-layout — `wrinklefe` lives under `src/`,
+      #     which is never on sys.path — so the repository working
+      #     directory cannot shadow the installed package the way a
+      #     flat-layout checkout would,
+      #   * no step sets PYTHONPATH, and the job never runs `pip install -e`,
+      #   * and none of that is taken on trust: the next-but-one step
+      #     asserts `wrinklefe.__file__` resolves inside the venv's
+      #     site-packages and fails the release if it does not.
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # A venv, not the job interpreter, so nothing pre-installed on the
+      # runner image can satisfy the import instead of the wheel.
+      - name: Install the wheel into a clean venv
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/pip install --disable-pip-version-check -q --upgrade pip
+          /tmp/wheeltest/bin/pip install --disable-pip-version-check -q dist/*.whl pytest
+
+      - name: Assert the import resolves to the installed wheel
+        run: |
+          /tmp/wheeltest/bin/python - <<'PY'
+          import pathlib
+          import sysconfig
+
+          import wrinklefe
+
+          site = pathlib.Path(sysconfig.get_paths()["purelib"]).resolve()
+          module = pathlib.Path(wrinklefe.__file__).resolve()
+          if site not in module.parents:
+              raise SystemExit(
+                  f"wrinklefe was imported from {module}, which is not the "
+                  f"installed wheel under {site}. The smoke test would be "
+                  f"testing the source tree, not the artifact."
+              )
+          print(f"OK: wrinklefe {wrinklefe.__version__} imported from {module}")
+          PY
+
+      - name: Console script works
+        run: /tmp/wheeltest/bin/wrinklefe --version
+
+      # Two fast files, not the full suite: the complete matrix already ran
+      # on the merge commit in ci.yml. What this adds is the packaging
+      # dimension — that the *installed* artifact exposes a working version,
+      # console script and CLI surface on every supported interpreter.
+      - name: Smoke tests against the installed package
+        run: /tmp/wheeltest/bin/python -m pytest tests/test_version.py tests/test_cli.py -q
+
+  publish:
+    name: Publish to PyPI
+    needs: [version-check, wheel-test]
+    runs-on: ubuntu-latest
+    # Trusted publishing (OIDC): PyPI mints a short-lived token from this
+    # workflow's identity. `id-token: write` is what lets the runner
+    # request that token; there is deliberately NO PyPI API token in repo
+    # secrets, and no step here reads one.
+    #
+    # The publisher must be registered once on pypi.org before the first
+    # release — owner `elhajjar1`, repository `wrinkleFE`, workflow
+    # `release.yml`, environment `pypi`. Those four fields must match this
+    # file exactly or PyPI rejects the token request. CONTRIBUTING.md's
+    # "One-time setup (maintainer)" section has the walkthrough.
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/wrinklefe
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    # Creating the release is the only write this workflow performs, and
+    # it uses the job-scoped GITHUB_TOKEN — no PAT.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # Creating the GitHub Release is also what triggers Zenodo archiving
+      # once the GitHub-Zenodo integration is switched on for this repo
+      # (issue #284) — a Zenodo webhook fires on the release event and
+      # mints a version DOI under the project's concept DOI.
+      - name: Create or update the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
