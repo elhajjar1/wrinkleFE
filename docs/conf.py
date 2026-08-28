@@ -44,7 +44,20 @@ myst_heading_anchors = 3
 suppress_warnings = ["myst.xref_missing"]
 
 source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# ``docs/internal/*.md`` are repository notes. Most are republished by a
+# one-line shim page (``architecture.md`` etc.); Sphinx skips the
+# "not included in any toctree" check for a file some page ``include``s,
+# which is why those need no marker here. ``CZM_PLAN.md`` is a *completed
+# internal execution plan* and is deliberately no longer published
+# (issue #378), so it has no shim — and without one it would trip that
+# check under ``-W``. Excluding it drops it from the source set entirely
+# while leaving the file in place for repository readers.
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "internal/CZM_PLAN.md",
+]
 
 html_theme = "furo"
 html_title = "WrinkleFE"

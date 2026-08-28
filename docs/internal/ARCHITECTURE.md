@@ -15,20 +15,53 @@ core ──→ elements ──→ solver ──→ failure ──→ analysis
 
 ```
 AnalysisConfig          User-specified parameters (amplitude, wavelength,
-       │                morphology, loading, layup, material, mesh density)
+       │                morphology, loading, layup, material, mesh density,
+       │                and the opt-in defect/solver features below)
        ▼
-WrinkleAnalysis         Orchestrates the full pipeline:
-       │                  1. Build Laminate from material + stacking sequence
-       │                  2. Create GaussianSinusoidal wrinkle profile
-       │                  3. Configure WrinkleConfiguration (dual-wrinkle morphology)
-       │                  4. Generate WrinkleMesh → MeshData (structured hex)
-       │                  5. Assemble & solve (StaticSolver)
-       │                  6. Evaluate failure (FailureEvaluator)
-       │                  7. Compute analytical knockdown (BF kink-band / tension model)
+WrinkleAnalysis.run     Orchestrates the full pipeline:
+       │
+       │   1.  Build Laminate from material + stacking sequence
+       │   2.  Create the wrinkle field — GaussianSinusoidal profile in a
+       │       WrinkleConfiguration; a WrinkleSurface3D wrapper when a
+       │       non-uniform `transverse_mode` varies A across the width;
+       │       a WrinkleSpec list when `wrinkles` (multi-wrinkle) is set
+       │   3.  Analytical predictions — BF kink-band (compression) or the
+       │       three-mechanism tension model, OR the (theta, D/T, z)
+       │       penetration gate when `penetration_gate` is set; plus the
+       │       closed-form modulus knockdown and the damage index
+       │   4.  Generate WrinkleMesh -> MeshData (structured hex), then the
+       │       per-element material overrides, in order:
+       │         4a2. crest resin lens        (`enable_resin_pocket`)
+       │         4a3. surface resin pockets   (`enable_surface_resin_pockets`,
+       │              auto-enabled for the `tool_flat` morphology)
+       │         4a4. compaction Vf gradient  (`enable_vf_gradient`; supersedes
+       │              the binary surface-pocket tag, composes with the lens)
+       │         4b.  mesh-based max fibre angle (accounts for the decay mode)
+       │   5.  FE solve, branching:
+       │         - CZM              -> NewtonRaphsonSolver over cohesive
+       │           (`enable_czm`)      interface elements; returns early
+       │         - progressive      -> ProgressiveDamageSolver on the wrinkled
+       │           damage             mesh AND a pristine baseline (ultimate
+       │                              strength), then the linear solve below
+       │         - linear (default) -> StaticSolver with compression BCs
+       │   6.  Evaluate failure on the FE field (FailureEvaluator)
+       │   6b. Retention factors vs a pristine baseline solve
        ▼
-AnalysisResults         Knockdown factors, failure stresses, damage fields,
-                        morphology factors, mesh data, field results
+AnalysisResults         Analytical + FE knockdowns, modulus retention (local
+                        and global), FPF retention factors, progressive
+                        ultimate strengths and load history, CZM damage /
+                        energy / crack lengths, damage fields, morphology
+                        factors, mesh data, field results
 ```
+
+Steps 3-4 are skipped past the mesh when `analytical_only=True`; every
+defect feature in 4a is opt-in and FE-only.
+
+Around that core sit the modules that *drive* the pipeline rather than
+extend it: `sweep/parametric_sweep.py` and `convergence.py` sweep it,
+`goalseek.py` inverts it (the largest defect still meeting a target,
+backed off to the safe side and forward-verified), and `stochastic.py`
+propagates input distributions through it.
 
 ## Public API
 
@@ -66,10 +99,15 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `core/mesh.py` | `WrinkleMesh` generates structured hex mesh; returns `MeshData` (nodes, elements, fiber angles) |
 | `core/transforms.py` | Stress/strain coordinate transforms between material and global frames |
 | `core/penetration_gate.py` | `GateParameters`, `penetration_gate_kd` -- closed-form UD (theta, D/T, z) penetration-gate knockdown; calibration presets `GATE_LI2024_MOULDED`, `GATE_LI2025_VACBAG` |
-| `core/resin_pocket.py` | `ResinPocketSpec`, `compute_resin_mask`, `compute_resin_blend` -- graded neat-epoxy lens at the wrinkle crest |
+| `core/resin_pocket.py` | `ResinPocketSpec`, `compute_resin_mask`, `compute_resin_blend` -- graded neat-epoxy lens at the wrinkle crest; also `SurfacePocketSpec` / `compute_surface_resin_blend` (tool-flat trough pockets) and the shared `element_heights` metric |
+| `core/compaction.py` | `VfGradientSpec`, `compute_vf_field` -- compaction-driven local fibre-volume-fraction / ply-thickness gradient (`Vf = vf_nominal * h0/h`), materials scaled by the micromechanics `Vf` ratio |
+| `core/micromechanics.py` | Constituent (fibre + matrix + `Vf`) to ply constants; `FIBER_PRESETS` / `MATRIX_PRESETS`. Used as a *ratio* by `compaction`, not for absolute cards |
+| `core/layup.py` | `parse_layup`, `to_contracted_layup`, `validate_ply_angle` -- single source of truth for contracted layup notation and the `\|angle\| <= 90` rule |
+| `core/cohesive_mesh.py` | `insert_cohesive_interface` -- splits a hex8 mesh at a z-plane and inserts zero-thickness cohesive elements |
 | `elements/hex8.py` | Standard 8-node hexahedral element stiffness, B-matrix, and `geometric_stiffness_matrix` (initial-stress K_geo) |
 | `elements/hex8i.py` | Incompatible-modes hex element (improved bending) |
 | `elements/gauss.py` | Gauss quadrature points and weights (1D/3D) |
+| `elements/cohesive8.py` | 8-node zero-thickness cohesive interface element with the bilinear traction-separation law and Benzeggagh-Kenane mode mixity |
 | `solver/static.py` | `StaticSolver` -- direct or iterative linear solve |
 | `solver/assembler.py` | `GlobalAssembler` -- global stiffness assembly from element contributions; also `assemble_geometric_stiffness` (K_geo) for buckling |
 | `solver/boundary.py` | `BoundaryCondition`, `BoundaryHandler` -- apply Dirichlet/Neumann BCs |
@@ -80,14 +118,22 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `solver/buckling.py` | `LinearBucklingSolver`, `BucklingResult`, `microbuckling_knockdown` -- linearized (eigenvalue) buckling from the geometric stiffness |
 | `failure/base.py` | `FailureCriterion` ABC and `FailureResult` dataclass |
 | `failure/larc05.py` | LaRC05 composite failure criterion implementation |
+| `failure/hashin.py`, `puck.py`, `tsai_wu.py`, `tsai_hill.py`, `max_stress.py`, `max_strain.py` | The other ply-level criteria behind the same `FailureCriterion` ABC |
+| `failure/kinkband.py` | Budiansky-Fleck kink-band classes shared with the analytical path |
+| `failure/delamination.py` | Interfacial delamination as a first-class failure mode (CZM phase 3) |
+| `failure/progressive.py` | Material-degradation strategies applied after a criterion detects damage |
 | `failure/evaluator.py` | `FailureEvaluator` applies criteria across all elements; `LaminateFailureReport` |
 | `viz/plots_2d.py` | 2D matplotlib plots (wrinkle profiles, knockdown curves, distributions) |
 | `viz/plots_3d.py` | 3D plots: matplotlib mesh/contour/mode-shape renders, plus optional PyVista cohesive-interface damage and crack-front plots (the `vtk` extra) |
 | `viz/style.py` | Publication styling constants and helpers |
 | `sweep/parametric_sweep.py` | Parametric sweep over amplitude/wavelength/morphology; CSV output |
+| `convergence.py` | `mesh_convergence_study` -- refines `nx`/`ny`/`nz_per_ply` until the FE numbers settle |
+| `goalseek.py` | `find_critical_value`, `CriticalValueResult` -- inverse goal-seek for the largest defect meeting a target, backed off to the safe side and forward-verified |
+| `stochastic.py` | `probabilistic_analysis`, `ProbabilisticResults` -- LHS / Monte-Carlo propagation of input distributions to percentile knockdowns (explicitly *not* A-/B-basis values) |
 | `analysis.py` | Top-level orchestrator: `WrinkleAnalysis`, `AnalysisConfig`, `compare_morphologies`, `parametric_sweep` |
 | `cli.py` | Entry point referenced by `[project.scripts]` (the `wrinklefe` command) |
-| `io/export.py` | Native JSON, Abaqus `.inp`, and legacy VTK export (no extra dependencies) |
+| `io/export.py` | Native JSON, Abaqus `.inp`, and legacy VTK export (no extra dependencies); the NCR validation summary (`build_analysis_summary`, `recommend_disposition`, `_SEVERITY_BANDS`, `export_summary`) |
+| `io/results.py` | Tidy tabular result export complementing `io/export.py` |
 
 ## Wrinkle-defect modelling
 
@@ -134,6 +180,40 @@ wrinkled-mesh FE path. Each is opt-in and composes with the others through
   generalized eigenproblem `K phi = -lambda K_geo phi`, and
   `microbuckling_knockdown` returns the ratio of wrinkled to pristine critical
   load factors. Kept as structural-buckling infrastructure.
+
+- **Surface resin pockets** (`core/resin_pocket.py`, `SurfacePocketSpec` /
+  `compute_surface_resin_blend`). The complement of the crest lens. A part
+  cured against rigid tooling or a caul sheet has a perfectly flat outer
+  surface: the undulation is confined to the interior and the wrinkle
+  troughs fill with neat resin just under that flat surface. The FE path
+  tags, in the chosen outer band(s), the transition element spanning the
+  gap between the flat surface and the outermost undulating ply, and blends
+  in the resin card by the excess-stretch fraction. This *is* the defining
+  physics of the `tool_flat` morphology, so it auto-enables there (without
+  it the flat pinned surface would silently stretch fibre elements over the
+  troughs). Requires a tool-flat surface: `uniform`, and `graded` with a
+  non-zero `decay_floor`, leave wavy surfaces and are rejected.
+
+- **Compaction Vf / ply-thickness gradient** (`core/compaction.py`, with
+  `core/micromechanics.py`). A wrinkle constrained by tooling does not keep
+  a constant ply thickness: resin is squeezed out of the compacted regions
+  and pools where the geometry opens up. `Vf_local = vf_nominal * h0 / h`
+  (fibre content conserved) drives per-element materials obtained by
+  scaling the preset card with the micromechanics `Vf` *ratio*, so the
+  model's absolute bias cancels and only the trend survives — stiffnesses
+  and CTEs move, Poisson ratios and all strengths stay at the preset
+  values. It is the continuous generalization of the binary surface-pocket
+  tag and supersedes it when enabled; the crest lens composes unchanged.
+
+- **Through-width (transverse) wrinkle surfaces**
+  (`AnalysisConfig.transverse_mode`, `core/wrinkle.py`'s
+  `WrinkleSurface3D`). Real manufacturing wrinkles are localized across the
+  specimen width, not uniform across it. The non-uniform modes decay the
+  amplitude toward the edges (`gaussian_decay`), ripple it across the width
+  (`sinusoidal_y`), or confine it to a mid-width patch (`elliptical`).
+  FE-only — the variation exists only in the mesh — and not combinable with
+  multi-wrinkle or CZM; `uniform` (the default) builds the bare x-only
+  profile bit-identically.
 
 - **Movable through-thickness position** (`AnalysisConfig.wrinkle_z_position`).
   The wrinkle centre's through-thickness position is a fraction of the laminate
