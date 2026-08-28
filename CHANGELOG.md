@@ -15,6 +15,42 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Release automation — **tagging is now the whole release procedure**
+  (issue #264 — Fixes #264). Pushing a `vX.Y.Z` tag runs
+  `.github/workflows/release.yml`: build → version-check and wheel-test →
+  publish → GitHub Release.
+  - The **version check compares the tag against the built wheel's
+    metadata**, not against a grep of `pyproject.toml` — it installs
+    `dist/*.whl` into a throwaway venv and reads the version back through
+    `importlib.metadata`. That proves what the artifact about to be
+    uploaded declares, closing the issue #21 class of skew (a published
+    artifact disagreeing with the repository) permanently.
+  - The **smoke test exercises the installed wheel**, not the source
+    tree, on Python 3.10/3.11/3.12: the checkout supplies only the tests,
+    the package comes from a clean-venv wheel install, and a step asserts
+    `wrinklefe.__file__` resolves inside site-packages before the tests
+    run.
+  - **PyPI publishing uses trusted publishing** (OIDC, `id-token: write`,
+    a `pypi` environment) — there is no API token in repository secrets.
+    The one-time trusted-publisher registration and the Zenodo archiving
+    toggle are maintainer actions on those sites; their exact fields are
+    documented under "Release procedure" in `CONTRIBUTING.md`.
+- CI — a **`build` job on every pull request** running `python -m build`
+  and `twine check dist/*` (issue #264), so packaging breakage (a bad
+  classifier, a dropped `py.typed`, a MANIFEST.in typo) fails a PR instead
+  of surfacing by hand at upload time.
+- CI — a **`citation` job validating `CITATION.cff`** against the CFF
+  1.2.0 schema with `cffconvert --validate` (issue #284). A malformed
+  citation file fails silently today: GitHub's "Cite this repository"
+  button just stops offering BibTeX.
+- Tests — `tests/test_version.py` now also locks **`CITATION.cff`'s
+  `version:` to `pyproject.toml`** (issue #284), so a version bump that
+  forgets the citation file fails CI rather than advertising a version
+  that was never released.
+- Docs — a **"Release procedure" section in `CONTRIBUTING.md`** (issues
+  #264, #284): the bump/changelog/tag sequence, the one-time PyPI
+  trusted-publisher fields and Zenodo toggle, where a minted DOI gets
+  inserted, and how to rehearse an upload against TestPyPI.
 - Docs — **interpretation guidance, a units/conventions reference and a
   worked tutorial** (issue #378 — Fixes #378). Three new pages, wired into
   the Sphinx toctree after *Getting started*:
@@ -676,6 +712,26 @@ version produced a given file.
     config above.
 
 ### Fixed
+- Packaging — the **source distribution no longer ships `figures/`**
+  (issue #264). An unused `setuptools-scm` in `[build-system].requires`
+  installed a git file-finder into the isolated build environment, which
+  swept every tracked path into the sdist — including ~17.6 MB of
+  rendered PNGs, two of them 8.4 MB each, plus `.github/`, `.claude/` and
+  the regenerated validation plots and CSVs. `setuptools-scm` is dropped
+  (nothing consumed it; the version is static) and `MANIFEST.in` now
+  declares the sdist contents explicitly, with
+  `scripts/check_sdist_contents.sh` failing the build in both CI and the
+  release workflow if an excluded path reappears. The sdist drops from
+  3,752,180 to 949,736 bytes compressed (23.2 MB to 3.4 MB uncompressed);
+  the wheel is unchanged.
+- Citation — **one canonical repository URL** (issue #284).
+  `CITATION.cff`, the README's plain-text and BibTeX citations, the clone
+  commands and `usage_tracking.REPO_URL` spelled the repository three
+  different ways (`wrinklefe`, `WrinkleFE`, `wrinkleFE`), which is how a
+  citation count fragments; all now use
+  `https://github.com/elhajjar1/wrinkleFE`. The README also states plainly
+  that the existing DOI badge is the *article's* and that a software DOI
+  follows once Zenodo archiving is enabled.
 - Tooling — **the `benchmark-timings` CI artifact was always empty**
   (issue #376 — Fixes #376). `.benchmarks/` is a dot directory and
   `actions/upload-artifact@v4` skips hidden files by default, so the
