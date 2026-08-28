@@ -24,7 +24,7 @@ fields a bug report needs.
 
 ```bash
 # Clone the repository
-git clone https://github.com/elhajjar1/wrinklefe.git
+git clone https://github.com/elhajjar1/wrinkleFE.git
 cd wrinklefe
 
 # Create a virtual environment

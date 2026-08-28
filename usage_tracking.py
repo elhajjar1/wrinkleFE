@@ -47,7 +47,7 @@ _SCOPES = (
     "https://www.googleapis.com/auth/drive",
 )
 
-REPO_URL = "https://github.com/elhajjar1/wrinklefe"
+REPO_URL = "https://github.com/elhajjar1/wrinkleFE"
 
 
 _DISABLE_ENV = "WRINKLEFE_DISABLE_GATE"

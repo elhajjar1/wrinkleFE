@@ -45,3 +45,33 @@ jobs:
       # and plotly are unstubbed and ignored via pyproject [tool.mypy].
       - name: Mypy (whole tree)
         run: mypy src/wrinklefe app.py streamlit_viz.py
+
+  citation:
+    # CITATION.cff is what GitHub's "Cite this repository" button and
+    # (once archiving is enabled) Zenodo read. A malformed file degrades
+    # silently — the button just stops offering BibTeX — so validate it
+    # against the CFF 1.2.0 schema on every PR (issue #284).
+    #
+    # Its own job, not a step in `lint`, because cffconvert pulls an
+    # unrelated dependency tree (jsonschema, pykwalify, ruamel.yaml) that
+    # has no business in the environment ruff and mypy run against.
+    # tests/test_version.py separately locks the *value* of `version:` to
+    # pyproject.toml; this checks the file is well-formed.
+    name: Validate CITATION.cff
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install cffconvert
+        run: |
+          python -m pip install --upgrade pip
+          pip install cffconvert
+
+      - name: Validate against the CFF schema
+        run: cffconvert --validate

@@ -52,7 +52,7 @@ pip install wrinklefe
 Or install the latest source:
 
 ```bash
-git clone https://github.com/elhajjar1/wrinklefe.git
+git clone https://github.com/elhajjar1/wrinkleFE.git
 cd wrinklefe
 pip install -e ".[all]"
 ```
@@ -1123,7 +1123,7 @@ If you use WrinkleFE in your research, please cite it. The quickest way is the
 [`CITATION.cff`](CITATION.cff) and exports APA or BibTeX. The full software
 citation:
 
-> Elhajjar, R. (2025). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.0.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/WrinkleFE
+> Elhajjar, R. (2025). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.0.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/wrinkleFE
 
 ```bibtex
 @software{elhajjar2025wrinklefe,
@@ -1133,10 +1133,19 @@ citation:
   year = {2025},
   version = {1.0.0},
   publisher = {GitHub},
-  url = {https://github.com/elhajjar1/WrinkleFE},
+  url = {https://github.com/elhajjar1/wrinkleFE},
   note = {University of Wisconsin-Milwaukee}
 }
 ```
+
+> **Software DOI:** WrinkleFE does not have one yet. The DOI badge above is
+> the *article's*, not the software's. A citable software DOI will be added
+> here — and to `CITATION.cff` — once Zenodo archiving is enabled for the
+> repository, at which point every tagged release is archived automatically
+> and a concept DOI resolves to the latest one
+> ([issue #284](https://github.com/elhajjar1/wrinkleFE/issues/284)). Until
+> then the URL above is the citation target; please cite the version you
+> actually used.
 
 Please also cite the underlying experimental validation data:
 
