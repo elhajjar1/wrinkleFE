@@ -39,7 +39,6 @@ _SRC = Path(__file__).resolve().parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-import streamlit_viz  # noqa: E402
 import usage_tracking  # noqa: E402
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
 from wrinklefe.core.layup import parse_layup  # noqa: E402
@@ -57,6 +56,7 @@ from wrinklefe.io.export import (  # noqa: E402
     render_summary_markdown,
     render_summary_pdf,
 )
+from wrinklefe.viz import plotly_figs  # noqa: E402
 from wrinklefe.viz.style import (  # noqa: E402
     MORPHOLOGY_COLORS,
     TENSION_MECHANISM_COLORS,
@@ -2245,7 +2245,7 @@ def _run_analysis(
             # Precomputed boundary-face triangulation cached once per
             # solve so slider re-renders skip the boundary cull. See
             # issue #198.
-            "mesh3d_geometry": streamlit_viz.compute_mesh3d_geometry(
+            "mesh3d_geometry": plotly_figs.compute_mesh3d_geometry(
                 elements_arr
             ),
         }
@@ -3698,7 +3698,7 @@ with tab_analyze:
                         format_func=lambda t: t[1],
                         key="viz_stress_component",
                     )
-                    fig_3d = streamlit_viz.stress_contour_figure(
+                    fig_3d = plotly_figs.stress_contour_figure(
                         fe["nodes"], fe["elements"], fe["stress_per_elem"],
                         component_index=comp[0],
                         component_label=comp[1],
@@ -3741,7 +3741,7 @@ with tab_analyze:
                             )
                         else:
                             slice_kwargs = {}
-                        fig_slice = streamlit_viz.y_slice_figure(
+                        fig_slice = plotly_figs.y_slice_figure(
                             fe["element_centers"], fe["elements"], fe["nodes"],
                             fe["stress_per_elem"], slice_comp[0], y_station,
                             component_label=slice_comp[1],
@@ -3760,7 +3760,7 @@ with tab_analyze:
                             "make the deformation visible."
                         ),
                     )
-                    fig_3d = streamlit_viz.deformed_mesh_figure(
+                    fig_3d = plotly_figs.deformed_mesh_figure(
                         fe["nodes"], fe["elements"], fe["displacement"],
                         scale=scale,
                         precomputed_geometry=fe.get("mesh3d_geometry"),
@@ -3785,7 +3785,7 @@ with tab_analyze:
                             ),
                             key="viz_fi_criterion",
                         )
-                        fig_3d = streamlit_viz.fi_3d_figure(
+                        fig_3d = plotly_figs.fi_3d_figure(
                             fe["nodes"], fe["elements"],
                             fi_dict[crit_for_3d], crit_for_3d,
                             precomputed_geometry=fe.get("mesh3d_geometry"),
@@ -3825,7 +3825,7 @@ with tab_analyze:
                                 )
                             else:
                                 fi_slice_kwargs = {}
-                            fig_slice = streamlit_viz.fi_y_slice_figure(
+                            fig_slice = plotly_figs.fi_y_slice_figure(
                                 fe["element_centers"], fe["elements"],
                                 fe["nodes"], fi_dict[crit_for_3d], y_station,
                                 criterion=crit_for_3d,

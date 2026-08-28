@@ -1,9 +1,15 @@
-"""Tests for the vectorized boundary-face extraction and Plotly payload
-trimming in :mod:`streamlit_viz`.
+"""Tests for the deprecated root-level :mod:`streamlit_viz` shim.
 
-These tests cover the perf-critical hot path used by the Streamlit 3D
-views (stress contour, deformed mesh, failure-index surface) on
-medium-sized hex8 meshes.  See issue #78.
+The figure builders themselves moved into the package as
+:mod:`wrinklefe.viz.plotly_figs` (issue #286); this module now guards the
+shim that keeps ``import streamlit_viz`` working for the hosted Streamlit
+deployment and any external references.  The behavioural coverage below —
+the vectorized boundary-face extraction and Plotly payload trimming on
+the perf-critical 3D hot path (issue #78), the precomputed-geometry cache
+(issue #198) and the global y-slice colorbar range (issue #200) — is
+exercised *through the shim*, which is exactly what proves the re-export
+is faithful.  ``test_shim_reexports_are_the_package_functions`` pins the
+identity relationship itself.
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# streamlit_viz lives at the repo root, not under src/, so make sure the
+# The shim lives at the repo root, not under src/, so make sure the
 # top-level directory is importable regardless of pytest's cwd.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -23,8 +29,26 @@ if str(_REPO_ROOT) not in sys.path:
 pytest.importorskip("plotly")
 
 import streamlit_viz as sv  # noqa: E402
+import wrinklefe.viz.plotly_figs as pf  # noqa: E402
 
 pytestmark = pytest.mark.viz
+
+# ---------------------------------------------------------------------------
+# Shim equivalence (issue #286)
+# ---------------------------------------------------------------------------
+
+
+def test_shim_reexports_are_the_package_functions():
+    """``streamlit_viz`` must be a pure re-export of the package module.
+
+    Same objects, not copies: a fix landing in
+    :mod:`wrinklefe.viz.plotly_figs` is then automatically what the hosted
+    Streamlit app imports.
+    """
+    assert sv.mesh3d_figure is pf.mesh3d_figure
+    for name in sv.__all__:
+        assert getattr(sv, name) is getattr(pf, name), f"{name} is not re-exported"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -301,15 +325,22 @@ def test_mesh3d_figure_precomputed_matches_uncached():
 def test_mesh3d_figure_precomputed_skips_boundary_faces(monkeypatch):
     """When ``precomputed_geometry`` is supplied, the expensive
     ``boundary_faces`` + ``quads_to_triangles`` calls must NOT run —
-    the whole point of the cache."""
+    the whole point of the cache.
+
+    The counters are installed on :mod:`wrinklefe.viz.plotly_figs` — the
+    module that *defines* ``mesh3d_figure`` and therefore the namespace it
+    resolves the two helpers in.  Patching the ``streamlit_viz`` shim would
+    rebind only the shim's own re-exported names and silently count
+    nothing (issue #286).
+    """
     nodes, elems = _structured_hex_mesh(4, 3, 3)
     geom = sv.compute_mesh3d_geometry(elems)
 
     bf_calls = {"n": 0}
     qt_calls = {"n": 0}
 
-    real_bf = sv.boundary_faces
-    real_qt = sv.quads_to_triangles
+    real_bf = pf.boundary_faces
+    real_qt = pf.quads_to_triangles
 
     def _counted_bf(e):
         bf_calls["n"] += 1
@@ -319,8 +350,8 @@ def test_mesh3d_figure_precomputed_skips_boundary_faces(monkeypatch):
         qt_calls["n"] += 1
         return real_qt(q)
 
-    monkeypatch.setattr(sv, "boundary_faces", _counted_bf)
-    monkeypatch.setattr(sv, "quads_to_triangles", _counted_qt)
+    monkeypatch.setattr(pf, "boundary_faces", _counted_bf)
+    monkeypatch.setattr(pf, "quads_to_triangles", _counted_qt)
 
     sv.mesh3d_figure(
         nodes, elems,

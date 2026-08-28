@@ -47,6 +47,13 @@ streamlit = [
     "streamlit>=1.57",
     "plotly>=6.7",
 ]
+# Interactive Plotly figures only (wrinklefe.viz.plotly_figs). The web app
+# needs plotly too, so it is pinned in `streamlit` above as well; this lean
+# extra exists so a notebook user can get the interactive mesh/stress/FI
+# figures without pulling the whole Streamlit server stack (issue #286).
+plotly = [
+    "plotly>=6.7",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
