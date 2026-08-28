@@ -146,3 +146,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["gspread", "google.oauth2.*"]
 ignore_missing_imports = true
+
+[tool.coverage.report]
+# Floor measured 2026-08-28 on the full suite (2141 tests): TOTAL = 86%.
+# Set 2pp below the measurement so organic fluctuation doesn't flake the
+# gate while a real coverage regression (a new untested module) fails it.
+# The fast-lane matrix job opts out via --cov-fail-under=0 (see ci.yml);
+# this floor gates the test-full job, which measures the complete suite.
+fail_under = 84

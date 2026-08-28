@@ -49,6 +49,53 @@ pytest
    predictions under its **Numerical results** category
 6. Submit a pull request with a clear description
 
+## Pre-commit hooks
+
+`.pre-commit-config.yaml` mirrors the `lint` CI job so you catch lint and
+type errors before pushing rather than after:
+
+```bash
+pip install pre-commit
+pre-commit install                        # ruff on every commit
+pre-commit install --hook-type pre-push   # + mypy before a push
+```
+
+| Hook   | Stage      | What runs                                              |
+|--------|------------|--------------------------------------------------------|
+| `ruff` | commit     | `ruff check` — the full `pyproject.toml` ruleset        |
+| `mypy` | pre-push   | `python -m mypy src/wrinklefe app.py streamlit_viz.py`  |
+
+Both hooks are `language: system`: they invoke the ruff and mypy already
+in your environment rather than installing pinned copies in an isolated
+venv, so they cannot report a different answer than CI does. That does
+mean the mypy hook needs the full development install — `pip install -e
+".[all,dev]"` — because it type-checks `app.py` / `streamlit_viz.py`
+against the real streamlit and plotly packages, exactly as the lint job
+does. mypy is whole-tree and runs on the **pre-push** stage only; it is
+too slow to sit on every commit.
+
+Run everything against the whole tree at once with `pre-commit run
+--all-files` (add `--hook-stage pre-push` to include mypy). There is
+deliberately no formatter hook — this repo does not use `ruff format` —
+and no commit-stage pytest hook.
+
+## Test coverage floor
+
+`pyproject.toml`'s `[tool.coverage.report]` sets a `fail_under` floor, so
+a drop in coverage fails the build instead of quietly uploading a worse
+number to Codecov.
+
+The floor gates the `test-full` job — the complete suite, which is what
+the floor was measured against. The OS/Python matrix job also passes
+`--cov`, but it deselects the slow integration solves, so its coverage is
+structurally lower; it opts out with an explicit `--cov-fail-under=0`
+rather than being held to a number its lane cannot reach.
+
+The floor sits a couple of points below the measured total so ordinary
+run-to-run variation does not flake the build. It is a **ratchet**: when
+coverage rises durably, raise the floor in the same PR. Never lower it to
+make a build pass — add the missing tests instead.
+
 ## Code Style
 
 - Follow PEP 8 conventions
@@ -141,21 +188,34 @@ pytest tests/test_benchmarks -m benchmark --benchmark-autosave
 ```
 
 CI runs these in a dedicated `benchmarks` job that autosaves the timings
-as a downloadable artifact and, **only if** a committed baseline exists,
-fails the build on a median regression worse than 2x
-(`--benchmark-compare-fail=median:100%`). The 2x threshold is deliberate:
-shared CI runners have large run-to-run CPU variance and a tighter bound
-would flake.
+as a downloadable artifact and compares them against the committed
+baseline in `tests/test_benchmarks/baseline/`, flagging a median
+regression worse than 2x (`--benchmark-compare-fail=median:100%`). The 2x
+threshold is deliberate: shared CI runners have large run-to-run CPU
+variance and a tighter bound would flake.
 
-**No baseline is committed.** Timings captured inside an ephemeral
-container are meaningless against a CI runner, so the regression gate is
-dormant by default. To bootstrap it:
+**The compare step is currently non-blocking** (`continue-on-error:
+true`). The committed baseline was generated inside a development
+container rather than captured from a GitHub runner — on Python 3.12, so
+its pytest-benchmark machine id (`Linux-CPython-3.12-64bit`) matches the
+job's storage key, but on different hardware. Absolute timings are
+therefore not comparable to a runner's, and a hard failure would be noise.
+The step still runs and reports on every build, so the gate is armed and
+visible rather than silently skipped.
+
+**To promote it to a blocking gate:**
 
 1. Download the `benchmark-timings` artifact from a green `main` run of
-   the `benchmarks` job.
-2. Commit the saved `*.json` run into `tests/test_benchmarks/baseline/`
-   in a follow-up PR. The CI compare step activates automatically once
-   that directory exists.
+   the `benchmarks` job. (Note: before #376 this artifact was always
+   empty — `.benchmarks/` is a dot directory and
+   `actions/upload-artifact` skips hidden files unless
+   `include-hidden-files: true` is set, which it now is.)
+2. Replace the `*.json` run under
+   `tests/test_benchmarks/baseline/<machine-id>/` with the downloaded
+   one, keeping the machine-id directory that matches the `benchmarks`
+   job's interpreter.
+3. In the same PR, drop `continue-on-error: true` from the "Compare
+   against committed baseline" step in `.github/workflows/ci.yml`.
 
 **Refreshing the baseline** is a deliberate, reviewed act — never
 automatic. When an intentional performance change (or a runner upgrade)

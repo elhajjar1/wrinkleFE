@@ -14,8 +14,20 @@ Each benchmark runs on a small, deterministic input and asserts a
 correctness invariant (finite / bounded / expected shape) so a timing
 harness can never silently pass on a broken kernel.
 
-There is **no committed baseline** — a baseline captured inside an
-ephemeral container is meaningless on CI runners. See the "Benchmarks"
-section of `../../CONTRIBUTING.md` for how to bootstrap and refresh the
-`baseline/` directory from a green `main` run, and how the CI comparison
-gate becomes active once that directory exists.
+## The committed baseline
+
+`baseline/Linux-CPython-3.12-64bit/` holds the run the CI compare step
+measures against. pytest-benchmark keys storage by machine id
+(`{system}-{impl}-{major.minor}-{bits}`), so that directory name must
+match the `benchmarks` job's interpreter — Python 3.12 on Linux.
+
+The current baseline is **container-generated**, not captured from a
+GitHub runner, so its absolute timings are not comparable to CI hardware.
+The compare step therefore runs under `continue-on-error: true`: it
+executes and reports on every run — the gate is armed and visible — but
+does not fail the build. Promoting it to blocking needs a runner-captured
+baseline; see the "Benchmarks" section of `../../CONTRIBUTING.md` for the
+bootstrap and refresh procedure.
+
+Refreshing the baseline is a deliberate, reviewed act in its own PR —
+never an automatic or incidental update.

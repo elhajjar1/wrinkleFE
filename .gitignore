@@ -42,8 +42,18 @@ Thumbs.db
 # Testing
 .pytest_cache/
 .coverage
+# Per-process data files from a parallel/subprocess coverage run, and the
+# XML report both --cov CI jobs emit — running the documented
+# `pytest --cov=wrinklefe --cov-report=xml` locally would otherwise leave
+# them untracked in `git status`.
+.coverage.*
+coverage.xml
 htmlcov/
 .tox/
+# pytest-benchmark's autosave storage, written by the documented
+# `--benchmark-autosave` command. NOT the committed baseline, which lives
+# at tests/test_benchmarks/baseline/ and is deliberately tracked.
+.benchmarks/
 
 # Build artifacts
 *.so

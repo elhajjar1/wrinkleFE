@@ -1,0 +1,55 @@
+# Pre-commit hooks for wrinkleFE — a local mirror of .github/workflows/lint.yml.
+#
+# Every hook is `repo: local` / `language: system`, i.e. it runs the ruff and
+# mypy already installed in your development environment (`pip install -e
+# ".[all,dev]"`). That is deliberate: a pinned `rev:` on an upstream mirror
+# repo would install a *second*, differently-versioned ruff/mypy and start
+# reporting findings CI does not — or missing findings CI does. Local hooks
+# cannot drift from CI's tool versions because they are the same install.
+#
+#   pip install pre-commit
+#   pre-commit install                        # ruff on every commit
+#   pre-commit install --hook-type pre-push   # + mypy before a push
+#
+# See the "Pre-commit hooks" section of CONTRIBUTING.md.
+
+repos:
+  - repo: local
+    hooks:
+      # Mirrors lint.yml's "Ruff (full pyproject config)" step: the complete
+      # pyproject [tool.ruff.lint] ruleset (E, F, W, I, N, UP), no --select
+      # override. Fast enough for every commit.
+      - id: ruff
+        name: ruff check (full pyproject config)
+        entry: ruff check
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+        # `ruff check .` in CI walks the whole tree; passing filenames here
+        # keeps the commit-time run proportional to the change. Both honour
+        # the same pyproject config, so the findings agree.
+
+      # Mirrors lint.yml's "Mypy (whole tree)" step, verbatim and whole-tree:
+      # mypy's results depend on the full import graph, so checking only the
+      # changed files would report different errors than CI. That makes it
+      # slow, hence pre-push rather than pre-commit.
+      #
+      # NOTE: this needs streamlit + plotly importable, i.e. the [all,dev] (or
+      # at least [dev,streamlit]) environment — lint.yml installs
+      # ".[dev,streamlit]" for exactly this reason (issue #374). Without them
+      # app.py / streamlit_viz.py fall back to Any-typed imports and the hook
+      # can pass where CI fails.
+      - id: mypy
+        name: mypy (whole tree; needs the [all,dev] env)
+        entry: python -m mypy src/wrinklefe app.py streamlit_viz.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-push]
+
+# Deliberately NOT configured:
+#   * ruff-format / any formatter — this repo does not use one, and adding it
+#     would reformat the tree and create diff noise CI never asked for.
+#   * a pytest hook on the commit stage — the suite is minutes long. Run
+#     `pytest -m "not slow"` yourself; CI owns the full lane.
