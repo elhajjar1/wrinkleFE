@@ -127,6 +127,25 @@ pip install -e .
 streamlit run app.py
 ```
 
+The app's interactive 3D views are ordinary library functions, so you can
+draw the same figures in a notebook — the mesh surface, the σ contour, the
+deformed shape, the failure-index surface and the y-slice scatters:
+
+```bash
+pip install 'wrinklefe[plotly]'
+```
+
+```python
+from wrinklefe.viz import mesh3d_figure, stress_contour_figure
+
+fig = stress_contour_figure(nodes, elements, stress_per_elem)
+fig.show()
+```
+
+Plotly is optional: `import wrinklefe.viz` works without it, and only
+asking for one of these figures raises an error telling you what to
+install. See the [`wrinklefe.viz` API reference](docs/api/viz.rst).
+
 ### Python API
 
 ```python
