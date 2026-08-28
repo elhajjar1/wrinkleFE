@@ -24,7 +24,7 @@ fields a bug report needs.
 
 ```bash
 # Clone the repository
-git clone https://github.com/elhajjar1/wrinklefe.git
+git clone https://github.com/elhajjar1/wrinkleFE.git
 cd wrinklefe
 
 # Create a virtual environment
@@ -235,6 +235,128 @@ IM7/8552. Custom materials are scoped to the current Streamlit session and
 do not persist; use the source-level workflow above for anything you want
 to keep. See [`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for a
 full feature tour.
+
+## Release procedure
+
+Releases are cut by pushing a tag. `.github/workflows/release.yml` does
+the rest — building, verifying and publishing — so nobody handles PyPI
+credentials and nothing is uploaded from a laptop.
+
+### Cutting a release
+
+1. **Bump the version in both places, in one commit.**
+   - `pyproject.toml` → `[project].version`
+   - `CITATION.cff` → `version:` **and** `date-released:` (the date of
+     *this* release, ISO `YYYY-MM-DD`)
+
+   `tests/test_version.py` fails CI if these disagree with each other or
+   with `wrinklefe.__version__`, so a forgotten file is caught before it
+   can reach a release.
+
+2. **Close out the changelog.** In `CHANGELOG.md`, move everything under
+   `## [Unreleased]` beneath a new `## [X.Y.Z]` heading, leave
+   `[Unreleased]` empty, and add the two link-reference definitions at
+   the bottom (`[Unreleased]` compare link, `[X.Y.Z]` tag link).
+   `tests/test_changelog.py` checks the skeleton and that every heading
+   resolves to a link reference.
+
+3. **Merge that to `main` and let CI go green.** The `build` job in
+   `ci.yml` already builds the sdist and wheel, runs `twine check` and
+   enforces the sdist-content guard, so packaging breakage surfaces here
+   rather than mid-release.
+
+4. **Tag and push.**
+
+   ```bash
+   git checkout main && git pull
+   git tag -a v1.2.3 -m "WrinkleFE 1.2.3"
+   git push origin v1.2.3
+   ```
+
+   The tag must be `v` + the exact version from step 1. It does not have
+   to be right by luck: the release workflow installs the wheel it just
+   built and compares the tag against the wheel's own
+   `importlib.metadata` version, failing before anything is published if
+   they differ. To recover, delete the tag locally and on the remote,
+   fix the version, and re-tag.
+
+5. **Watch the release run.** In order: `build` → `version-check` and
+   `wheel-test` (the wheel installed into a clean venv on Python
+   3.10/3.11/3.12) → `publish` (PyPI) → `github-release`. If the `pypi`
+   environment has required reviewers, `publish` waits for an approval.
+
+6. **After the DOI exists** (once Zenodo archiving is on, below): add the
+   version/concept DOI to `CITATION.cff` under `identifiers:` and to the
+   README's citation entries and badge row, in a follow-up commit.
+
+### One-time setup (maintainer)
+
+Two things the workflow cannot do for itself; both are done once, by a
+maintainer, on an external site.
+
+**PyPI trusted publisher.** Publishing uses OIDC — no API token exists in
+repository secrets — which requires registering this workflow as a
+trusted publisher first. On <https://pypi.org>, go to the `wrinklefe`
+project → *Manage* → *Publishing* → *Add a new publisher* → *GitHub*, and
+enter exactly:
+
+| Field                   | Value          |
+| ----------------------- | -------------- |
+| Owner                   | `elhajjar1`    |
+| Repository name         | `wrinkleFE`    |
+| Workflow name           | `release.yml`  |
+| Environment name        | `pypi`         |
+
+All four must match `.github/workflows/release.yml`; PyPI refuses the
+token request otherwise. If the project does not exist on PyPI yet, add a
+*pending* publisher with the same fields from the account-level
+*Publishing* page instead — the project is created on first upload.
+
+Then, in the GitHub repository settings, create the `pypi` environment
+(*Settings* → *Environments* → *New environment* → `pypi`). Adding
+required reviewers there makes every publish a two-person action, which
+is the recommended setting.
+
+**Zenodo archiving (for the software DOI, issue #284).** Sign in to
+<https://zenodo.org> with GitHub, authorising the `admin:repo_hook` and
+`read:org` scopes; open *GitHub* from the account menu, find
+`elhajjar1/wrinkleFE` in the repository list, and flip its toggle **On**.
+Zenodo installs a webhook and archives every GitHub Release created from
+then on — so the toggle must be flipped *before* the release you want
+archived. Zenodo reads `CITATION.cff` for authors, title and license.
+
+Each release then gets a version DOI, and Zenodo also mints a **concept
+DOI** that always resolves to the latest version — that is the one to
+cite. Insert it in two places (step 6 above): `CITATION.cff` as
+
+```yaml
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.XXXXXXX
+    description: Concept DOI — always resolves to the latest release
+```
+
+and in the README, as a badge next to the existing ones and as
+`doi = {10.5281/zenodo.XXXXXXX}` in the BibTeX entry. Do **not** commit a
+placeholder DOI before one has been minted: an unresolvable identifier in
+a citation file propagates into other people's bibliographies, which is
+worse than having no DOI at all.
+
+### Rehearsing an upload
+
+The release workflow only ever targets PyPI proper. To rehearse the
+upload itself against TestPyPI, do it by hand from a clean checkout:
+
+```bash
+python -m build
+twine check dist/*
+scripts/check_sdist_contents.sh dist
+twine upload -r testpypi dist/*
+```
+
+Note that TestPyPI needs its own account and its own trusted publisher or
+token, and that a version number can only be uploaded once there too — so
+rehearse with a `.devN` suffix rather than burning the real version.
 
 ## Questions
 

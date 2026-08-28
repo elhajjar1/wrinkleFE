@@ -175,6 +175,50 @@ jobs:
             echo "::endgroup::"
           done
 
+  build:
+    # Packaging gate on every PR (issue #264). Before this job existed the
+    # first time anyone found out `python -m build` was broken — a bad
+    # classifier, a missing `py.typed` (#202), a MANIFEST.in typo — was at
+    # upload time, by hand, mid-release.
+    #
+    # It also owns the sdist-content guard. The sdist used to carry the
+    # whole `figures/` tree (~17.6 MB of PNGs) because a stray
+    # `setuptools-scm` in [build-system].requires installed a git
+    # file-finder into the build env; MANIFEST.in now declares the contents
+    # explicitly and `scripts/check_sdist_contents.sh` fails the build if a
+    # rendered output or repo-only directory ever reappears in the tarball.
+    # The identical three steps run again in release.yml before publishing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      # Validates the rendered README (PyPI's long-description renderer is
+      # stricter than GitHub's) and the wheel/sdist metadata.
+      - name: twine check
+        run: twine check dist/*
+
+      - name: Guard sdist contents
+        run: bash scripts/check_sdist_contents.sh dist
+
+      - name: Report artifact sizes
+        run: ls -l dist
+
   benchmarks:
     # Runs the pytest-benchmark performance suite, autosaves the timings
     # as a build artifact, and compares them against the committed

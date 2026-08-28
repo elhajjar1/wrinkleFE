@@ -1,3 +1,13 @@
+# Machine-readable citation metadata (CFF 1.2.0). Read by GitHub's "Cite
+# this repository" button and, once archiving is enabled, by Zenodo.
+#
+# `version` below is locked to pyproject.toml's [project].version by
+# tests/test_version.py, and `date-released` is the release date of that
+# version — bump BOTH as the first step of a release, before tagging (see
+# "Release procedure" in CONTRIBUTING.md). There is no software DOI yet;
+# once Zenodo archiving mints the concept DOI it goes under `identifiers:`
+# here and in the README (issue #284). A placeholder DOI is deliberately
+# not used: an unresolvable DOI in a citation file is worse than none.
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
@@ -5,8 +15,8 @@ title: "WrinkleFE"
 version: 1.0.0
 date-released: 2025-03-24
 license: MIT
-repository-code: "https://github.com/elhajjar1/wrinklefe"
-url: "https://github.com/elhajjar1/wrinklefe"
+repository-code: "https://github.com/elhajjar1/wrinkleFE"
+url: "https://github.com/elhajjar1/wrinkleFE"
 abstract: >-
   WrinkleFE is a Python finite element package for predicting strength
   and stiffness knockdown in composite laminates containing fiber waviness

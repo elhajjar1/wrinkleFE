@@ -1,0 +1,50 @@
+# Source-distribution contents (issue #264).
+#
+# Without this file the sdist is whatever setuptools guesses, which for
+# this repository was wrong in both directions: with a git file-finder in
+# the build environment it swept in every tracked file — including
+# `figures/`, ~17.6 MB of rendered PNGs (two 8.4 MB page figures alone) —
+# and without one it silently dropped `docs/`, the `tests/` subpackages
+# and the project metadata files. Both failure modes are now spelled out
+# below, and the `sdist contents` guard in ci.yml / release.yml fails the
+# build if an excluded path ever reappears in the tarball.
+#
+# Choice of scope: the sdist ships the sources needed to build, test and
+# document the package from the tarball alone (src, tests, docs, runnable
+# examples and validation drivers) — the norm for a scientific package
+# whose users are expected to re-run its verification. What it does NOT
+# ship is anything *rendered*: figures, validation plots/CSVs and built
+# docs are regenerable outputs, they dominate the archive size, and PyPI
+# is not an image host. The wheel is unaffected either way: it is built
+# from the src-layout package and never contained these paths.
+
+# --- Project metadata beyond the defaults (README/LICENSE/pyproject) ---
+include CHANGELOG.md
+include CITATION.cff
+include CONTRIBUTING.md
+include requirements.txt
+include requirements-test.txt
+
+# --- Sources shipped in the sdist ---
+graft src
+graft tests
+graft docs
+graft examples
+graft validation
+
+# --- Rendered outputs and repo-only tooling: never in the sdist ---
+prune figures
+prune docs/_build
+prune .github
+prune .claude
+prune .streamlit
+recursive-exclude validation *.png *.csv *.json *.inp *.vtk
+recursive-exclude examples *.png *.json *.inp *.vtk
+
+# --- Caches and editor droppings ---
+global-exclude *.py[cod] *.so .DS_Store
+global-exclude __pycache__/*
+prune .benchmarks
+prune .pytest_cache
+prune .ruff_cache
+prune .mypy_cache
