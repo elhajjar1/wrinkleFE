@@ -11,6 +11,9 @@ progressive-damage FE, and a (θ, D/T, z) penetration gate).
 :caption: Documentation
 
 getting_started
+tutorial
+interpreting_results
+units_conventions
 overview
 theory
 api/index
