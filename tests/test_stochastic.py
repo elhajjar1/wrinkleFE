@@ -206,6 +206,98 @@ class TestValidation:
             probabilistic_analysis(_base(), {}, n_samples=4)
 
 
+class TestKnockdownCurvature:
+    """Pin the curvature claims the module docstring now makes (#394).
+
+    The docstring used to argue the compressive law is *concave*, so a
+    run at the mean input would overestimate the mean knockdown. It is
+    convex, and the measured gap has the opposite sign. These tests
+    measure the curvature rather than restating it, and they also pin
+    the two places where the sign is *not* global — which is why the
+    docstring tells readers to use the percentiles, not the gap's sign.
+    """
+
+    @staticmethod
+    def _knockdown_vs_amplitude(amplitudes, **cfg_overrides):
+        return np.array([
+            WrinkleAnalysis(
+                AnalysisConfig(
+                    amplitude=float(a), wavelength=16.0, width=12.0,
+                    morphology="stack", **cfg_overrides,
+                )
+            ).run(analytical_only=True).analytical_knockdown
+            for a in amplitudes
+        ])
+
+    def test_compressive_law_is_convex_over_realistic_amplitudes(self):
+        """Second differences of KD(A) are strictly positive in compression."""
+        amps = np.linspace(0.05, 1.0, 48)
+        kd = self._knockdown_vs_amplitude(amps, loading="compression")
+        second_diff = np.diff(kd, 2)
+        assert np.all(second_diff > 0.0), (
+            "compressive kink-band knockdown is documented as convex in "
+            f"amplitude; found {(second_diff <= 0).sum()} non-convex "
+            "sample(s)"
+        )
+
+    def test_tension_path_is_locally_concave_somewhere(self):
+        """The convexity is path-specific: tension flips it at low amplitude."""
+        amps = np.linspace(0.05, 1.0, 48)
+        kd = self._knockdown_vs_amplitude(amps, loading="tension")
+        second_diff = np.diff(kd, 2)
+        assert np.any(second_diff < 0.0), (
+            "tension knockdown is documented as concave over part of the "
+            "range; no concave sample found"
+        )
+
+    def test_penetration_gate_flips_curvature_below_its_clamp(self):
+        """The gate's D/T ramp is concave; above the clamp convexity returns."""
+        from wrinklefe.core.penetration_gate import GATE_LI2025_VACBAG
+
+        amps = np.linspace(0.05, 1.0, 48)
+        kd = self._knockdown_vs_amplitude(
+            amps, loading="compression", penetration_gate=GATE_LI2025_VACBAG,
+        )
+        second_diff = np.diff(kd, 2)
+        assert np.any(second_diff < 0.0), (
+            "gated knockdown is documented as concave below the D/T clamp"
+        )
+        assert second_diff[-1] > 0.0, (
+            "gated knockdown is documented as convex again above the clamp"
+        )
+
+    def test_measured_mean_gap_sign_matches_the_docstring(self):
+        """On the example-14 configuration the sampled mean sits above the
+        deterministic point, and P5 sits well below it."""
+        base = AnalysisConfig(
+            amplitude=0.30, wavelength=16.0, width=12.0,
+            morphology="stack", loading="compression",
+        )
+        prob = probabilistic_analysis(
+            base,
+            {"amplitude": ("normal", 0.30, 0.04),
+             "wavelength": ("normal", 16.0, 1.5)},
+            n_samples=300, seed=11, method="lhs",
+        )
+        point = WrinkleAnalysis(base).run(
+            analytical_only=True
+        ).analytical_knockdown
+
+        mean_gap = prob.knockdown_mean - point
+        assert mean_gap > 0.0, (
+            "convex law + Jensen => sampled mean at or above the "
+            f"deterministic point; got {mean_gap:+.5f}"
+        )
+        # Small, as the docstring says — the mean gap is not the point.
+        assert mean_gap < 0.01
+
+        # The gap that matters for a disposition, and the reason the
+        # docstring anchors on percentiles rather than the mean.
+        p5_gap = prob.knockdown_percentile(5.0) - point
+        assert p5_gap < -0.01
+        assert abs(p5_gap) > 10.0 * mean_gap
+
+
 class TestModulusVectorizationEquivalence:
     """The batched `_laminate_modulus_knockdown` (the enabler for
     interactive sampling) must match the original per-(ply, x) loop."""

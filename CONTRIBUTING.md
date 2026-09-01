@@ -38,6 +38,32 @@ pip install -e ".[all,dev]"
 pytest
 ```
 
+## Python support policy
+
+WrinkleFE supports **every CPython release still in bugfix or security
+status**, and `requires-python` tracks the oldest of those. The CI
+matrix in `.github/workflows/ci.yml` is the definition of "supported":
+each supported version gets a required cell on Ubuntu and macOS, and the
+trove classifiers in `pyproject.toml` list exactly those versions.
+
+The one exception is the **newest** CPython. A version released within
+the last year typically arrives before the scientific stack's binary
+wheels do (VTK, pulled in by the `vtk` extra, is reliably the last to
+land). Rather than leave that interpreter untested, it runs as a
+non-blocking `test-experimental` job: Ubuntu only, `continue-on-error`,
+installed without the `vtk` extra. It reports; it does not gate a pull
+request.
+
+Promotion is a single deliberate step, done all at once: move the
+version into the required matrix with the full `[all,dev]` install,
+delete the experimental job, and add the trove classifier. **A version
+does not get a classifier while its cell is allowed to fail** — the
+classifier is a support claim, and CI has to be able to back it.
+
+Review this once a year, in October, when CPython cuts its next release:
+add the new version as experimental, promote last year's if its wheels
+have landed, and drop any version that has reached end-of-life.
+
 ## Code Contributions
 
 1. Fork the repository

@@ -15,6 +15,26 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CI — **Python 3.13 is now a required test cell, and 3.14 runs as a
+  contained experiment** (issue #279 — Fixes #279). The matrix stopped
+  at 3.12, so a package whose users increasingly run a 2026 distro
+  default had zero signal on the two newest interpreters. 3.13 joins the
+  required matrix on both Ubuntu and macOS and gains its trove
+  classifier; the release workflow's wheel smoke test picks it up too, so
+  a published wheel is exercised on every version the classifiers claim.
+  3.14 runs in a separate non-blocking `test-experimental` job — Ubuntu
+  only, `continue-on-error`, installed without the `vtk` extra, because
+  VTK wheels are the expected gap on a just-released CPython and pyvista
+  is lazily imported behind `pytest.importorskip`. It deliberately gets
+  **no** trove classifier while its cell is allowed to fail; the matrix
+  cell and the classifier get promoted together once VTK ships wheels.
+  `requires-python` is unchanged: 3.10 stays the floor.
+- Docs — a **Python support policy** in `CONTRIBUTING.md` (issue #279):
+  every CPython in bugfix/security status is a required matrix cell and a
+  classifier, the newest release may run as a non-blocking experiment
+  until the scientific stack's wheels stabilise, no version gets a
+  classifier while its cell can fail, and the whole thing is reviewed
+  each October.
 - Release automation — **tagging is now the whole release procedure**
   (issue #264 — Fixes #264). Pushing a `vX.Y.Z` tag runs
   `.github/workflows/release.yml`: build → version-check and wheel-test →
@@ -712,6 +732,35 @@ version produced a given file.
     config above.
 
 ### Fixed
+- Docs — the **stochastic module's Jensen argument had the sign
+  backwards** (issue #394 — Fixes #394). `wrinklefe.stochastic` claimed
+  the compressive knockdown `1 / (1 + theta_eff / gamma_Y)` is *concave*
+  in the misalignment angle, so a deterministic run at the mean input
+  would overestimate the mean knockdown. The law is **convex**
+  (`d²KD/dθ² = 2 / (γ_Y²(1 + θ/γ_Y)³) > 0`), and the measured gap on
+  `examples/14_stochastic_knockdown.py` runs the other way (`+0.0011`,
+  sampling *above* the point value) — which is why the example
+  deliberately reported the gap without explaining it. Measured over
+  A ∈ [0.05, 1.0] mm at λ = 16 mm, the compressive path is convex at
+  every sampled point, while the **tension path and the compressive path
+  below the penetration gate's `D/T` clamp are locally concave**, so the
+  sign is not global. The docstring now says so and anchors on the
+  robust statement the example already makes: read the percentiles
+  (P5/P10 sit ~0.038 below the deterministic answer), not the sign of
+  the mean gap. `viz.plot_kinkband_concavity`'s caption, title and
+  `plot_jensen_gap`'s docstring carried the same inverted claim and are
+  corrected — the plot itself was always drawing the convex picture. New
+  tests in `tests/test_stochastic.py` measure the curvature by second
+  differences instead of restating it. No numerical behaviour changes.
+- Typing — `viz.plots_2d` **no longer annotates against a package that
+  does not exist**. `plot_strength_distribution` and `plot_jensen_gap`
+  imported `MonteCarloResults` / `JensenGapResult` from
+  `wrinklefe.statistics.*` under a blanket `import-not-found` ignore, so
+  mypy checked nothing about either argument. They now use local
+  structural `Protocol`s naming exactly the attributes each function
+  reads. (`wrinklefe.stochastic.ProbabilisticResults` is *not* the right
+  target: it exposes `knockdown` / `strength_MPa` and no per-sample
+  morphology labels or Jensen-gap breakdown.)
 - Packaging — the **source distribution no longer ships `figures/`**
   (issue #264). An unused `setuptools-scm` in `[build-system].requires`
   installed a git file-finder into the isolated build environment, which
