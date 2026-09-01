@@ -1,7 +1,7 @@
 """2D plotting functions for wrinkle analysis and post-processing.
 
 Provides publication-quality 2D visualizations including wrinkle profiles,
-morphology factor sweeps, kink-band concavity diagrams, strength
+morphology factor sweeps, kink-band curvature (Jensen) diagrams, strength
 distributions, Jensen gap charts, failure envelopes, through-thickness
 stress profiles, and damage contour plots.
 
@@ -29,7 +29,7 @@ Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -57,11 +57,42 @@ if TYPE_CHECKING:
     from wrinklefe.core.wrinkle import WrinkleProfile
     from wrinklefe.solver.results import FieldResults
 
-    # The wrinklefe.statistics package does not exist yet; these
-    # annotation-only imports document the intended result types for
-    # plot_strength_distribution / plot_jensen_gap.
-    from wrinklefe.statistics.jensen import JensenGapResult  # type: ignore[import-not-found]
-    from wrinklefe.statistics.montecarlo import MonteCarloResults  # type: ignore[import-not-found]
+
+# ======================================================================
+# Structural types for the statistics plots
+# ======================================================================
+#
+# ``plot_strength_distribution`` and ``plot_jensen_gap`` used to annotate
+# their inputs by importing ``MonteCarloResults`` / ``JensenGapResult``
+# from a ``wrinklefe.statistics`` package that has never existed (the
+# imports carried a blanket ``import-not-found`` ignore, so mypy checked
+# nothing about either argument).
+#
+# They are NOT retargeted at :class:`wrinklefe.stochastic.ProbabilisticResults`,
+# which is the real sampling result type: its fields are ``knockdown`` /
+# ``strength_MPa`` / ``knockdown_percentile()`` and it carries no
+# per-sample morphology labels or Jensen-gap breakdown, so none of the
+# attributes these two plots actually read exist on it. Structural
+# protocols instead pin exactly the attributes each function touches —
+# real checking, no phantom module, and any caller (including a future
+# concrete result class) satisfies them by shape.
+
+
+class _StrengthSampleLike(Protocol):
+    """What :func:`plot_strength_distribution` reads off its argument."""
+
+    strengths: np.ndarray
+    morphologies: np.ndarray
+    mean_strength: float
+    percentile_5: float
+
+
+class _JensenGapLike(Protocol):
+    """What :func:`plot_jensen_gap` reads off its argument."""
+
+    jensen_gap: float
+    jensen_gap_percent: float
+    gap_by_morphology: Mapping[str, float]
 
 
 # ======================================================================
@@ -265,11 +296,21 @@ def plot_kinkband_concavity(
     theta_max_deg: float = 25.0,
     n_points: int = 500,
 ) -> Axes:
-    """Plot the Budiansky-Fleck kink-band knockdown showing concavity.
+    """Plot the Budiansky-Fleck kink-band knockdown and its Jensen gap.
 
-    Illustrates why the kink-band function creates fat-tailed distributions:
-    the knockdown KD = 1/(1 + theta/gamma_Y) is concave in theta, so by
-    Jensen's inequality E[KD(theta)] < KD(E[theta]).
+    Illustrates why the kink-band function creates fat-tailed
+    distributions: ``KD = 1/(1 + theta/gamma_Y)`` is **convex** in theta
+    (``d^2 KD / d theta^2 = 2 / (gamma_Y^2 (1 + theta/gamma_Y)^3) > 0``),
+    so the chord lies above the curve and Jensen's inequality gives
+    ``E[KD(theta)] >= KD(E[theta])`` — which is what the two markers this
+    function draws have always shown.
+
+    .. note::
+       The function name says "concavity" for backwards compatibility
+       only; the law is convex, and the earlier caption claiming
+       ``E[KD] < KD(E[theta])`` had the inequality backwards (issue
+       #394). The sign of the *propagated* gap is not global either —
+       see the :mod:`wrinklefe.stochastic` module docstring.
 
     Parameters
     ----------
@@ -285,7 +326,7 @@ def plot_kinkband_concavity(
     Returns
     -------
     Axes
-        The axes with the concavity diagram.
+        The axes with the convexity / Jensen-gap diagram.
     """
     set_publication_style()
     ax = ensure_axes(ax)
@@ -296,7 +337,8 @@ def plot_kinkband_concavity(
 
     ax.plot(theta_deg, kd, color="k", linewidth=1.5)
 
-    # Highlight concavity with a chord
+    # Highlight the curvature with a chord: for a convex KD the chord
+    # lies ABOVE the curve between its endpoints.
     t1_deg, t2_deg = 5.0, 15.0
     t1_rad, t2_rad = np.radians(t1_deg), np.radians(t2_deg)
     kd1 = 1.0 / (1.0 + t1_rad / gamma_Y)
@@ -324,7 +366,7 @@ def plot_kinkband_concavity(
 
     ax.set_xlabel("Fiber misalignment angle $\\theta$ (deg)")
     ax.set_ylabel("Knockdown factor $KD$")
-    ax.set_title("Kink-Band Concavity (Jensen Inequality)")
+    ax.set_title("Kink-Band Convexity (Jensen Inequality)")
     ax.legend(loc="upper right", fontsize=7)
     ax.set_xlim(0, theta_max_deg)
     ax.set_ylim(0, 1.05)
@@ -403,7 +445,7 @@ def plot_strength_vs_amplitude(
 
 
 def plot_strength_distribution(
-    mc_results: MonteCarloResults,
+    mc_results: _StrengthSampleLike,
     ax: Axes | None = None,
     n_bins: int = 50,
     show_kde: bool = True,
@@ -413,8 +455,10 @@ def plot_strength_distribution(
 
     Parameters
     ----------
-    mc_results : MonteCarloResults
-        Monte Carlo simulation results.
+    mc_results : object
+        Any Monte-Carlo strength sample exposing ``strengths``,
+        ``morphologies``, ``mean_strength`` and ``percentile_5``
+        (the ``_StrengthSampleLike`` protocol above).
     ax : Axes, optional
         Matplotlib axes. A new figure is created if ``None``.
     n_bins : int, optional
@@ -491,7 +535,7 @@ def plot_strength_distribution(
 
 
 def plot_jensen_gap(
-    jensen_result: JensenGapResult,
+    jensen_result: _JensenGapLike,
     ax: Axes | None = None,
 ) -> Axes:
     """Plot a bar chart of the Jensen gap broken down by morphology.
@@ -499,10 +543,20 @@ def plot_jensen_gap(
     The overall gap is shown as the first bar, followed by per-morphology
     values from the ``gap_by_morphology`` dictionary.
 
+    The bars are signed and the chart makes no assumption about which way
+    they point: the gap between the sampled mean and the deterministic
+    run at the mean geometry takes the sign of the knockdown law's
+    *local* curvature over the sampled range, which is convex on the
+    compressive kink-band path but concave in places on the tension path
+    and below the penetration gate's clamp. See the
+    :mod:`wrinklefe.stochastic` module docstring.
+
     Parameters
     ----------
-    jensen_result : JensenGapResult
-        Results from a Jensen gap analysis.
+    jensen_result : object
+        Any Jensen-gap result exposing ``jensen_gap``,
+        ``jensen_gap_percent`` and ``gap_by_morphology`` (the
+        ``_JensenGapLike`` protocol above).
     ax : Axes, optional
         Matplotlib axes. A new figure is created if ``None``.
 

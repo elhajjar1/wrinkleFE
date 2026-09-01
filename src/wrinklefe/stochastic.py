@@ -9,11 +9,22 @@ those input distributions through the analysis so the answer becomes
 "the model says 0.74–0.82 given my measurement uncertainty" instead of
 "the model says 0.78".
 
-The propagation is doubly worthwhile here because the compressive
-knockdown ``1 / (1 + theta_eff / gamma_Y)`` is **concave** in the
-misalignment angle: by Jensen's inequality, evaluating the model at the
-*mean* input overestimates the *mean* knockdown (the fat-tail argument
-of Elhajjar 2025) — a bias only sampling can quantify.
+The propagation is doubly worthwhile here because the knockdown law is
+nonlinear in the geometry, so one run at the *mean* measurement is not
+the mean of the runs.  The compressive kink-band law
+``1 / (1 + theta_eff / gamma_Y)`` is **convex** in the misalignment
+angle, so over a range where that convexity holds Jensen's inequality
+puts the sampled mean at or *above* the deterministic point value —
+measured, the gap is small (``+0.001`` on the
+``examples/14_stochastic_knockdown.py`` configuration).  The sign is
+not global: the tension path, and the compressive path below the
+penetration gate's ``D/T`` clamp, are locally *concave* over part of a
+realistic amplitude range and flip it.
+
+So do not read the sign of the mean gap — read the **percentiles**.
+The gap that matters for a disposition is that P5/P10 sit well below
+the deterministic answer (``-0.038`` on that same configuration), and
+a single deterministic run reports nothing about them at all.
 
 .. warning:: **Not A-/B-basis values.**  The percentiles reported here
    are *model-input propagation* statistics: the distribution of the
@@ -43,7 +54,7 @@ Example
 References
 ----------
 - Elhajjar, R. (2025). Scientific Reports, 15:25977 (fat-tail
-  statistics from concave knockdown laws).
+  knockdown statistics under geometric scatter).
 - CMH-17-1G, Vol. 1, Ch. 8 (statistical basis values — what this
   module deliberately does *not* compute).
 """
