@@ -19,7 +19,7 @@ jobs:
       # releases are now source-only (PyPI / source tarball). See issue #10.
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
       fail-fast: false
 
     steps:
@@ -53,6 +53,54 @@ jobs:
       # the per-cell terminal report.
       - name: Run tests
         run: pytest --tb=short -q -m "not slow" --cov=wrinklefe --cov-report=xml --cov-report=term --cov-fail-under=0
+
+      - name: Check import
+        run: python -c "import wrinklefe; print(f'WrinkleFE {wrinklefe.__version__} imported successfully')"
+
+  test-experimental:
+    # Early-warning cell for the newest CPython (issue #279). It is
+    # DELIBERATELY NON-BLOCKING and deliberately narrower than the
+    # required matrix above:
+    #
+    # * `continue-on-error: true` — a red cell here reports, it does not
+    #   gate a pull request. The newest interpreter is where the
+    #   scientific stack's wheels land last, and an upstream packaging
+    #   gap is not a defect in this repository.
+    # * Ubuntu only, and installed WITHOUT the `vtk` extra. VTK (pulled
+    #   in by pyvista) is the expected wheel gap on a just-released
+    #   CPython; it is imported lazily and the pyvista tests use
+    #   `pytest.importorskip`, so dropping it costs a handful of skips
+    #   rather than the whole run. Everything else the fast lane needs
+    #   (`streamlit`, `dev`) is installed.
+    #
+    # PROMOTE LATER, TOGETHER: once VTK ships wheels for this version,
+    # fold 3.14 into the `test` matrix above with the full `[all,dev]`
+    # install, delete this job, and add the matching trove classifier to
+    # pyproject.toml. The classifier is intentionally NOT added while the
+    # cell is allowed to fail — publishing "Programming Language ::
+    # Python :: 3.14" would claim support this workflow does not yet
+    # verify. See the support policy in CONTRIBUTING.md.
+    name: test (ubuntu-latest, 3.14, experimental)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dependencies (no vtk extra)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[streamlit,dev]"
+
+      - name: Run tests
+        run: pytest --tb=short -q -m "not slow" --cov=wrinklefe --cov-report=term --cov-fail-under=0
 
       - name: Check import
         run: python -c "import wrinklefe; print(f'WrinkleFE {wrinklefe.__version__} imported successfully')"

@@ -2,7 +2,7 @@
 # Compatible-release ranges: pyproject declares requires-python >= 3.10, but
 # the absolute latest numpy / scipy lines (2.4 / 1.17) require Python >= 3.11.
 # The ranges below pick the most recent series that supports the full
-# 3.10-3.12 matrix.
+# 3.10-3.13 matrix.
 #
 # stdlib modules and dev tools (pytest, ruff, mypy) are excluded by design.
 # This project is Streamlit-first (web) and CLI-only — there is no desktop GUI,

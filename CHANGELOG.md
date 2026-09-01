@@ -15,6 +15,26 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CI — **Python 3.13 is now a required test cell, and 3.14 runs as a
+  contained experiment** (issue #279 — Fixes #279). The matrix stopped
+  at 3.12, so a package whose users increasingly run a 2026 distro
+  default had zero signal on the two newest interpreters. 3.13 joins the
+  required matrix on both Ubuntu and macOS and gains its trove
+  classifier; the release workflow's wheel smoke test picks it up too, so
+  a published wheel is exercised on every version the classifiers claim.
+  3.14 runs in a separate non-blocking `test-experimental` job — Ubuntu
+  only, `continue-on-error`, installed without the `vtk` extra, because
+  VTK wheels are the expected gap on a just-released CPython and pyvista
+  is lazily imported behind `pytest.importorskip`. It deliberately gets
+  **no** trove classifier while its cell is allowed to fail; the matrix
+  cell and the classifier get promoted together once VTK ships wheels.
+  `requires-python` is unchanged: 3.10 stays the floor.
+- Docs — a **Python support policy** in `CONTRIBUTING.md` (issue #279):
+  every CPython in bugfix/security status is a required matrix cell and a
+  classifier, the newest release may run as a non-blocking experiment
+  until the scientific stack's wheels stabilise, no version gets a
+  classifier while its cell can fail, and the whole thing is reviewed
+  each October.
 - Release automation — **tagging is now the whole release procedure**
   (issue #264 — Fixes #264). Pushing a `vX.Y.Z` tag runs
   `.github/workflows/release.yml`: build → version-check and wheel-test →

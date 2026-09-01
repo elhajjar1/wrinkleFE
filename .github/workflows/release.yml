@@ -12,7 +12,8 @@ name: Release
 #        |
 #        +--> version-check ... tag == version in the BUILT WHEEL's metadata
 #        |
-#        +--> wheel-test ...... install the wheel on 3.10 / 3.11 / 3.12 and
+#        +--> wheel-test ...... install the wheel on 3.10 / 3.11 / 3.12 /
+#        |                      3.13 and
 #        |                      smoke-test the INSTALLED package
 #        v
 #   publish ....... PyPI via trusted publishing (OIDC, no API token)
@@ -131,7 +132,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # Keep in lockstep with the trove classifiers in pyproject.toml
+        # and the required cells of the ci.yml matrix (issue #279): a
+        # version this project claims to support must be smoke-tested
+        # from the wheel before it is published.
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
       fail-fast: false
     steps:
       # How this tests the WHEEL and not the source tree:

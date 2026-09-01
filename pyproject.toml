@@ -29,6 +29,11 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    # No 3.14 classifier yet: it runs in CI only as the non-blocking
+    # `test-experimental` job (issue #279). Promote the classifier and the
+    # matrix cell together — see the comment on that job in
+    # .github/workflows/ci.yml and the support policy in CONTRIBUTING.md.
 ]
 
 dependencies = [
