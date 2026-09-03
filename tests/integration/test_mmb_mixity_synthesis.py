@@ -94,6 +94,8 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from scipy.optimize import minimize_scalar  # noqa: E402
 
+from ._figure_output import validation_figure_path
+
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 # ----------------------------------------------------------------------
@@ -492,9 +494,7 @@ def test_mmb_mixity_synthesis_nasa_tm():
     # ------------------------------------------------------------------
     # Render the synthesis figure (always — user-facing deliverable).
     # ------------------------------------------------------------------
-    out_path = Path(__file__).resolve().parents[2] / "figures" / (
-        "phase7_mmb_mixity_synthesis.png"
-    )
+    out_path = validation_figure_path("phase7_mmb_mixity_synthesis.png")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _save_synthesis_plot(out_path, eta_opt=eta_opt)
     assert out_path.is_file(), f"synthesis plot not written: {out_path}"

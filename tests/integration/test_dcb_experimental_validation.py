@@ -164,6 +164,8 @@ from wrinklefe.solver.assembler import GlobalAssembler  # noqa: E402
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler  # noqa: E402
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver  # noqa: E402
 
+from ._figure_output import validation_figure_path
+
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 # ----------------------------------------------------------------------
@@ -812,9 +814,7 @@ def test_dcb_experimental_validation_nasa_tm():
 
     # Write the comparison plot regardless of which assertions pass —
     # the plot is the user-facing deliverable.
-    out_path = Path(__file__).resolve().parents[2] / "figures" / (
-        "phase7_dcb_validation.png"
-    )
+    out_path = validation_figure_path("phase7_dcb_validation.png")
     _save_comparison_plot(res, SIGMA_MAX, out_path)
 
     print(
