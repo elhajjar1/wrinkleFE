@@ -35,7 +35,7 @@ that definition, not this page, is authoritative.
 | Force resultants (`Nx`, `Ny`, `Nxy`, `Qx`, `Qy`) | N/mm | Per unit width. | `LoadState` |
 | Moment resultants (`Mx`, `My`, `Mxy`) | N·mm/mm | Per unit width. | `LoadState` |
 | Coefficients of thermal expansion (`alpha1`, `alpha2`, `alpha3`) | 1/K | Per kelvin; a temperature *change* is numerically the same in K and °C. | `OrthotropicMaterial` |
-| Temperature change (`delta_T`) | °C | Uniform temperature change from the stress-free state. | `LoadState.delta_T` |
+| Temperature change (`delta_T`) | °C | Uniform temperature change **from the stress-free (cure) state**: `delta_T = T_service − T_stress_free`. **A cure cool-down is negative** — a 177 °C cure taken to 22 °C service is `delta_T = -155`, not `+155` and not `22`. A positive value means the laminate is hotter than its stress-free state. Numerically identical in K and °C because it is a *change*. On `AnalysisConfig` the value must satisfy `\|delta_T\| ≤ 1000` and requires `analytical_only=True` (CLT path only — the FE path has no thermal initial-strain term yet). | `AnalysisConfig.delta_T`, `LoadState.delta_T` |
 | Coefficients of moisture expansion (`beta1`, `beta2`, `beta3`) | 1/%M | Hygroscopic swelling per percent moisture. | `OrthotropicMaterial` |
 | Moisture change (`delta_C`) | % | Uniform moisture concentration change. | `LoadState.delta_C` |
 | Nonlinear shear coefficient (`beta_shear`) | 1/MPa³ | Ramberg–Osgood coefficient in the LaRC05 shear response. | `OrthotropicMaterial.beta_shear` |
@@ -101,8 +101,17 @@ strains in the compliance matrix.
 - **`loading`** (`'compression'` / `'tension'`) selects the physics
   (kink-band vs the three-mechanism tension model). It is a separate
   switch from the sign of `applied_strain` — set both consistently.
-- **`delta_T`** is a change *from the stress-free state*, so a cure-down
-  to room temperature is negative.
+- **`delta_T` is a change from the stress-free (cure) state, not an
+  absolute temperature.** `delta_T = T_service − T_stress_free`, so a
+  cure cool-down is **negative**: a 177 °C cure taken to 22 °C service
+  is `delta_T = -155` — not `+155`, and not `22`. A positive value means
+  the laminate is *hotter* than its stress-free state. This is the
+  single easiest sign to invert, and inverting it flips the residual
+  matrix stress of a cross-ply from tension to compression, which is the
+  difference between predicting cure microcracking and missing it. On
+  `AnalysisConfig` the field is CLT-path only for now: a non-zero value
+  requires `analytical_only=True` and is rejected on the FE path rather
+  than silently ignored (issue #273).
 
 ## Percent vs fraction: the one place they differ
 

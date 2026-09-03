@@ -241,6 +241,63 @@ and single-wrinkle for now (analytical-only, multi-wrinkle, and CZM runs
 are rejected at construction); the CLI/app knobs are a follow-up. See
 `examples/transverse_wrinkle_knockdown.py` for a runnable comparison.
 
+### Thermal / cure-residual loading (`delta_T`)
+
+A laminate leaves the autoclave stress-free at cure temperature and is
+used at room temperature. Cooling down locks in residual stress, because
+each ply's transverse (matrix) contraction is restrained by its
+neighbours' stiff fibres. That residual stress superposes directly onto
+the matrix tension/compression states the failure criteria evaluate, so
+it is not a second-order detail: on the IM7/8552 quasi-isotropic coupon
+below a `delta_T = -155` cool-down adds **+34.3 MPa** of transverse
+tension to every ply — 55 % of `Yt = 62.3 MPa`.
+
+> **Sign convention.** `delta_T` is the temperature change **from the
+> stress-free (cure) state**: `delta_T = T_service − T_stress_free`.
+> **A cure cool-down is NEGATIVE.** A 177 °C cure taken to 22 °C service
+> is `delta_T = -155`, *not* `+155` and *not* `22`. A positive value
+> means the laminate is hotter than its stress-free state. Get this
+> backwards and the residual matrix stress flips from tension to
+> compression — a laminate prone to cure microcracking will look safe.
+
+| Parameter | Units | Default | Definition | Constraint |
+|-----------|-------|---------|------------|------------|
+| `delta_T` | °C | `0.0` | Uniform temperature change from the stress-free (cure) state, `T_service − T_stress_free`. Negative for a cure cool-down. Adds the CLT thermal resultants `N^T`/`M^T` to the ABD solve, and ply stresses are recovered from the mechanical (not total) strain, so the residual stress reaches the ply stresses and the first-ply-failure report. `0.0` (default) leaves every result bit-identical. | finite, `\|delta_T\| ≤ 1000`, and requires `analytical_only=True` |
+
+```python
+config = AnalysisConfig(
+    amplitude=0.5, wavelength=16.0, width=12.0,
+    morphology="graded", loading="compression",
+    angles=[0, 45, -45, 90, 90, -45, 45, 0],
+    ply_thickness=0.183,
+    delta_T=-155.0,       # 177 °C cure -> 22 °C service
+    analytical_only=True,  # CLT path only — see below
+)
+result = WrinkleAnalysis(config).run()
+print(result.summary())          # states the ΔT and its sense
+print(result.failure_report.critical_mode)   # -> matrix_tension
+```
+
+```bash
+wrinklefe analyze --delta-T -155 --analytical-only --angles "[0/45/-45/90]s"
+```
+
+**Analytical/CLT path only (issue #273, Stage 1).** The FE element
+formulation does not yet assemble the thermal initial-strain load vector
+`∫ Bᵀ C ε_th dV`, so an FE run cannot see `delta_T`. Rather than
+silently dropping it — which would return stress fields, failure indices
+and retention factors that quietly ignore a first-order load — a
+non-zero `delta_T` with `analytical_only=False` is **rejected at
+construction**, with a message naming the follow-up work. Set
+`analytical_only=True` (CLI `--analytical-only`, Streamlit *Analytical
+only*) or `delta_T=0.0`.
+
+Moisture (`LoadState.delta_C`, and the `beta1/2/3` swelling coefficients
+on every material preset) is deliberately **not** exposed on
+`AnalysisConfig` yet: nothing in the CLT solve consumes `delta_C`, so a
+config field would be a silent no-op — the exact failure mode this
+change removes for temperature.
+
 ### Tension analysis
 
 ```python
