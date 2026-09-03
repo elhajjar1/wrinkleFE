@@ -616,8 +616,20 @@ class Laminate:
         np.ndarray
             Shape (3,) stress vector [sigma_x, sigma_y, tau_xy] (MPa).
         """
+        ply = self.plies[ply_idx]
         eps = self.ply_strains(load, ply_idx, position)
-        Qb = self.plies[ply_idx].Q_bar()
+
+        # Stress is driven by the *mechanical* (elastic) part of the total
+        # strain only: sigma = Qbar (eps - eps_free_thermal).  Omitting the
+        # free-expansion term would report stress in an unrestrained ply
+        # heated with no mechanical load, and — worse — flips the sign of the
+        # matrix-direction residual stress in a cross-ply cool-down (issue
+        # #273).  Skipped entirely when delta_T == 0 so the purely mechanical
+        # path is bit-identical.
+        if not np.isclose(load.delta_T, 0.0):
+            eps = eps - ply.thermal_strain_global() * load.delta_T
+
+        Qb = ply.Q_bar()
         return np.asarray(Qb @ eps)
 
     def ply_stresses_local(
