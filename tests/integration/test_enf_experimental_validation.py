@@ -142,7 +142,6 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pytest
 
-from tests.integration._figure_output import validation_figure_path
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface  # noqa: E402
 from wrinklefe.core.laminate import Laminate, Ply  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary  # noqa: E402
@@ -154,6 +153,8 @@ from wrinklefe.elements.cohesive8 import (  # noqa: E402
 from wrinklefe.solver.assembler import GlobalAssembler  # noqa: E402
 from wrinklefe.solver.boundary import BoundaryCondition, BoundaryHandler  # noqa: E402
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver  # noqa: E402
+
+from ._figure_output import validation_figure_path
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 

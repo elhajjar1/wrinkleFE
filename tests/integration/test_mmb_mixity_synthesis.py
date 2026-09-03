@@ -94,7 +94,7 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from scipy.optimize import minimize_scalar  # noqa: E402
 
-from tests.integration._figure_output import validation_figure_path
+from ._figure_output import validation_figure_path
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
