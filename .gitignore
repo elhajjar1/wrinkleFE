@@ -87,3 +87,7 @@ docs/_build/
 # validation/.gitignore — so a wholesale ignore here doesn't silently hide
 # new scripts (or already-tracked reference figures) from git status
 # (issue #374).
+
+# Generated validation figures (issue #278): tests render here by default;
+# set WRINKLEFE_FIGURE_DIR=figures to deliberately refresh committed evidence.
+figures/_generated/

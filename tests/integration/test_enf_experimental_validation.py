@@ -142,6 +142,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pytest
 
+from tests.integration._figure_output import validation_figure_path
 from wrinklefe.core.cohesive_mesh import insert_cohesive_interface  # noqa: E402
 from wrinklefe.core.laminate import Laminate, Ply  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary  # noqa: E402
@@ -807,9 +808,7 @@ def test_enf_experimental_validation_nasa_tm():
 
     # Write the plot regardless of assertion outcomes -- user-facing
     # deliverable.
-    out_path = Path(__file__).resolve().parents[2] / "figures" / (
-        "phase7_enf_validation.png"
-    )
+    out_path = validation_figure_path("phase7_enf_validation.png")
     _save_comparison_plot(res, out_path)
 
     print(
