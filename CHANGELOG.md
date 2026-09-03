@@ -15,6 +15,35 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Analysis — **thermal / cure-residual loading is reachable from
+  `AnalysisConfig`** (issue #273, Stage 1 — the FE initial-strain term is
+  Stage 2). The CLT machinery (`LoadState.delta_T`,
+  `Laminate.thermal_resultants`, the thermal branch of
+  `midplane_strains`) had been implemented and tested for a long time but
+  dead-ended one layer below the pipeline, which built a hardcoded
+  `LoadState(Nx=applied_strain * 1000.0)`. There is now an
+  `AnalysisConfig.delta_T` (default `0.0`), a CLI `analyze --delta-T`
+  flag, and an expert-mode *Temperature change from cure ΔT [°C]* input
+  in the Streamlit app, so a user can finally ask "what does my knockdown
+  look like including cure-induced residual stress?".
+  **Sign convention, stated in the field docstring, the CLI help, the app
+  tooltip, the run summary, the README and the units page:** `delta_T` is
+  the temperature change *from the stress-free (cure) state*
+  (`T_service − T_stress_free`), so a **cure cool-down is negative** — a
+  177 °C cure taken to 22 °C service is `delta_T = -155`.
+  **Scope boundary.** This is the analytical/CLT path only. The FE
+  element formulation has no thermal initial-strain load vector
+  (`∫ Bᵀ C ε_th dV`) yet, so a non-zero `delta_T` with
+  `analytical_only=False` is **rejected at construction and again at
+  `run()` time** rather than silently dropped — an FE result that quietly
+  omits a load this large is a wrong number, not a missing feature. On
+  the analytical path a CLT first-ply-failure report is now produced when
+  `delta_T != 0` (the closed-form knockdown carries no temperature term,
+  so without it the feature would have no output at all); `delta_T == 0`
+  leaves that path exactly as it was, `failure_report is None` included.
+  Moisture (`delta_C`, `beta1/2/3`) is deliberately **deferred**: nothing
+  in the CLT solve consumes `delta_C`, so exposing it would create the
+  silent no-op this change removes.
 - CI — **Python 3.13 is now a required test cell, and 3.14 runs as a
   contained experiment** (issue #279 — Fixes #279). The matrix stopped
   at 3.12, so a package whose users increasingly run a 2026 distro
@@ -732,6 +761,20 @@ version produced a given file.
     config above.
 
 ### Fixed
+- CLT — **ply stress was recovered from the total strain under a thermal
+  load** (issue #273). `Laminate.ply_stresses_global` computed
+  `sigma = Qbar @ eps` with the *total* strain, which is correct only
+  when `delta_T == 0`; the free-expansion part has to be removed first
+  (`sigma = Qbar (eps − alpha_global · delta_T)`). Without it an
+  unrestrained single ply heated with no mechanical load reported
+  non-zero stress, and a cross-ply cool-down came out with the matrix
+  direction in *compression* where the physics puts it in tension: for
+  IM7/8552 `[0/90]s` at `delta_T = -155` the 90° transverse stress went
+  from −2.25 MPa to its correct **+34.3 MPa**. The sign of the
+  matrix-cracking driver was inverted — the same class of error #133
+  fixed at the resultant level. The correction is gated on
+  `delta_T != 0`, so every purely mechanical call is unchanged and the
+  validation ledger shows zero drift.
 - Docs — the **stochastic module's Jensen argument had the sign
   backwards** (issue #394 — Fixes #394). `wrinklefe.stochastic` claimed
   the compressive knockdown `1 / (1 + theta_eff / gamma_Y)` is *concave*
@@ -1065,6 +1108,21 @@ version produced a given file.
   imported; native `.inp`/VTK writers need no extra).
 
 ### Numerical results
+- **Thermal residual stress (issue #273, Stage 1)**: opt-in and off by
+  default (`delta_T = 0.0`), so every existing result — the validation
+  ledger included — is byte-identical. When it is switched on the CLT
+  numbers move, as intended and as measured: on an IM7/8552
+  quasi-isotropic `[0/45/-45/90]s` wrinkled coupon (graded, A = 0.5 mm,
+  λ = 16 mm, compression) a `delta_T = -155` cure cool-down adds
+  **+34.3 MPa** of transverse tension to every ply — 55 % of
+  `Yt = 62.3 MPa` — and takes the CLT first-ply-failure load factor from
+  173.3 to 3.62 (**−97.9 %**), with the critical mode flipping from
+  `matrix_compression` to `matrix_tension`. The reference mechanical
+  resultant the pipeline uses is deliberately small, so the thermal term
+  dominates; that is precisely why omitting it from a run that asks for
+  it would be a wrong number rather than a small one. The closed-form
+  `analytical_knockdown` is unchanged (Budiansky–Fleck has no
+  temperature term).
 - **Compaction Vf gradient (issue #379, Part B)**: opt-in and off by
   default, so every existing result — the ledger included — is unchanged.
   When it is switched on for a `tool_flat` run the FE numbers move, as
