@@ -15,6 +15,30 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Docs — **the validation figures are now linked from the validation
+  ledger** (issue #278). `docs/internal/VALIDATION.md` gains an
+  *Interlaminar (CZM) validation evidence — Phase 7* section embedding all
+  seven NASA-TM benchmark comparisons (DCB, ENF, 4PB, MMB 25/50/75, mixity
+  synthesis) beside the test that regenerates each one, plus the two legacy
+  knockdown snapshots marked explicitly as archival (no script in the tree
+  regenerates them). Previously the directory was the repository's largest
+  content while no document referenced any of it.
+
+### Changed
+- Tests — **generated validation figures no longer land in a git-tracked
+  path** (issue #278). The seven Phase-7 tests resolve their output through
+  `tests/integration/_figure_output.validation_figure_path()`, which
+  defaults to the git-ignored `figures/_generated/` and honours
+  `WRINKLEFE_FIGURE_DIR`; refreshing the committed evidence is now the
+  explicit `WRINKLEFE_FIGURE_DIR=figures pytest tests/integration -m
+  integration`. Running the suite no longer dirties the working tree.
+
+### Removed
+- `figures/fig_page4.png` and `figures/fig_page5.png` (issue #278) — 16.2 MB
+  of the directory's 18 MB, referenced by nothing. They were not PNGs: no
+  PNG signature, exactly 8,400,000 bytes each (2000x1400 raw RGB), so they
+  could not have rendered in GitHub, Markdown or Sphinx even if linked. The
+  directory drops from 18 MB to 1.5 MB; the blobs remain in git history.
 - Analysis — **thermal / cure-residual loading is reachable from
   `AnalysisConfig`** (issue #273, Stage 1 — the FE initial-strain term is
   Stage 2). The CLT machinery (`LoadState.delta_T`,
