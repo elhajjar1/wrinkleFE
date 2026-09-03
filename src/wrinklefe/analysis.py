@@ -92,6 +92,13 @@ _BETA_ANGLE = 3.0  # Angle sensitivity
 _THETA_CRIT = 0.1  # Critical angle (rad)
 _A_REF = 0.183    # Reference amplitude (1 ply thickness, mm)
 
+# Sanity bound on the cure-residual temperature change (deg C, issue
+# #273).  ``delta_T`` is a *change from the stress-free state*, not an
+# absolute temperature, so realistic magnitudes are O(100-200 deg C);
+# anything past this is almost always an absolute temperature typed into
+# the wrong field.
+_DELTA_T_MAX = 1000.0
+
 # Number of x-integration points for profile-proportional knockdown
 _N_PROFILE_PTS = 500
 
@@ -1083,6 +1090,25 @@ class AnalysisConfig:
     applied_strain : float
         Applied nominal strain for displacement-controlled loading.
         Default ``-0.01`` (1 % compression).
+    delta_T : float
+        Uniform temperature change **from the stress-free (cure)
+        state**, in deg C.  Default ``0.0`` (no thermal load).
+
+        **Sign convention** — ``delta_T`` is *T_service - T_stress_free*,
+        so a cure cool-down is **negative**: a 177 deg C cure taken to a
+        22 deg C service temperature is ``delta_T = -155``.  A positive
+        value means the laminate is *hotter* than its stress-free state.
+        Getting this sign backwards flips the residual matrix stress from
+        tension to compression, so state it explicitly whenever the value
+        is reported.
+
+        Stage 1 of issue #273 wires the temperature into the CLT /
+        analytical path only (thermal resultants enter the ABD solve, and
+        ply stresses are recovered from the mechanical strain).  The FE
+        path has no thermal initial-strain load vector yet, so a non-zero
+        ``delta_T`` requires ``analytical_only=True`` and is rejected
+        otherwise rather than being silently dropped.  Must be finite with
+        ``|delta_T| <= 1000``.
     solver : str
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
     iterative_rtol : float
@@ -1209,6 +1235,19 @@ class AnalysisConfig:
 
     # Loading parameters
     applied_strain: float = -0.01
+
+    # Thermal / cure-residual loading (issue #273, Stage 1).
+    #
+    # ``delta_T`` is the uniform temperature change FROM the stress-free
+    # (cure) state, in deg C: ``T_service - T_stress_free``.  Cool-down
+    # from cure is therefore NEGATIVE — a 177 C cure taken to 22 C is
+    # ``delta_T = -155``.  Default 0.0 leaves every result bit-identical.
+    #
+    # Consumed by the CLT path (``Laminate.thermal_resultants`` ->
+    # ``midplane_strains`` -> ply stress recovery).  The FE path has no
+    # initial-strain load vector yet (Stage 2), so a non-zero value is
+    # rejected there instead of being silently ignored — see ``_validate``.
+    delta_T: float = 0.0
 
     # Solver
     solver: str = "direct"
@@ -1708,6 +1747,31 @@ class AnalysisConfig:
             raise ValueError(
                 f"AnalysisConfig.applied_strain must be finite, "
                 f"got {self.applied_strain}"
+            )
+
+        # --- Thermal / cure-residual load (issue #273, Stage 1) -------
+        if not math.isfinite(self.delta_T):
+            raise ValueError(
+                f"AnalysisConfig.delta_T must be finite, got {self.delta_T}"
+            )
+        if abs(self.delta_T) > _DELTA_T_MAX:
+            raise ValueError(
+                f"AnalysisConfig.delta_T = {self.delta_T} deg C is outside "
+                f"the supported range |delta_T| <= {_DELTA_T_MAX:.0f}. "
+                f"delta_T is the temperature change FROM the stress-free "
+                f"(cure) state, not an absolute temperature: a 177 C cure "
+                f"taken to 22 C service is delta_T = -155, not -273 or 22."
+            )
+        if self.delta_T != 0.0 and not self.analytical_only:
+            raise ValueError(
+                f"AnalysisConfig.delta_T = {self.delta_T} requires "
+                f"analytical_only=True. Thermal loading is wired into the "
+                f"CLT/analytical path only (issue #273 Stage 1); the FE "
+                f"path does not yet assemble the thermal initial-strain "
+                f"load vector (int B^T C eps_th dV, Stage 2), so an FE run "
+                f"would silently report stresses and knockdowns that ignore "
+                f"the temperature change. Set analytical_only=True (CLI: "
+                f"--analytical-only) or delta_T=0.0."
             )
 
         # --- Wrinkle placement (interface indices) --------------------
@@ -2703,6 +2767,24 @@ class AnalysisResults:
             f"    Predicted strength:     {self.analytical_strength_MPa:.1f} MPa",
         ]
 
+        # Thermal / cure-residual load (issue #273, Stage 1). Emitted only
+        # when a temperature change is set, so the default summary is
+        # unchanged. The sign convention is restated inline because a
+        # reader who mistakes it flips the residual matrix stress from
+        # tension to compression.
+        if cfg.delta_T != 0.0:
+            sense = "cool-down from" if cfg.delta_T < 0 else "heat-up above"
+            lines.extend([
+                "",
+                "  Thermal / cure-residual load (CLT path only):",
+                f"    delta_T: {cfg.delta_T:+.1f} deg C "
+                f"({sense} the stress-free/cure state)",
+                "    Applied to the CLT ply stresses and first-ply-failure "
+                "report;",
+                "    the FE fields carry no thermal initial strain "
+                "(issue #273 Stage 2).",
+            ])
+
         if self.mesh is not None:
             lines.extend([
                 "",
@@ -2956,6 +3038,23 @@ class WrinkleAnalysis:
                 "analytical_only=False or set transverse_mode='uniform'."
             )
 
+        # Mirror of the check above for the thermal load (issue #273).
+        # ``_validate`` only sees ``cfg.analytical_only``, so a run-time
+        # ``analytical_only=False`` override would otherwise route a
+        # thermally-loaded config down the FE path, whose element
+        # formulation carries no initial-strain term — the stresses,
+        # failure indices and retention factors would silently ignore the
+        # temperature. Fail fast instead.
+        if not analytical_only and cfg.delta_T != 0.0:
+            raise ValueError(
+                f"AnalysisConfig.delta_T={cfg.delta_T} requires the "
+                "analytical/CLT path but this run was invoked with "
+                "analytical_only=False. Thermal loading is Stage 1 of "
+                "issue #273 (CLT only); the FE thermal initial-strain "
+                "load vector is Stage 2. Run with analytical_only=True "
+                "or set delta_T=0.0."
+            )
+
         # Multi-wrinkle FE solve (issue #252): overlapping and
         # non-overlapping layouts run through the linear FE path, and
         # (issue #283) through the CZM path — cohesive layers are
@@ -3089,6 +3188,23 @@ class WrinkleAnalysis:
 
         # 3. Analytical predictions
         self._compute_analytical(results, wrinkle_config)
+
+        # 3b. CLT first-ply-failure under the thermal load (issue #273).
+        #
+        # Only runs when ``delta_T != 0``. The closed-form knockdown above
+        # is a fibre-kinking / fracture model with no temperature term, so
+        # without this step a thermally-loaded analytical run would produce
+        # no output that depends on ``delta_T`` at all — the silent no-op
+        # this issue exists to remove. Cure-induced residual stress is
+        # present at zero mechanical load, so the ply-level CLT report is
+        # the quantity that actually carries it.
+        #
+        # Left off for ``delta_T == 0`` so the default analytical run is
+        # bit-identical (and ``failure_report`` keeps its documented
+        # "absent on analytical_only runs" contract, which the JSON/CSV
+        # exporters rely on for their load-factor fallback).
+        if cfg.delta_T != 0.0:
+            self._evaluate_clt_failure(results, laminate)
 
         # In analytical-only mode, skip mesh, solve, failure, and retention.
         if analytical_only:
@@ -4880,7 +4996,46 @@ class WrinkleAnalysis:
         results.failure_modes = mode_fields
 
         # CLT-level evaluation at applied load
-        load = LoadState(Nx=self.config.applied_strain * 1000.0)  # approximate
+        self._evaluate_clt_failure(results, laminate)
+
+    def _clt_load_state(self) -> LoadState:
+        """Build the CLT :class:`LoadState` the pipeline evaluates.
+
+        The mechanical part is the same approximate membrane resultant the
+        laminate-level failure check has always used
+        (``Nx = applied_strain * 1000``); the environmental part carries
+        ``AnalysisConfig.delta_T`` (issue #273, Stage 1) so the thermal
+        resultants reach :meth:`~wrinklefe.core.laminate.Laminate.midplane_strains`
+        and the ply stress recovery.
+
+        ``delta_T`` keeps the config's sign convention unchanged: it is the
+        temperature change *from* the stress-free (cure) state, so a
+        cool-down is negative.
+
+        Returns
+        -------
+        LoadState
+            Load state for the CLT / analytical failure evaluation.
+        """
+        cfg = self.config
+        return LoadState(
+            Nx=cfg.applied_strain * 1000.0,  # approximate
+            delta_T=cfg.delta_T,
+        )
+
+    def _evaluate_clt_failure(
+        self,
+        results: AnalysisResults,
+        laminate: Laminate,
+    ) -> None:
+        """Run the laminate-level (CLT) failure evaluation into *results*.
+
+        Shared by the FE path (alongside the field-level evaluation) and
+        the analytical path (when a thermal load is present), so both
+        consume the same :meth:`_clt_load_state`.
+        """
+        evaluator = FailureEvaluator.default_criteria()
+        load = self._clt_load_state()
         try:
             report = evaluator.evaluate_laminate(laminate, load)
             results.failure_report = report
