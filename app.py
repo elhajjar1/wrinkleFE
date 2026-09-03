@@ -159,6 +159,11 @@ DEFAULT_TRANSVERSE_MODE = _CFG_DEFAULTS.transverse_mode
 DEFAULT_TRANSVERSE_SPAN = 0.0
 DEFAULT_TRANSVERSE_WIDTH = 0.0
 DEFAULT_ANALYTICAL_ONLY = _CFG_DEFAULTS.analytical_only
+# Thermal / cure-residual load (issue #273, Stage 1). ``delta_T`` is the
+# temperature change FROM the stress-free (cure) state, so a cool-down is
+# negative. CLT path only — the sidebar input is expert-mode and the run
+# handler refuses an FE run with a non-zero value rather than dropping it.
+DEFAULT_DELTA_T = _CFG_DEFAULTS.delta_T
 DEFAULT_NX = _CFG_DEFAULTS.nx
 DEFAULT_NY = _CFG_DEFAULTS.ny
 DEFAULT_NZ_PER_PLY = _CFG_DEFAULTS.nz_per_ply
@@ -245,6 +250,7 @@ DEFAULTS: dict[str, object] = {
     "sb_transverse_width": DEFAULT_TRANSVERSE_WIDTH,
     "sb_loading": DEFAULT_LOADING,
     "sb_strain_mag_pct": DEFAULT_STRAIN_MAG_PCT,
+    "sb_delta_T": DEFAULT_DELTA_T,
     "sb_analytical_only": DEFAULT_ANALYTICAL_ONLY,
     "sb_nx": DEFAULT_NX,
     "sb_ny": DEFAULT_NY,
@@ -434,6 +440,8 @@ def _seed_state_from_config(
     # Loading — sign lives on the radio, magnitude on the number input.
     state["sb_loading"] = cfg.loading
     state["sb_strain_mag_pct"] = _clamp(abs(cfg.applied_strain) * 100.0, 0.0, 5.0)
+    # Thermal / cure-residual load — signed (cool-down from cure is negative).
+    state["sb_delta_T"] = _clamp(float(cfg.delta_T), -1000.0, 1000.0)
     # Mesh.
     state["sb_nx"] = int(_clamp(cfg.nx, 4, 64))
     state["sb_ny"] = int(_clamp(cfg.ny, 4, 32))
@@ -1495,6 +1503,33 @@ with st.sidebar:
     )
     applied_strain_pct = -strain_mag_pct if loading == "compression" else strain_mag_pct
 
+    # Thermal / cure-residual load (issue #273, Stage 1). Expert-mode only:
+    # it is meaningful on the analytical/CLT path alone until the FE
+    # initial-strain term lands (Stage 2), and the run handler stops with an
+    # error rather than quietly dropping it from an FE run.
+    if expert_mode:
+        delta_T = st.number_input(
+            "Temperature change from cure ΔT [°C]",
+            min_value=-1000.0, max_value=1000.0,
+            value=DEFAULT_DELTA_T, step=5.0,
+            key="sb_delta_T",
+            help=(
+                "Uniform temperature change **from the stress-free (cure) "
+                "state**: ΔT = T_service − T_stress_free. **A cure "
+                "cool-down is negative** — a 177 °C cure taken to 22 °C "
+                "service is ΔT = −155. A positive value means the laminate "
+                "is hotter than its stress-free state. Adds the CLT thermal "
+                "resultants to the ABD solve, so cure-induced residual "
+                "stress reaches the ply stresses and the first-ply-failure "
+                "report. Requires *Analytical only* — the FE path has no "
+                "thermal initial-strain load vector yet (issue #273 "
+                "Stage 2), so a non-zero ΔT is rejected there rather than "
+                "silently ignored. 0 = no thermal load."
+            ),
+        )
+    else:
+        delta_T = DEFAULT_DELTA_T
+
     if expert_mode:
         with st.expander("Advanced — mesh & solver", expanded=False):
             analytical_only = st.checkbox(
@@ -2078,6 +2113,7 @@ def _config_from_payload(cfg_payload: tuple) -> AnalysisConfig:
         angles=angles,
         ply_thickness=cfg_dict["ply_thickness"],
         applied_strain=cfg_dict["applied_strain"],
+        delta_T=cfg_dict.get("delta_T", 0.0),
         nx=cfg_dict.get("nx", 12),
         ny=cfg_dict.get("ny", 6),
         nz_per_ply=cfg_dict.get("nz_per_ply", 1),
@@ -2517,6 +2553,7 @@ def _assemble_cfg_payload(
         "ply_thickness": ply_thickness,
         "angles_tuple": tuple(layup),
         "applied_strain": applied_strain_pct / 100.0,
+        "delta_T": float(delta_T),
         "material_tuple": tuple(sorted(material_dict.items())),
         "analytical_only": effective_analytical_only,
     }
@@ -2911,6 +2948,23 @@ if run_clicked or _demo_pending:
             and not _surface_pockets_active
             and not _transverse_threaded
         )
+
+        # Thermal load is the mirror image of the FE-only features above:
+        # it is wired into the CLT/analytical path only (issue #273 Stage
+        # 1). Rather than quietly zeroing ΔT — which would hand back an FE
+        # knockdown that ignores the cure residual stress — stop and say
+        # which control to change.
+        if float(delta_T) != 0.0 and not _effective_analytical_only:
+            st.error(
+                f"ΔT = {float(delta_T):+.1f} °C needs the analytical/CLT "
+                "path. Tick **Analytical only** (Advanced — mesh & solver) "
+                "and turn off any FE-only feature (CZM, surface resin "
+                "pockets, a non-uniform transverse envelope), or set "
+                "ΔT = 0. The FE path has no thermal initial-strain load "
+                "vector yet (issue #273 Stage 2), so running it with a "
+                "non-zero ΔT would silently drop the cure residual stress."
+            )
+            st.stop()
 
         cfg_payload = _assemble_cfg_payload(layup, _effective_analytical_only)
 

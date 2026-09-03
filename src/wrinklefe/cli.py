@@ -244,6 +244,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Applied nominal strain (default: -0.01)",
     )
     p_analyze.add_argument(
+        "--delta-T", type=float, default=0.0, dest="delta_T",
+        metavar="DEG_C",
+        help=(
+            "Uniform temperature change FROM the stress-free (cure) state, "
+            "in deg C (default: 0.0, no thermal load). SIGN CONVENTION: "
+            "delta_T = T_service - T_stress_free, so a cure cool-down is "
+            "NEGATIVE — a 177 C cure taken to 22 C service is "
+            "--delta-T -155. A positive value means the laminate is hotter "
+            "than its stress-free state. Adds the CLT thermal resultants to "
+            "the ABD solve, so cure-induced residual stress shows up in the "
+            "ply stresses and the first-ply-failure report. Requires "
+            "--analytical-only: the FE path has no thermal initial-strain "
+            "load vector yet (issue #273 Stage 2) and a non-zero value is "
+            "rejected there rather than silently ignored."
+        ),
+    )
+    p_analyze.add_argument(
         "--solver", type=str, default="direct",
         choices=["direct", "iterative"],
         help="Linear solver type (default: direct)",
@@ -1289,7 +1306,7 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         "amplitude", "wavelength", "width", "morphology",
         "amplitude_profile", "amplitude_profile_decay_length",
         "amplitude_profile_axis", "loading", "interface_1", "interface_2",
-        "nx", "ny", "solver", "verbose",
+        "nx", "ny", "solver", "verbose", "delta_T",
     )
     for name in _direct:
         if given(name):
