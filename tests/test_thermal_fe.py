@@ -471,6 +471,67 @@ class TestPipeline:
         )
 
 
+@pytest.mark.slow
+class TestNonlinearRoutes:
+    """The CZM and progressive-damage routes must carry ΔT too.
+
+    Neither takes the thermal load as an external force: the assembler
+    subtracts it from the *internal* force, because an element's internal
+    force is ``K_e u_e - f^th_e``.  The Newton residual
+    ``R = F_ext - F_int`` therefore drives ``K u = F_ext + F_th`` on its
+    own.  If the subtraction were missing, a CZM solve would still
+    converge — to the wrong displacement — so these tests check the
+    *stress shift*, not just convergence.
+    """
+
+    EXPECTED_SIGMA2_SHIFT = 35.3  # MPa, measured on the linear path
+
+    def test_czm_route_carries_the_residual_stress(self):
+        import dataclasses
+
+        shifts = []
+        for delta_T in (0.0, CURE_COOLDOWN_DT):
+            cfg = dataclasses.replace(
+                _fe_config(delta_T), enable_czm=True,
+                czm_n_load_increments=6,
+            )
+            result = WrinkleAnalysis(cfg).run(analytical_only=False)
+            assert result.czm_converged
+            shifts.append(result.field_results.stress_local[:, :, 1].mean())
+        npt.assert_allclose(
+            shifts[1] - shifts[0], self.EXPECTED_SIGMA2_SHIFT, rtol=0.02
+        )
+
+    def test_progressive_damage_route_carries_the_residual_stress(self):
+        """Both the wrinkled run and its pristine baseline see ΔT.
+
+        The load stepping prescribes displacement, so the thermal term is
+        present from the first increment.  Under compression the residual
+        matrix tension delays matrix failure, so both ultimate strengths
+        rise — and because both sides move, the *knockdown* barely does.
+        """
+        import dataclasses
+
+        out = {}
+        for delta_T in (0.0, CURE_COOLDOWN_DT):
+            cfg = dataclasses.replace(
+                _fe_config(delta_T), enable_progressive_damage=True,
+                progressive_n_increments=6,
+            )
+            out[delta_T] = WrinkleAnalysis(cfg).run(analytical_only=False)
+
+        cold, warm = out[CURE_COOLDOWN_DT], out[0.0]
+        assert cold.progressive_strength_MPa > warm.progressive_strength_MPa
+        assert (
+            cold.progressive_pristine_strength_MPa
+            > warm.progressive_pristine_strength_MPa
+        )
+        # Both sides shift together, so the ratio is nearly unchanged.
+        npt.assert_allclose(
+            cold.progressive_knockdown, warm.progressive_knockdown, rtol=0.05
+        )
+
+
 class TestZeroDeltaTIsBitIdentical:
     """The default must not perturb a single bit of the FE path."""
 
