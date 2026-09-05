@@ -279,18 +279,24 @@ print(result.failure_report.critical_mode)   # -> matrix_tension
 ```
 
 ```bash
-wrinklefe analyze --delta-T -155 --analytical-only --angles "[0/45/-45/90]s"
+wrinklefe analyze --delta-T -155 --angles "[0/45/-45/90]s"
 ```
 
-**Analytical/CLT path only (issue #273, Stage 1).** The FE element
-formulation does not yet assemble the thermal initial-strain load vector
-`∫ Bᵀ C ε_th dV`, so an FE run cannot see `delta_T`. Rather than
-silently dropping it — which would return stress fields, failure indices
-and retention factors that quietly ignore a first-order load — a
-non-zero `delta_T` with `analytical_only=False` is **rejected at
-construction**, with a message naming the follow-up work. Set
-`analytical_only=True` (CLI `--analytical-only`, Streamlit *Analytical
-only*) or `delta_T=0.0`.
+**Both paths honour it (issue #273).** The analytical path adds the CLT
+thermal resultants to the ABD solve; the FE path assembles the element
+thermal initial-strain load vector `∫ Bᵀ C ε_th dV` and subtracts the
+thermal strain during stress recovery, so `σ = C̄ (B u − ε_th)`. Because
+the wrinkle rotates the fibre frame, the CTE mismatch concentrates in
+exactly the elements where the failure criteria are evaluated. A flat
+laminate solved this way reproduces the closed-form CLT ply stresses to
+better than 0.5 %.
+
+Two deliberate asymmetries: the pristine **retention baseline** is
+solved at the same `delta_T` (so the retention factor compares like with
+like), while the **measured modulus** is solved at `delta_T = 0` — a
+strain-independent reaction offset from a residual load is not a
+stiffness change, and folding it in would report a spurious modulus
+shift.
 
 Moisture (`LoadState.delta_C`, and the `beta1/2/3` swelling coefficients
 on every material preset) is deliberately **not** exposed on

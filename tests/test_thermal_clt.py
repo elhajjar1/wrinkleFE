@@ -1,6 +1,6 @@
 """Thermal / cure-residual loading through the CLT pipeline (issue #273).
 
-Stage 1 of #273 makes ``AnalysisConfig.delta_T`` reachable: the config
+Stage 1 of #273 made ``AnalysisConfig.delta_T`` reachable: the config
 value is threaded into the :class:`~wrinklefe.core.laminate.LoadState`
 the analysis pipeline evaluates, so the CLT thermal resultants enter the
 ABD solve and the recovered ply stresses carry the cure residual stress.
@@ -20,10 +20,11 @@ would hurt:
    already at the resultant level, and it reappeared at the ply-stress
    level (stress was recovered from the total rather than the mechanical
    strain) until this issue.
-3. **Reachability and the FE guard.** A non-zero ΔT must actually change
-   the analytical result, and must be *refused* on the FE path (which has
-   no thermal initial-strain load vector until Stage 2) rather than
-   silently ignored.
+3. **Reachability.** A non-zero ΔT must actually change the analytical
+   result. Stage 2 also opened the FE path (element thermal
+   initial-strain load vector), so what used to be a refusal here is now
+   an acceptance check; the FE physics itself lives in
+   ``tests/test_thermal_fe.py``.
 """
 
 from __future__ import annotations
@@ -386,36 +387,37 @@ class TestConfigPlumbing:
         assert "-155" in msg
 
 
-class TestFEPathGuard:
-    """A non-zero ΔT is refused on the FE path, never silently dropped."""
+class TestFEPathAccepted:
+    """Stage 2 opened the FE path to ΔT — construction must not refuse it.
 
-    def test_construction_rejects_delta_T_on_the_fe_path(self):
-        with pytest.raises(ValueError) as exc:
-            AnalysisConfig(delta_T=CURE_COOLDOWN_DT, analytical_only=False)
-        msg = str(exc.value)
-        assert "analytical_only=True" in msg
-        # Names the follow-up work so the reader knows this is staged, not
-        # a permanent limitation.
-        assert "Stage 2" in msg
-        assert "#273" in msg
+    Stage 1 rejected ``delta_T != 0`` with ``analytical_only=False``
+    because the element formulation carried no initial-strain term.  That
+    term now exists (``GlobalAssembler.assemble_thermal_force``), so the
+    refusal is gone; the physics it guarded is covered in
+    ``tests/test_thermal_fe.py``.
+    """
 
-    def test_run_rejects_a_runtime_analytical_only_override(self):
-        """``run(analytical_only=False)`` cannot smuggle ΔT onto the FE path.
+    def test_construction_accepts_delta_T_on_the_fe_path(self):
+        cfg = AnalysisConfig(
+            delta_T=CURE_COOLDOWN_DT, analytical_only=False
+        )
+        assert cfg.delta_T == CURE_COOLDOWN_DT
+        assert cfg.analytical_only is False
 
-        ``_validate`` only sees ``cfg.analytical_only``, so the run-time
-        override needs its own guard — the same shape as the existing
-        ``transverse_mode`` check.
-        """
+    def test_runtime_analytical_only_override_is_allowed(self):
+        """``run(analytical_only=False)`` no longer needs its own guard."""
         cfg = AnalysisConfig(
             delta_T=CURE_COOLDOWN_DT, analytical_only=True,
             angles=[0.0, 90.0, 90.0, 0.0],
+            nx=4, ny=2, nz_per_ply=1,
+            domain_length=12.0, domain_width=8.0,
         )
-        with pytest.raises(ValueError) as exc:
-            WrinkleAnalysis(cfg).run(analytical_only=False)
-        assert "Stage 2" in str(exc.value)
+        results = WrinkleAnalysis(cfg).run(analytical_only=False)
+        # The FE path actually ran (fields populated), carrying ΔT.
+        assert results.field_results is not None
 
     def test_zero_delta_T_leaves_the_fe_path_open(self):
-        """The guard must not fire for the default."""
+        """The default is unchanged."""
         cfg = AnalysisConfig(delta_T=0.0, analytical_only=False)
         assert cfg.delta_T == 0.0
 
@@ -581,15 +583,17 @@ class TestCLIDeltaT:
         )
         assert cfg.delta_T == 0.0
 
-    def test_fe_path_refused_with_exit_code_2(self, capsys):
-        from wrinklefe.cli import main as cli_main
+    def test_fe_path_accepts_delta_T(self):
+        """``--delta-T`` without ``--analytical-only`` reaches the config.
 
-        with pytest.raises(SystemExit) as exc:
-            cli_main(["analyze", "--delta-T", "-155", "--angles", "[0/90]s"])
-        assert exc.value.code == 2
-        err = capsys.readouterr().err
-        assert "analytical_only=True" in err
-        assert "Stage 2" in err
+        Stage 1 exited 2 here.  Stage 2 assembles the FE thermal load, so
+        the flag is accepted on both paths.
+        """
+        cfg = self._run_capturing_config(
+            ["analyze", "--delta-T", "-155", "--angles", "[0/90]s"]
+        )
+        assert cfg.delta_T == -155.0
+        assert cfg.analytical_only is False
 
     def test_help_states_the_sign_convention(self, capsys):
         from wrinklefe.cli import main as cli_main

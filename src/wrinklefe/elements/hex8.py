@@ -7,6 +7,8 @@ Implements the standard trilinear brick element with:
 - Strain-displacement (B) matrix in Voigt notation
 - Element stiffness matrix via 2x2x2 Gauss quadrature
 - Stress and strain recovery at Gauss points
+- Thermal initial-strain load vector and thermally-corrected stress recovery
+  (issue #273, Stage 2)
 - Consistent mass matrix
 - Support for ply-angle rotation and spatially varying wrinkle misalignment
 
@@ -35,7 +37,10 @@ from __future__ import annotations
 import numpy as np
 
 from wrinklefe.core.material import OrthotropicMaterial
-from wrinklefe.core.transforms import rotate_stiffness_3d
+from wrinklefe.core.transforms import (
+    rotate_stiffness_3d,
+    strain_transformation_3d,
+)
 from wrinklefe.elements.gauss import gauss_points_hex
 
 # Natural coordinates of the 8 hex nodes in (xi, eta, zeta)
@@ -137,6 +142,13 @@ class Hex8Element:
         Shape ``(8,)`` — fiber misalignment angle at each node in **radians**.
         Values are interpolated to Gauss points via the shape functions.
         If ``None``, all wrinkle angles are zero (pristine laminate).
+    delta_T : float, optional
+        Uniform temperature change from the stress-free (cure) state, in
+        deg C — ``T_service - T_stress_free``, so a cure cool-down is
+        **negative** (issue #273).  Drives the thermal initial-strain load
+        vector (:meth:`thermal_force_vector`) and is subtracted from the
+        total strain in :meth:`stress_at_gauss_points`.  Default ``0.0``
+        leaves every quantity bit-identical to a purely mechanical run.
     """
 
     def __init__(
@@ -147,6 +159,7 @@ class Hex8Element:
         wrinkle_angles: np.ndarray | None = None,
         elem_id: int | None = None,
         strict_jacobian: bool = True,
+        delta_T: float = 0.0,
     ) -> None:
         self.node_coords = np.asarray(node_coords, dtype=float)
         if self.node_coords.shape != (8, 3):
@@ -168,6 +181,7 @@ class Hex8Element:
 
         self.elem_id = elem_id
         self.strict_jacobian = bool(strict_jacobian)
+        self.delta_T = float(delta_T)
 
         # Pre-compute Gauss quadrature points and weights (2x2x2 for hex8)
         self._gauss_points, self._gauss_weights = gauss_points_hex(order=2)
@@ -396,6 +410,131 @@ class Hex8Element:
         return C
 
     # ------------------------------------------------------------------
+    # Thermal (initial) strain — issue #273 Stage 2
+    # ------------------------------------------------------------------
+
+    def thermal_expansion_global(
+        self, xi: float, eta: float, zeta: float
+    ) -> np.ndarray:
+        """Coefficients of thermal expansion in **global** axes at a point.
+
+        The material CTE vector in the ply-local (fibre) frame is
+
+        .. math::
+            \\{\\alpha\\}_{mat} =
+            [\\alpha_1,\\ \\alpha_2,\\ \\alpha_3,\\ 0,\\ 0,\\ 0]^T
+
+        (thermal expansion produces no shear in the material axes).  It is
+        rotated to global axes with the **inverse** of the same successive
+        strain transformations that :meth:`rotated_stiffness` applies to
+        the compliance side, so that
+        ``sigma = C_bar (eps_glob - alpha_glob * delta_T)`` is the global
+        statement of ``sigma_mat = C (eps_mat - alpha_mat * delta_T)``:
+
+        .. math::
+            \\{\\alpha\\}_{glob} =
+            T_y^\\varepsilon(\\phi)^{-1}\\;
+            T_z^\\varepsilon(\\theta)^{-1}\\;
+            \\{\\alpha\\}_{mat}
+
+        Note that ``alpha_glob`` is a *strain-like* (Voigt engineering)
+        vector: the rotated shear entries are engineering shears, matching
+        the ``B``-matrix convention used throughout this element.
+
+        Parameters
+        ----------
+        xi, eta, zeta : float
+            Natural coordinates at which to evaluate.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(6,)`` — CTE vector in global axes (1/deg C), Voigt
+            order ``[a_11, a_22, a_33, a_23, a_13, a_12]``.
+        """
+        mat = self.material
+        alpha = np.array(
+            [
+                float(getattr(mat, "alpha1", 0.0)),
+                float(getattr(mat, "alpha2", 0.0)),
+                float(getattr(mat, "alpha3", 0.0)),
+                0.0,
+                0.0,
+                0.0,
+            ],
+            dtype=float,
+        )
+
+        # 1. Ply angle rotation about z (inverse strain transformation).
+        ply_rad = np.radians(self.ply_angle)
+        if abs(ply_rad) > 1.0e-15:
+            alpha = strain_transformation_3d(-ply_rad, axis="z") @ alpha
+
+        # 2. Wrinkle misalignment about y, interpolated from the nodes.
+        N = self.shape_functions(xi, eta, zeta)  # (8,)
+        phi = float(N @ self.wrinkle_angles)
+        if abs(phi) > 1.0e-15:
+            alpha = strain_transformation_3d(-phi, axis="y") @ alpha
+
+        return np.asarray(alpha, dtype=float)
+
+    def thermal_strain(self, xi: float, eta: float, zeta: float) -> np.ndarray:
+        """Thermal (initial) strain in global axes at a point.
+
+        Equals ``thermal_expansion_global(...) * delta_T``.  Returns the
+        zero vector when ``delta_T == 0`` so a purely mechanical run pays
+        no transformation cost.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(6,)`` — engineering strain in global axes.
+        """
+        if self.delta_T == 0.0:
+            return np.zeros(6)
+        return self.thermal_expansion_global(xi, eta, zeta) * self.delta_T
+
+    def thermal_force_vector(self) -> np.ndarray:
+        """Element thermal initial-strain load vector (24,).
+
+        .. math::
+            f^{th}_e = \\int_{V_e} B^T \\bar{C}\\,
+            \\varepsilon^{th}\\; dV
+            \\;\\approx\\; \\sum_{gp} B^T \\bar{C}\\,
+            \\varepsilon^{th}\\, |J|\\, w_{gp}
+
+        Added to the right-hand side, this is the equivalent nodal load
+        that a free thermal expansion would have to be restrained by; the
+        resulting displacement field satisfies
+        ``K u = f_ext + f_th`` and the residual stress follows from
+        :meth:`stress_at_gauss_points`.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(24,)`` — thermal load vector (N).  All zeros when
+            ``delta_T == 0``.
+        """
+        f = np.zeros(24)
+        if self.delta_T == 0.0:
+            return f
+
+        for gp_idx in range(len(self._gauss_weights)):
+            xi, eta, zeta = self._gauss_points[gp_idx]
+            w = self._gauss_weights[gp_idx]
+
+            J = self.jacobian(xi, eta, zeta)
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=gp_idx)
+
+            B = self.B_matrix(xi, eta, zeta)  # (6, 24)
+            C_bar = self.rotated_stiffness(xi, eta, zeta)  # (6, 6)
+            eps_th = self.thermal_strain(xi, eta, zeta)  # (6,)
+
+            f += (B.T @ (C_bar @ eps_th)) * detJ * w
+
+        return f
+
+    # ------------------------------------------------------------------
     # Element matrices
     # ------------------------------------------------------------------
 
@@ -506,7 +645,14 @@ class Hex8Element:
         """Compute stress at all Gauss points from element nodal displacements.
 
         .. math::
-            \\sigma_{gp} = \\bar{C} \\, B \\, u_e
+            \\sigma_{gp} = \\bar{C} \\,
+            (B \\, u_e - \\varepsilon^{th})
+
+        Only the *mechanical* part of the total strain produces stress, so
+        the thermal initial strain is subtracted (issue #273 Stage 2).  With
+        ``delta_T == 0`` this reduces to ``sigma = C_bar B u_e``.  A body
+        free to expand therefore reports zero stress, and a fully
+        restrained one reports ``-C_bar eps_th``.
 
         Parameters
         ----------
@@ -528,7 +674,8 @@ class Hex8Element:
             xi, eta, zeta = self._gauss_points[gp_idx]
             B = self.B_matrix(xi, eta, zeta)
             C_bar = self.rotated_stiffness(xi, eta, zeta)
-            stresses[gp_idx] = C_bar @ (B @ u_elem)
+            eps_mech = B @ u_elem - self.thermal_strain(xi, eta, zeta)
+            stresses[gp_idx] = C_bar @ eps_mech
 
         return stresses
 

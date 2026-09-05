@@ -253,11 +253,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "NEGATIVE — a 177 C cure taken to 22 C service is "
             "--delta-T -155. A positive value means the laminate is hotter "
             "than its stress-free state. Adds the CLT thermal resultants to "
-            "the ABD solve, so cure-induced residual stress shows up in the "
-            "ply stresses and the first-ply-failure report. Requires "
-            "--analytical-only: the FE path has no thermal initial-strain "
-            "load vector yet (issue #273 Stage 2) and a non-zero value is "
-            "rejected there rather than silently ignored."
+            "the ABD solve and, on the FE path, the element thermal "
+            "initial-strain load vector, so cure-induced residual stress "
+            "shows up in the ply stresses, the first-ply-failure report "
+            "and the FE failure indices. The retention baseline runs at "
+            "the same temperature; the measured modulus does not (a "
+            "residual load offset is not a stiffness change)."
         ),
     )
     p_analyze.add_argument(

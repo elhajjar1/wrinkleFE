@@ -159,10 +159,11 @@ DEFAULT_TRANSVERSE_MODE = _CFG_DEFAULTS.transverse_mode
 DEFAULT_TRANSVERSE_SPAN = 0.0
 DEFAULT_TRANSVERSE_WIDTH = 0.0
 DEFAULT_ANALYTICAL_ONLY = _CFG_DEFAULTS.analytical_only
-# Thermal / cure-residual load (issue #273, Stage 1). ``delta_T`` is the
+# Thermal / cure-residual load (issue #273). ``delta_T`` is the
 # temperature change FROM the stress-free (cure) state, so a cool-down is
-# negative. CLT path only — the sidebar input is expert-mode and the run
-# handler refuses an FE run with a non-zero value rather than dropping it.
+# negative. Honoured on BOTH paths since Stage 2 (CLT thermal resultants;
+# FE thermal initial-strain load vector), so the sidebar input — still
+# expert-mode — no longer forces the analytical path.
 DEFAULT_DELTA_T = _CFG_DEFAULTS.delta_T
 DEFAULT_NX = _CFG_DEFAULTS.nx
 DEFAULT_NY = _CFG_DEFAULTS.ny
@@ -1503,10 +1504,9 @@ with st.sidebar:
     )
     applied_strain_pct = -strain_mag_pct if loading == "compression" else strain_mag_pct
 
-    # Thermal / cure-residual load (issue #273, Stage 1). Expert-mode only:
-    # it is meaningful on the analytical/CLT path alone until the FE
-    # initial-strain term lands (Stage 2), and the run handler stops with an
-    # error rather than quietly dropping it from an FE run.
+    # Thermal / cure-residual load (issue #273). Expert-mode only because
+    # the sign convention is a classic footgun, but both solution paths
+    # honour it since Stage 2 landed the FE initial-strain term.
     if expert_mode:
         delta_T = st.number_input(
             "Temperature change from cure ΔT [°C]",
@@ -1519,12 +1519,13 @@ with st.sidebar:
                 "cool-down is negative** — a 177 °C cure taken to 22 °C "
                 "service is ΔT = −155. A positive value means the laminate "
                 "is hotter than its stress-free state. Adds the CLT thermal "
-                "resultants to the ABD solve, so cure-induced residual "
-                "stress reaches the ply stresses and the first-ply-failure "
-                "report. Requires *Analytical only* — the FE path has no "
-                "thermal initial-strain load vector yet (issue #273 "
-                "Stage 2), so a non-zero ΔT is rejected there rather than "
-                "silently ignored. 0 = no thermal load."
+                "resultants to the ABD solve and, on the FE path, the "
+                "element thermal initial-strain load vector — so "
+                "cure-induced residual stress reaches the ply stresses, "
+                "the first-ply-failure report and the FE failure indices. "
+                "The pristine retention baseline is solved at the same ΔT; "
+                "the measured modulus is not (a residual load offset is "
+                "not a stiffness change). 0 = no thermal load."
             ),
         )
     else:
@@ -2948,23 +2949,6 @@ if run_clicked or _demo_pending:
             and not _surface_pockets_active
             and not _transverse_threaded
         )
-
-        # Thermal load is the mirror image of the FE-only features above:
-        # it is wired into the CLT/analytical path only (issue #273 Stage
-        # 1). Rather than quietly zeroing ΔT — which would hand back an FE
-        # knockdown that ignores the cure residual stress — stop and say
-        # which control to change.
-        if float(delta_T) != 0.0 and not _effective_analytical_only:
-            st.error(
-                f"ΔT = {float(delta_T):+.1f} °C needs the analytical/CLT "
-                "path. Tick **Analytical only** (Advanced — mesh & solver) "
-                "and turn off any FE-only feature (CZM, surface resin "
-                "pockets, a non-uniform transverse envelope), or set "
-                "ΔT = 0. The FE path has no thermal initial-strain load "
-                "vector yet (issue #273 Stage 2), so running it with a "
-                "non-zero ΔT would silently drop the cure residual stress."
-            )
-            st.stop()
 
         cfg_payload = _assemble_cfg_payload(layup, _effective_analytical_only)
 

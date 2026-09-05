@@ -87,6 +87,7 @@ class GlobalAssembler:
         cohesive_elements: (
             list[tuple[int, Cohesive8Element]] | None
         ) = None,
+        delta_T: float = 0.0,
     ) -> None:
         if element_type not in ("hex8",):
             raise ValueError(
@@ -96,6 +97,13 @@ class GlobalAssembler:
         self.mesh = mesh
         self.laminate = laminate
         self.element_type = element_type
+
+        # Uniform temperature change from the stress-free (cure) state,
+        # in deg C (issue #273 Stage 2).  Threaded into every element so
+        # the thermal initial-strain load vector and the thermally
+        # corrected stress recovery stay consistent.  ``0.0`` (default)
+        # leaves every assembled quantity bit-identical.
+        self.delta_T = float(delta_T)
 
         # Pre-build hex8 elements once so per-Newton-iteration assembly
         # doesn't pay the construction cost (finding #15).  Element state
@@ -163,6 +171,11 @@ class GlobalAssembler:
             elem.stiffness_matrix() for elem in self._hex8_elements
         ]
 
+        # Lazily built global thermal load vector (issue #273 Stage 2).
+        # Invalidated by :meth:`update_element` because a degraded or
+        # re-blended material changes both ``C_bar`` and the CTEs.
+        self._F_thermal: np.ndarray | None = None
+
     # ------------------------------------------------------------------
     # Element construction
     # ------------------------------------------------------------------
@@ -210,6 +223,7 @@ class GlobalAssembler:
             material=material,
             ply_angle=ply_angle,
             wrinkle_angles=wrinkle_angles,
+            delta_T=self.delta_T,
         )
 
     def update_element(self, elem_idx: int) -> None:
@@ -230,6 +244,9 @@ class GlobalAssembler:
         elem = self.create_element(elem_idx)
         self._hex8_elements[elem_idx] = elem
         self._hex8_Ke[elem_idx] = elem.stiffness_matrix()
+        # The element's stiffness AND its CTEs changed, so the cached
+        # global thermal load is stale (issue #273 Stage 2).
+        self._F_thermal = None
 
     # ------------------------------------------------------------------
     # DOF mapping
@@ -522,6 +539,12 @@ class GlobalAssembler:
             Ke = self._hex8_Ke[e]
             F_int[dofs] += Ke @ u[dofs]
 
+        # Thermal initial strain is not carried by ``K u`` (issue #273
+        # Stage 2): the element internal force is
+        # ``int B^T C (B u - eps_th) dV = K_e u_e - f^th_e``.
+        if self.delta_T != 0.0:
+            F_int -= self.assemble_thermal_force()
+
         if not self.cohesive_elements:
             return K_linear, F_int
 
@@ -642,6 +665,11 @@ class GlobalAssembler:
             ue = u[dofs]
             F[dofs] += Ke @ ue
 
+        # See :meth:`assemble_residual_and_tangent` — the thermal
+        # initial-strain term is not part of ``K u`` (issue #273 Stage 2).
+        if self.delta_T != 0.0:
+            F -= self.assemble_thermal_force()
+
         for e_idx, c_elem in self.cohesive_elements:
             dofs = self._cohesive_dof_indices(c_elem)
             u_e = u[dofs]
@@ -651,6 +679,43 @@ class GlobalAssembler:
             self.cohesive_state_trial[e_idx] = state_new
             F[dofs] += F_e
 
+        return F
+
+    def assemble_thermal_force(self) -> np.ndarray:
+        """Assemble the global thermal initial-strain load vector.
+
+        Scatters each element's
+        :meth:`~wrinklefe.elements.hex8.Hex8Element.thermal_force_vector`
+        into a global vector (issue #273 Stage 2):
+
+        .. math::
+            F^{th} = \\mathop{\\mathrm{A}}_{e}
+            \\int_{V_e} B^T \\bar{C}\\, \\varepsilon^{th}\\, dV
+
+        Added to the right-hand side of ``K u = F_ext + F_th``, this
+        reproduces the free-expansion displacement field of an
+        unrestrained body and the residual stress field of a restrained
+        one.  Cohesive elements carry no thermal expansion (the interface
+        is a zero-thickness traction-separation law), so they contribute
+        nothing here.
+
+        The result is cached; :meth:`update_element` invalidates it.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(n_dof,)`` thermal load vector (N).  All zeros when
+            ``delta_T == 0``.
+        """
+        if self._F_thermal is not None:
+            return self._F_thermal
+
+        F = np.zeros(self.mesh.n_dof)
+        if self.delta_T != 0.0:
+            for e, elem in enumerate(self._hex8_elements):
+                F[self._hex8_dofs[e]] += elem.thermal_force_vector()
+
+        self._F_thermal = F
         return F
 
     def assemble_force_vector(

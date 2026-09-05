@@ -108,6 +108,7 @@ class Hex8IElement(Hex8Element):
         wrinkle_angles: np.ndarray | None = None,
         elem_id: int | None = None,
         strict_jacobian: bool = True,
+        delta_T: float = 0.0,
     ) -> None:
         super().__init__(
             node_coords,
@@ -116,11 +117,17 @@ class Hex8IElement(Hex8Element):
             wrinkle_angles,
             elem_id=elem_id,
             strict_jacobian=strict_jacobian,
+            delta_T=delta_T,
         )
 
         # Caches for static condensation — populated by stiffness_matrix()
         self._K_aa_inv: np.ndarray | None = None
         self._K_au: np.ndarray | None = None
+
+        # Internal-DOF thermal load (issue #273 Stage 2), populated lazily
+        # by :meth:`_thermal_partitioned`.  ``None`` means "not computed
+        # yet"; it stays all-zero whenever ``delta_T == 0``.
+        self._f_a_thermal: np.ndarray | None = None
 
         # Pre-compute Jacobian at element center (xi=eta=zeta=0) for the
         # incompatible mode derivative mapping.
@@ -418,7 +425,95 @@ class Hex8IElement(Hex8Element):
                 "called first to populate condensation matrices."
             )
         u_elem = np.asarray(u_elem, dtype=np.float64).ravel()
-        return -self._K_aa_inv @ (self._K_au @ u_elem)
+        rhs = -(self._K_au @ u_elem)
+        if self.delta_T != 0.0:
+            # The internal DOFs carry their own share of the thermal load
+            # (issue #273 Stage 2): the partitioned system is
+            # ``K_au u + K_aa a = f_a^th``, so the recovered modes must
+            # include ``+K_aa^-1 f_a^th``.  Omitting it would leave the
+            # enhanced strain field inconsistent with the condensed
+            # thermal force used to solve for ``u``.
+            rhs = rhs + self._thermal_partitioned()[1]
+        return np.asarray(self._K_aa_inv @ rhs)
+
+    # ------------------------------------------------------------------
+    # Thermal initial-strain load — issue #273 Stage 2
+    # ------------------------------------------------------------------
+
+    def _thermal_partitioned(self) -> tuple[np.ndarray, np.ndarray]:
+        """Un-condensed thermal load partitions ``(f_u, f_a)``.
+
+        .. math::
+            f_u = \\int B^T \\bar{C}\\, \\varepsilon^{th}\\, dV
+            \\qquad
+            f_a = \\int G^T \\bar{C}\\, \\varepsilon^{th}\\, dV
+
+        Returns
+        -------
+        f_u : np.ndarray
+            Shape ``(24,)`` — external-DOF partition.
+        f_a : np.ndarray
+            Shape ``(9,)`` — internal (incompatible-mode) partition.
+        """
+        n_int = self.N_INTERNAL_DOF
+        f_u = np.zeros(24, dtype=np.float64)
+        f_a = np.zeros(n_int, dtype=np.float64)
+        if self.delta_T == 0.0:
+            self._f_a_thermal = f_a
+            return f_u, f_a
+
+        gp_coords, gp_weights = gauss_points_hex(order=2)
+        for i_gp in range(gp_coords.shape[0]):
+            xi, eta, zeta = gp_coords[i_gp]
+            J = self.jacobian(xi, eta, zeta)
+            detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=i_gp)
+            dV = gp_weights[i_gp] * detJ
+
+            B = self.B_matrix(xi, eta, zeta)                # (6, 24)
+            G = self.G_matrix(xi, eta, zeta)                # (6, 9)
+            C_bar = self.rotated_stiffness(xi, eta, zeta)   # (6, 6)
+            C_eps = C_bar @ self.thermal_strain(xi, eta, zeta)  # (6,)
+
+            f_u += (B.T @ C_eps) * dV
+            f_a += (G.T @ C_eps) * dV
+
+        self._f_a_thermal = f_a
+        return f_u, f_a
+
+    def thermal_force_vector(self) -> np.ndarray:
+        """Condensed element thermal load vector (24,).
+
+        The partitioned thermal system is
+
+        .. math::
+            \\begin{bmatrix} K_{uu} & K_{ua} \\\\
+            K_{au} & K_{aa} \\end{bmatrix}
+            \\begin{Bmatrix} u \\\\ a \\end{Bmatrix} =
+            \\begin{Bmatrix} f_u^{th} \\\\ f_a^{th} \\end{Bmatrix},
+
+        so eliminating ``a`` gives the condensed load that pairs with the
+        condensed stiffness returned by :meth:`stiffness_matrix`:
+
+        .. math::
+            \\tilde{f}^{th} = f_u^{th} - K_{ua} K_{aa}^{-1} f_a^{th}.
+
+        Calls :meth:`stiffness_matrix` first if the condensation matrices
+        have not been built yet.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(24,)`` — condensed thermal load vector (N).  All zeros
+            when ``delta_T == 0``.
+        """
+        if self.delta_T == 0.0:
+            return np.zeros(24, dtype=np.float64)
+        if self._K_aa_inv is None or self._K_au is None:
+            self.stiffness_matrix()
+        assert self._K_aa_inv is not None and self._K_au is not None
+        f_u, f_a = self._thermal_partitioned()
+        # K_ua = K_au^T (symmetry of the bilinear form).
+        return np.asarray(f_u - self._K_au.T @ (self._K_aa_inv @ f_a))
 
     # ------------------------------------------------------------------
     # Stress and strain at Gauss points
@@ -431,9 +526,9 @@ class Hex8IElement(Hex8Element):
 
             epsilon = B @ u + G @ alpha
 
-        and the stress is::
+        and the stress follows from its mechanical part only::
 
-            sigma = C_bar @ epsilon
+            sigma = C_bar @ (epsilon - epsilon_thermal)
 
         where ``alpha`` is recovered via static condensation.
 
@@ -465,6 +560,8 @@ class Hex8IElement(Hex8Element):
             C_bar = self.rotated_stiffness(xi, eta, zeta)  # (6, 6)
 
             strain = B @ u_elem + G @ alpha              # (6,)
+            # Only the mechanical part carries stress (issue #273).
+            strain = strain - self.thermal_strain(xi, eta, zeta)
             stresses[i_gp, :] = C_bar @ strain
 
         return stresses
