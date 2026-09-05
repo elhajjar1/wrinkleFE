@@ -21,6 +21,7 @@ so they cannot rot.
 | [`12_progressive_damage.py`](12_progressive_damage.py) | Load-stepping ply-discount FE to ultimate strength (`enable_progressive_damage` / `--progressive`), with the load-increment table | ~15 s |
 | [`13_crest_resin_pocket.py`](13_crest_resin_pocket.py) | Machined crest resin lens on/off, graded vs binary, and a lens-height sweep (`enable_resin_pocket`) | ~20 s |
 | [`14_stochastic_knockdown.py`](14_stochastic_knockdown.py) | Measurement uncertainty propagated to percentile knockdowns (`probabilistic_analysis` / `wrinklefe stochastic`) | ~15 s |
+| [`15_cure_residual_stress.py`](15_cure_residual_stress.py) | Cure cool-down residual stress on both paths (`delta_T` / `--delta-T`), and why its effect on failure is signed | ~15 s |
 | [`transverse_wrinkle_knockdown.py`](transverse_wrinkle_knockdown.py) | Localized (through-width) vs uniform wrinkle knockdown (`transverse_mode`) | ~20 s |
 
 Run any of them from this directory with the package installed

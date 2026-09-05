@@ -2619,7 +2619,15 @@ class AnalysisResults:
     the modulus retention (flatter on the amplitude / penetration / position
     axes) than the measured ``E_x / E_x0``.  Kept for backward
     compatibility; prefer :attr:`modulus_retention_global` for the
-    coupon-level stiffness knockdown."""
+    coupon-level stiffness knockdown.
+
+    Unlike :attr:`modulus_retention_global` — which is solved at
+    ``delta_T = 0`` on purpose — this proxy is derived from the single
+    thermally loaded stress field, so with ``AnalysisConfig.delta_T != 0``
+    both sides of its wrinkled/pristine ratio carry the cure residual
+    stress (issue #273 Stage 2).  The offset largely cancels in the ratio
+    but not exactly, so the two modulus numbers can move apart under a
+    thermal load; the reaction-based one is the stiffness measurement."""
 
     modulus_retention_global_failed: bool = False
     """``True`` when the global reaction-based modulus-retention computation
