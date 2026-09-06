@@ -125,6 +125,11 @@ class ProgressiveDamageSolver:
         Default ``"direct"``.
     verbose : bool, optional
         Print per-increment progress.  Default False.
+    delta_T : float, optional
+        Uniform temperature change from the stress-free (cure) state
+        (deg C, negative for a cool-down).  Applies the thermal
+        initial-strain load at every increment, so the reported ultimate
+        strength includes cure residual stress.  Default ``0.0``.
     """
 
     def __init__(
@@ -141,10 +146,16 @@ class ProgressiveDamageSolver:
         Gc_fiber: float = 50.0,
         solver: str = "direct",
         verbose: bool = False,
+        delta_T: float = 0.0,
     ) -> None:
         self.mesh = mesh
         self.laminate = laminate
         self.applied_strain = float(applied_strain)
+        # Cure-residual thermal load (issue #273 Stage 2).  The load
+        # stepping prescribes displacement, so the thermal term is a
+        # constant right-hand-side contribution present from the first
+        # increment — exactly how a residual stress field behaves.
+        self.delta_T = float(delta_T)
         self.n_increments = int(n_increments)
         self.max_equilibrium_iters = int(max_equilibrium_iters)
         self.fi_threshold = float(fi_threshold)
@@ -187,7 +198,7 @@ class ProgressiveDamageSolver:
 
         # One StaticSolver instance; its assembler caches per-element Ke
         # which we refresh via update_element after each degradation.
-        static = StaticSolver(mesh, self.laminate)
+        static = StaticSolver(mesh, self.laminate, delta_T=self.delta_T)
 
         # Loaded-face (x_max) x-DOFs and cross-section area for the
         # reaction-force / nominal-stress computation.

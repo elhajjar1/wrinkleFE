@@ -104,11 +104,20 @@ class StaticSolver:
         ilu_drop_tol: float = 1e-4,
         ilu_fill_factor: float | None = None,
         preconditioner: str = "ilu",
+        delta_T: float = 0.0,
     ) -> None:
         self.mesh = mesh
         self.laminate = laminate
         self.element_type = element_type
-        self.assembler = GlobalAssembler(mesh, laminate, element_type)
+        # Uniform temperature change from the stress-free (cure) state
+        # (issue #273 Stage 2).  ``T_service - T_stress_free``, so a cure
+        # cool-down is negative.  Threaded into the assembler (thermal
+        # load vector) and used by :meth:`recover_element_results` to
+        # subtract the thermal initial strain before computing stress.
+        self.delta_T = float(delta_T)
+        self.assembler = GlobalAssembler(
+            mesh, laminate, element_type, delta_T=delta_T
+        )
 
         # Iterative-solver controls (issue #265). Defaults reproduce the
         # previously hardcoded values in ``_solve_iterative`` bit-for-bit.
@@ -139,7 +148,8 @@ class StaticSolver:
         Steps
         -----
         1. Assemble global stiffness matrix K.
-        2. Assemble force vector F from boundary conditions.
+        2. Assemble force vector F from boundary conditions, plus the
+           thermal initial-strain load when ``delta_T != 0``.
         3. Apply displacement BCs via the penalty method.
         4. Solve K u = F.
         5. Post-process: recover stresses and strains.
@@ -192,6 +202,11 @@ class StaticSolver:
         # 2. Assemble force vector
         bc_handler = BoundaryHandler(self.mesh)
         F = bc_handler.get_force_dofs(boundary_conditions)
+
+        # 2b. Thermal initial-strain load (issue #273 Stage 2).  Zero when
+        # ``delta_T == 0``, so a purely mechanical run is unchanged.
+        if self.delta_T != 0.0:
+            F = F + self.assembler.assemble_thermal_force()
 
         # 3. Apply displacement BCs via penalty method
         self._constrained_dofs = bc_handler.get_constrained_dofs(
@@ -644,6 +659,11 @@ class StaticSolver:
 
         1. Extract element displacements from the global vector.
         2. Compute global-frame stress and strain at each Gauss point.
+           When ``delta_T != 0`` the thermal initial strain is subtracted
+           from the total strain before the constitutive law is applied
+           (issue #273 Stage 2), so the reported stress is the mechanical
+           (residual) stress; the reported strain stays the *total*
+           kinematic strain ``B u``.
         3. Transform stress and strain to local material coordinates
            using the ply angle and wrinkle misalignment.
 
@@ -671,8 +691,12 @@ class StaticSolver:
         strain_local : np.ndarray
             Shape ``(n_elements, n_gauss, 6)`` strain in local material coordinates.
         """
-        from wrinklefe.core.transforms import rotate_stiffness_3d
+        from wrinklefe.core.transforms import (
+            rotate_stiffness_3d,
+            strain_transformation_3d,
+        )
 
+        thermal = self.delta_T != 0.0
         n_elem = self.mesh.n_elements
         # Shape functions and natural-coord derivatives at the 8 Gauss
         # points are constant across all hex8 elements; build once and
@@ -702,6 +726,10 @@ class StaticSolver:
         # materials are distinct).
         plies = self.laminate.plies
         mat_C_cache: dict[int, np.ndarray] = {}
+        # Material-axes CTE vectors, cached by material identity alongside
+        # the stiffness (issue #273 Stage 2).  Only populated for a
+        # thermally loaded run.
+        mat_alpha_cache: dict[int, np.ndarray] = {}
 
         # Reusable scratch B-matrix template (zeros are stable between GPs
         # at the slots we never touch; we overwrite the populated slots
@@ -766,6 +794,29 @@ class StaticSolver:
             else:
                 C_ply = C_material
 
+            # Ply-frame CTE vector, rotated to the laminate frame with the
+            # INVERSE strain transformation (issue #273 Stage 2) so that
+            # ``sigma = C_bar (eps - alpha dT)`` holds in global axes.  The
+            # wrinkle rotation is applied per Gauss point below, mirroring
+            # the stiffness.
+            if thermal:
+                alpha_material = mat_alpha_cache.get(mid)
+                if alpha_material is None:
+                    alpha_material = np.array([
+                        float(getattr(mat_e, "alpha1", 0.0)),
+                        float(getattr(mat_e, "alpha2", 0.0)),
+                        float(getattr(mat_e, "alpha3", 0.0)),
+                        0.0, 0.0, 0.0,
+                    ])
+                    mat_alpha_cache[mid] = alpha_material
+                if abs(ply_angle_rad) > 1.0e-15:
+                    alpha_ply = (
+                        strain_transformation_3d(-ply_angle_rad, axis='z')
+                        @ alpha_material
+                    )
+                else:
+                    alpha_ply = alpha_material
+
             angle_scale = self.mesh.resin_angle_scale(e)
             if angle_scale == 0.0:
                 wrinkle_angles_gp = np.zeros(n_gp)
@@ -783,7 +834,18 @@ class StaticSolver:
                     C_bar = rotate_stiffness_3d(C_ply, phi, axis='y')
                 else:
                     C_bar = C_ply
-                sig_g[g] = C_bar @ eps_g[g]
+                if thermal:
+                    if abs(phi) > 1.0e-15:
+                        alpha_g = (
+                            strain_transformation_3d(-phi, axis='y')
+                            @ alpha_ply
+                        )
+                    else:
+                        alpha_g = alpha_ply
+                    # Only the mechanical strain carries stress.
+                    sig_g[g] = C_bar @ (eps_g[g] - alpha_g * self.delta_T)
+                else:
+                    sig_g[g] = C_bar @ eps_g[g]
 
                 T_wrinkle = stress_transformation_3d(phi, axis='y')
                 T_total = T_wrinkle @ T_ply

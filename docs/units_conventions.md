@@ -109,9 +109,13 @@ strains in the compliance matrix.
   single easiest sign to invert, and inverting it flips the residual
   matrix stress of a cross-ply from tension to compression, which is the
   difference between predicting cure microcracking and missing it. On
-  `AnalysisConfig` the field is CLT-path only for now: a non-zero value
-  requires `analytical_only=True` and is rejected on the FE path rather
-  than silently ignored (issue #273).
+  `AnalysisConfig` the field drives **both** solution paths (issue
+  #273): the CLT thermal resultants on the analytical path, and the
+  element thermal initial-strain load vector `∫ Bᵀ C ε_th dV` on the FE
+  path. The pristine retention baseline is solved at the same
+  `delta_T`; the measured modulus is deliberately solved at
+  `delta_T = 0`, because a strain-independent reaction offset from a
+  residual load is not a stiffness change.
 
 ## Percent vs fraction: the one place they differ
 

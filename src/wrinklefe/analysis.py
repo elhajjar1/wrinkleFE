@@ -1102,12 +1102,18 @@ class AnalysisConfig:
         tension to compression, so state it explicitly whenever the value
         is reported.
 
-        Stage 1 of issue #273 wires the temperature into the CLT /
-        analytical path only (thermal resultants enter the ABD solve, and
-        ply stresses are recovered from the mechanical strain).  The FE
-        path has no thermal initial-strain load vector yet, so a non-zero
-        ``delta_T`` requires ``analytical_only=True`` and is rejected
-        otherwise rather than being silently dropped.  Must be finite with
+        Both solution paths honour the temperature (issue #273).  The
+        CLT / analytical path adds the thermal resultants to the ABD
+        solve and recovers ply stresses from the mechanical strain
+        (Stage 1); the FE path assembles the element thermal
+        initial-strain load vector ``int B^T C eps_th dV`` and subtracts
+        the thermal strain during stress recovery (Stage 2), so the
+        reported FE stresses, failure indices and retention factors are
+        residual-stress inclusive.  The retention baseline is solved at
+        the same ``delta_T``, so the retention factor compares like with
+        like; the measured-modulus solve deliberately runs at
+        ``delta_T = 0`` because a thermal offset in the reaction force
+        would corrupt a stiffness measurement.  Must be finite with
         ``|delta_T| <= 1000``.
     solver : str
         Linear solver: ``'direct'`` or ``'iterative'``.  Default ``'direct'``.
@@ -1236,7 +1242,7 @@ class AnalysisConfig:
     # Loading parameters
     applied_strain: float = -0.01
 
-    # Thermal / cure-residual loading (issue #273, Stage 1).
+    # Thermal / cure-residual loading (issue #273).
     #
     # ``delta_T`` is the uniform temperature change FROM the stress-free
     # (cure) state, in deg C: ``T_service - T_stress_free``.  Cool-down
@@ -1749,7 +1755,7 @@ class AnalysisConfig:
                 f"got {self.applied_strain}"
             )
 
-        # --- Thermal / cure-residual load (issue #273, Stage 1) -------
+        # --- Thermal / cure-residual load (issue #273) ----------------
         if not math.isfinite(self.delta_T):
             raise ValueError(
                 f"AnalysisConfig.delta_T must be finite, got {self.delta_T}"
@@ -1762,18 +1768,6 @@ class AnalysisConfig:
                 f"(cure) state, not an absolute temperature: a 177 C cure "
                 f"taken to 22 C service is delta_T = -155, not -273 or 22."
             )
-        if self.delta_T != 0.0 and not self.analytical_only:
-            raise ValueError(
-                f"AnalysisConfig.delta_T = {self.delta_T} requires "
-                f"analytical_only=True. Thermal loading is wired into the "
-                f"CLT/analytical path only (issue #273 Stage 1); the FE "
-                f"path does not yet assemble the thermal initial-strain "
-                f"load vector (int B^T C eps_th dV, Stage 2), so an FE run "
-                f"would silently report stresses and knockdowns that ignore "
-                f"the temperature change. Set analytical_only=True (CLI: "
-                f"--analytical-only) or delta_T=0.0."
-            )
-
         # --- Wrinkle placement (interface indices) --------------------
         n_plies = len(self.angles)
         for name in ("interface_1", "interface_2"):
@@ -2625,7 +2619,15 @@ class AnalysisResults:
     the modulus retention (flatter on the amplitude / penetration / position
     axes) than the measured ``E_x / E_x0``.  Kept for backward
     compatibility; prefer :attr:`modulus_retention_global` for the
-    coupon-level stiffness knockdown."""
+    coupon-level stiffness knockdown.
+
+    Unlike :attr:`modulus_retention_global` — which is solved at
+    ``delta_T = 0`` on purpose — this proxy is derived from the single
+    thermally loaded stress field, so with ``AnalysisConfig.delta_T != 0``
+    both sides of its wrinkled/pristine ratio carry the cure residual
+    stress (issue #273 Stage 2).  The offset largely cancels in the ratio
+    but not exactly, so the two modulus numbers can move apart under a
+    thermal load; the reaction-based one is the stiffness measurement."""
 
     modulus_retention_global_failed: bool = False
     """``True`` when the global reaction-based modulus-retention computation
@@ -2767,7 +2769,7 @@ class AnalysisResults:
             f"    Predicted strength:     {self.analytical_strength_MPa:.1f} MPa",
         ]
 
-        # Thermal / cure-residual load (issue #273, Stage 1). Emitted only
+        # Thermal / cure-residual load (issue #273). Emitted only
         # when a temperature change is set, so the default summary is
         # unchanged. The sign convention is restated inline because a
         # reader who mistakes it flips the residual matrix stress from
@@ -2776,13 +2778,17 @@ class AnalysisResults:
             sense = "cool-down from" if cfg.delta_T < 0 else "heat-up above"
             lines.extend([
                 "",
-                "  Thermal / cure-residual load (CLT path only):",
+                "  Thermal / cure-residual load:",
                 f"    delta_T: {cfg.delta_T:+.1f} deg C "
                 f"({sense} the stress-free/cure state)",
                 "    Applied to the CLT ply stresses and first-ply-failure "
-                "report;",
-                "    the FE fields carry no thermal initial strain "
-                "(issue #273 Stage 2).",
+                "report,",
+                "    and to the FE fields via the element thermal "
+                "initial-strain",
+                "    load vector (issue #273).  The measured modulus is "
+                "solved at",
+                "    delta_T = 0 — a residual load offset is not a "
+                "stiffness change.",
             ])
 
         if self.mesh is not None:
@@ -3038,23 +3044,6 @@ class WrinkleAnalysis:
                 "analytical_only=False or set transverse_mode='uniform'."
             )
 
-        # Mirror of the check above for the thermal load (issue #273).
-        # ``_validate`` only sees ``cfg.analytical_only``, so a run-time
-        # ``analytical_only=False`` override would otherwise route a
-        # thermally-loaded config down the FE path, whose element
-        # formulation carries no initial-strain term — the stresses,
-        # failure indices and retention factors would silently ignore the
-        # temperature. Fail fast instead.
-        if not analytical_only and cfg.delta_T != 0.0:
-            raise ValueError(
-                f"AnalysisConfig.delta_T={cfg.delta_T} requires the "
-                "analytical/CLT path but this run was invoked with "
-                "analytical_only=False. Thermal loading is Stage 1 of "
-                "issue #273 (CLT only); the FE thermal initial-strain "
-                "load vector is Stage 2. Run with analytical_only=True "
-                "or set delta_T=0.0."
-            )
-
         # Multi-wrinkle FE solve (issue #252): overlapping and
         # non-overlapping layouts run through the linear FE path, and
         # (issue #283) through the CZM path — cohesive layers are
@@ -3283,9 +3272,11 @@ class WrinkleAnalysis:
         if cfg.enable_progressive_damage:
             self._run_progressive_path(results, laminate, mesh)
 
-        # Linear (legacy) path.
+        # Linear (legacy) path.  ``delta_T`` adds the thermal
+        # initial-strain load vector (issue #273 Stage 2).
         solver = StaticSolver(
-            mesh, laminate, **_iterative_solver_kwargs(cfg)
+            mesh, laminate, delta_T=cfg.delta_T,
+            **_iterative_solver_kwargs(cfg)
         )
         bcs = BoundaryHandler.compression_bcs(
             mesh, applied_strain=cfg.applied_strain
@@ -3758,6 +3749,7 @@ class WrinkleAnalysis:
         bc_handler = BoundaryHandler(mesh)
         assembler = GlobalAssembler(
             mesh, laminate, cohesive_elements=cohesive_elements,
+            delta_T=cfg.delta_T,
         )
 
         solver = NewtonRaphsonSolver(
@@ -3786,7 +3778,8 @@ class WrinkleAnalysis:
         # recover_element_results on the converged displacement.
         u_final = outcome["displacement"]
         recovery_solver = StaticSolver(
-            mesh, laminate, **_iterative_solver_kwargs(self.config)
+            mesh, laminate, delta_T=self.config.delta_T,
+            **_iterative_solver_kwargs(self.config)
         )
         stress_g, stress_l, strain_g, strain_l = (
             recovery_solver.recover_element_results(u_final, verbose=False)
@@ -4680,6 +4673,7 @@ class WrinkleAnalysis:
                 residual_factor=cfg.progressive_residual_factor,
                 solver=cfg.solver,
                 verbose=cfg.verbose,
+                delta_T=cfg.delta_T,
             ).solve()
 
         # Wrinkled run — snapshot/restore the override so the later linear
@@ -5004,7 +4998,7 @@ class WrinkleAnalysis:
         The mechanical part is the same approximate membrane resultant the
         laminate-level failure check has always used
         (``Nx = applied_strain * 1000``); the environmental part carries
-        ``AnalysisConfig.delta_T`` (issue #273, Stage 1) so the thermal
+        ``AnalysisConfig.delta_T`` (issue #273) so the thermal
         resultants reach :meth:`~wrinklefe.core.laminate.Laminate.midplane_strains`
         and the ply stress recovery.
 
@@ -5064,8 +5058,11 @@ class WrinkleAnalysis:
         flat_mesh = self._build_flat_mesh(laminate)
 
         # Solve with same BCs
+        # Same thermal state as the wrinkled run so the retention factor
+        # compares like with like (issue #273 Stage 2).
         flat_solver = StaticSolver(
-            flat_mesh, laminate, **_iterative_solver_kwargs(cfg)
+            flat_mesh, laminate, delta_T=cfg.delta_T,
+            **_iterative_solver_kwargs(cfg)
         )
         flat_bcs = BoundaryHandler.compression_bcs(
             flat_mesh, applied_strain=cfg.applied_strain
@@ -5229,8 +5226,15 @@ class WrinkleAnalysis:
         if applied_strain == 0.0:
             return None
 
+        # Deliberately thermal-free (delta_T=0): this routine divides the
+        # reaction force by area*strain to report a MODULUS.  A cure
+        # residual load adds a strain-independent reaction offset, which
+        # would show up as a spurious stiffness change (issue #273
+        # Stage 2).  Residual stress belongs in the stress/failure output,
+        # not in a measured elastic constant.
         solver = StaticSolver(
-            mesh, laminate, **_iterative_solver_kwargs(self.config)
+            mesh, laminate, delta_T=0.0,
+            **_iterative_solver_kwargs(self.config)
         )
         bcs = BoundaryHandler.compression_bcs(
             mesh, applied_strain=applied_strain

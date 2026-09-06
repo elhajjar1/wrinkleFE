@@ -15,6 +15,36 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Analysis — **the FE path now assembles the thermal initial-strain load
+  vector** (issue #273, Stage 2 — *Fixes #273*). Stage 1 made
+  `AnalysisConfig.delta_T` reachable on the CLT path and deliberately
+  **rejected** it on the FE path, because the element formulation had no
+  place to put it. It does now:
+  `Hex8Element.thermal_force_vector()` integrates `∫ Bᵀ C̄ ε_th dV`,
+  `GlobalAssembler.assemble_thermal_force()` scatters it into the global
+  right-hand side, and stress recovery subtracts the thermal strain so
+  `σ = C̄ (B u − ε_th)`. The CTE vector `[α₁, α₂, α₃, 0, 0, 0]` is rotated
+  into global axes with the **inverse strain** transformation, applied in
+  the same ply-z then wrinkle-y sequence the stiffness uses — because the
+  wrinkle rotates the fibre frame, the CTE mismatch concentrates in
+  exactly the elements where the failure criteria are evaluated, which is
+  the reason to carry the term into the FE path rather than leaving it at
+  laminate level. `Hex8IElement` partitions the load into `(f_u, f_a)` and
+  condenses it consistently with its stiffness, and its recovered
+  incompatible modes pick up `+K_aa⁻¹ f_a^th`. Internal-force assembly
+  subtracts the thermal load (the element internal force is
+  `K_e u_e − f^th_e`), so the CZM and progressive-damage Newton residuals
+  are correct by construction. The Stage 1 refusals — config validation,
+  the `run(analytical_only=False)` mirror guard, the Streamlit run
+  handler, and the CLI's exit-2 — are all gone; `--delta-T` no longer
+  requires `--analytical-only`. New `examples/15_cure_residual_stress.py`.
+  **Verified**, not assumed: a flat `[0/90]s` IM7/8552 laminate solved
+  with a statically determinate restraint reproduces the closed-form CLT
+  ply stresses to **0.3 %** (issue #273 acceptance criterion 3), and free
+  thermal expansion of a single element develops zero stress under
+  combined ply and wrinkle rotation — the check that catches a
+  stress-instead-of-strain CTE rotation, a mismatched stiffness inside the
+  load integral, or a stress recovery that forgets `ε_th`.
 - Docs — **the validation figures are now linked from the validation
   ledger** (issue #278). `docs/internal/VALIDATION.md` gains an
   *Interlaminar (CZM) validation evidence — Phase 7* section embedding all
@@ -23,6 +53,28 @@ version produced a given file.
   knockdown snapshots marked explicitly as archival (no script in the tree
   regenerates them). Previously the directory was the repository's largest
   content while no document referenced any of it.
+
+### Numerical results
+- FE stresses, failure indices and retention factors change when
+  `delta_T != 0` — previously such a run was refused outright, so nothing
+  that ran before produces a different number now (`delta_T == 0` is
+  bit-identical, pinned by a test). Measured on a wrinkled `[0/90]s`
+  IM7/8552 coupon, a ΔT = −155 cool-down adds **+35.3 MPa** of matrix
+  (σ₂) tension, and adds the *same* amount under tension and compression
+  — a load-independent residual, as it should be. The effect on failure is
+  therefore **signed**: the LaRC05 maximum index goes 0.497 → 0.754 in
+  tension (residual adds to the mechanical matrix tension) and
+  0.348 → 0.214 in compression (residual relieves it). Cure residual
+  stress is not a blanket penalty, and a model that reported one would be
+  wrong for the compression cases this package mostly analyses.
+- Two deliberate asymmetries in what carries the temperature: the pristine
+  **retention baseline** is solved at the same `delta_T`, so retention
+  factors compare like with like; the **measured global modulus** is
+  solved at `delta_T = 0`, because a residual load adds a
+  strain-*independent* offset to the reaction force and reporting that as
+  a stiffness change would be a wrong number. (The legacy local-σ₁₁
+  modulus proxy is derived from the single thermally-loaded field, so it
+  inherits the thermal state on both sides of its ratio.)
 
 ### Changed
 - Tests — **generated validation figures no longer land in a git-tracked
@@ -55,10 +107,10 @@ version produced a given file.
   the temperature change *from the stress-free (cure) state*
   (`T_service − T_stress_free`), so a **cure cool-down is negative** — a
   177 °C cure taken to 22 °C service is `delta_T = -155`.
-  **Scope boundary.** This is the analytical/CLT path only. The FE
-  element formulation has no thermal initial-strain load vector
-  (`∫ Bᵀ C ε_th dV`) yet, so a non-zero `delta_T` with
-  `analytical_only=False` is **rejected at construction and again at
+  **Scope boundary (lifted later in this same unreleased cycle by Stage
+  2, above).** Stage 1 covered the analytical/CLT path only: with no FE
+  thermal initial-strain load vector, a non-zero `delta_T` with
+  `analytical_only=False` was **rejected at construction and again at
   `run()` time** rather than silently dropped — an FE result that quietly
   omits a load this large is a wrong number, not a missing feature. On
   the analytical path a CLT first-ply-failure report is now produced when
