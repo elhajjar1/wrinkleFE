@@ -19,42 +19,94 @@ import pytest
 from wrinklefe.core.laminate import Laminate
 from wrinklefe.core.material import OrthotropicMaterial
 from wrinklefe.core.mesh import WrinkleMesh
+from wrinklefe.core.morphology import WrinkleConfiguration
+from wrinklefe.core.wrinkle import GaussianSinusoidal
 from wrinklefe.solver.boundary import BoundaryHandler
 from wrinklefe.solver.static import StaticSolver
 
 
 @pytest.fixture
 def parity_mesh_and_laminate():
-    """Small multi-ply mesh that exercises both ply rotation and wrinkles.
+    """Small multi-ply **wrinkled** mesh — both rotations must be non-trivial.
 
-    Uses a [0/45/-45/90] laminate so ``ply_angles`` are non-trivial, and a
-    near-isotropic material so the values are easy to reason about.  Mesh
+    Uses a [0/45/-45/90] laminate so ``ply_angles`` are non-trivial.  Mesh
     is intentionally small so the regression numbers stay short to read.
+
+    TWO PROPERTIES HERE ARE LOAD-BEARING, not scenery, and both were
+    originally absent — which left every test in this module blind to the
+    *order* in which the ply and wrinkle transforms compose:
+
+    1. **A real wrinkle.**  The fixture used ``wrinkle_config=None``, so
+       ``fiber_angles`` was exactly zero and ``T_wrinkle == I`` at every
+       Gauss point.  With one factor the identity, the order cannot matter.
+    2. **A genuinely orthotropic material.**  The fixture used an
+       *isotropic* card (``E1 == E2 == E3``, ``G12 == G13 == G23``), whose
+       rotated stiffness is invariant under any rotation whatsoever — so
+       ``sigma_local == C_material @ eps_local`` held for **any**
+       composition, independent of the mesh.  That is why the constitutive
+       guard passed even after the wrinkle was added.
+
+    Either degeneracy alone is enough to disarm the order guard, so
+    ``test_fixture_actually_exercises_both_rotations`` pins both.
     """
-    E = 10_000.0
-    nu = 0.3
-    G = E / (2.0 * (1.0 + nu))
+    # Genuinely orthotropic: an isotropic card makes ``rotate_stiffness_3d``
+    # a no-op, which silently disarms every rotation-sensitive assertion.
     material = OrthotropicMaterial(
-        E1=E, E2=E, E3=E,
-        G12=G, G13=G, G23=G,
-        nu12=nu, nu13=nu, nu23=nu,
-        Xt=500, Xc=500, Yt=500, Yc=500, Zt=500, Zc=500,
-        S12=300, S13=300, S23=300,
+        E1=150_000.0, E2=10_000.0, E3=10_000.0,
+        G12=5_000.0, G13=5_000.0, G23=3_500.0,
+        nu12=0.30, nu13=0.30, nu23=0.45,
+        Xt=2500, Xc=1500, Yt=70, Yc=250, Zt=70, Zc=250,
+        S12=100, S13=100, S23=80,
         gamma_Y=0.02,
-        name="parity_iso_10k",
+        name="parity_orthotropic",
     )
     laminate = Laminate.from_angles(
         [0.0, 45.0, -45.0, 90.0],
         material=material,
         ply_thickness=0.183,
     )
+    profile = GaussianSinusoidal(
+        amplitude=0.15, wavelength=8.0, width=4.0, center=4.0,
+    )
+    wrinkle_config = WrinkleConfiguration.from_morphology_name(
+        "graded", profile, interface1=1, interface2=2,
+    )
     gen = WrinkleMesh(
         laminate=laminate,
-        wrinkle_config=None,
-        Lx=4.0, Ly=2.0,
-        nx=4, ny=2, nz_per_ply=1,
+        wrinkle_config=wrinkle_config,
+        Lx=8.0, Ly=2.0,
+        nx=8, ny=2, nz_per_ply=1,
     )
     return gen.generate(), laminate
+
+
+def test_fixture_actually_exercises_both_rotations(parity_mesh_and_laminate):
+    """Precondition for everything below: neither transform is the identity.
+
+    ``T_ply`` is non-trivial because the layup is [0/45/-45/90]; ``T_wrinkle``
+    is non-trivial only if the mesh actually carries fibre misalignment.  With
+    a flat mesh the composition order is unobservable and the order guard
+    below degrades to a no-op — which is exactly what happened.
+    """
+    mesh, _laminate = parity_mesh_and_laminate
+    assert np.abs(mesh.fiber_angles).max() > 0.05, (
+        "fixture must carry a real wrinkle, or the ply/wrinkle composition "
+        "order cannot be observed by any test in this module"
+    )
+    assert len(set(mesh.ply_angles.tolist())) > 1
+
+    # And the material must actually respond to rotation: for an isotropic
+    # card the two compositions give the same C_bar, so the constitutive
+    # guard below cannot see the order no matter what the mesh does.
+    from wrinklefe.core.transforms import rotate_stiffness_3d
+
+    C = _laminate.plies[0].material.stiffness_matrix
+    zy = rotate_stiffness_3d(rotate_stiffness_3d(C, 0.7, "z"), 0.2, "y")
+    yz = rotate_stiffness_3d(rotate_stiffness_3d(C, 0.2, "y"), 0.7, "z")
+    assert np.abs(zy - yz).max() > 1.0, (
+        "fixture material is (near-)isotropic, so rotated stiffness is "
+        "order-invariant and the constitutive guard is a no-op"
+    )
 
 
 def test_recover_element_results_shape_and_finiteness(parity_mesh_and_laminate):

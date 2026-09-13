@@ -10,6 +10,7 @@ Covers:
 import warnings
 
 import numpy as np
+import numpy.testing as npt
 import pytest
 from scipy import sparse
 
@@ -1039,6 +1040,52 @@ class TestFieldResults:
         assert isinstance(val, float)
         assert isinstance(elem_idx, int)
         assert isinstance(gp_idx, int)
+
+    def test_von_mises_known_values(self, dummy_results):
+        """Pin the coefficients, not just the shape and sign.
+
+        ``von_mises`` was covered only by a shape check and a zeros check,
+        both of which pass for *any* non-negative square root of a
+        quadratic form: a mutation audit changed the shear coefficient
+        from 3 to 1 and the whole 2167-test suite stayed green.  Its
+        sibling ``max_principal_stress`` got hand-checked values when it
+        was vectorised (#295); this closes the same gap here.
+
+        Two exact statements, from the definition
+        ``sigma_vm^2 = 1/2[(s1-s2)^2+(s2-s3)^2+(s3-s1)^2] + 3(t23^2+t13^2+t12^2)``:
+
+        * pure shear ``tau`` gives ``sqrt(3) * tau`` — this is what fixes
+          the factor 3, and it is the same relation that makes the von
+          Mises and Tresca shear yield criteria differ by 2/sqrt(3);
+        * a hydrostatic state gives exactly zero, since von Mises is
+          insensitive to pressure.
+        """
+        import dataclasses
+
+        tau = 37.0
+        for slot in (3, 4, 5):                      # tau_23, tau_13, tau_12
+            stress = np.zeros((1, 1, 6))
+            stress[0, 0, slot] = tau
+            res = dataclasses.replace(
+                dummy_results, stress_global=stress, stress_local=stress,
+            )
+            npt.assert_allclose(
+                res.von_mises[0, 0], np.sqrt(3.0) * tau, rtol=1e-12,
+            )
+
+        hydro = np.zeros((1, 1, 6))
+        hydro[0, 0, :3] = -85.0
+        res = dataclasses.replace(
+            dummy_results, stress_global=hydro, stress_local=hydro,
+        )
+        npt.assert_allclose(res.von_mises[0, 0], 0.0, atol=1e-12)
+
+        uniaxial = np.zeros((1, 1, 6))
+        uniaxial[0, 0, 0] = 120.0
+        res = dataclasses.replace(
+            dummy_results, stress_global=uniaxial, stress_local=uniaxial,
+        )
+        npt.assert_allclose(res.von_mises[0, 0], 120.0, rtol=1e-12)
 
     def test_von_mises(self, dummy_results):
         """Von Mises stress has shape (n_elements, n_gp)."""
