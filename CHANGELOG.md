@@ -14,6 +14,53 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Fixed
+- Solver — **`FieldResults.equivalent_resultants()` violated force
+  equilibrium by up to 47 %** (found by audit). It ran a trapezoid over
+  element *centroids*, so it integrated across `h - t` instead of `h` and
+  omitted the outer half-element at each surface entirely; a trapezoid
+  additionally smooths across the stress jump at every ply boundary. For
+  `[0, 90, 90, 0]` the exact sum `s1+s2+s3+s4` degenerated to
+  `s1/2+s2+s3+s4/2` — dropping half of each stiff surface ply. Recovering
+  an applied `Nx = -100` gave `-52.5` at `nz_per_ply=1`, `-76.2` at 2 and
+  `-92.4` at 4, converging only as O(1/nz). It is now a **midpoint rule
+  over each element's own through-thickness extent**, which is exact for
+  the piecewise-constant field the recovery produces: `-100` to solver
+  tolerance at every mesh density. Tied nearest-columns (when the domain
+  centre falls on a node or edge) are collapsed by z level, which the
+  centroid form had masked.
+- Solver — **`FieldResults.interlaminar_stresses()` under-reported by
+  26x** (found by audit). It averaged over *all* Gauss points of *all*
+  elements in the two adjoining plies — a domain average of a field whose
+  mean is ~0 by equilibrium. On a flat laminate it returned exactly
+  `0.0000 MPa` where the free-edge peak is ~25 MPa; on a wrinkled one,
+  `0.92` against a peak of `24.5`. It now collects the Gauss points on the
+  **interface side** of the two adjoining element layers and reduces each
+  component to the signed value of largest magnitude. Since delamination
+  is driven by the peak, and a wrinkled mesh never has a uniform
+  interlaminar field, the reduction is an extremum rather than a mean —
+  **a change of meaning, not just of accuracy.** Each component is reduced
+  independently.
+
+  Both methods are public and documented (as the CLT bridge and the
+  delamination driver respectively) and **both had zero tests**. A
+  mutation audit confirmed the cost: swapping the Voigt slots feeding
+  `tau_13`/`tau_23`, and dropping the lever arm from the moment integrand,
+  each left all 2167 tests green. `tests/test_solver/test_field_reporting.py`
+  now covers both against independent facts — a membrane resultant must
+  come back out of the through-thickness integral at any mesh density, and
+  the reported interlaminar value must be one the field actually takes and
+  of peak rather than plane-average magnitude. All four mutations are now
+  caught.
+
+### Numerical results
+- `equivalent_resultants()` and `interlaminar_stresses()` return different
+  (correct) numbers. Neither is consumed anywhere in the package, so no
+  knockdown, retention, failure index or export value changes, and
+  `python scripts/validate.py` shows zero ledger drift. Callers reading
+  either method directly should expect the values above.
+
+
 ### Added
 - Analysis — **general load states are reachable from `AnalysisConfig`**
   (issue #275). `AnalysisConfig.load_state` takes a `LoadState` and
