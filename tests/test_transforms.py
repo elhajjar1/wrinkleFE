@@ -190,3 +190,87 @@ class TestTransformReducedStiffness:
     def test_invalid_shape_raises(self):
         with pytest.raises(ValueError, match="3x3"):
             transform_reduced_stiffness(np.eye(6), 0.0)
+
+
+# ======================================================================
+# Orientation-sense and off-axis guards
+#
+# The assertions above this point are all invariant under the errors they
+# would most plausibly be protecting against: orthogonality and det = 1
+# hold equally for R and R-transpose; the Reuter check rebuilds
+# ``R @ T_sigma @ R_inv``, which is the implementation line for line; and
+# the 45-degree coupling check asserts only ``|Q16| > 1``, at the one angle
+# where Q16 == Q26 makes a swap of the two invisible.
+#
+# A mutation audit confirmed it: transposing the 'y' rotation, and swapping
+# the Q16/Q26 expressions, each left the entire 2167-test suite green. The
+# tests below pin the *sense* and the *distinctness*, against closed forms
+# that do not restate the implementation.
+# ======================================================================
+
+
+class TestRotationSense:
+    """Pin the handedness, not just membership of SO(3)."""
+
+    def test_y_rotation_sends_x_to_z(self):
+        """Documented convention: R_y = [[c,0,-s],[0,1,0],[s,0,c]].
+
+        So ``R_y(pi/2) @ x_hat == z_hat``.  The transpose sends it to
+        ``-z_hat``, and every existing test in this module accepts both.
+        """
+        R = rotation_matrix_3d(np.pi / 2.0, axis="y")
+        npt.assert_allclose(R @ np.array([1.0, 0.0, 0.0]),
+                            [0.0, 0.0, 1.0], atol=1e-15)
+
+    def test_z_rotation_sends_x_to_minus_y(self):
+        """Documented convention: R_z = [[c,s,0],[-s,c,0],[0,0,1]]."""
+        R = rotation_matrix_3d(np.pi / 2.0, axis="z")
+        npt.assert_allclose(R @ np.array([1.0, 0.0, 0.0]),
+                            [0.0, -1.0, 0.0], atol=1e-15)
+
+
+class TestQBarOffAxis:
+    """``Q16``/``Q26`` are distinct, odd in theta, and match a closed form."""
+
+    E1, E2, NU12, G12 = 150_000.0, 10_000.0, 0.30, 5_000.0
+
+    def _Q(self):
+        return reduced_stiffness_matrix(self.E1, self.E2, self.NU12, self.G12)
+
+    def test_q16_and_q26_are_not_interchangeable(self):
+        """At 30 degrees the two coupling terms differ substantially.
+
+        The existing coupling test uses 45 degrees, where ``Q16 == Q26``
+        identically — so a swap of the two expressions is invisible there.
+        """
+        Qb = transform_reduced_stiffness(self._Q(), np.radians(30.0))
+        assert abs(Qb[0, 2] - Qb[1, 2]) > 0.1 * abs(Qb[0, 2])
+
+    def test_coupling_terms_are_odd_in_theta(self):
+        """Q16 and Q26 flip sign with the ply angle; Q11/Q22/Q12/Q66 do not."""
+        Q = self._Q()
+        pos = transform_reduced_stiffness(Q, np.radians(30.0))
+        neg = transform_reduced_stiffness(Q, np.radians(-30.0))
+        npt.assert_allclose(pos[0, 2], -neg[0, 2], rtol=1e-12)
+        npt.assert_allclose(pos[1, 2], -neg[1, 2], rtol=1e-12)
+        for i, j in ((0, 0), (1, 1), (0, 1), (2, 2)):
+            npt.assert_allclose(pos[i, j], neg[i, j], rtol=1e-12)
+
+    @pytest.mark.parametrize("theta_deg", [0.0, 15.0, 30.0, 45.0, 60.0, 90.0])
+    def test_off_axis_modulus_matches_closed_form(self, theta_deg):
+        """``1/Ex(theta)`` from the inverted Q-bar must equal the textbook
+        transformation equation — an independent statement about the whole
+        rotated matrix, not a restatement of how it is built.
+
+        .. math::
+            1/E_x = c^4/E_1 + (1/G_{12} - 2\\nu_{12}/E_1) s^2 c^2 + s^4/E_2
+        """
+        theta = np.radians(theta_deg)
+        c, s = np.cos(theta), np.sin(theta)
+        expected = (
+            c**4 / self.E1
+            + (1.0 / self.G12 - 2.0 * self.NU12 / self.E1) * s**2 * c**2
+            + s**4 / self.E2
+        )
+        a = np.linalg.inv(transform_reduced_stiffness(self._Q(), theta))
+        npt.assert_allclose(a[0, 0], expected, rtol=1e-12)

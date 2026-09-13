@@ -274,3 +274,56 @@ class TestGateMultiWrinkle:
             self._cfg(spec, amplitude=1.9, wavelength=40.0, width=3.0)
         )
         assert kd_default == pytest.approx(kd_other, rel=1e-12)
+
+
+class TestZPositionReachesEveryMorphology:
+    """``wrinkle_z_position`` is gate-relevant regardless of morphology.
+
+    The parameter's docstring, CLI help and README row all used to say it
+    was "ignored for stack/convex/concave/uniform".  That is true only when
+    no penetration gate is set: the gate branch in
+    ``_apply_penetration_gate`` returns before any morphology dispatch and
+    passes ``cfg.wrinkle_z_position`` straight into the position factor.
+
+    Measured on the 14-ply UD vacuum-bag case from the README, the
+    difference between z = 0.5 and z = 0.9 is 0.6427 vs 0.9999 knockdown —
+    120 MPa of allowable, always in the non-conservative direction.  These
+    tests pin that the coupling exists (so the docs cannot drift back to
+    calling it inert) and that it vanishes when the gate is off.
+    """
+
+    @staticmethod
+    def _knockdown(z, gate, morphology):
+        from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
+        from wrinklefe.core.material import MaterialLibrary
+
+        cfg = AnalysisConfig(
+            amplitude=0.75, wavelength=12.9, width=6.45,
+            morphology=morphology,
+            material=MaterialLibrary().get("AC318_S6C10_vacbag"),
+            angles=[0.0] * 14, ply_thickness=0.44,
+            analytical_only=True,
+            penetration_gate=gate,
+            wrinkle_z_position=z,
+        )
+        return WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
+
+    @pytest.mark.parametrize(
+        "morphology", ["uniform", "stack", "concave", "graded"]
+    )
+    def test_gate_makes_z_position_matter_on_every_morphology(self, morphology):
+        from wrinklefe.core.penetration_gate import GATE_LI2025_VACBAG
+
+        mid = self._knockdown(0.5, GATE_LI2025_VACBAG, morphology)
+        off = self._knockdown(0.9, GATE_LI2025_VACBAG, morphology)
+        assert off > 1.5 * mid, (
+            f"{morphology}: gate position factor must respond to "
+            f"wrinkle_z_position (got {mid:.4f} at z=0.5, {off:.4f} at z=0.9)"
+        )
+
+    @pytest.mark.parametrize("morphology", ["uniform", "stack"])
+    def test_without_a_gate_z_position_is_genuinely_inert(self, morphology):
+        """The half of the documented claim that IS true."""
+        vals = [self._knockdown(z, None, morphology) for z in (0.1, 0.5, 0.9)]
+        assert vals[0] == pytest.approx(vals[1], rel=1e-12)
+        assert vals[1] == pytest.approx(vals[2], rel=1e-12)

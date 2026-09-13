@@ -1009,10 +1009,18 @@ class AnalysisConfig:
         Used by the graded morphology path to shift the Gaussian through-
         thickness decay centre off the midplane and to bias the linear
         per-ply tension grading; mirrors the Above / Middle / Below
-        wrinkle locations of Li et al. (2025) Dataset F.  Ignored for the
-        ``stack``, ``convex``, ``concave`` and ``uniform`` morphologies,
-        whose through-thickness behaviour is set by the morphology itself
-        or by the ``interface_1`` / ``interface_2`` interface indices.
+        wrinkle locations of Li et al. (2025) Dataset F.
+
+        **Also consulted by the penetration gate, on every morphology.**
+        When ``penetration_gate`` is set, this value drives the gate's
+        position factor ``P(z) = (2 min(z, 1-z))**position_q`` regardless
+        of morphology — with ``GATE_LI2025_VACBAG`` (``position_q=5.26``)
+        that is a steep dependence, and moving off the midplane makes the
+        prediction *less* conservative.  It is ignored only for the
+        ``stack``, ``convex``, ``concave`` and ``uniform`` morphologies
+        **when no gate is set**, their through-thickness behaviour being
+        fixed by the morphology itself or by the ``interface_1`` /
+        ``interface_2`` indices.
         Must be a finite float in ``[0.0, 1.0]``.
     amplitude_profile : {"constant", "gaussian", "linear"}
         Spatially varying in-plane amplitude modulation applied on top

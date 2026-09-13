@@ -406,8 +406,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Through-thickness position of the single-wrinkle decay centre "
             "as a fraction of the laminate thickness T: 0.0 = bottom "
             "surface, 0.5 = midplane (default), 1.0 = top surface. Must be "
-            "in [0, 1]. Consulted by the graded morphology path; ignored "
-            "for stack/convex/concave/uniform."
+            "in [0, 1]. Consulted by the graded morphology path, AND by "
+            "--gate on every morphology (the gate's position factor is a "
+            "steep function of z; moving off the midplane is "
+            "less conservative). Ignored for stack/convex/concave/uniform "
+            "only when no gate is set."
         ),
     )
     p_analyze.add_argument(

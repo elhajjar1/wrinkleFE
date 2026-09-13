@@ -749,7 +749,7 @@ wrinklefe analyze --morphology tool-flat --amplitude 0.25 \
 
 | Flag | Config field | Notes |
 | --- | --- | --- |
-| `--wrinkle-z-position Z` | `wrinkle_z_position` | Fraction of thickness in `[0, 1]` (0.5 = midplane); graded morphology |
+| `--wrinkle-z-position Z` | `wrinkle_z_position` | Fraction of thickness in `[0, 1]` (0.5 = midplane); graded morphology **and the penetration gate on every morphology** — see note below |
 | `--gate {li2024-moulded,li2025-vacbag}` | `penetration_gate` | Calibrated `GateParameters` preset; UD-scoped |
 | `--resin-pocket` | `enable_resin_pocket` | Crest resin lens (FE-only) |
 | `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}` | `enable_surface_resin_pockets` / `surface_pocket_side` | Tool-flat surface pockets (FE-only). Auto-enabled for `--morphology tool-flat` |
@@ -757,6 +757,16 @@ wrinklefe analyze --morphology tool-flat --amplitude 0.25 \
 | `--vf-gradient` | `enable_vf_gradient` | Compaction Vf / ply-thickness gradient (FE-only, `tool_flat` only); supersedes the binary surface pockets |
 | `--vf-nominal V` / `--vf-fiber F` / `--vf-matrix M` | `vf_nominal` / `vf_fiber` / `vf_matrix` | Ratio anchor and constituents; omit to use the material card's documented values |
 | `--progressive` / `--increments N` | `enable_progressive_damage` / `progressive_n_increments` | Load-stepping ultimate strength (FE-only) |
+
+> **`--wrinkle-z-position` is not gate-neutral.** Outside the gate it is
+> genuinely inert for `stack` / `convex` / `concave` / `uniform` — those
+> morphologies fix their own through-thickness behaviour. But the gate's
+> position factor `P(z) = (2·min(z, 1−z))^position_q` is applied on
+> **every** morphology, and with `li2025-vacbag` (`position_q = 5.26`) it
+> is steep: on the 14-ply UD case above, moving z from 0.5 to 0.9 takes the
+> knockdown from 0.6427 to 0.9999 — a **120 MPa less conservative**
+> allowable. Leave it at the midplane default unless you have a micrograph
+> that says otherwise.
 
 The long tail of finer knobs (custom `GateParameters`, resin-pocket
 geometry scales, progressive load-ramp targets) stays reachable through
