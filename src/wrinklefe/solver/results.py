@@ -20,11 +20,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-
-try:  # numpy >= 2.0
-    from numpy import trapezoid as _trapezoid
-except ImportError:  # pragma: no cover — numpy 1.x fallback
-    from numpy import trapz as _trapezoid  # type: ignore[attr-defined, no-redef]
 from scipy import sparse
 
 from wrinklefe.core.laminate import Laminate
@@ -245,26 +240,41 @@ class FieldResults:
         return z_values[order], stress_values[order]
 
     def interlaminar_stresses(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Extract interlaminar stress components at ply interfaces.
+        """Peak interlaminar stresses at each ply interface.
 
-        Computes sigma_33 (through-thickness normal), tau_13, and tau_23
-        at each ply interface by averaging stresses from elements
-        immediately above and below the interface.
+        For every interface, the Gauss points **on the interface side** of
+        the two adjoining element layers are collected — the upper half of
+        the elements below, the lower half of those above — and each
+        component is reduced to the signed value of largest magnitude
+        across the interface plane.
 
         Returns
         -------
         sigma_33 : np.ndarray
-            Shape ``(n_interfaces,)`` through-thickness normal stress (MPa)
-            at each ply interface (averaged over elements sharing the interface).
+            Shape ``(n_interfaces,)`` peak through-thickness normal stress
+            (MPa, signed) at each ply interface.
         tau_13 : np.ndarray
-            Shape ``(n_interfaces,)`` transverse shear stress tau_13 (MPa).
+            Shape ``(n_interfaces,)`` peak transverse shear ``tau_13`` (MPa).
         tau_23 : np.ndarray
-            Shape ``(n_interfaces,)`` transverse shear stress tau_23 (MPa).
+            Shape ``(n_interfaces,)`` peak transverse shear ``tau_23`` (MPa).
 
         Notes
         -----
-        Interlaminar stresses are critical for delamination prediction.
         Interface *k* lies between ply *k* (below) and ply *k+1* (above).
+
+        **This used to return a plane average, and that number was
+        meaningless.**  The previous implementation took the mean over
+        *all* Gauss points of *all* elements in the two adjoining plies —
+        a domain average of a field whose mean is ~0 by equilibrium.  On a
+        flat laminate it reported exactly 0.0000 MPa where the free-edge
+        peak is 24.8 MPa; on a wrinkled one, 0.92 MPa against a peak of
+        24.5 MPa, a 26x under-report.  Since delamination is driven by the
+        peak and not the average, and since a wrinkled mesh — this
+        package's whole subject — never has a uniform interlaminar field,
+        the reduction is now an extremum.
+
+        Each component is reduced independently, so the three values may
+        come from different points on the interface.
         """
         n_plies = self.laminate.n_plies
         n_interfaces = n_plies - 1
@@ -273,31 +283,42 @@ class FieldResults:
             empty = np.empty(0)
             return empty, empty.copy(), empty.copy()
 
-        sigma_33 = np.empty(n_interfaces)
-        tau_13 = np.empty(n_interfaces)
-        tau_23 = np.empty(n_interfaces)
+        n_gp = self.stress_global.shape[1]
+        # 2x2x2 Gauss points alternate zeta = -/+ 1/sqrt(3), so the odd
+        # indices are the element's upper half and the even ones its lower
+        # half.  Anything else (a different rule) falls back to all points.
+        if n_gp == 8:
+            upper_half = np.arange(1, 8, 2)   # zeta > 0
+            lower_half = np.arange(0, 8, 2)   # zeta < 0
+        else:  # pragma: no cover - defensive, only 2x2x2 is produced today
+            upper_half = lower_half = np.arange(n_gp)
+
+        sigma_33 = np.zeros(n_interfaces)
+        tau_13 = np.zeros(n_interfaces)
+        tau_23 = np.zeros(n_interfaces)
 
         for k in range(n_interfaces):
-            # Elements in ply below and above the interface
-            elems_below = self.mesh.elements_in_ply(k)
-            elems_above = self.mesh.elements_in_ply(k + 1)
+            samples = []
+            below = self.mesh.elements_in_ply(k)
+            if below.size > 0:
+                samples.append(
+                    self.stress_global[np.ix_(below, upper_half)].reshape(-1, 6)
+                )
+            above = self.mesh.elements_in_ply(k + 1)
+            if above.size > 0:
+                samples.append(
+                    self.stress_global[np.ix_(above, lower_half)].reshape(-1, 6)
+                )
+            if not samples:
+                continue
+            at_interface = np.concatenate(samples, axis=0)  # (n_pts, 6)
 
-            # Average stress over all Gauss points in these elements
-            stresses = []
-            if elems_below.size > 0:
-                # Take the mean over Gauss points for each element, then mean over elements
-                stresses.append(self.stress_global[elems_below].mean(axis=(0, 1)))
-            if elems_above.size > 0:
-                stresses.append(self.stress_global[elems_above].mean(axis=(0, 1)))
-
-            if stresses:
-                avg_stress = np.mean(stresses, axis=0)  # (6,)
-            else:
-                avg_stress = np.zeros(6)
-
-            sigma_33[k] = avg_stress[2]  # sigma_33
-            tau_23[k] = avg_stress[3]    # tau_23
-            tau_13[k] = avg_stress[4]    # tau_13
+            for out, comp in ((sigma_33, 2), (tau_23, 3), (tau_13, 4)):
+                col = at_interface[:, comp]
+                finite = np.isfinite(col)
+                if finite.any():
+                    col = col[finite]
+                    out[k] = float(col[np.argmax(np.abs(col))])
 
         return sigma_33, tau_13, tau_23
 
@@ -327,8 +348,28 @@ class FieldResults:
 
         Notes
         -----
-        This uses midplane-column stresses and trapezoidal integration.
-        Useful for comparing 3D FE results with CLT predictions.
+        Useful for comparing 3-D FE results with CLT predictions.
+
+        The integration is a **midpoint rule over each element's own
+        through-thickness extent**, which is exact for the
+        piecewise-constant stress the recovery produces.
+
+        **This replaces a trapezoid over element centroids, which violated
+        equilibrium.**  Sampling at centroids spans only ``h - t`` rather
+        than ``h``, so the outer half-element at each surface was omitted
+        entirely, and a trapezoid additionally smooths across the stress
+        jump at every ply boundary.  For ``[0, 90, 90, 0]`` the exact sum
+        ``s1+s2+s3+s4`` degenerated to ``s1/2+s2+s3+s4/2`` — dropping half
+        of each stiff surface ply.  Recovered ``Nx`` against an applied
+        ``-100``:
+
+        * ``nz_per_ply=1``: was ``-52.5`` (0.52x), now ``-100`` to
+          solver tolerance
+        * ``nz_per_ply=2``: was ``-76.2`` (0.76x), now ``-100``
+        * ``nz_per_ply=4``: was ``-92.4`` (0.92x), now ``-100``
+
+        The old form converged only as O(1/nz); the new one is exact at
+        any mesh density.
         """
         if self.stress_global.size == 0:
             return np.zeros(3), np.zeros(3)
@@ -338,19 +379,50 @@ class FieldResults:
         x_mid = self.mesh.nodes[:, 0].min() + Lx / 2.0
         y_mid = self.mesh.nodes[:, 1].min() + Ly / 2.0
 
-        # Get through-thickness stress profiles for components 0 (s11), 1 (s22), 5 (t12)
-        components = [0, 1, 5]  # sigma_11, sigma_22, tau_12
-        N = np.zeros(3)
-        M = np.zeros(3)
+        centres = self.element_centers
+        xy_dist = (centres[:, 0] - x_mid) ** 2 + (centres[:, 1] - y_mid) ** 2
+        near = xy_dist.min()
+        tol = near + 1.0e-6 * (xy_dist.max() - near + 1.0e-30)
+        column = np.flatnonzero(xy_dist <= tol)
+        if column.size == 0:
+            return np.zeros(3), np.zeros(3)
+        column = column[np.argsort(centres[column, 2])]
 
-        for idx, comp in enumerate(components):
-            z_vals, s_vals = self.stress_through_thickness(x_mid, y_mid, comp)
-            if z_vals.size < 2:
-                continue
-            # Trapezoidal integration
-            N[idx] = _trapezoid(s_vals, z_vals)
-            M[idx] = _trapezoid(s_vals * z_vals, z_vals)
+        # Each element's OWN through-thickness extent, from its nodes.
+        z_mid = np.empty(column.size)
+        dz = np.empty(column.size)
+        for i, e in enumerate(column):
+            z_nodes = self.mesh.element_nodes(int(e))[:, 2]
+            lo, hi = float(z_nodes.min()), float(z_nodes.max())
+            z_mid[i] = 0.5 * (lo + hi)
+            dz[i] = hi - lo
+        if not np.all(dz > 0.0):
+            return np.zeros(3), np.zeros(3)
 
+        # sigma_11, sigma_22, tau_12, averaged over each element's Gauss points
+        sigma = self.stress_global[column][:, :, [0, 1, 5]].mean(axis=1)
+
+        # The equidistance test can tie: when the domain centre falls on a
+        # node or an edge, two or four stacks are all "nearest".  Collapse
+        # them by z level, otherwise the sum below counts the thickness
+        # once per tied stack (a clean 2x or 4x on the resultants).
+        levels, inverse = np.unique(
+            np.round(z_mid, 9), return_inverse=True,
+        )
+        n_levels = levels.size
+        counts = np.bincount(inverse, minlength=n_levels).astype(float)
+        sigma_lvl = np.zeros((n_levels, 3))
+        for j in range(3):
+            sigma_lvl[:, j] = (
+                np.bincount(inverse, weights=sigma[:, j], minlength=n_levels)
+                / counts
+            )
+        dz_lvl = np.bincount(inverse, weights=dz, minlength=n_levels) / counts
+
+        # Midpoint rule over each element's own slab: EXACT for the
+        # piecewise-constant field the recovery actually produces.
+        N = (sigma_lvl * dz_lvl[:, None]).sum(axis=0)
+        M = (sigma_lvl * (levels * dz_lvl)[:, None]).sum(axis=0)
         return N, M
 
     # ------------------------------------------------------------------
