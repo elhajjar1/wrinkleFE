@@ -3047,6 +3047,16 @@ def _iterative_solver_kwargs(cfg: AnalysisConfig) -> dict:
 # Features that exist only in the FE mesh or the FE solve.  Each entry is
 # ``field -> (predicate, why it cannot run on the analytical path)``.
 #
+# DELIBERATELY ABSENT: ``enable_resin_pocket``.  The crest lens is just as
+# FE-only as the rest, but its documented contract (the field comment at
+# its definition: "No effect on the analytical path or when
+# ``analytical_only=True``") is that it is a *silent no-op* there, and
+# ``tests/test_resin_pocket.py::test_analytical_only_skips_pocket`` pins
+# that.  Adding it here would change documented behaviour, which is the
+# author's call and not a bug fix — see
+# ``test_crest_pocket_is_a_documented_no_op`` for the standing record of
+# the inconsistency with its three guarded siblings.
+#
 # ONE definition, consulted from two places: ``AnalysisConfig._validate``
 # (construction) and ``WrinkleAnalysis.run`` (after the run-time
 # ``analytical_only`` override resolves).  They were previously separate
@@ -3079,11 +3089,6 @@ _FE_ONLY_FEATURES: tuple[tuple[str, Callable[[AnalysisConfig], bool], str], ...]
         lambda c: bool(c.enable_progressive_damage),
         "the ply-discount solver steps a load ramp through repeated FE "
         "solves",
-    ),
-    (
-        "enable_resin_pocket",
-        lambda c: bool(c.enable_resin_pocket),
-        "the crest lens is a per-element material zone in the mesh",
     ),
     (
         "enable_surface_resin_pockets",

@@ -45,7 +45,6 @@ FEATURE_KWARGS: dict[str, dict] = {
     "load_state": dict(load_state=LoadState(Nx=-800.0)),
     "enable_czm": dict(enable_czm=True),
     "enable_progressive_damage": dict(enable_progressive_damage=True),
-    "enable_resin_pocket": dict(enable_resin_pocket=True),
     "enable_surface_resin_pockets": dict(enable_surface_resin_pockets=True),
     "enable_vf_gradient": dict(enable_vf_gradient=True),
 }
@@ -75,6 +74,31 @@ def _base(feature: str) -> dict:
 
 
 FEATURE_NAMES = [name for name, _pred, _why in _FE_ONLY_FEATURES]
+
+
+def test_crest_pocket_is_a_documented_no_op_not_an_oversight():
+    """``enable_resin_pocket`` is deliberately NOT in the table.
+
+    It is as FE-only as its three guarded siblings, and an audit flagged
+    it as unguarded.  But its documented contract — the field comment at
+    its definition says "No effect on the analytical path or when
+    ``analytical_only=True``" — is that it is a silent no-op there, and
+    ``tests/test_resin_pocket.py::test_analytical_only_skips_pocket``
+    pins that.  Guarding it would change documented behaviour rather than
+    fix a defect, which is the author's call.
+
+    This test records the inconsistency so it stays visible: three
+    per-element material features refuse on the analytical path, one
+    documents a no-op.  Either answer is defensible; having both is the
+    part worth noticing.
+    """
+    from wrinklefe.analysis import AnalysisConfig
+
+    assert "enable_resin_pocket" not in FEATURE_NAMES
+    cfg = AnalysisConfig(
+        **_base("load_state"), analytical_only=True, enable_resin_pocket=True,
+    )
+    assert cfg.enable_resin_pocket is True
 
 
 def test_every_listed_feature_has_a_test_switch():

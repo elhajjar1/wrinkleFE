@@ -35,9 +35,18 @@ version produced a given file.
      such a run reported "no knockdown" rather than "did not run".
 
   Both entry points now consult one table, `_FE_ONLY_FEATURES`, covering
-  all seven features (`transverse_mode`, `load_state`, `enable_czm`,
-  `enable_progressive_damage`, `enable_resin_pocket`,
-  `enable_surface_resin_pockets`, `enable_vf_gradient`). The error names
+  six features (`transverse_mode`, `load_state`, `enable_czm`,
+  `enable_progressive_damage`, `enable_surface_resin_pockets`,
+  `enable_vf_gradient`). `enable_resin_pocket` is **deliberately
+  excluded**: it is equally FE-only, but its documented contract — the
+  field comment at its definition states "No effect on the analytical
+  path or when `analytical_only=True`" — is that it is a silent no-op
+  there, pinned by `test_analytical_only_skips_pocket`. Guarding it would
+  change documented behaviour rather than fix a defect. The resulting
+  inconsistency (three per-element material features refuse, one
+  documents a no-op) is recorded in
+  `test_crest_pocket_is_a_documented_no_op_not_an_oversight` rather than
+  resolved unilaterally. The error names
   **every** offending field, says why each needs the FE path, and
   distinguishes which entry point selected the analytical path. The test
   parametrisation is driven from the same table, so a feature added
@@ -45,8 +54,8 @@ version produced a given file.
 
 ### Changed
 - Analysis — **`AnalysisConfig(analytical_only=True, ...)` now raises for
-  `enable_czm`, `enable_progressive_damage` and `enable_resin_pocket`**,
-  which it previously accepted. Likewise
+  `enable_czm` and `enable_progressive_damage`**, which it previously
+  accepted. Likewise
   `run(analytical_only=True)` now raises for any FE-only feature rather
   than running. Configs that relied on the silent drop will need
   `analytical_only=False`, or the feature turned off — which is the point:
