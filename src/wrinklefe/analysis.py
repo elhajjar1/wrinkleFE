@@ -1761,14 +1761,6 @@ class AnalysisConfig:
             # The transverse envelope only manifests in the FE mesh, so it is
             # meaningless on the x-only analytical path — fail fast instead of
             # silently ignoring the requested surface.
-            if self.analytical_only:
-                raise ValueError(
-                    "AnalysisConfig.transverse_mode="
-                    f"{self.transverse_mode!r} requires the FE path but "
-                    "analytical_only=True. The transverse surface only "
-                    "manifests in the mesh; set analytical_only=False or "
-                    "transverse_mode='uniform'."
-                )
             # Multi-wrinkle FE and CZM composition with a 3-D surface are out
             # of scope for this first cut — reject the combination up front
             # (issue #300) rather than surprising the user mid-solve.
@@ -1817,6 +1809,14 @@ class AnalysisConfig:
                 f"(cure) state, not an absolute temperature: a 177 C cure "
                 f"taken to 22 C service is delta_T = -155, not -273 or 22."
             )
+        # --- FE-only features on the analytical path ------------------
+        # One shared definition (``_FE_ONLY_FEATURES``), also consulted by
+        # ``run()`` after the run-time override resolves.
+        if self.analytical_only:
+            _reject_fe_only_under_analytical(
+                self, where="AnalysisConfig(analytical_only=True)",
+            )
+
         # --- General load state (issue #275) --------------------------
         if self.load_state is not None:
             ls = self.load_state
@@ -1876,15 +1876,6 @@ class AnalysisConfig:
                         "sign errors get in). Moisture is not exposed at "
                         "all - nothing in the solve consumes delta_C."
                     )
-            # FE-only: the closed-form analytical knockdown is uniaxial.
-            if self.analytical_only:
-                raise ValueError(
-                    "AnalysisConfig.load_state requires the FE path but "
-                    "analytical_only=True. The closed-form knockdown is "
-                    "defined for a uniaxial state only; a general load "
-                    "state is applied through 3-D boundary conditions. "
-                    "Set analytical_only=False or load_state=None."
-                )
             if self.enable_czm:
                 raise ValueError(
                     "AnalysisConfig.load_state is not yet combinable with "
@@ -2078,13 +2069,6 @@ class AnalysisConfig:
             # analytical-path knockdown, so an analytical-only run would
             # silently drop them (mirrors the FE-only nature of the crest
             # pocket, but rejected explicitly so it cannot no-op unnoticed).
-            if self.analytical_only:
-                raise ValueError(
-                    "AnalysisConfig: enable_surface_resin_pockets requires "
-                    "the FE path (an isotropic resin zone in the mesh); it "
-                    "has no effect under analytical_only=True. Set "
-                    "analytical_only=False or disable surface resin pockets."
-                )
             # The chosen surface must be tool-flat, i.e. the through-thickness
             # decay must reach 0 there. ``uniform`` never decays (wavy
             # surfaces); ``graded`` with a non-zero floor leaves residual
@@ -2219,13 +2203,6 @@ class AnalysisConfig:
             # FE-only: the gradient is a per-element material field, so an
             # analytical-only run would silently drop it (same rule as the
             # resin-pocket / surface-pocket features).
-            if self.analytical_only:
-                raise ValueError(
-                    "AnalysisConfig: enable_vf_gradient requires the FE "
-                    "path (it installs per-element materials in the mesh); "
-                    "it has no effect under analytical_only=True. Set "
-                    "analytical_only=False or disable the Vf gradient."
-                )
             # v1 restriction: only the tool_flat morphology has a flat outer
             # envelope, which is what makes the per-column thickness — and
             # therefore the resin mass — conserved under the kinematic rule.
@@ -3067,6 +3044,92 @@ def _iterative_solver_kwargs(cfg: AnalysisConfig) -> dict:
     }
 
 
+# Features that exist only in the FE mesh or the FE solve.  Each entry is
+# ``field -> (predicate, why it cannot run on the analytical path)``.
+#
+# ONE definition, consulted from two places: ``AnalysisConfig._validate``
+# (construction) and ``WrinkleAnalysis.run`` (after the run-time
+# ``analytical_only`` override resolves).  They were previously separate
+# per-feature ``if self.analytical_only`` blocks, which left two gaps: a
+# run-time ``run(analytical_only=True)`` bypassed every one of them, and
+# three features had no guard at either point.  Both let a run report a
+# plausible number computed with the requested physics switched off — the
+# failure mode this package refuses on principle.
+_FE_ONLY_FEATURES: tuple[tuple[str, Callable[[AnalysisConfig], bool], str], ...] = (
+    (
+        "transverse_mode",
+        lambda c: c.transverse_mode != "uniform",
+        "the transverse surface only manifests in the mesh; set "
+        "transverse_mode='uniform'",
+    ),
+    (
+        "load_state",
+        lambda c: c.load_state is not None,
+        "the closed-form knockdown is defined for a uniaxial state only; a "
+        "general load state is applied through 3-D boundary conditions",
+    ),
+    (
+        "enable_czm",
+        lambda c: bool(c.enable_czm),
+        "cohesive interfaces are inserted into the mesh; there is no "
+        "analytical delamination model",
+    ),
+    (
+        "enable_progressive_damage",
+        lambda c: bool(c.enable_progressive_damage),
+        "the ply-discount solver steps a load ramp through repeated FE "
+        "solves",
+    ),
+    (
+        "enable_resin_pocket",
+        lambda c: bool(c.enable_resin_pocket),
+        "the crest lens is a per-element material zone in the mesh",
+    ),
+    (
+        "enable_surface_resin_pockets",
+        lambda c: bool(c.enable_surface_resin_pockets),
+        "the surface pockets are an isotropic resin zone in the mesh",
+    ),
+    (
+        "enable_vf_gradient",
+        lambda c: bool(c.enable_vf_gradient),
+        "the gradient installs per-element materials in the mesh",
+    ),
+)
+
+
+def _reject_fe_only_under_analytical(cfg: AnalysisConfig, *, where: str) -> None:
+    """Raise if an FE-only feature is requested on the analytical path.
+
+    Parameters
+    ----------
+    cfg : AnalysisConfig
+        The configuration to check.
+    where : str
+        How the analytical path was selected, quoted back to the user so
+        the message names the thing they actually set — ``analytical_only=True``
+        at construction, or ``run(analytical_only=True)`` at call time.
+
+    Raises
+    ------
+    ValueError
+        Naming every offending field and why each needs the FE path.
+    """
+    offenders = [
+        (name, why) for name, active, why in _FE_ONLY_FEATURES if active(cfg)
+    ]
+    if not offenders:
+        return
+    detail = "; ".join(f"{name} ({why})" for name, why in offenders)
+    fields = ", ".join(name for name, _why in offenders)
+    raise ValueError(
+        f"{where} selects the analytical/CLT path, but this config requests "
+        f"FE-only feature(s): {detail}. Running anyway would report a "
+        f"knockdown computed with them switched off. Set "
+        f"analytical_only=False, or disable: {fields}."
+    )
+
+
 def _mechanical_bcs(cfg: AnalysisConfig, mesh: MeshData) -> list:
     """Boundary conditions for the mechanical load the config asks for.
 
@@ -3304,16 +3367,14 @@ class WrinkleAnalysis:
         if analytical_only is None:
             analytical_only = cfg.analytical_only
 
-        # A transverse surface only exists in the FE mesh, so a run-time
-        # analytical_only override must be rejected too (the construction-time
-        # _validate only sees cfg.analytical_only). Fail fast rather than
-        # silently dropping the requested through-width variation (#300).
-        if analytical_only and cfg.transverse_mode != "uniform":
-            raise ValueError(
-                "AnalysisConfig.transverse_mode="
-                f"{cfg.transverse_mode!r} requires the FE path but this run "
-                "was invoked with analytical_only=True. Run with "
-                "analytical_only=False or set transverse_mode='uniform'."
+        # FE-only features must be rejected here too: ``_validate`` only
+        # ever saw ``cfg.analytical_only``, so a run-time override used to
+        # bypass every construction guard and silently drop the feature.
+        # ``parametric_sweep`` and ``probabilistic_analysis`` both default
+        # to the analytical path, so this is the common way in.
+        if analytical_only:
+            _reject_fe_only_under_analytical(
+                cfg, where="run(analytical_only=True)",
             )
 
         # Multi-wrinkle FE solve (issue #252): overlapping and

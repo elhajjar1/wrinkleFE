@@ -15,6 +15,45 @@ version produced a given file.
 ## [Unreleased]
 
 ### Fixed
+- Analysis — **a run-time `analytical_only=True` bypassed every FE-only
+  guard, and three features had no guard at all** (found by audit).
+
+  The FE-only checks lived as four separate `if self.analytical_only`
+  blocks inside `AnalysisConfig._validate`. That left two gaps:
+
+  1. `_validate` only ever sees `cfg.analytical_only`, so
+     `WrinkleAnalysis(cfg).run(analytical_only=True)` on an FE-legal
+     config ran straight through and dropped the feature. This is the
+     *common* route, because `parametric_sweep` and
+     `probabilistic_analysis` both default to the analytical path — a
+     `load_state` config swept that way returned `load_state_factor =
+     None` for every point with no indication why.
+  2. `enable_czm`, `enable_progressive_damage` and `enable_resin_pocket`
+     were accepted at construction with `analytical_only=True` and ran
+     silently, producing an analytical knockdown with the requested
+     physics switched off. `progressive_knockdown` defaults to `1.0`, so
+     such a run reported "no knockdown" rather than "did not run".
+
+  Both entry points now consult one table, `_FE_ONLY_FEATURES`, covering
+  all seven features (`transverse_mode`, `load_state`, `enable_czm`,
+  `enable_progressive_damage`, `enable_resin_pocket`,
+  `enable_surface_resin_pockets`, `enable_vf_gradient`). The error names
+  **every** offending field, says why each needs the FE path, and
+  distinguishes which entry point selected the analytical path. The test
+  parametrisation is driven from the same table, so a feature added
+  without a guard cannot slip through.
+
+### Changed
+- Analysis — **`AnalysisConfig(analytical_only=True, ...)` now raises for
+  `enable_czm`, `enable_progressive_damage` and `enable_resin_pocket`**,
+  which it previously accepted. Likewise
+  `run(analytical_only=True)` now raises for any FE-only feature rather
+  than running. Configs that relied on the silent drop will need
+  `analytical_only=False`, or the feature turned off — which is the point:
+  the previous behaviour returned a number computed without it.
+
+
+### Fixed
 - Solver — **`FieldResults.equivalent_resultants()` violated force
   equilibrium by up to 47 %** (found by audit). It ran a trapezoid over
   element *centroids*, so it integrated across `h - t` instead of `h` and
