@@ -3113,7 +3113,11 @@ def _reject_fe_only_under_analytical(cfg: AnalysisConfig, *, where: str) -> None
     Raises
     ------
     ValueError
-        Naming every offending field and why each needs the FE path.
+        Naming every offending field and why each needs the FE path.  The
+        message deliberately contains the phrase "requires the FE path",
+        which the per-feature guards this replaced also used and which
+        their tests match on — the wording is part of the contract, not
+        incidental.
     """
     offenders = [
         (name, why) for name, active, why in _FE_ONLY_FEATURES if active(cfg)
@@ -3123,9 +3127,9 @@ def _reject_fe_only_under_analytical(cfg: AnalysisConfig, *, where: str) -> None
     detail = "; ".join(f"{name} ({why})" for name, why in offenders)
     fields = ", ".join(name for name, _why in offenders)
     raise ValueError(
-        f"{where} selects the analytical/CLT path, but this config requests "
-        f"FE-only feature(s): {detail}. Running anyway would report a "
-        f"knockdown computed with them switched off. Set "
+        f"This config requires the FE path: {detail}. But {where} selects "
+        f"the analytical/CLT path, and running anyway would report a "
+        f"knockdown computed with {fields} switched off. Set "
         f"analytical_only=False, or disable: {fields}."
     )
 
