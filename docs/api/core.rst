@@ -40,6 +40,13 @@ Wrinkle geometry and morphology
    :members: WrinklePlacement, WrinkleConfiguration
    :show-inheritance:
 
+Fitting a profile to measured data
+----------------------------------
+
+.. automodule:: wrinklefe.core.fit
+   :members:
+   :show-inheritance:
+
 Mesh
 ----
 
