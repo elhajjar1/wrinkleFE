@@ -15,6 +15,53 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- IO — **the schema-versioned results export now carries a
+  `provenance` block** (schema 1.1 → 1.2).
+
+  `wrinklefe.io.export.build_provenance` documents itself as shared "so
+  the two paths can never disagree", but a third path had since been
+  added — the structured exporter in `wrinklefe.io.results` — and it had
+  no provenance at all. That left the *schema-versioned* document, the
+  one `wrinklefe.io` points forward-looking consumers at, as the only
+  export that could not support a reproducibility claim against the
+  validation ledger. It now uses the same builder as the legacy
+  exporter and the NCR summary.
+
+  The block here omits `timestamp_utc`, which the legacy one keeps.
+  That module guarantees byte-identical output for identical input (and
+  tests it), and a wall-clock field breaks that for two writes of the
+  same result. Nothing is lost: what lets a result be reproduced is the
+  version set, and the write time is already recorded by the
+  filesystem. `build_provenance` takes `include_timestamp` to make the
+  choice explicit at the shared builder rather than by stripping the
+  field at the call site.
+
+### Fixed
+- Docs — **`wrinklefe.io` and `wrinklefe.io.results` described the
+  relationship between the two same-named `export_results_json`
+  functions inaccurately.**
+
+  The coexistence is deliberate and was documented, but the detail was
+  wrong or missing in three ways. The prose referred to "the v1.0
+  schema" when `SCHEMA_VERSION` had been `1.1` since #338. It did not
+  say how far apart the two documents actually are — measured, on an FE
+  run the legacy one emits 33 leaf paths and the structured one 138,
+  sharing only `provenance` and the three `mesh` counts, and on an
+  analytical-only run nothing outside `provenance`; no result,
+  prediction or configuration value is reachable by the same path in
+  both, partly through outright renames (`configuration` against
+  `config`, `analytical_predictions` against `analytical`). And
+  `results.py` carried two contradictory rules for when to bump
+  `SCHEMA_VERSION` — the module docstring said "whenever the public
+  shape changes", an inline comment said "only when non-additive" —
+  which disagreed for exactly the additive case this release is. The
+  rule is now stated once, as minor-for-additive and
+  major-for-breaking.
+
+  Tests now pin the overlap positively as well as negatively, so a
+  future change on either side that shifts it fails rather than
+  silently making the prose wrong.
+
 - Core — **`wrinklefe.core.fit`: fit a `WrinkleProfile` to a measured
   trace** (issue #270).
 

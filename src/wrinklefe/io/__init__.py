@@ -13,14 +13,38 @@ Public API
 .. autofunction:: export_results_csv
 .. autofunction:: results_to_dict
 
+Two exporters, one name
+-----------------------
+
 The legacy ``export_results_json`` (in :mod:`wrinklefe.io.export`) and
-the schema-versioned, tabular pair in :mod:`wrinklefe.io.results`
-(:func:`export_results_json`, :func:`export_results_csv`,
-:func:`results_to_dict`) coexist. The legacy entry remains the default
-under ``wrinklefe.io.export_results_json`` so existing callers do not
-break; consumers who want the v1.0 schema (with ``per_ply`` table,
-``first_ply_failure``, ``knockdown_factors``, ``schema_version``) should
-import directly from :mod:`wrinklefe.io.results`.
+the schema-versioned one in :mod:`wrinklefe.io.results` coexist
+deliberately. The legacy entry remains what ``wrinklefe.io`` re-exports,
+so existing callers do not break; consumers who want the structured
+document (``per_ply`` table, ``first_ply_failure``,
+``knockdown_factors``, ``schema_version``) import it directly from
+:mod:`wrinklefe.io.results`.
+
+Be aware of what that costs. The two documents are almost entirely
+disjoint: on an FE run the legacy one emits 33 leaf paths and the
+structured one 138, sharing only ``provenance`` and the three ``mesh``
+counts, and on an analytical-only run nothing outside ``provenance``.
+No result, prediction or configuration value is reachable by the same
+path in both -- even the common blocks were renamed (``configuration``
+against ``config``, ``analytical_predictions`` against
+``analytical``). So these two imports::
+
+    from wrinklefe.io import export_results_json           # legacy
+    from wrinklefe.io.results import export_results_json    # structured
+
+write files with nothing in common, and a consumer written against one
+reads nothing from the other. They are told apart by their top-level
+keys: the structured document has ``schema_version``, the legacy one
+has ``wrinklefe_version``.
+
+Both carry a ``provenance`` block built by
+:func:`wrinklefe.io.export.build_provenance`, so whichever one a user
+exports can support a reproducibility claim. (The structured document
+gained it in schema 1.2; before that only the legacy one had it.)
 """
 
 from wrinklefe.io.export import (

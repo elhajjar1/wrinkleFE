@@ -1,6 +1,6 @@
 """Tests for :mod:`wrinklefe.io.results` (CSV / JSON export of results).
 
-Covers the v1.0 structured-export pair added for issue #2:
+Covers the structured-export pair added for issue #2:
 
 - :func:`export_results_json` writes a deterministic, schema-versioned
   JSON file containing the analytical predictions, per-ply table, FPF
@@ -502,3 +502,212 @@ def test_every_results_field_is_exported_or_allowlisted():
             "allowlisted — wire it into io/results.py or add it to "
             "INTENTIONALLY_UNEXPORTED with a reason."
         )
+
+
+# ----------------------------------------------------------------------
+# Provenance (schema 1.2) and the relationship to the legacy exporter
+# ----------------------------------------------------------------------
+
+class TestProvenance:
+    """The structured document must support a reproducibility claim.
+
+    Before schema 1.2 the ``provenance`` block existed only in the
+    legacy exporter, which left the schema-versioned document — the one
+    :mod:`wrinklefe.io` points forward-looking consumers at — as the
+    only export that could not be checked against the validation
+    ledger.
+    """
+
+    def test_provenance_block_is_present(self, fe_result, tmp_path):
+        out = tmp_path / "r.json"
+        export_results_json(fe_result, out)
+        assert "provenance" in json.loads(out.read_text())
+
+    def test_provenance_records_the_real_installed_version(
+        self, fe_result, tmp_path
+    ):
+        """Not a hardcoded literal (issue #261)."""
+        from wrinklefe import __version__
+
+        out = tmp_path / "r.json"
+        export_results_json(fe_result, out)
+        prov = json.loads(out.read_text())["provenance"]
+        assert prov["wrinklefe"] == __version__
+
+    def test_provenance_records_the_numerics_stack(self, fe_result, tmp_path):
+        """A reproducibility claim needs the versions that produced it."""
+        import numpy
+        import scipy
+
+        out = tmp_path / "r.json"
+        export_results_json(fe_result, out)
+        prov = json.loads(out.read_text())["provenance"]
+        assert prov["numpy"] == numpy.__version__
+        assert prov["scipy"] == scipy.__version__
+        assert prov["python"] and prov["platform"]
+
+    def test_provenance_carries_no_timestamp_here(self, fe_result, tmp_path):
+        """Deliberately omitted so the document stays byte-deterministic.
+
+        The legacy exporter stamps ``timestamp_utc`` and makes no
+        determinism guarantee; this one does guarantee it, and a
+        wall-clock field would break it for two writes of the same
+        result. Nothing is lost: reproducing a result needs the version
+        set, and the write time is already on the filesystem.
+        """
+        out = tmp_path / "r.json"
+        export_results_json(fe_result, out)
+        assert "timestamp_utc" not in json.loads(out.read_text())["provenance"]
+
+    def test_provenance_records_the_solver_actually_configured(
+        self, fe_result, tmp_path
+    ):
+        out = tmp_path / "r.json"
+        export_results_json(fe_result, out)
+        prov = json.loads(out.read_text())["provenance"]
+        assert prov["solver"]["type"] == fe_result.config.solver
+
+    def test_both_exporters_report_the_same_environment(
+        self, fe_result, tmp_path
+    ):
+        """One shared builder, so the paths cannot disagree.
+
+        ``timestamp_utc`` is excluded: the two files are written at
+        different instants, and that field is meant to differ.
+        """
+        from wrinklefe.io.export import export_results_json as legacy
+
+        structured_path = tmp_path / "structured.json"
+        legacy_path = tmp_path / "legacy.json"
+        export_results_json(fe_result, structured_path)
+        legacy(fe_result, legacy_path)
+
+        a = json.loads(structured_path.read_text())["provenance"]
+        b = json.loads(legacy_path.read_text())["provenance"]
+        a.pop("timestamp_utc", None)
+        b.pop("timestamp_utc", None)
+        assert a == b
+
+    def test_schema_version_advanced_past_the_version_without_provenance(self):
+        """1.2 is the additive bump that added the block."""
+        major, minor = (int(part) for part in SCHEMA_VERSION.split("."))
+        assert (major, minor) >= (1, 2)
+
+
+class TestLegacyExporterIsADifferentDocument:
+    """The name collision is deliberate, but it is not interchangeable.
+
+    :mod:`wrinklefe.io` documents both exporters and re-exports the
+    legacy one. These tests pin the consequence a caller has to know
+    about, so the claim in that docstring stays true.
+    """
+
+    def _leaf_paths(self, obj, prefix=""):
+        out = set()
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                out |= self._leaf_paths(
+                    value, f"{prefix}.{key}" if prefix else key
+                )
+        elif isinstance(obj, list):
+            if obj and isinstance(obj[0], (dict, list)):
+                out |= self._leaf_paths(obj[0], f"{prefix}[]")
+            else:
+                out.add(prefix)
+        else:
+            out.add(prefix)
+        return out
+
+    def test_the_two_documents_share_no_leaf_paths_but_provenance(
+        self, fe_result, tmp_path
+    ):
+        """Zero overlap outside the one block they deliberately share."""
+        from wrinklefe.io.export import export_results_json as legacy
+
+        structured_path = tmp_path / "structured.json"
+        legacy_path = tmp_path / "legacy.json"
+        export_results_json(fe_result, structured_path)
+        legacy(fe_result, legacy_path)
+
+        a = self._leaf_paths(json.loads(structured_path.read_text()))
+        b = self._leaf_paths(json.loads(legacy_path.read_text()))
+        shared = {
+            p for p in (a & b)
+            if not p.startswith("provenance") and not p.startswith("mesh.")
+        }
+        assert shared == set(), (
+            f"the two schemas have started to overlap outside provenance "
+            f"and the mesh counts: {sorted(shared)} — the docstrings in "
+            f"wrinklefe.io and wrinklefe.io.results state exactly what is "
+            f"shared, so either they or the schema is now wrong"
+        )
+
+    def test_the_shared_mesh_counts_are_the_only_non_provenance_overlap(
+        self, fe_result, tmp_path
+    ):
+        """Pin the overlap positively, not just its absence elsewhere.
+
+        Stated in both docstrings, so a change to either side that adds
+        or drops one of these should fail here and force the prose to be
+        updated with it.
+        """
+        from wrinklefe.io.export import export_results_json as legacy
+
+        structured_path = tmp_path / "structured.json"
+        legacy_path = tmp_path / "legacy.json"
+        export_results_json(fe_result, structured_path)
+        legacy(fe_result, legacy_path)
+
+        a = self._leaf_paths(json.loads(structured_path.read_text()))
+        b = self._leaf_paths(json.loads(legacy_path.read_text()))
+        shared = {p for p in (a & b) if not p.startswith("provenance")}
+        assert shared == {"mesh.n_nodes", "mesh.n_elements", "mesh.n_dof"}
+
+    def test_analytical_only_run_shares_nothing_outside_provenance(
+        self, analytical_result, tmp_path
+    ):
+        """The other half of the claim in both docstrings.
+
+        With no ``mesh`` block there is no overlap left at all, so an
+        analytical-only consumer really can read nothing from the wrong
+        document.
+        """
+        from wrinklefe.io.export import export_results_json as legacy
+
+        structured_path = tmp_path / "structured.json"
+        legacy_path = tmp_path / "legacy.json"
+        export_results_json(analytical_result, structured_path)
+        legacy(analytical_result, legacy_path)
+
+        structured = json.loads(structured_path.read_text())
+        assert "mesh" not in structured, "fixture is not analytical-only"
+
+        a = self._leaf_paths(structured)
+        b = self._leaf_paths(json.loads(legacy_path.read_text()))
+        shared = {p for p in (a & b) if not p.startswith("provenance")}
+        assert shared == set()
+
+    def test_wrinklefe_io_reexports_the_legacy_exporter(self):
+        """Documented back-compat guarantee: the default did not move."""
+        import wrinklefe.io as io_pkg
+        from wrinklefe.io.export import export_results_json as legacy
+
+        assert io_pkg.export_results_json is legacy
+
+    def test_the_documented_way_to_tell_the_files_apart_works(
+        self, fe_result, tmp_path
+    ):
+        """``schema_version`` vs ``wrinklefe_version`` at the top level."""
+        from wrinklefe.io.export import export_results_json as legacy
+
+        structured_path = tmp_path / "structured.json"
+        legacy_path = tmp_path / "legacy.json"
+        export_results_json(fe_result, structured_path)
+        legacy(fe_result, legacy_path)
+
+        structured = json.loads(structured_path.read_text())
+        legacy_doc = json.loads(legacy_path.read_text())
+        assert "schema_version" in structured
+        assert "schema_version" not in legacy_doc
+        assert "wrinklefe_version" in legacy_doc
+        assert "wrinklefe_version" not in structured

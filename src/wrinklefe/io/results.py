@@ -21,8 +21,23 @@ values are plain Python ``float`` / ``int`` so the file round-trips
 cleanly through :func:`json.load`.
 
 A schema version field is embedded so future evolutions don't silently
-break consumers — bump :data:`SCHEMA_VERSION` whenever the public shape
-changes.
+break consumers; see :data:`SCHEMA_VERSION` for when to bump it.
+
+Both this module and :mod:`wrinklefe.io.export` define a function named
+``export_results_json``, and the two documents are almost entirely
+disjoint.  On an FE run the legacy document emits 33 leaf paths and
+this one 138, and all they share are ``provenance`` and the three
+``mesh`` counts; on an analytical-only run (no ``mesh`` block) the
+overlap outside ``provenance`` is empty.  Not one result, prediction or
+configuration value is reachable by the same path in both, partly
+through outright renames (``configuration`` against ``config``,
+``analytical_predictions`` against ``analytical``).
+
+That is deliberate, not drift (see :mod:`wrinklefe.io`), but it means
+the two are not interchangeable: a consumer written against one reads
+essentially nothing from the other.  Tell them apart by their top-level
+keys -- this document has ``schema_version``, the legacy one has
+``wrinklefe_version``.
 """
 
 from __future__ import annotations
@@ -35,6 +50,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from wrinklefe.io.export import build_provenance
+
 if TYPE_CHECKING:
     from wrinklefe.analysis import AnalysisConfig, AnalysisResults
 
@@ -43,8 +60,18 @@ if TYPE_CHECKING:
 # Schema
 # ----------------------------------------------------------------------
 
-#: Bump this when the public JSON layout changes in a non-additive way.
-SCHEMA_VERSION = "1.1"
+#: Schema version of the structured JSON document, ``"major.minor"``.
+#:
+#: Bump the **minor** part for an additive change (a new block or key
+#: that an existing consumer can ignore) and the **major** part for a
+#: breaking one (a key removed, renamed, or given a new meaning).  The
+#: module docstring used to say "bump whenever the public shape
+#: changes" while this comment said "only when non-additive"; the two
+#: disagreed for exactly the additive case, so the rule is stated once,
+#: here.
+#:
+#: History: 1.2 added the ``provenance`` block.
+SCHEMA_VERSION = "1.2"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -325,6 +352,20 @@ def results_to_dict(results: AnalysisResults) -> dict:
 
     payload: dict = {
         "schema_version": SCHEMA_VERSION,
+        # Same builder the legacy exporter and the NCR summary use, so
+        # the three paths cannot report different environments for the
+        # same run.  Before 1.2 this block was missing here, which left
+        # the *schema-versioned* export -- the one this package points
+        # forward-looking consumers at -- as the only one that could not
+        # support a reproducibility claim against the validation ledger.
+        # ``include_timestamp=False``: this document guarantees
+        # byte-identical output for identical input, and a wall-clock
+        # field would break that for no reproducibility gain -- the
+        # version set is what lets a result be reproduced, and the write
+        # time is already on the filesystem.
+        "provenance": build_provenance(
+            solver={"type": cfg.solver}, include_timestamp=False,
+        ),
         "config": _config_to_dict(cfg),
         "load_factor": _load_factor(results),
         "analytical": {
