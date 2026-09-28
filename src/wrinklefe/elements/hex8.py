@@ -34,6 +34,8 @@ Cook, R.D. et al. (2002). Concepts and Applications of Finite Element Analysis.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 
 from wrinklefe.core.material import OrthotropicMaterial
@@ -121,6 +123,85 @@ def _detJ_at_centroid_batch(elem_coords: np.ndarray) -> np.ndarray:
     return np.asarray(np.linalg.det(J))
 
 
+# ----------------------------------------------------------------------
+# Cached shape-function kernels
+# ----------------------------------------------------------------------
+#
+# ``shape_functions`` and ``shape_derivatives`` are pure functions of the
+# natural coordinates, but a stiffness build evaluates them at the *same*
+# 8 Gauss points for every element in the mesh -- 20,480 calls for a
+# 2,560-element run, with 8 distinct arguments between them.  Each call
+# ran an 8-iteration Python loop.
+#
+# The cache is bounded (order-2 needs 8 entries, order-3 needs 27, and
+# nodal extrapolation adds a handful more), and the arrays it hands out
+# are marked read-only: they are shared between every caller, so an
+# in-place write would silently corrupt every later element rather than
+# fail.  No caller mutates them today, and this keeps it that way.
+
+
+@lru_cache(maxsize=256)
+def _shape_functions_cached(
+    xi: float, eta: float, zeta: float
+) -> np.ndarray:
+    N = np.empty(8)
+    for i in range(8):
+        N[i] = (
+            0.125
+            * (1.0 + _NODE_COORDS[i, 0] * xi)
+            * (1.0 + _NODE_COORDS[i, 1] * eta)
+            * (1.0 + _NODE_COORDS[i, 2] * zeta)
+        )
+    N.flags.writeable = False
+    return N
+
+
+@lru_cache(maxsize=256)
+def _shape_derivatives_cached(
+    xi: float, eta: float, zeta: float
+) -> np.ndarray:
+    dN = np.empty((3, 8))
+    for j in range(8):
+        xi_j, eta_j, zeta_j = _NODE_COORDS[j]
+        dN[0, j] = 0.125 * xi_j * (1.0 + eta_j * eta) * (1.0 + zeta_j * zeta)
+        dN[1, j] = 0.125 * (1.0 + xi_j * xi) * eta_j * (1.0 + zeta_j * zeta)
+        dN[2, j] = 0.125 * (1.0 + xi_j * xi) * (1.0 + eta_j * eta) * zeta_j
+    dN.flags.writeable = False
+    return dN
+
+
+def _b_from_dN_dx(dN_dx: np.ndarray) -> np.ndarray:
+    """Assemble the (6, 24) strain-displacement matrix from physical
+    shape-function gradients.
+
+    Factored out so :meth:`Hex8Element.B_matrix` and the stiffness
+    integration share one definition of the Voigt row layout.
+    """
+    B = np.zeros((6, 24))
+    for i in range(8):
+        col = 3 * i
+        dNi_dx = dN_dx[0, i]
+        dNi_dy = dN_dx[1, i]
+        dNi_dz = dN_dx[2, i]
+
+        # eps_11 = du/dx
+        B[0, col] = dNi_dx
+        # eps_22 = dv/dy
+        B[1, col + 1] = dNi_dy
+        # eps_33 = dw/dz
+        B[2, col + 2] = dNi_dz
+        # gamma_23 = dv/dz + dw/dy
+        B[3, col + 1] = dNi_dz
+        B[3, col + 2] = dNi_dy
+        # gamma_13 = du/dz + dw/dx
+        B[4, col] = dNi_dz
+        B[4, col + 2] = dNi_dx
+        # gamma_12 = du/dy + dv/dx
+        B[5, col] = dNi_dy
+        B[5, col + 1] = dNi_dx
+    return B
+
+
 class Hex8Element:
     """8-node isoparametric hexahedral element for 3-D composite analysis.
 
@@ -185,6 +266,9 @@ class Hex8Element:
 
         # Pre-compute Gauss quadrature points and weights (2x2x2 for hex8)
         self._gauss_points, self._gauss_weights = gauss_points_hex(order=2)
+
+        # Lazily filled by _ply_rotated_stiffness().
+        self._C_ply: np.ndarray | None = None
 
     # ------------------------------------------------------------------
     # Jacobian determinant validation
@@ -261,15 +345,7 @@ class Hex8Element:
         np.ndarray
             Shape ``(8,)`` — values of the 8 shape functions.
         """
-        N = np.empty(8)
-        for i in range(8):
-            N[i] = (
-                0.125
-                * (1.0 + _NODE_COORDS[i, 0] * xi)
-                * (1.0 + _NODE_COORDS[i, 1] * eta)
-                * (1.0 + _NODE_COORDS[i, 2] * zeta)
-            )
-        return N
+        return _shape_functions_cached(float(xi), float(eta), float(zeta))
 
     @staticmethod
     def shape_derivatives(xi: float, eta: float, zeta: float) -> np.ndarray:
@@ -281,13 +357,7 @@ class Hex8Element:
             Shape ``(3, 8)`` — ``dN[i, j] = dN_j / d(xi_i)``, where
             ``xi_0 = xi``, ``xi_1 = eta``, ``xi_2 = zeta``.
         """
-        dN = np.empty((3, 8))
-        for j in range(8):
-            xi_j, eta_j, zeta_j = _NODE_COORDS[j]
-            dN[0, j] = 0.125 * xi_j * (1.0 + eta_j * eta) * (1.0 + zeta_j * zeta)
-            dN[1, j] = 0.125 * (1.0 + xi_j * xi) * eta_j * (1.0 + zeta_j * zeta)
-            dN[2, j] = 0.125 * (1.0 + xi_j * xi) * (1.0 + eta_j * eta) * zeta_j
-        return dN
+        return _shape_derivatives_cached(float(xi), float(eta), float(zeta))
 
     # ------------------------------------------------------------------
     # Jacobian and B-matrix
@@ -338,33 +408,8 @@ class Hex8Element:
         dN_dxi = self.shape_derivatives(xi, eta, zeta)  # (3, 8)
         J = dN_dxi @ self.node_coords  # (3, 3)
         self._check_detJ(float(np.linalg.det(J)))
-        J_inv = np.linalg.inv(J)
-        dN_dx = J_inv @ dN_dxi  # (3, 8) — derivatives in physical coords
-
-        B = np.zeros((6, 24))
-        for i in range(8):
-            col = 3 * i
-            dNi_dx = dN_dx[0, i]
-            dNi_dy = dN_dx[1, i]
-            dNi_dz = dN_dx[2, i]
-
-            # eps_11 = du/dx
-            B[0, col] = dNi_dx
-            # eps_22 = dv/dy
-            B[1, col + 1] = dNi_dy
-            # eps_33 = dw/dz
-            B[2, col + 2] = dNi_dz
-            # gamma_23 = dv/dz + dw/dy
-            B[3, col + 1] = dNi_dz
-            B[3, col + 2] = dNi_dy
-            # gamma_13 = du/dz + dw/dx
-            B[4, col] = dNi_dz
-            B[4, col + 2] = dNi_dx
-            # gamma_12 = du/dy + dv/dx
-            B[5, col] = dNi_dy
-            B[5, col + 1] = dNi_dx
-
-        return B
+        dN_dx = np.linalg.inv(J) @ dN_dxi  # physical-coordinate gradients
+        return _b_from_dN_dx(dN_dx)
 
     # ------------------------------------------------------------------
     # Material stiffness with ply + wrinkle rotations
@@ -394,12 +439,11 @@ class Hex8Element:
         np.ndarray
             Shape ``(6, 6)`` — rotated stiffness matrix (MPa).
         """
-        C = self.material.stiffness_matrix  # (6, 6) in material axes
-
-        # 1. Ply angle rotation about z
-        ply_rad = np.radians(self.ply_angle)
-        if abs(ply_rad) > 1.0e-15:
-            C = rotate_stiffness_3d(C, ply_rad, axis='z')
+        # 1. Ply angle rotation about z.  This does not depend on
+        #    (xi, eta, zeta), so it is computed once per element rather
+        #    than once per Gauss point -- eight times fewer 6x6 rotations
+        #    on a 2x2x2 rule, for an identical result.
+        C = self._ply_rotated_stiffness()
 
         # 2. Wrinkle misalignment rotation about y (interpolated from nodes)
         N = self.shape_functions(xi, eta, zeta)  # (8,)
@@ -407,6 +451,26 @@ class Hex8Element:
         if abs(phi) > 1.0e-15:
             C = rotate_stiffness_3d(C, phi, axis='y')
 
+        return C
+
+    def _ply_rotated_stiffness(self) -> np.ndarray:
+        """Material stiffness with only the ply rotation applied.
+
+        Cached per element: the ply angle is fixed for the element, so
+        every Gauss point was previously paying for the same 6x6
+        rotation.  Callers only ever read the result (it is the left
+        operand of a further rotation, or of ``B.T @ C @ B``), so the
+        shared array is safe; it is returned as-is rather than copied to
+        preserve the existing behaviour for an unrotated element, which
+        already returned the material's own matrix.
+        """
+        C = self._C_ply
+        if C is None:
+            C = self.material.stiffness_matrix  # (6, 6) in material axes
+            ply_rad = np.radians(self.ply_angle)
+            if abs(ply_rad) > 1.0e-15:
+                C = rotate_stiffness_3d(C, ply_rad, axis='z')
+            self._C_ply = C
         return C
 
     # ------------------------------------------------------------------
@@ -561,10 +625,18 @@ class Hex8Element:
             # degenerate element is rejected with a Gauss-point-aware
             # error message (issue #45) before B_matrix attempts its
             # own (less informative) check.
-            J = self.jacobian(xi, eta, zeta)  # (3, 3)
+            dN_dxi = self.shape_derivatives(xi, eta, zeta)  # (3, 8)
+            J = dN_dxi @ self.node_coords  # (3, 3)
             detJ = self._check_detJ(float(np.linalg.det(J)), gp_index=gp_idx)
 
-            B = self.B_matrix(xi, eta, zeta)  # (6, 24)
+            # B is built from the Jacobian just computed.  Calling
+            # ``B_matrix`` here instead would re-evaluate the shape
+            # derivatives, re-form J and re-take its determinant -- all
+            # three already done on the two lines above, and the detJ
+            # check there is the Gauss-point-aware one, so the repeat
+            # could only ever produce the same verdict with a worse
+            # message.
+            B = _b_from_dN_dx(np.linalg.inv(J) @ dN_dxi)  # (6, 24)
             C_bar = self.rotated_stiffness(xi, eta, zeta)  # (6, 6)
 
             Ke += (B.T @ C_bar @ B) * detJ * w
