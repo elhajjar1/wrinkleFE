@@ -14,6 +14,59 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Changed
+- Performance — **the FE hot path does the same arithmetic with less
+  work: ~1.9x faster analyses and ~30 % off the unit-test suite**, with
+  every output bit-identical.
+
+  Measured on a 2,560-element / 9,963-DOF run (nx=40, ny=8, 8-ply
+  layup): **12.1 s -> 6.5 s**, stable across repeats. The `-m "not
+  slow"` suite went 203.8 s -> 143.0 s. Five redundancies, none of
+  which changed what is computed:
+
+  - `Hex8Element.shape_functions` / `shape_derivatives` are pure
+    functions of the natural coordinates, evaluated at the same 8 Gauss
+    points for every element in the mesh — 20,480 calls with 8 distinct
+    arguments, each running an 8-iteration Python loop. Now memoised.
+  - `gauss_points_hex` was rebuilt in **every element constructor**
+    (10,241 calls, four `meshgrid` allocations apiece) for a rule that
+    depends on nothing but the quadrature order.
+  - `stiffness_matrix` formed the Jacobian, then called `B_matrix`,
+    which re-evaluated the shape derivatives, re-formed the same
+    Jacobian and re-took its determinant. It now builds B from the
+    Jacobian already in hand, through an assembler shared with
+    `B_matrix` so there is still one definition of the Voigt row layout.
+    The Gauss-point-aware `detJ` check (issue #45) is the one retained;
+    the repeat could only ever have reached the same verdict with a
+    worse message.
+  - `rotated_stiffness` re-applied the **ply** rotation at every Gauss
+    point, though the ply angle cannot vary within an element. Hoisted
+    behind a per-element cache: eight times fewer 6x6 rotations on a
+    2x2x2 rule.
+  - `rotate_stiffness_3d` built `T_sigma` twice — once directly and once
+    inside `strain_transformation_3d` — and `strain_transformation_3d`
+    rebuilt both constant Reuter matrices from a Python list on each of
+    its ~466,000 calls per analysis.
+
+  **Not** changed: `np.linalg.inv(T_sigma)` is still an explicit inverse.
+  Replacing it with the `T_epsilon^T` identity is algebraically right but
+  not bit-identical (0 of 4,000 angles matched, relative differences to
+  0.75), and this project pins a validation ledger to exact values.
+
+  Verified by pinning 13 quantities — `analytical_knockdown`,
+  `modulus_retention`, `modulus_retention_global`, `retention_factors`,
+  and SHA-256 digests of the displacement, stress and strain fields in
+  both frames — as bit-exact digests before and after: 13/13 identical
+  on every run. `scripts/validate.py` reports no ledger drift.
+  `tests/test_hot_path_equivalence.py` recomputes each result the slow
+  way and demands `array_equal`, not `allclose`.
+
+  Two of the caches hand the same array to every caller, so those arrays
+  are returned read-only: a shared buffer written in place would corrupt
+  every element built afterwards, silently. This is a behaviour change
+  for anything that mutated a `gauss_points_hex` or `shape_functions`
+  result in place — nothing in the package did.
+
 ### Added
 - IO — **the schema-versioned results export now carries a
   `provenance` block** (schema 1.1 → 1.2).
