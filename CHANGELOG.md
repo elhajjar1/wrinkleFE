@@ -15,6 +15,53 @@ version produced a given file.
 ## [Unreleased]
 
 ### Changed
+- Performance — **two of the four FE solves per analysis were solving a
+  problem the run had already solved.** They are now reused:
+  **6.5 s -> 3.5 s** on a 2,560-element / 9,963-DOF run, 3.5x against
+  the pre-optimisation baseline of 12.1 s.
+
+  `_reaction_modulus` ran its own compression solve on the wrinkled mesh
+  and again on the pristine one, to read a global reaction off each.
+  When `delta_T == 0` and no `load_state` is set, those are the same
+  problems the mechanical solve and its pristine baseline have already
+  answered — measured, bit-identically: no differing stiffness entry,
+  and `max |du| = 0.0`. The stiffness and field are handed over instead
+  of being recomputed, and the solve count for such a run drops from
+  four to two.
+
+  The gate is exactly two conditions, in one named predicate
+  (`_reaction_solve_duplicates_mechanical`) rather than scattered
+  checks:
+
+  - **`delta_T == 0`.** `_reaction_modulus` is deliberately thermal-free
+    (issue #273 Stage 2) because it reports a *modulus*, and a cure
+    residual would read as a spurious stiffness change. So a thermal
+    run's mechanical solve carries a load vector the reaction solve must
+    not have. Measured, that is a real difference: `max |du| = 1.1e-2`.
+    The stiffness is identical even then — reusing *that* alone would
+    still save an assembly, and is left as a follow-up.
+  - **`load_state is None`.** Otherwise `_mechanical_bcs` returns the
+    traction set of the load state (issue #275) rather than the uniaxial
+    `compression_bcs` the reaction solve uses.
+
+  The CZM path needs no condition: it returns from `run` before
+  retention factors are computed, so its Newton displacement never
+  reaches this code. A test pins that ordering, since the gate depends
+  on it.
+
+  `keep_stiffness=True` is set on the mechanical and pristine solves
+  only when the reuse will actually happen, so a run that cannot reuse
+  pays no extra memory for a retained `K`.
+
+  Verified on six configurations — plain, thermal, load-state, both
+  together, zero applied strain, and progressive damage — against
+  references recorded from the previous code: **all eight pinned
+  quantities per configuration bit-identical**, including every path
+  that falls back. `scripts/validate.py` reports no ledger drift.
+  `tests/test_reaction_solve_reuse.py` also pins the solve *count* (2
+  when reusable, 4 when not), because a regression that always fell back
+  would stay bit-identical while silently giving the speedup back.
+
 - Performance — **the FE hot path does the same arithmetic with less
   work: ~1.9x faster analyses and ~30 % off the unit-test suite**, with
   every output bit-identical.
