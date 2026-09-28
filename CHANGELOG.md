@@ -15,6 +15,49 @@ version produced a given file.
 ## [Unreleased]
 
 ### Changed
+- Performance — **a Newton iteration was rebuilding an identical global
+  stiffness matrix every time.** It is now assembled once per assembler
+  and copied: a CZM run goes from 12 full assemblies to 1, and runs
+  6-10 % faster end to end.
+
+  The comment above the element-matrix cache already made the argument
+  ("These depend only on geometry/material -- both fixed at construction
+  -- so there is no point recomputing them per Newton iteration"). The
+  same is true one level up: assembling those fixed matrices at the fixed
+  DOF map gives a fixed global matrix. `_assemble_hex8_stiffness` was
+  nevertheless doing a full COO build and `tocsc` on every call --
+  measured at 44.8 ms against 0.8 ms for a copy on a 2,560-element mesh,
+  so ~54x on that step alone.
+
+  Honest about the end-to-end figure: **6-10 %** on CZM runs
+  (min-of-5, 0.93 s -> 0.84 s at nx=14 and 1.87 s -> 1.76 s at nx=30),
+  not the ~18 % the original audit note suggested. The assembly is a
+  smaller share of a Newton solve than that note implied -- `spsolve`,
+  the cohesive element work and stress recovery dominate. The
+  redundancy itself is real and fully removed.
+
+  Caching it is only safe because of two hazards, both handled and both
+  tested rather than assumed:
+
+  - **Callers mutate what they are given.** `assemble_tangent` adds the
+    cohesive contribution into it, and
+    `StaticSolver._apply_penalty_bcs` applies displacement BCs with
+    `in_place=True`. So a fresh copy is returned on every call; handing
+    out the cached object would let one solve's penalty terms leak into
+    every later one.
+  - **The element matrices are not fixed after construction.**
+    `update_element` rebuilds one as the progressive-damage solver
+    degrades materials, precisely so the next assembly sees the change.
+    The cache is invalidated there, next to the existing `_F_thermal`
+    invalidation and for the same reason.
+
+  Verified bit-identical on five paths against references recorded from
+  the previous code -- linear, CZM, progressive damage, thermal, and
+  progressive + thermal -- covering both hazards. No ledger drift.
+  `tests/test_assembly_cache.py` pins the build *count* as well as the
+  values, since an equivalent-but-uncached regression would pass every
+  value test.
+
 - Performance — **two of the four FE solves per analysis were solving a
   problem the run had already solved.** They are now reused:
   **6.5 s -> 3.5 s** on a 2,560-element / 9,963-DOF run, 3.5x against
