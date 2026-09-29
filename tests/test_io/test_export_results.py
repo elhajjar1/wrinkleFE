@@ -402,6 +402,14 @@ FIELD_TO_EXPORT_KEY = {
 #: internal intermediates; CZM results are surfaced via the app's own
 #: CZM payload rather than the structured results export.
 INTENTIONALLY_UNEXPORTED = {
+    "retention_degenerate": (
+        "exported in derived form, not raw: results_to_dict emits the "
+        "flagged criteria as knockdown_factors.fe_retention_degenerate, a "
+        "sorted list, and only when at least one fires — so a sound run's "
+        "document is unchanged (keeps the export byte-identical / ledger "
+        "zero-drift). The raw per-criterion dict would duplicate it with "
+        "every flag False on the overwhelming majority of runs."
+    ),
     "modulus_retention_failed": (
         "diagnostic flag; results_to_dict emits it only when the local "
         "modulus-retention computation failed, so it is absent for valid "

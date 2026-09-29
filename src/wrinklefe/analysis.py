@@ -92,6 +92,14 @@ _BETA_ANGLE = 3.0  # Angle sensitivity
 _THETA_CRIT = 0.1  # Critical angle (rad)
 _A_REF = 0.183    # Reference amplitude (1 ply thickness, mm)
 
+#: A pristine max FI below this fraction of the wrinkled one means the
+#: baseline cannot fail at all, so ``pristine / wrinkled`` is an
+#: undefined ratio rather than a small retention.  Measured: an all-0 deg
+#: UD laminate under LaRC05 gives ~1e-10 against a wrinkled ~0.68, i.e.
+#: ~2e-10 -- eight orders of magnitude below this cut, so the test is not
+#: sensitive to where exactly it sits.
+_RETENTION_DEGENERATE_RATIO = 1.0e-6
+
 # Sanity bound on the cure-residual temperature change (deg C, issue
 # #273).  ``delta_T`` is a *change from the stress-free state*, not an
 # absolute temperature, so realistic magnitudes are O(100-200 deg C);
@@ -2731,6 +2739,16 @@ class AnalysisResults:
     # Retention factor (wrinkled / pristine)
     retention_factors: dict | None = None  # {criterion_name: float}
     baseline_fi: dict | None = None  # {criterion_name: float} pristine max FI
+    #: Criteria whose retention factor is **not meaningful** because the
+    #: pristine baseline cannot fail under this criterion.  The classic
+    #: case is a unidirectional (all-0 deg) laminate scored by LaRC05:
+    #: fibre kinking needs a nonzero initial misalignment, and a *flat*
+    #: UD coupon has none, so its max FI is ~1e-10 and the ratio
+    #: ``pristine / wrinkled`` collapses to ~0 -- reading as "no strength
+    #: retained" when the truth is "this comparison is undefined here".
+    #: The numeric value is still reported (nothing silently changes
+    #: shape), but consumers should check this first.
+    retention_degenerate: dict | None = None  # {criterion_name: bool}
 
     # Proportional load factor (issue #275).  Populated only when
     # ``AnalysisConfig.load_state`` is set — the general-load-state
@@ -5558,6 +5576,7 @@ class WrinkleAnalysis:
         # Compute retention for each criterion
         retention = {}
         baseline = {}
+        degenerate = {}
 
         for crit_name in results.failure_indices:
             # Wrinkled max FI (interior elements)
@@ -5581,8 +5600,34 @@ class WrinkleAnalysis:
             else:
                 retention[crit_name] = 1.0
 
+            # A pristine baseline that cannot fail makes the ratio
+            # meaningless rather than small.  See
+            # ``AnalysisResults.retention_degenerate``.
+            degenerate[crit_name] = (
+                max_fi_w > 0.0
+                and max_fi_p < _RETENTION_DEGENERATE_RATIO * max_fi_w
+            )
+
         results.retention_factors = retention
         results.baseline_fi = baseline
+        results.retention_degenerate = degenerate
+
+        bad = sorted(name for name, flag in degenerate.items() if flag)
+        if bad:
+            logger.warning(
+                "Pristine baseline cannot fail under %s (max FI %.3g vs "
+                "%.3g wrinkled), so retention_factors %s is not a strength "
+                "retention — it is an undefined ratio reported as ~0. This "
+                "is expected for a unidirectional layup scored by a "
+                "criterion whose fibre-kinking mode needs a nonzero initial "
+                "misalignment. Use the analytical knockdown (or the "
+                "penetration gate for UD) instead; see "
+                "AnalysisResults.retention_degenerate.",
+                ", ".join(bad),
+                min(baseline[n] for n in bad),
+                max_fi_w,
+                {n: retention[n] for n in bad},
+            )
 
         # --- Modulus retention from FE ---
         # Two complementary estimators of the axial-modulus knockdown

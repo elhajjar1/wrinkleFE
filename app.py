@@ -2256,6 +2256,13 @@ def _run_analysis(
             "baseline_fi": {
                 k: float(v) for k, v in (result.baseline_fi or {}).items()
             },
+            # Criteria whose retention is an undefined ratio, not a low
+            # one (see AnalysisResults.retention_degenerate).
+            "retention_degenerate": sorted(
+                name
+                for name, flag in (result.retention_degenerate or {}).items()
+                if flag
+            ),
             "n_nodes": int(mesh.n_nodes),
             "n_elements": int(mesh.n_elements),
             "max_displacement_mm": float(max_disp_mm),

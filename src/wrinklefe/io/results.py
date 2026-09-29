@@ -274,6 +274,17 @@ def _knockdown_factors(results: AnalysisResults) -> dict:
         if rf_values:
             out["fe"] = min(rf_values)
         out["fe_per_criterion"] = {k: float(v) for k, v in retention.items()}
+    # Criteria whose retention is an undefined ratio rather than a small
+    # number (see AnalysisResults.retention_degenerate).  Emitted only
+    # when at least one fires, so a normal run's document is unchanged --
+    # but a consumer reading ``fe`` from a UD run needs to see it, and a
+    # log warning does not reach them.
+    degenerate = sorted(
+        name for name, flag in (results.retention_degenerate or {}).items()
+        if flag
+    )
+    if degenerate:
+        out["fe_retention_degenerate"] = degenerate
     if results.modulus_retention is not None:
         out["modulus_retention"] = _f(results.modulus_retention)
     if results.modulus_retention_global is not None:

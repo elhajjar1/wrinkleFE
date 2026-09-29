@@ -153,5 +153,78 @@
         }
       ]
     }
-  ]
+  ],
+  "progressive_damage": {
+    "_comment": "Crack-band progressive-damage FE predictions, pinned so they stop drifting silently. These were previously only in untracked validation/li_progressive_*.csv artefacts; between 2026-07-04 and 2026-09-29 they moved by up to 0.034 per case with nothing to catch it. Unlike the analytical cases above, these numbers are MESH- AND Gf-LOCKED: the calibration is only valid at the recipe recorded per mesh below, and refining the mesh changes the answer materially (that is the point of the nx=36 entry, which is evidence, not a second calibration). Recompute with validation/validate_li_progressive.py.",
+    "dataset": "li_2025_multi_wrinkle_compression",
+    "reference": "Li, Li, Ge & Liang (2025), Polymer Composites 46(16):15176-15187, DOI 10.1002/pc.30121",
+    "material": "AC318_S6C10_vacbag",
+    "pristine_strength_MPa": 335.5,
+    "layup": "[0]_14",
+    "ply_thickness_mm": 0.44,
+    "rel_tolerance": 0.02,
+    "_tolerance_comment": "Looser than the analytical ledger's 1e-3: a load-stepping Newton solve to peak load is not bit-reproducible across BLAS versions the way a closed-form knockdown is. 2 % is tight enough to have caught the 0.034 (3.7 %) drift that motivated this section.",
+    "recipes": [
+      {
+        "name": "nx16_calibrated",
+        "role": "calibration point \u2014 the mesh Gf was fitted at",
+        "nx": 16,
+        "ny": 2,
+        "nz_per_ply": 2,
+        "Gf_fiber": 3.0,
+        "crack_band": true,
+        "n_increments": 18,
+        "residual_factor": 0.1,
+        "resin_pocket": true,
+        "cases": [
+          {
+            "case": "S-M-2",
+            "amplitude_p2p_mm": 1.5,
+            "wavelength_mm": 12.9,
+            "z_frac": 0.5,
+            "measured_kd": 0.629,
+            "expected_progressive_kd": 0.781
+          },
+          {
+            "case": "S-M-4",
+            "amplitude_p2p_mm": 1.0,
+            "wavelength_mm": 8.6,
+            "z_frac": 0.5,
+            "measured_kd": 0.943,
+            "expected_progressive_kd": 0.878
+          },
+          {
+            "case": "S-M-5",
+            "amplitude_p2p_mm": 0.5,
+            "wavelength_mm": 4.3,
+            "z_frac": 0.5,
+            "measured_kd": 1.0,
+            "expected_progressive_kd": 0.965
+          }
+        ]
+      },
+      {
+        "name": "nx36_refined",
+        "role": "mesh-sensitivity sentinel \u2014 NOT a calibration. Pinned so the documented finding that refinement changes the answer cannot silently stop being true. One case only, to keep the slow lane affordable.",
+        "nx": 36,
+        "ny": 2,
+        "nz_per_ply": 2,
+        "Gf_fiber": 3.0,
+        "crack_band": true,
+        "n_increments": 18,
+        "residual_factor": 0.1,
+        "resin_pocket": true,
+        "cases": [
+          {
+            "case": "S-M-2",
+            "amplitude_p2p_mm": 1.5,
+            "wavelength_mm": 12.9,
+            "z_frac": 0.5,
+            "measured_kd": 0.629,
+            "expected_progressive_kd": 0.891
+          }
+        ]
+      }
+    ]
+  }
 }
