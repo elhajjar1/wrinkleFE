@@ -17,6 +17,8 @@ Abramowitz, M. & Stegun, I.A. (1964). Handbook of Mathematical Functions,
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 
 
@@ -105,6 +107,23 @@ def gauss_points_hex(order: int = 2) -> tuple[np.ndarray, np.ndarray]:
     >>> bool(np.isclose(wts.sum(), 8.0))  # volume of reference cube
     True
     """
+    return _gauss_points_hex_cached(order)
+
+
+@lru_cache(maxsize=8)
+def _gauss_points_hex_cached(order: int) -> tuple[np.ndarray, np.ndarray]:
+    """Build (and memoise) the hex quadrature rule for one order.
+
+    Every ``Hex8Element`` asks for the same rule in its constructor, so a
+    mesh of N elements built this N times: 10,241 calls, and four
+    ``meshgrid`` allocations apiece, for a 2,560-element run. The rule
+    depends on nothing but *order*.
+
+    The returned arrays are shared by every caller and so are marked
+    read-only -- an in-place write would silently change the quadrature
+    of every element built afterwards, which is a far worse failure than
+    the exception this raises instead.
+    """
     pts_1d, wts_1d = gauss_points_1d(order)
 
     # Tensor product via meshgrid
@@ -114,4 +133,6 @@ def gauss_points_hex(order: int = 2) -> tuple[np.ndarray, np.ndarray]:
     points = np.column_stack([xi.ravel(), eta.ravel(), zeta.ravel()])
     weights = (wi * wj * wk).ravel()
 
+    points.flags.writeable = False
+    weights.flags.writeable = False
     return points, weights

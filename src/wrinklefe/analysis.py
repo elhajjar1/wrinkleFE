@@ -92,6 +92,14 @@ _BETA_ANGLE = 3.0  # Angle sensitivity
 _THETA_CRIT = 0.1  # Critical angle (rad)
 _A_REF = 0.183    # Reference amplitude (1 ply thickness, mm)
 
+#: A pristine max FI below this fraction of the wrinkled one means the
+#: baseline cannot fail at all, so ``pristine / wrinkled`` is an
+#: undefined ratio rather than a small retention.  Measured: an all-0 deg
+#: UD laminate under LaRC05 gives ~1e-10 against a wrinkled ~0.68, i.e.
+#: ~2e-10 -- eight orders of magnitude below this cut, so the test is not
+#: sensitive to where exactly it sits.
+_RETENTION_DEGENERATE_RATIO = 1.0e-6
+
 # Sanity bound on the cure-residual temperature change (deg C, issue
 # #273).  ``delta_T`` is a *change from the stress-free state*, not an
 # absolute temperature, so realistic magnitudes are O(100-200 deg C);
@@ -2731,6 +2739,16 @@ class AnalysisResults:
     # Retention factor (wrinkled / pristine)
     retention_factors: dict | None = None  # {criterion_name: float}
     baseline_fi: dict | None = None  # {criterion_name: float} pristine max FI
+    #: Criteria whose retention factor is **not meaningful** because the
+    #: pristine baseline cannot fail under this criterion.  The classic
+    #: case is a unidirectional (all-0 deg) laminate scored by LaRC05:
+    #: fibre kinking needs a nonzero initial misalignment, and a *flat*
+    #: UD coupon has none, so its max FI is ~1e-10 and the ratio
+    #: ``pristine / wrinkled`` collapses to ~0 -- reading as "no strength
+    #: retained" when the truth is "this comparison is undefined here".
+    #: The numeric value is still reported (nothing silently changes
+    #: shape), but consumers should check this first.
+    retention_degenerate: dict | None = None  # {criterion_name: bool}
 
     # Proportional load factor (issue #275).  Populated only when
     # ``AnalysisConfig.load_state`` is set — the general-load-state
@@ -3157,6 +3175,34 @@ def _mechanical_bcs(cfg: AnalysisConfig, mesh: MeshData) -> list:
     return BoundaryHandler.compression_bcs(
         mesh, applied_strain=cfg.applied_strain
     )
+
+
+def _reaction_solve_duplicates_mechanical(cfg: AnalysisConfig) -> bool:
+    """Would the reaction-modulus solve just redo the mechanical solve?
+
+    ``_reaction_modulus`` solves its own compression problem to get the
+    global reaction. That problem is the *same* one the run has already
+    solved exactly when two things hold:
+
+    - ``delta_T == 0``. ``_reaction_modulus`` is deliberately
+      thermal-free (it reports a modulus, and a cure residual would show
+      up as a spurious stiffness change -- issue #273 Stage 2), so a
+      thermal run's mechanical solve carries a load vector the reaction
+      solve must not have. The stiffness is the same either way; only
+      the displacement differs.
+    - ``load_state is None``. Otherwise ``_mechanical_bcs`` returns the
+      traction set of the load state (issue #275) rather than the
+      uniaxial ``compression_bcs`` the reaction solve uses.
+
+    The CZM path needs no test here: it returns from ``run`` before
+    retention factors are computed, so its Newton displacement never
+    reaches this code.
+
+    Measured on a 2,560-element run with both conditions true, the two
+    solves produce a bit-identical displacement field (max |du| = 0.0)
+    and a stiffness with no differing entries.
+    """
+    return cfg.delta_T == 0.0 and cfg.load_state is None
 
 
 def _proportional_load_factor(
@@ -3623,8 +3669,12 @@ class WrinkleAnalysis:
         # A general load state (issue #275) replaces the uniaxial
         # displacement BCs with the traction set its resultants define.
         bcs = _mechanical_bcs(cfg, mesh)
+        # Retain K only when the retention step can reuse this solve;
+        # otherwise the copy is pure memory cost (see ``keep_stiffness``).
+        reuse = _reaction_solve_duplicates_mechanical(cfg)
         field_results = solver.solve(
-            bcs, solver=cfg.solver, verbose=cfg.verbose
+            bcs, solver=cfg.solver, verbose=cfg.verbose,
+            keep_stiffness=reuse,
         )
         results.field_results = field_results
 
@@ -3636,7 +3686,11 @@ class WrinkleAnalysis:
         _report("Computing retention factors", 0.90)
 
         # 6b. Retention factor (baseline pristine comparison)
-        self._compute_retention_factors(results, laminate)
+        self._compute_retention_factors(
+            results, laminate,
+            mechanical_K=solver._K if reuse else None,
+            mechanical_field=field_results if reuse else None,
+        )
 
         _report("Analysis complete", 1.0)
         logger.info(
@@ -5456,12 +5510,25 @@ class WrinkleAnalysis:
         self,
         results: AnalysisResults,
         laminate: Laminate,
+        *,
+        mechanical_K: Any = None,
+        mechanical_field: FieldResults | None = None,
     ) -> None:
         """Compute retention factors by running a pristine (no-wrinkle) baseline.
 
         Retention = max_FI_pristine / max_FI_wrinkled
 
         A retention of 1.0 means no knockdown; 0.5 means 50% strength retained.
+
+        Parameters
+        ----------
+        mechanical_K, mechanical_field : optional
+            The stiffness and field of the already-solved *wrinkled*
+            mechanical problem. Passed only when
+            :func:`_reaction_solve_duplicates_mechanical` holds, in which
+            case the global modulus is read off them instead of solving
+            the identical problem a second time. Both ``None`` restores
+            the independent solve.
         """
         cfg = self.config
         # interface_1 / interface_2 are filled in __post_init__.
@@ -5482,7 +5549,10 @@ class WrinkleAnalysis:
             **_iterative_solver_kwargs(cfg)
         )
         flat_bcs = _mechanical_bcs(cfg, flat_mesh)
-        flat_field = flat_solver.solve(flat_bcs, solver=cfg.solver, verbose=False)
+        reuse = _reaction_solve_duplicates_mechanical(cfg)
+        flat_field = flat_solver.solve(
+            flat_bcs, solver=cfg.solver, verbose=False, keep_stiffness=reuse,
+        )
 
         # Evaluate failure on flat mesh (no fiber misalignment)
         evaluator = FailureEvaluator.default_criteria()
@@ -5506,6 +5576,7 @@ class WrinkleAnalysis:
         # Compute retention for each criterion
         retention = {}
         baseline = {}
+        degenerate = {}
 
         for crit_name in results.failure_indices:
             # Wrinkled max FI (interior elements)
@@ -5529,8 +5600,34 @@ class WrinkleAnalysis:
             else:
                 retention[crit_name] = 1.0
 
+            # A pristine baseline that cannot fail makes the ratio
+            # meaningless rather than small.  See
+            # ``AnalysisResults.retention_degenerate``.
+            degenerate[crit_name] = (
+                max_fi_w > 0.0
+                and max_fi_p < _RETENTION_DEGENERATE_RATIO * max_fi_w
+            )
+
         results.retention_factors = retention
         results.baseline_fi = baseline
+        results.retention_degenerate = degenerate
+
+        bad = sorted(name for name, flag in degenerate.items() if flag)
+        if bad:
+            logger.warning(
+                "Pristine baseline cannot fail under %s (max FI %.3g vs "
+                "%.3g wrinkled), so retention_factors %s is not a strength "
+                "retention — it is an undefined ratio reported as ~0. This "
+                "is expected for a unidirectional layup scored by a "
+                "criterion whose fibre-kinking mode needs a nonzero initial "
+                "misalignment. Use the analytical knockdown (or the "
+                "penetration gate for UD) instead; see "
+                "AnalysisResults.retention_degenerate.",
+                ", ".join(bad),
+                min(baseline[n] for n in bad),
+                max_fi_w,
+                {n: retention[n] for n in bad},
+            )
 
         # --- Modulus retention from FE ---
         # Two complementary estimators of the axial-modulus knockdown
@@ -5570,10 +5667,13 @@ class WrinkleAnalysis:
                 results.modulus_retention_global = 1.0
             else:
                 E_w_global = self._reaction_modulus(
-                    wrinkled_mesh, laminate, applied_strain
+                    wrinkled_mesh, laminate, applied_strain,
+                    K=mechanical_K, field=mechanical_field,
                 )
                 E_p_global = self._reaction_modulus(
-                    flat_mesh, laminate, applied_strain
+                    flat_mesh, laminate, applied_strain,
+                    K=flat_solver._K if reuse else None,
+                    field=flat_field if reuse else None,
                 )
                 if E_w_global is not None and E_p_global is not None and (
                     abs(E_p_global) > 1e-12
@@ -5631,6 +5731,9 @@ class WrinkleAnalysis:
         mesh: MeshData,
         laminate: Laminate,
         applied_strain: float,
+        *,
+        K: Any = None,
+        field: FieldResults | None = None,
     ) -> float | None:
         """Coupon-level axial modulus from the global reaction force.
 
@@ -5645,30 +5748,42 @@ class WrinkleAnalysis:
         over the loaded-face x-DOFs (``3 * nodes_on_face("x_max")``), so the
         two agree.  Returns ``None`` if the reaction/area/strain cannot give
         a finite modulus.
+
+        Parameters
+        ----------
+        K, field : optional
+            A stiffness and displacement field for *this* mesh under
+            *this* compression problem, already computed. Supplied only
+            when :func:`_reaction_solve_duplicates_mechanical` holds, in
+            which case the solve below is skipped because it would
+            reproduce them exactly. Passing one without the other is
+            treated as passing neither, so a partial hand-off can never
+            silently mix a stiffness with a foreign displacement.
         """
         if applied_strain == 0.0:
             return None
 
-        # Deliberately thermal-free (delta_T=0): this routine divides the
-        # reaction force by area*strain to report a MODULUS.  A cure
-        # residual load adds a strain-independent reaction offset, which
-        # would show up as a spurious stiffness change (issue #273
-        # Stage 2).  Residual stress belongs in the stress/failure output,
-        # not in a measured elastic constant.
-        solver = StaticSolver(
-            mesh, laminate, delta_T=0.0,
-            **_iterative_solver_kwargs(self.config)
-        )
-        bcs = BoundaryHandler.compression_bcs(
-            mesh, applied_strain=applied_strain
-        )
-        field = solver.solve(
-            bcs, solver=self.config.solver, verbose=False,
-            keep_stiffness=True,
-        )
+        if K is None or field is None:
+            # Deliberately thermal-free (delta_T=0): this routine divides
+            # the reaction force by area*strain to report a MODULUS.  A
+            # cure residual load adds a strain-independent reaction
+            # offset, which would show up as a spurious stiffness change
+            # (issue #273 Stage 2).  Residual stress belongs in the
+            # stress/failure output, not in a measured elastic constant.
+            solver = StaticSolver(
+                mesh, laminate, delta_T=0.0,
+                **_iterative_solver_kwargs(self.config)
+            )
+            bcs = BoundaryHandler.compression_bcs(
+                mesh, applied_strain=applied_strain
+            )
+            field = solver.solve(
+                bcs, solver=self.config.solver, verbose=False,
+                keep_stiffness=True,
+            )
+            K = solver._K
 
-        K = solver._K
-        if K is None:
+        if K is None or field is None:
             return None
 
         xmax_nodes = mesh.nodes_on_face("x_max")

@@ -79,14 +79,30 @@ measured modulus:
 
 - **FE** — the linear static solve's `modulus_retention` (mean
   fibre-direction stress / applied strain, wrinkled vs pristine).
-- **Analytical** — the analytical path's `analytical_modulus_knockdown`
-  (UD-scoped): a closed-form CLT series-average of the off-axis lamina
-  modulus over the wrinkle profile, the same off-axis-compliance
-  integration as Hsiao & Daniel (1996), at zero FE cost. (The driver
-  also recomputes this estimate standalone for datasets/configs outside
-  the single-`WrinkleAnalysis` path.)
+- **Analytical (driver-local)** — `validate_modulus.py`'s own
+  `analytical_modulus_kd()`: a closed-form CLT series-average of the
+  off-axis lamina modulus over the wrinkle profile, the same
+  off-axis-compliance integration as Hsiao & Daniel (1996), at zero FE
+  cost.
 
-| Dataset | Material | analytical MAE | FE MAE |
+**Read the "analytical" column carefully: it is the driver's own
+function, not the package's.** `validate_modulus.py` never calls
+`AnalysisResults.analytical_modulus_knockdown`; it computes its own
+estimate. The two are *not* interchangeable — on Dataset F they differ
+by up to 12 percentage points per case, and the shipped predictor scores
+roughly twice as poorly:
+
+| Dataset F predictor | mean abs error |
+|---|---|
+| `validate_modulus.py :: analytical_modulus_kd()` (the table below) | 3.8 % |
+| shipped `analytical_modulus_knockdown` (#324, pinned in the ledger) | 7.5 % |
+
+A user calling `WrinkleAnalysis` gets the second one. This section
+previously described the table's analytical column as being the shipped
+`analytical_modulus_knockdown`, which flattered the package by about a
+factor of two; corrected 2026-09-29.
+
+| Dataset | Material | analytical MAE (driver-local) | FE MAE |
 |---|---|---|---|
 | F — Li (2025) | S-glass/epoxy | 3.9 % | 6.9 % |
 | G — Hsiao & Daniel (1996) | carbon/epoxy | 1.2 % | 5.1 % |
@@ -359,20 +375,41 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   closure note above). On the *FE* side, the crack-band
   progressive-damage solver (`ProgressiveDamageSolver`,
   `crack_band=True`) does develop a genuine amplitude trend at constant
-  angle — at Gf = 3.0, nx = 16 the trio predicts 0.805 / 0.912 / 0.957
-  (measured 0.629 / 0.943 / 1.000): S-M-4/5 within ~4 %, S-M-2 still
-  +28 % (see `validation/validate_li_progressive.py` and the
-  `li_progressive_*.csv` runs). **Caveat (measured 2026-07-04)**: the
-  crack band does *not* make the predicted strength mesh-objective in
-  this setting. Refining to a wavelength-proportional 12 elements per
-  wavelength (nx = 36) at the same Gf = 3.0 collapses every S-M case to
-  0.32–0.57 (errors −33 % to −62 %, MAE 46 % vs 14 % at nx = 16): the
-  finer mesh resolves a steeper local misalignment, so FI-driven
-  initiation fires earlier and the h-scaled softening slope does not
-  compensate. The Gf calibration is therefore only valid at the mesh
-  density it was fitted at (nx = 16, nz_per_ply = 2) — do not "improve"
-  the mesh without recalibrating. The FE remains an open research
-  direction, no longer tracked by a blocking issue. S-A-2's
+  angle — at Gf = 3.0, nx = 16 the trio predicts 0.781 / 0.878 / 0.965
+  (measured 0.629 / 0.943 / 1.000), MAE 11.5 %, monotonic in amplitude
+  like the measurement (see `validation/validate_li_progressive.py` and
+  the `li_progressive_*.csv` runs, now pinned in the ledger).
+
+  **Caveat — not mesh-objective (re-measured 2026-09-29).** The crack
+  band does *not* make the predicted strength mesh-independent here.
+  Refining to a wavelength-proportional 12 elements per wavelength
+  (nx = 36) at the same Gf = 3.0 gives 0.891 / 0.800 / 0.812 and more
+  than doubles the error, MAE 11.5 % → 25.2 %. Worse, the **amplitude
+  ordering inverts**: at nx = 36 the *largest* wrinkle (S-M-2, 1.5 mm)
+  predicts the *highest* retained strength, so the one property the
+  crack band is credited with above does not survive refinement. The Gf
+  calibration is therefore only valid at the mesh density it was fitted
+  at (nx = 16, nz_per_ply = 2) — do not "improve" the mesh without
+  recalibrating.
+
+  > The 2026-07-04 measurement of this caveat reported nx = 36
+  > collapsing to 0.32–0.57 with errors −33 % to −62 % (MAE 46 %) and
+  > attributed it to earlier FI-driven initiation on the steeper
+  > resolved misalignment. That no longer reproduces: the magnitudes are
+  > about half and the **sign is reversed** — today the refined mesh is
+  > *non-conservative* (+15 % to +42 %), not over-conservative. The
+  > conclusion (mesh-locked calibration) is unchanged and, with the
+  > ordering inversion, better supported. The nx = 16 figures also
+  > drifted slightly over the same period (S-M-4 0.912 → 0.878) while
+  > the MAE held near 11.5 %; nothing pinned them at the time, which is
+  > why they are in the ledger now.
+
+  Note the direction on both meshes: every crack-band error above is
+  **positive** — the model over-predicts retained strength. That matches
+  the FE LaRC05 path, which is likewise non-conservative on all six
+  cases. Treat FE strength numbers as indicative, not as allowables.
+  The FE remains an open research direction, no longer tracked by a
+  blocking issue. S-A-2's
   through-thickness position is no longer out of scope: the
   `wrinkle_z_position` parameter and the gate's `P(z)` factor reproduce
   it (pinned via `z_frac` in the ledger).

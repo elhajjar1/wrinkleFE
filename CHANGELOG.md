@@ -15,6 +15,275 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Validation — **the crack-band progressive-damage predictions are now
+  pinned in the ledger** (`progressive_damage` section,
+  `tests/test_validation/test_progressive_ledger.py`, marked `slow`).
+
+  They previously existed only as untracked
+  `validation/li_progressive_*.csv` artefacts. Between 2026-07-04 and
+  2026-09-29 they drifted by up to 0.034 per case (S-M-4
+  0.912 → 0.878) with nothing to catch it, and the mesh-sensitivity
+  figures quoting them went stale by more than a factor of two.
+
+  Unlike the analytical ledger, these numbers are **mesh- and
+  Gf-locked**, so each pin records its full recipe (nx, ny, nz_per_ply,
+  Gf, increments, residual factor, resin pocket) and a test asserts that
+  it does — a mesh-locked number without its mesh is meaningless. The
+  tolerance is 2 % rather than 1e-3: a load-stepping Newton solve to
+  peak load is not bit-reproducible the way a closed-form knockdown is,
+  and 2 % is still tight enough to have caught the drift that motivated
+  this.
+
+  Two properties are pinned beyond the values: that the calibrated mesh
+  still reproduces the **measured amplitude ordering**, and that
+  refinement still **changes the answer materially**. Both are claims
+  VALIDATION.md makes; if either stops being true the docs are wrong,
+  and now that fails loudly.
+
+- Analysis — **`AnalysisResults.retention_degenerate`**, flagging
+  criteria whose retention factor is an undefined ratio rather than a
+  low one.
+
+  `retention_factors[c] = max_FI_pristine / max_FI_wrinkled`. For an
+  all-0° laminate under LaRC05 the pristine term is ~1e-10 — fibre
+  kinking needs a nonzero initial misalignment and a *flat* UD coupon
+  has none — so the ratio collapses to ~0 and reads as "no strength
+  retained" when the truth is "this comparison does not apply here".
+  Measured on the Li 2025 S-M-2 recipe: pristine 1.66e-10 against a
+  wrinkled 0.682.
+
+  The value still reports (nothing changes shape for existing
+  consumers), but it is now flagged, warned about with the cause named,
+  and carried into both export paths — a log warning does not reach
+  someone reading the JSON.
+
+### Changed
+- Convergence — **`mesh_convergence_study` now refuses the
+  `strength_retention` QoI when the retention is degenerate** instead of
+  converging on the artefact. That case is worse there than anywhere
+  else the value travels: the ~1e-10 is identical at every refinement,
+  so the relative change between meshes is ~0 and the study reports a
+  confident convergence on a meaningless number. The error names
+  `max_fi` and `modulus_retention` as alternatives. Only raised when
+  *every* criterion is degenerate; a partially degenerate result still
+  yields the minimum over the sound ones.
+
+### Fixed
+- Docs — **the crack-band mesh-objectivity caveat in VALIDATION.md was
+  stale, and its sign was wrong.** It reported refinement to nx = 36
+  collapsing every case to 0.32–0.57 (errors −33 % to −62 %, MAE 46 %).
+  Re-measured: 0.891 / 0.800 / 0.812, errors **+15 % to +42 %**, MAE
+  25.2 %. The magnitudes are about half and the direction is reversed —
+  the refined mesh is now *non-conservative*, not over-conservative.
+
+  The conclusion (mesh-locked calibration; do not refine without
+  recalibrating) is unchanged and better supported, because a finding
+  not previously recorded also emerged: at nx = 36 the **amplitude
+  ordering inverts** — the largest wrinkle predicts the highest retained
+  strength — so the one property the crack band is credited with does
+  not survive refinement.
+
+- Docs — **VALIDATION.md's modulus table credited the package with a
+  predictor it does not ship.** The "analytical MAE" column is
+  `validation/validate_modulus.py`'s own `analytical_modulus_kd()`, not
+  `AnalysisResults.analytical_modulus_knockdown`; the driver never calls
+  the latter. The two differ by up to 12 percentage points per case, and
+  the shipped one scores about twice as poorly — Dataset F mean absolute
+  error **7.5 %** against the **3.8 %** the table reported. A user
+  calling `WrinkleAnalysis` gets the 7.5 % predictor. Both numbers are
+  now stated, attributed, and the driver's own docstring corrected.
+
+### Changed
+- Performance — **a Newton iteration was rebuilding an identical global
+  stiffness matrix every time.** It is now assembled once per assembler
+  and copied: a CZM run goes from 12 full assemblies to 1, and runs
+  6-10 % faster end to end.
+
+  The comment above the element-matrix cache already made the argument
+  ("These depend only on geometry/material -- both fixed at construction
+  -- so there is no point recomputing them per Newton iteration"). The
+  same is true one level up: assembling those fixed matrices at the fixed
+  DOF map gives a fixed global matrix. `_assemble_hex8_stiffness` was
+  nevertheless doing a full COO build and `tocsc` on every call --
+  measured at 44.8 ms against 0.8 ms for a copy on a 2,560-element mesh,
+  so ~54x on that step alone.
+
+  Honest about the end-to-end figure: **6-10 %** on CZM runs
+  (min-of-5, 0.93 s -> 0.84 s at nx=14 and 1.87 s -> 1.76 s at nx=30),
+  not the ~18 % the original audit note suggested. The assembly is a
+  smaller share of a Newton solve than that note implied -- `spsolve`,
+  the cohesive element work and stress recovery dominate. The
+  redundancy itself is real and fully removed.
+
+  Caching it is only safe because of two hazards, both handled and both
+  tested rather than assumed:
+
+  - **Callers mutate what they are given.** `assemble_tangent` adds the
+    cohesive contribution into it, and
+    `StaticSolver._apply_penalty_bcs` applies displacement BCs with
+    `in_place=True`. So a fresh copy is returned on every call; handing
+    out the cached object would let one solve's penalty terms leak into
+    every later one.
+  - **The element matrices are not fixed after construction.**
+    `update_element` rebuilds one as the progressive-damage solver
+    degrades materials, precisely so the next assembly sees the change.
+    The cache is invalidated there, next to the existing `_F_thermal`
+    invalidation and for the same reason.
+
+  Verified bit-identical on five paths against references recorded from
+  the previous code -- linear, CZM, progressive damage, thermal, and
+  progressive + thermal -- covering both hazards. No ledger drift.
+  `tests/test_assembly_cache.py` pins the build *count* as well as the
+  values, since an equivalent-but-uncached regression would pass every
+  value test.
+
+- Performance — **two of the four FE solves per analysis were solving a
+  problem the run had already solved.** They are now reused:
+  **6.5 s -> 3.5 s** on a 2,560-element / 9,963-DOF run, 3.5x against
+  the pre-optimisation baseline of 12.1 s.
+
+  `_reaction_modulus` ran its own compression solve on the wrinkled mesh
+  and again on the pristine one, to read a global reaction off each.
+  When `delta_T == 0` and no `load_state` is set, those are the same
+  problems the mechanical solve and its pristine baseline have already
+  answered — measured, bit-identically: no differing stiffness entry,
+  and `max |du| = 0.0`. The stiffness and field are handed over instead
+  of being recomputed, and the solve count for such a run drops from
+  four to two.
+
+  The gate is exactly two conditions, in one named predicate
+  (`_reaction_solve_duplicates_mechanical`) rather than scattered
+  checks:
+
+  - **`delta_T == 0`.** `_reaction_modulus` is deliberately thermal-free
+    (issue #273 Stage 2) because it reports a *modulus*, and a cure
+    residual would read as a spurious stiffness change. So a thermal
+    run's mechanical solve carries a load vector the reaction solve must
+    not have. Measured, that is a real difference: `max |du| = 1.1e-2`.
+    The stiffness is identical even then — reusing *that* alone would
+    still save an assembly, and is left as a follow-up.
+  - **`load_state is None`.** Otherwise `_mechanical_bcs` returns the
+    traction set of the load state (issue #275) rather than the uniaxial
+    `compression_bcs` the reaction solve uses.
+
+  The CZM path needs no condition: it returns from `run` before
+  retention factors are computed, so its Newton displacement never
+  reaches this code. A test pins that ordering, since the gate depends
+  on it.
+
+  `keep_stiffness=True` is set on the mechanical and pristine solves
+  only when the reuse will actually happen, so a run that cannot reuse
+  pays no extra memory for a retained `K`.
+
+  Verified on six configurations — plain, thermal, load-state, both
+  together, zero applied strain, and progressive damage — against
+  references recorded from the previous code: **all eight pinned
+  quantities per configuration bit-identical**, including every path
+  that falls back. `scripts/validate.py` reports no ledger drift.
+  `tests/test_reaction_solve_reuse.py` also pins the solve *count* (2
+  when reusable, 4 when not), because a regression that always fell back
+  would stay bit-identical while silently giving the speedup back.
+
+- Performance — **the FE hot path does the same arithmetic with less
+  work: ~1.9x faster analyses and ~30 % off the unit-test suite**, with
+  every output bit-identical.
+
+  Measured on a 2,560-element / 9,963-DOF run (nx=40, ny=8, 8-ply
+  layup): **12.1 s -> 6.5 s**, stable across repeats. The `-m "not
+  slow"` suite went 203.8 s -> 143.0 s. Five redundancies, none of
+  which changed what is computed:
+
+  - `Hex8Element.shape_functions` / `shape_derivatives` are pure
+    functions of the natural coordinates, evaluated at the same 8 Gauss
+    points for every element in the mesh — 20,480 calls with 8 distinct
+    arguments, each running an 8-iteration Python loop. Now memoised.
+  - `gauss_points_hex` was rebuilt in **every element constructor**
+    (10,241 calls, four `meshgrid` allocations apiece) for a rule that
+    depends on nothing but the quadrature order.
+  - `stiffness_matrix` formed the Jacobian, then called `B_matrix`,
+    which re-evaluated the shape derivatives, re-formed the same
+    Jacobian and re-took its determinant. It now builds B from the
+    Jacobian already in hand, through an assembler shared with
+    `B_matrix` so there is still one definition of the Voigt row layout.
+    The Gauss-point-aware `detJ` check (issue #45) is the one retained;
+    the repeat could only ever have reached the same verdict with a
+    worse message.
+  - `rotated_stiffness` re-applied the **ply** rotation at every Gauss
+    point, though the ply angle cannot vary within an element. Hoisted
+    behind a per-element cache: eight times fewer 6x6 rotations on a
+    2x2x2 rule.
+  - `rotate_stiffness_3d` built `T_sigma` twice — once directly and once
+    inside `strain_transformation_3d` — and `strain_transformation_3d`
+    rebuilt both constant Reuter matrices from a Python list on each of
+    its ~466,000 calls per analysis.
+
+  **Not** changed: `np.linalg.inv(T_sigma)` is still an explicit inverse.
+  Replacing it with the `T_epsilon^T` identity is algebraically right but
+  not bit-identical (0 of 4,000 angles matched, relative differences to
+  0.75), and this project pins a validation ledger to exact values.
+
+  Verified by pinning 13 quantities — `analytical_knockdown`,
+  `modulus_retention`, `modulus_retention_global`, `retention_factors`,
+  and SHA-256 digests of the displacement, stress and strain fields in
+  both frames — as bit-exact digests before and after: 13/13 identical
+  on every run. `scripts/validate.py` reports no ledger drift.
+  `tests/test_hot_path_equivalence.py` recomputes each result the slow
+  way and demands `array_equal`, not `allclose`.
+
+  Two of the caches hand the same array to every caller, so those arrays
+  are returned read-only: a shared buffer written in place would corrupt
+  every element built afterwards, silently. This is a behaviour change
+  for anything that mutated a `gauss_points_hex` or `shape_functions`
+  result in place — nothing in the package did.
+
+### Added
+- IO — **the schema-versioned results export now carries a
+  `provenance` block** (schema 1.1 → 1.2).
+
+  `wrinklefe.io.export.build_provenance` documents itself as shared "so
+  the two paths can never disagree", but a third path had since been
+  added — the structured exporter in `wrinklefe.io.results` — and it had
+  no provenance at all. That left the *schema-versioned* document, the
+  one `wrinklefe.io` points forward-looking consumers at, as the only
+  export that could not support a reproducibility claim against the
+  validation ledger. It now uses the same builder as the legacy
+  exporter and the NCR summary.
+
+  The block here omits `timestamp_utc`, which the legacy one keeps.
+  That module guarantees byte-identical output for identical input (and
+  tests it), and a wall-clock field breaks that for two writes of the
+  same result. Nothing is lost: what lets a result be reproduced is the
+  version set, and the write time is already recorded by the
+  filesystem. `build_provenance` takes `include_timestamp` to make the
+  choice explicit at the shared builder rather than by stripping the
+  field at the call site.
+
+### Fixed
+- Docs — **`wrinklefe.io` and `wrinklefe.io.results` described the
+  relationship between the two same-named `export_results_json`
+  functions inaccurately.**
+
+  The coexistence is deliberate and was documented, but the detail was
+  wrong or missing in three ways. The prose referred to "the v1.0
+  schema" when `SCHEMA_VERSION` had been `1.1` since #338. It did not
+  say how far apart the two documents actually are — measured, on an FE
+  run the legacy one emits 33 leaf paths and the structured one 138,
+  sharing only `provenance` and the three `mesh` counts, and on an
+  analytical-only run nothing outside `provenance`; no result,
+  prediction or configuration value is reachable by the same path in
+  both, partly through outright renames (`configuration` against
+  `config`, `analytical_predictions` against `analytical`). And
+  `results.py` carried two contradictory rules for when to bump
+  `SCHEMA_VERSION` — the module docstring said "whenever the public
+  shape changes", an inline comment said "only when non-additive" —
+  which disagreed for exactly the additive case this release is. The
+  rule is now stated once, as minor-for-additive and
+  major-for-breaking.
+
+  Tests now pin the overlap positively as well as negatively, so a
+  future change on either side that shifts it fails rather than
+  silently making the prose wrong.
+
 - Core — **`wrinklefe.core.fit`: fit a `WrinkleProfile` to a measured
   trace** (issue #270).
 
