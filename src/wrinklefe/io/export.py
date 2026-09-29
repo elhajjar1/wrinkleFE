@@ -37,7 +37,9 @@ if TYPE_CHECKING:
 # Provenance — shared by every export path so they can't drift
 # ====================================================================== #
 
-def build_provenance(solver: dict | None = None) -> dict:
+def build_provenance(
+    solver: dict | None = None, *, include_timestamp: bool = True,
+) -> dict:
     """Environment/reproducibility block stamped onto exported results.
 
     Records the installed WrinkleFE version (never a hardcoded literal —
@@ -51,6 +53,18 @@ def build_provenance(solver: dict | None = None) -> dict:
     solver : dict, optional
         Solver settings snapshot (e.g. ``{"type": "direct"}``) folded
         into the block under the ``"solver"`` key when provided.
+    include_timestamp : bool, default True
+        Whether to stamp ``timestamp_utc``.  Pass ``False`` from an
+        export that guarantees byte-identical output for identical
+        input, because a wall-clock field makes two writes of the same
+        result differ.
+
+        Dropping it costs nothing for reproducibility: what lets a
+        result be reproduced is the version set below, and *when the
+        file was written* is already recorded by the filesystem.  The
+        legacy exporter keeps the stamp, since it makes no determinism
+        guarantee; :mod:`wrinklefe.io.results` omits it, because it
+        does.
 
     Returns
     -------
@@ -63,8 +77,9 @@ def build_provenance(solver: dict | None = None) -> dict:
         "numpy": np.__version__,
         "scipy": scipy.__version__,
         "platform": platform.platform(aliased=True, terse=True),
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }
+    if include_timestamp:
+        prov["timestamp_utc"] = datetime.now(timezone.utc).isoformat()
     if solver is not None:
         prov["solver"] = solver
     return prov
@@ -606,6 +621,8 @@ def build_analysis_summary(
         ``effective_angle_deg``, ``morphology_factor``, an optional
         ``fe`` sub-dict (``modulus_retention``,
         ``modulus_retention_global``, ``retention_factors``,
+        ``retention_degenerate`` (criteria whose retention is undefined
+        rather than low -- see ``AnalysisResults.retention_degenerate``),
         ``critical_criterion``, ``critical_mode``, ``critical_ply``), and
         an optional ``progressive`` sub-dict (``knockdown``,
         ``strength_MPa``, ``pristine_strength_MPa``) present only when a
@@ -670,6 +687,10 @@ def build_analysis_summary(
             "modulus_retention_global": fe.get("modulus_retention_global"),
             "min_strength_retention": min_ret,
             "retention_factors": retention,
+            # Present only when a criterion's pristine baseline cannot
+            # fail, which makes its retention an undefined ratio rather
+            # than a low one (see AnalysisResults.retention_degenerate).
+            "retention_degenerate": fe.get("retention_degenerate") or [],
             "critical_criterion": fe.get("critical_criterion"),
             "critical_mode": fe.get("critical_mode"),
             "critical_ply": fe.get("critical_ply"),

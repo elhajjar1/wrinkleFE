@@ -63,11 +63,32 @@ def _qoi_modulus_retention(results: AnalysisResults) -> float:
 
 
 def _qoi_strength_retention(results: AnalysisResults) -> float:
-    """Min per-criterion strength retention (linear path only)."""
+    """Min per-criterion strength retention (linear path only).
+
+    Raises when the retention is degenerate. That case is worse here
+    than anywhere else the value travels: the ratio is ~1e-10 at *every*
+    refinement, so the relative change between meshes is ~0 and the study
+    would report a confident convergence on a meaningless number.
+    """
     if not results.retention_factors:
         raise ValueError(
             "results.retention_factors is empty — strength retention is "
             "only computed on the linear (non-CZM) FE path"
+        )
+    degenerate = sorted(
+        name for name, flag in (results.retention_degenerate or {}).items()
+        if flag
+    )
+    if degenerate and len(degenerate) == len(results.retention_factors):
+        raise ValueError(
+            "strength retention is undefined for this configuration: the "
+            f"pristine baseline cannot fail under {', '.join(degenerate)}, "
+            "so every retention factor is an ~0 artefact rather than a "
+            "strength ratio, and it would not change with mesh refinement. "
+            "This is the expected outcome for a unidirectional layup under "
+            "a fibre-kinking criterion that needs a nonzero initial "
+            "misalignment. Converge on 'max_fi' or 'modulus_retention' "
+            "instead."
         )
     return min(float(v) for v in results.retention_factors.values())
 

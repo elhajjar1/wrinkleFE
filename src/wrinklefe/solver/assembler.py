@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import copy
 import logging
+from typing import cast
 
 import numpy as np
 from scipy import sparse
@@ -176,6 +177,14 @@ class GlobalAssembler:
         # re-blended material changes both ``C_bar`` and the CTEs.
         self._F_thermal: np.ndarray | None = None
 
+        # Lazily built *assembled* hex8 stiffness.  The reasoning above
+        # for caching the element matrices applies one level up: the
+        # assembly of those fixed matrices at fixed DOFs is itself fixed,
+        # so a Newton loop was rebuilding an identical global matrix on
+        # every iteration.  Invalidated by :meth:`update_element` for the
+        # same reason as ``_F_thermal``.
+        self._K_hex8: sparse.csc_matrix | None = None
+
     # ------------------------------------------------------------------
     # Element construction
     # ------------------------------------------------------------------
@@ -244,9 +253,13 @@ class GlobalAssembler:
         elem = self.create_element(elem_idx)
         self._hex8_elements[elem_idx] = elem
         self._hex8_Ke[elem_idx] = elem.stiffness_matrix()
-        # The element's stiffness AND its CTEs changed, so the cached
-        # global thermal load is stale (issue #273 Stage 2).
+        # The element's stiffness AND its CTEs changed, so both cached
+        # globals are stale: the thermal load (issue #273 Stage 2) and
+        # the assembled hex8 stiffness.  Progressive damage relies on
+        # this -- it calls here as elements fail and then expects the
+        # next assembly to see the degraded material.
         self._F_thermal = None
+        self._K_hex8 = None
 
     # ------------------------------------------------------------------
     # DOF mapping
@@ -394,7 +407,31 @@ class GlobalAssembler:
 
         Shared by :meth:`assemble_stiffness` and
         :meth:`assemble_tangent` / :meth:`assemble_residual_and_tangent`.
+
+        Cached, because the result cannot change between calls: it is the
+        assembly of the construction-time element matrices at the
+        construction-time DOF map.  A Newton iteration used to pay a full
+        COO build and ``tocsc`` for a matrix identical to the previous
+        iteration's -- measured at 44.8 ms against 0.8 ms for the copy
+        below on a 2,560-element mesh, so ~54x.
+
+        **A fresh copy is returned every call, and that is required, not
+        defensive.** Callers mutate what they receive:
+        :meth:`assemble_tangent` adds the cohesive contribution into it,
+        and ``StaticSolver._apply_penalty_bcs`` applies displacement BCs
+        with ``in_place=True``. Handing out the cached object would let
+        the first solve's penalty terms leak into every later one.
+
+        The cache is invalidated by :meth:`update_element`, which is how
+        the progressive-damage solver's degraded materials still reach
+        the next assembly.
         """
+        if self._K_hex8 is None:
+            self._K_hex8 = self._build_hex8_stiffness()
+        return cast("sparse.csc_matrix", self._K_hex8.copy())
+
+    def _build_hex8_stiffness(self) -> sparse.csc_matrix:
+        """Assemble the hex8 stiffness from scratch (see the caller)."""
         n_elem = self.mesh.n_elements
         n_dof = self.mesh.n_dof
         entries_per_elem = 24 * 24  # 576

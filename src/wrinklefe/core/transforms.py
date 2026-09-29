@@ -157,6 +157,18 @@ def stress_transformation_3d(angle_rad: float, axis: str = 'z') -> np.ndarray:
         raise ValueError(f"Unsupported axis '{axis}'. Use 'z' or 'y'.")
 
 
+#: Reuter matrix, converting engineering shear strain to tensor shear
+#: strain, and its inverse.  Module-level because
+#: :func:`strain_transformation_3d` is called on the order of 10^5 times
+#: in one FE analysis -- once per Gauss point, per rotation, per solve --
+#: and rebuilding these from a Python list on every call was measurable.
+#: They are never mutated; the only use is the triple product below.
+_REUTER = np.diag([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
+_REUTER_INV = np.diag([1.0, 1.0, 1.0, 0.5, 0.5, 0.5])
+_REUTER.flags.writeable = False
+_REUTER_INV.flags.writeable = False
+
+
 def strain_transformation_3d(angle_rad: float, axis: str = 'z') -> np.ndarray:
     """
     Construct the 6x6 engineering strain transformation matrix.
@@ -198,12 +210,7 @@ def strain_transformation_3d(angle_rad: float, axis: str = 'z') -> np.ndarray:
         If axis is not 'y' or 'z'.
     """
     T_sigma = stress_transformation_3d(angle_rad, axis=axis)
-
-    # Reuter matrix: converts engineering strain to tensor strain
-    R = np.diag([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
-    R_inv = np.diag([1.0, 1.0, 1.0, 0.5, 0.5, 0.5])
-
-    return np.asarray(R @ T_sigma @ R_inv)
+    return np.asarray(_REUTER @ T_sigma @ _REUTER_INV)
 
 
 def rotate_stiffness_3d(
@@ -245,8 +252,13 @@ def rotate_stiffness_3d(
     if C.shape != (6, 6):
         raise ValueError(f"Stiffness matrix must be 6x6, got {C.shape}.")
 
+    # T_epsilon is derived from the T_sigma already in hand rather than
+    # via strain_transformation_3d(), which would build a second,
+    # identical T_sigma.  Same arithmetic on the same values, so the
+    # result is unchanged bit for bit -- this is one of the hottest
+    # functions in an FE run (~87,000 calls on a 2,560-element mesh).
     T_sigma = stress_transformation_3d(angle_rad, axis=axis)
-    T_epsilon = strain_transformation_3d(angle_rad, axis=axis)
+    T_epsilon = _REUTER @ T_sigma @ _REUTER_INV
     T_sigma_inv = np.linalg.inv(T_sigma)
 
     return np.asarray(T_sigma_inv @ C @ T_epsilon)
