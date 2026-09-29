@@ -621,6 +621,8 @@ def build_analysis_summary(
         ``effective_angle_deg``, ``morphology_factor``, an optional
         ``fe`` sub-dict (``modulus_retention``,
         ``modulus_retention_global``, ``retention_factors``,
+        ``retention_degenerate`` (criteria whose retention is undefined
+        rather than low -- see ``AnalysisResults.retention_degenerate``),
         ``critical_criterion``, ``critical_mode``, ``critical_ply``), and
         an optional ``progressive`` sub-dict (``knockdown``,
         ``strength_MPa``, ``pristine_strength_MPa``) present only when a
@@ -685,6 +687,10 @@ def build_analysis_summary(
             "modulus_retention_global": fe.get("modulus_retention_global"),
             "min_strength_retention": min_ret,
             "retention_factors": retention,
+            # Present only when a criterion's pristine baseline cannot
+            # fail, which makes its retention an undefined ratio rather
+            # than a low one (see AnalysisResults.retention_degenerate).
+            "retention_degenerate": fe.get("retention_degenerate") or [],
             "critical_criterion": fe.get("critical_criterion"),
             "critical_mode": fe.get("critical_mode"),
             "critical_ply": fe.get("critical_ply"),

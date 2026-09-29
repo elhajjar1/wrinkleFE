@@ -5,9 +5,15 @@ Compares two WrinkleFE predictors of the **axial Young's modulus** knockdown
 (``E_x,wrinkled / E_x,pristine``) against the measured modulus knockdown in the
 validation database, for every UD dataset that reports a modulus:
 
-* **Analytical (CLT series-average).** WrinkleFE's shipped *analytical* path has
-  no stiffness model (it returns ``modulus_retention = 1.0``), so this driver
-  computes a closed-form Classical-Lamination-Theory estimate from the same
+* **Analytical (CLT series-average).** This driver's OWN estimate, not the
+  package's.  ``modulus_retention`` is FE-derived and is 1.0 on an
+  analytical-only run, which is why this function exists -- but the package
+  has since grown a shipped analytical stiffness model,
+  ``AnalysisResults.analytical_modulus_knockdown`` (#324), and this driver
+  does **not** call it.  The two disagree materially: on Dataset F they
+  differ by up to 12 percentage points per case, mean abs error 3.8 % here
+  against 7.5 % for the shipped one.  Quote the right one.  It computes a
+  closed-form Classical-Lamination-Theory estimate from the same
   primitives: the local fibre angle ``theta(x, z)`` from the wrinkle slope and
   the through-thickness decay, the off-axis lamina axial modulus ``Ex(theta)``,
   thickness-averaged to a section modulus and then series-averaged along the

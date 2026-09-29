@@ -14,6 +14,85 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Added
+- Validation — **the crack-band progressive-damage predictions are now
+  pinned in the ledger** (`progressive_damage` section,
+  `tests/test_validation/test_progressive_ledger.py`, marked `slow`).
+
+  They previously existed only as untracked
+  `validation/li_progressive_*.csv` artefacts. Between 2026-07-04 and
+  2026-09-29 they drifted by up to 0.034 per case (S-M-4
+  0.912 → 0.878) with nothing to catch it, and the mesh-sensitivity
+  figures quoting them went stale by more than a factor of two.
+
+  Unlike the analytical ledger, these numbers are **mesh- and
+  Gf-locked**, so each pin records its full recipe (nx, ny, nz_per_ply,
+  Gf, increments, residual factor, resin pocket) and a test asserts that
+  it does — a mesh-locked number without its mesh is meaningless. The
+  tolerance is 2 % rather than 1e-3: a load-stepping Newton solve to
+  peak load is not bit-reproducible the way a closed-form knockdown is,
+  and 2 % is still tight enough to have caught the drift that motivated
+  this.
+
+  Two properties are pinned beyond the values: that the calibrated mesh
+  still reproduces the **measured amplitude ordering**, and that
+  refinement still **changes the answer materially**. Both are claims
+  VALIDATION.md makes; if either stops being true the docs are wrong,
+  and now that fails loudly.
+
+- Analysis — **`AnalysisResults.retention_degenerate`**, flagging
+  criteria whose retention factor is an undefined ratio rather than a
+  low one.
+
+  `retention_factors[c] = max_FI_pristine / max_FI_wrinkled`. For an
+  all-0° laminate under LaRC05 the pristine term is ~1e-10 — fibre
+  kinking needs a nonzero initial misalignment and a *flat* UD coupon
+  has none — so the ratio collapses to ~0 and reads as "no strength
+  retained" when the truth is "this comparison does not apply here".
+  Measured on the Li 2025 S-M-2 recipe: pristine 1.66e-10 against a
+  wrinkled 0.682.
+
+  The value still reports (nothing changes shape for existing
+  consumers), but it is now flagged, warned about with the cause named,
+  and carried into both export paths — a log warning does not reach
+  someone reading the JSON.
+
+### Changed
+- Convergence — **`mesh_convergence_study` now refuses the
+  `strength_retention` QoI when the retention is degenerate** instead of
+  converging on the artefact. That case is worse there than anywhere
+  else the value travels: the ~1e-10 is identical at every refinement,
+  so the relative change between meshes is ~0 and the study reports a
+  confident convergence on a meaningless number. The error names
+  `max_fi` and `modulus_retention` as alternatives. Only raised when
+  *every* criterion is degenerate; a partially degenerate result still
+  yields the minimum over the sound ones.
+
+### Fixed
+- Docs — **the crack-band mesh-objectivity caveat in VALIDATION.md was
+  stale, and its sign was wrong.** It reported refinement to nx = 36
+  collapsing every case to 0.32–0.57 (errors −33 % to −62 %, MAE 46 %).
+  Re-measured: 0.891 / 0.800 / 0.812, errors **+15 % to +42 %**, MAE
+  25.2 %. The magnitudes are about half and the direction is reversed —
+  the refined mesh is now *non-conservative*, not over-conservative.
+
+  The conclusion (mesh-locked calibration; do not refine without
+  recalibrating) is unchanged and better supported, because a finding
+  not previously recorded also emerged: at nx = 36 the **amplitude
+  ordering inverts** — the largest wrinkle predicts the highest retained
+  strength — so the one property the crack band is credited with does
+  not survive refinement.
+
+- Docs — **VALIDATION.md's modulus table credited the package with a
+  predictor it does not ship.** The "analytical MAE" column is
+  `validation/validate_modulus.py`'s own `analytical_modulus_kd()`, not
+  `AnalysisResults.analytical_modulus_knockdown`; the driver never calls
+  the latter. The two differ by up to 12 percentage points per case, and
+  the shipped one scores about twice as poorly — Dataset F mean absolute
+  error **7.5 %** against the **3.8 %** the table reported. A user
+  calling `WrinkleAnalysis` gets the 7.5 % predictor. Both numbers are
+  now stated, attributed, and the driver's own docstring corrected.
+
 ### Changed
 - Performance — **a Newton iteration was rebuilding an identical global
   stiffness matrix every time.** It is now assembled once per assembler
