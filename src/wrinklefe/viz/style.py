@@ -35,16 +35,29 @@ from mpl_toolkits.mplot3d.axes3d import Axes3D  # type: ignore[import-untyped]
 # ======================================================================
 
 MORPHOLOGY_COLORS: dict[str, str] = {
+    # Dual-wrinkle modes (``MORPHOLOGY_PHASES``).
     "stack": "#1f77b4",      # muted blue
     "convex": "#2ca02c",     # muted green
     "concave": "#d62728",    # muted red
     "anti-stack": "#9467bd", # muted purple
+    # Single-wrinkle modes (``SINGLE_WRINKLE_MODES``).
+    "uniform": "#ff7f0e",    # muted orange
+    "graded": "#17becf",     # muted cyan
+    "tool_flat": "#8c564b",  # muted brown
 }
 """Color mapping for morphology types.
 
 Stack (blue) is the baseline, convex (green) is the favorable morphology,
 and concave (red) is the adverse morphology. Anti-stack (purple) is used
 in Monte Carlo results where a fourth classification is present.
+
+The three single-wrinkle modes were added when the app grew a
+morphology-comparison view (issue #263): every morphology
+``AnalysisConfig`` accepts now has its own hue, because a chart that
+compares all six would otherwise collapse ``uniform``, ``graded`` and
+``tool_flat`` onto the single ``"gray"`` fallback and read as one series.
+Callers keep using ``.get(morph, "gray")`` — the fallback is still the
+right answer for a name this package does not define.
 """
 
 MORPHOLOGY_MARKERS: dict[str, str] = {

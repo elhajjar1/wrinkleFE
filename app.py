@@ -18,7 +18,7 @@ import json
 import logging
 import math
 import sys
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, MutableMapping, Sequence
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -89,6 +89,15 @@ st.caption(
 LIB = MaterialLibrary()
 MATERIAL_NAMES = sorted(LIB.list_names())
 MORPHOLOGIES = ["stack", "convex", "concave", "uniform", "graded", "tool_flat"]
+
+#: Fewest morphologies a comparison needs to say anything (issue #263).
+COMPARE_MIN_MORPHOLOGIES = 2
+
+#: Morphologies pre-selected in the comparison multiselect. The three
+#: dual-wrinkle modes: they share a geometry and differ only in phase, so
+#: they are the cleanest read on "how much does the morphology assumption
+#: cost me?" — and they are what ``compare_morphologies`` defaults to.
+COMPARE_DEFAULT_MORPHOLOGIES = ["stack", "convex", "concave"]
 
 CUSTOM_MATERIAL_LABEL = "Custom…"
 MATERIAL_OPTIONS = MATERIAL_NAMES + [CUSTOM_MATERIAL_LABEL]
@@ -279,6 +288,9 @@ DEFAULTS: dict[str, object] = {
     "sb_gs_bracket_hi": DEFAULT_GS_BRACKET_HI,
     "sb_gs_scan_points": DEFAULT_GS_SCAN_POINTS,
     "sb_gs_rtol": DEFAULT_GS_RTOL,
+    # Morphology comparison (issue #263). A list default is copied on
+    # registration below, so Reset cannot hand out the same mutable object.
+    "sb_compare_morphologies": COMPARE_DEFAULT_MORPHOLOGIES,
 }
 
 
@@ -301,12 +313,16 @@ def reset_inputs() -> None:
     the chosen material on each rerun and would otherwise survive the reset
     (issue #374).
 
-    The stored goal-seek result (issue #280) is dropped for the same reason:
-    an acceptance limit belongs to the configuration it was searched against,
-    and a Reset replaces that configuration wholesale.
+    The stored goal-seek result (issue #280) and morphology comparison
+    (issue #263) are dropped for the same reason: each belongs to the
+    configuration it was computed against, and a Reset replaces that
+    configuration wholesale.
     """
     for key, value in DEFAULTS.items():
-        st.session_state[key] = value
+        # Copy list defaults (the comparison multiselect, issue #263): a
+        # bare assignment would hand every reset — and the module
+        # constant — the same mutable object.
+        st.session_state[key] = list(value) if isinstance(value, list) else value
     # Drop the results and the payload they were computed from so a Reset
     # returns the Analyze tab to its empty state instead of showing a stale
     # run against default inputs.
@@ -315,6 +331,11 @@ def reset_inputs() -> None:
     # next run genuinely re-solves rather than replaying a pre-Reset result.
     for run_key in (
         "results", "cfg_payload", "goalseek_result", "goalseek_payload",
+        # The morphology comparison (issue #263) belongs to the
+        # configuration it was run against, exactly like the goal-seek
+        # result above.
+        "morph_comparison", "morph_comparison_payload",
+        "morph_comparison_failures",
         _RUN_CACHE_KEY,
     ):
         st.session_state.pop(run_key, None)
@@ -1983,6 +2004,62 @@ with st.sidebar:
                 "the FE path (minutes)."
             )
 
+    # ------------------------------------------------------------------
+    # Morphology comparison — "how sensitive is this to the morphology
+    # assumption?" (issue #263).
+    #
+    # The morphology is usually the least-known input: amplitude and
+    # wavelength come off a micrograph, the through-thickness form is
+    # partly judgement. The CLI answered this with one command while the
+    # app forced a run-per-morphology with the numbers copied out by
+    # hand, because session state holds exactly one result.
+    #
+    # Opt-in, so the default single-run path costs nothing.
+    # ------------------------------------------------------------------
+    compare_clicked = st.button(
+        "Compare morphologies",
+        width="stretch",
+        disabled=run_disabled,
+        help=(
+            "Fix the mesh-inversion warning above before comparing."
+            if run_disabled
+            else (
+                "Run the same laminate and wrinkle geometry across several "
+                "morphologies and show them side by side. Everything else "
+                "comes from the sidebar; pick the morphologies in the "
+                "expander below."
+            )
+        ),
+    )
+    with st.expander("Comparison settings", expanded=False):
+        compare_morphologies_selected = st.multiselect(
+            "Morphologies to compare",
+            MORPHOLOGIES,
+            default=list(COMPARE_DEFAULT_MORPHOLOGIES),
+            key="sb_compare_morphologies",
+            help=(
+                "At least two. The sidebar **Morphology** is ignored for "
+                "the comparison — it stays the one a single *Run analysis* "
+                "uses."
+            ),
+        )
+        _n_compare = len(compare_morphologies_selected)
+        if _n_compare < COMPARE_MIN_MORPHOLOGIES:
+            st.caption(
+                f"Select at least {COMPARE_MIN_MORPHOLOGIES} morphologies "
+                "to enable the comparison."
+            )
+        elif analytical_only and not enable_czm:
+            st.caption(
+                f"{_n_compare} analytical runs — well under a second."
+            )
+        else:
+            st.warning(
+                f"This is **{_n_compare} FE solves**, one per morphology, "
+                "run one after another. Tick *Analytical only* for a "
+                "quick sensitivity check first."
+            )
+
     st.divider()
     # Reset via an on_click callback (not an inline handler): the callback
     # fires at the start of the next rerun, BEFORE the sidebar widgets are
@@ -2534,7 +2611,10 @@ profile = GaussianSinusoidal(amplitude=amplitude, wavelength=wavelength, width=w
 
 
 def _assemble_cfg_payload(
-    layup: list, effective_analytical_only: bool
+    layup: list,
+    effective_analytical_only: bool,
+    *,
+    morphology_override: str | None = None,
 ) -> tuple:
     """Build the immutable, hashable analysis payload from the current
     sidebar inputs.
@@ -2547,12 +2627,35 @@ def _assemble_cfg_payload(
     them first. Mesh / CZM / surface-pocket keys are added only when they
     affect the result, so the payload stays a faithful fingerprint of the
     run (issue #374).
+
+    ``morphology_override`` builds the payload for a morphology other than
+    the selected one — the morphology-comparison view (issue #263) needs
+    one payload per compared morphology. It is *not* a field swap on the
+    finished tuple: the surface-resin-pocket keys are gated on whether the
+    morphology is tool-flat, so overriding the name alone would produce a
+    config this app would never build for that morphology (``tool_flat``
+    without its pinned side, or a legacy pocket opt-in riding along on a
+    morphology that cannot carry it). The gate is therefore re-derived
+    from the effective morphology below. With the override unset every
+    key is computed exactly as before, so the payload — and the run-cache
+    key and staleness comparison that depend on it — are unchanged.
     """
+    _morph = morphology if morphology_override is None else morphology_override
+    # Re-derive the morphology-dependent surface-pocket gate (mirrors the
+    # sidebar block that sets ``_is_tool_flat_selected`` /
+    # ``_legacy_pockets_active``).
+    _tool_flat_sel = _morph == "tool_flat"
+    _legacy_pockets = bool(
+        enable_surface_pockets
+        and not _tool_flat_sel
+        and _is_tool_flat_morphology(_morph, decay_floor)
+    )
+
     cfg_items: dict = {
         "amplitude": amplitude,
         "wavelength": wavelength,
         "width": width,
-        "morphology": morphology,
+        "morphology": _morph,
         "decay_floor": decay_floor,
         "amplitude_profile": amplitude_profile,
         "amplitude_profile_decay_length": amplitude_profile_decay_length,
@@ -2589,10 +2692,10 @@ def _assemble_cfg_payload(
     #   - legacy opt-in: only added when requested AND the morphology is
     #     tool-flat, so the config never sees the flag with an
     #     incompatible morphology (bit-identical cache key when off).
-    if _is_tool_flat_selected:
+    if _tool_flat_sel:
         cfg_items["surface_pocket_side"] = surface_pocket_side
         cfg_items["surface_transition_plies"] = int(surface_transition_plies)
-    elif _surface_pockets_active:
+    elif _legacy_pockets:
         cfg_items["enable_surface_resin_pockets"] = True
         cfg_items["surface_pocket_side"] = surface_pocket_side
     # Through-width transverse envelope (#300 / #375). Only threaded for a
@@ -2607,6 +2710,184 @@ def _assemble_cfg_payload(
         if transverse_width is not None:
             cfg_items["transverse_width"] = float(transverse_width)
     return tuple(sorted(cfg_items.items()))
+
+
+def _app_wrinklefe_version() -> str:
+    """Installed package version, or a visible sentinel when unknown.
+
+    Mirrors the Export tab's local lookup; factored out so the comparison
+    CSV can stamp provenance without duplicating the fallback.
+    """
+    try:
+        return version("wrinklefe")
+    except PackageNotFoundError:
+        return "0.0.0+unknown"
+
+
+def _comparison_analytical_only(morph: str) -> bool:
+    """Resolve *Analytical only* for one compared morphology.
+
+    The run handler's ladder, re-derived per morphology because the
+    surface-resin-pocket opt-in is morphology-gated: the legacy checkbox
+    forces the FE path, but only on a morphology that can actually carry
+    pockets. Without this, comparing ``stack`` against ``graded`` with
+    the opt-in ticked would silently solve one on the FE path and the
+    other analytically and present the two knockdowns in the same column.
+    """
+    _tool_flat = morph == "tool_flat"
+    _legacy_pockets = bool(
+        enable_surface_pockets
+        and not _tool_flat
+        and _is_tool_flat_morphology(morph, decay_floor)
+    )
+    return (
+        bool(analytical_only)
+        and not bool(enable_czm)
+        and not _legacy_pockets
+        and not _transverse_threaded
+    )
+
+
+def _comparison_payloads(
+    layup: list, morphs: Sequence[str]
+) -> list[tuple[str, tuple]]:
+    """One ``(morphology, cfg_payload)`` per compared morphology.
+
+    Each payload is built by :func:`_assemble_cfg_payload` with the
+    morphology overridden, so it is exactly the payload a single *Run
+    analysis* on that morphology would produce — which also means the
+    comparison shares the run cache with single runs in both directions.
+    """
+    return [
+        (
+            morph,
+            _assemble_cfg_payload(
+                layup,
+                _comparison_analytical_only(morph),
+                morphology_override=morph,
+            ),
+        )
+        for morph in morphs
+    ]
+
+
+def _comparison_max_fi(fe: dict | None) -> float | None:
+    """Global max failure index across every criterion and ply.
+
+    ``None`` on the analytical path, which has no failure indices at all
+    — reported as an empty cell rather than a zero, because "no FE was
+    run" and "nothing was close to failing" are different answers.
+    """
+    ply_fi = (fe or {}).get("ply_failure_indices") or {}
+    values = [
+        float(v)
+        for arr in ply_fi.values()
+        for v in arr
+        if math.isfinite(float(v))
+    ]
+    return max(values) if values else None
+
+
+def _comparison_rows(comparison: dict[str, dict]) -> list[dict]:
+    """Flatten the stored comparison into one row per morphology.
+
+    Pure: takes the result dicts the run path already builds, so it is
+    testable without Streamlit and without a solve.
+    """
+    rows = []
+    for morph, res in comparison.items():
+        fe = res.get("fe")
+        rows.append({
+            "morphology": morph,
+            "knockdown": float(res["analytical_knockdown"]),
+            "strength_MPa": float(res["analytical_strength_MPa"]),
+            "max_angle_deg": float(res["max_angle_deg"]),
+            "morphology_factor": float(res["morphology_factor"]),
+            "damage_index": float(res["damage_index"]),
+            "max_FI": _comparison_max_fi(fe),
+            "critical_criterion": (fe or {}).get("critical_criterion"),
+            "critical_mode": (fe or {}).get("critical_mode"),
+            "analytical_only": fe is None,
+        })
+    return rows
+
+
+def _comparison_csv(rows: Sequence[dict], cfg_payload: tuple) -> bytes:
+    """Combined CSV — one row per morphology, plus config provenance.
+
+    The provenance columns repeat on every row rather than riding in a
+    header comment, so the file loads straight into Pandas or Excel and
+    a row still says which laminate and geometry produced it once it has
+    been copied out of context.
+    """
+    cfg = dict(cfg_payload)
+    provenance = {
+        "amplitude_mm": cfg.get("amplitude"),
+        "wavelength_mm": cfg.get("wavelength"),
+        "width_mm": cfg.get("width"),
+        "loading": cfg.get("loading"),
+        "applied_strain": cfg.get("applied_strain"),
+        "ply_thickness_mm": cfg.get("ply_thickness"),
+        "layup_deg": ";".join(
+            str(a) for a in (cfg.get("angles_tuple") or ())
+        ),
+        "wrinklefe_version": _app_wrinklefe_version(),
+    }
+    columns = [
+        "morphology", "knockdown", "strength_MPa", "max_angle_deg",
+        "morphology_factor", "damage_index", "max_FI",
+        "critical_criterion", "critical_mode", "analytical_only",
+        *provenance,
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        out = {k: ("" if row.get(k) is None else row.get(k)) for k in row}
+        out.update(provenance)
+        writer.writerow(out)
+    return buf.getvalue().encode()
+
+
+def _comparison_figure(rows: Sequence[dict]):
+    """Knockdown per morphology, coloured by the central palette.
+
+    Returns ``None`` when Plotly is unavailable, so a missing optional
+    dependency degrades to the table rather than breaking the tab.
+    """
+    try:
+        import plotly.graph_objects as go
+    except Exception:  # noqa: BLE001 — optional dependency
+        return None
+
+    from wrinklefe.viz.style import MORPHOLOGY_COLORS
+
+    names = [r["morphology"] for r in rows]
+    values = [r["knockdown"] for r in rows]
+    fig = go.Figure(
+        go.Bar(
+            x=names,
+            y=values,
+            marker_color=[
+                MORPHOLOGY_COLORS.get(n, "gray") for n in names
+            ],
+            text=[f"{v:.3f}" for v in values],
+            textposition="outside",
+            hovertemplate="%{x}<br>knockdown %{y:.4f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        xaxis_title="Morphology",
+        yaxis_title="Knockdown (fraction of pristine strength)",
+        # Knockdown is a fraction of pristine strength: anchoring at 0
+        # keeps the bar lengths proportional, so a 0.62 does not look
+        # twice a 0.58 because the axis started at 0.55.
+        yaxis=dict(range=[0.0, max(1.0, max(values) * 1.15)]),
+        showlegend=False,
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=340,
+    )
+    return fig
 
 
 def _live_cfg_payload() -> tuple | None:
@@ -2704,6 +2985,133 @@ def _critical_limit_block(
         "n_evaluations": int(result.n_evaluations),
         "rtol": float(result.rtol),
     }
+
+
+def _comparison_is_stale() -> bool:
+    """Have the sidebar inputs moved since the stored comparison ran?
+
+    Compares the live payload against the stored one with the morphology
+    field removed from both: the comparison deliberately spans several
+    morphologies, so the sidebar's own **Morphology** selector is not part
+    of what makes it stale. Everything else — geometry, laminate,
+    material, loading, mesh — is.
+    """
+    stored = st.session_state.get("morph_comparison_payload")
+    live = _live_cfg_payload()
+    if stored is None or live is None:
+        return False
+
+    def _without_morphology(payload: tuple) -> tuple:
+        return tuple(
+            (k, v) for k, v in payload if k != "morphology"
+        )
+
+    return _without_morphology(live) != _without_morphology(stored)
+
+
+def _render_morphology_comparison(
+    comparison: dict[str, dict],
+    cfg_payload: tuple | None,
+    stale: bool,
+    failures: dict[str, str] | None = None,
+) -> None:
+    """Render the stored morphology comparison: table, chart, download.
+
+    ``failures`` maps a requested morphology to why it could not be run.
+    They are shown, not dropped: a morphology missing from the table
+    without explanation reads as "not requested", which is a different
+    and misleading statement.
+    """
+    st.subheader("Morphology comparison")
+    if stale:
+        st.warning(
+            "⚠️ **Inputs have changed since this comparison.** The numbers "
+            "below were computed for the previous configuration. Click "
+            "**Compare morphologies** to run it again.",
+            icon="⚠️",
+        )
+
+    rows = _comparison_rows(comparison)
+    if not rows:
+        st.info("No comparison results to show.")
+        return
+
+    if failures:
+        st.warning(
+            "**Not comparable with these inputs:** "
+            + "; ".join(f"`{m}`" for m in failures)
+            + ". The rest are shown below.",
+            icon="⚠️",
+        )
+        with st.expander("Why these morphologies could not be run"):
+            for _m, _why in failures.items():
+                st.markdown(f"**{_m}** — {_why}")
+
+    _analytical = all(r["analytical_only"] for r in rows)
+    st.caption(
+        "Same laminate, geometry and loading; only the through-thickness "
+        "morphology differs. "
+        + (
+            "Analytical path — no failure indices, so **max FI** is blank."
+            if _analytical
+            else "FE path."
+        )
+    )
+
+    # Spread first: it is the answer to the question the view exists for.
+    _kds = [r["knockdown"] for r in rows]
+    _lo = min(rows, key=lambda r: r["knockdown"])
+    _hi = max(rows, key=lambda r: r["knockdown"])
+    _col_a, _col_b, _col_c = st.columns(3)
+    _col_a.metric(
+        "Most severe", f"{_lo['knockdown']:.3f}", _lo["morphology"],
+        delta_color="off",
+    )
+    _col_b.metric(
+        "Least severe", f"{_hi['knockdown']:.3f}", _hi["morphology"],
+        delta_color="off",
+    )
+    _col_c.metric(
+        "Spread", f"{max(_kds) - min(_kds):.3f}",
+        "knockdown range", delta_color="off",
+    )
+
+    fig = _comparison_figure(rows)
+    if fig is not None:
+        st.plotly_chart(fig, width="stretch")
+
+    st.dataframe(
+        [
+            {
+                "morphology": r["morphology"],
+                "knockdown": round(r["knockdown"], 4),
+                "strength (MPa)": round(r["strength_MPa"], 1),
+                "θ_max (deg)": round(r["max_angle_deg"], 2),
+                "morphology factor": round(r["morphology_factor"], 4),
+                "damage index D": round(r["damage_index"], 4),
+                "max FI": (
+                    round(r["max_FI"], 4) if r["max_FI"] is not None else None
+                ),
+                "governing criterion": r["critical_criterion"],
+            }
+            for r in rows
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+
+    if cfg_payload is not None:
+        st.download_button(
+            "Download comparison as CSV",
+            data=_comparison_csv(rows, cfg_payload),
+            file_name="wrinklefe_morphology_comparison.csv",
+            mime="text/csv",
+            help=(
+                "One row per morphology, with the laminate and geometry "
+                "repeated on each row so a row still identifies its run "
+                "once copied out of context."
+            ),
+        )
 
 
 def _render_goalseek_result(
@@ -3192,6 +3600,147 @@ if goalseek_clicked:
     )
 
 
+# ---------------------------------------------------------------------------
+# Morphology comparison handler (issue #263).
+#
+# Deliberately N sequential single runs through ``run_analysis_cached``
+# rather than ``WrinkleAnalysis.compare_morphologies``: the app's cached
+# runner is what gives every morphology the same packaging the single-run
+# view already reads, a shared cache in both directions (compare then run
+# one of them, or the reverse, and the second is free), and a per-solve
+# progress hook. ``compare_morphologies`` would re-solve inside the
+# engine with none of that.
+# ---------------------------------------------------------------------------
+if compare_clicked:
+    _cmp_selected = list(compare_morphologies_selected)
+    if len(_cmp_selected) < COMPARE_MIN_MORPHOLOGIES:
+        st.error(
+            f"Select at least {COMPARE_MIN_MORPHOLOGIES} morphologies in "
+            "*Comparison settings* before comparing."
+        )
+        st.stop()
+
+    try:
+        _cmp_layup = parse_layup(layup_str)
+    except ValueError as _cmp_exc:
+        st.error(f"Could not parse layup: {_cmp_exc}")
+        st.stop()
+    try:
+        OrthotropicMaterial.from_dict(material_dict)
+    except ValueError as _cmp_exc:
+        st.error(f"Invalid custom material: {_cmp_exc}")
+        st.stop()
+
+    _cmp_jobs = _comparison_payloads(_cmp_layup, _cmp_selected)
+    _cmp_results: dict[str, dict] = {}
+    _cmp_failures: dict[str, str] = {}
+
+    with st.status(
+        f"Comparing {len(_cmp_jobs)} morphologies…", expanded=True
+    ) as _cmp_status:
+        _cmp_bar = st.progress(0.0, text="Starting…")
+        _cmp_total = len(_cmp_jobs)
+        for _cmp_i, (_cmp_morph, _cmp_payload) in enumerate(_cmp_jobs):
+            st.write(f"Running **{_cmp_morph}**…")
+
+            def _cmp_progress(
+                label: str,
+                fraction: float,
+                _i: int = _cmp_i,
+                _m: str = _cmp_morph,
+            ) -> None:
+                """Map one solve's 0-1 progress onto its slice of the bar.
+
+                Defaults bind the loop variables at definition time; a
+                closure over them would report every solve as the last
+                morphology. Total, like the single-run handler: a
+                cosmetic update must never abort a solve.
+                """
+                try:
+                    frac = float(fraction)
+                    if not math.isfinite(frac):
+                        frac = 0.0
+                except (TypeError, ValueError):
+                    frac = 0.0
+                frac = max(0.0, min(1.0, frac))
+                overall = (_i + frac) / _cmp_total
+                try:
+                    _cmp_bar.progress(
+                        overall,
+                        text=(
+                            f"{_m} ({_i + 1}/{_cmp_total}) — {label}… "
+                            f"({int(round(overall * 100.0))} %)"
+                        ),
+                    )
+                except Exception:  # noqa: BLE001 — cosmetic only
+                    logger.debug(
+                        "Comparison progress update failed.", exc_info=True
+                    )
+
+            # One morphology failing does NOT abort the comparison. Some
+            # morphologies reject configurations others accept —
+            # ``tool_flat`` refuses the app's own default amplitude,
+            # because its crest-side transition elements would invert —
+            # and losing four good answers to the fifth's validation
+            # error is the wrong trade for a view whose whole purpose is
+            # the spread across morphologies. The failures are reported
+            # with their reasons alongside the results.
+            try:
+                _cmp_results[_cmp_morph] = run_analysis_cached(
+                    _cmp_payload, progress_callback=_cmp_progress
+                )
+            except Exception as _cmp_exc:  # noqa: BLE001 — reported below
+                _cmp_failures[_cmp_morph] = str(_cmp_exc)
+                st.write(f"↳ **{_cmp_morph}** could not be run.")
+                logger.info(
+                    "Morphology comparison skipped %s: %s",
+                    _cmp_morph, _cmp_exc,
+                )
+
+        try:
+            _cmp_bar.progress(1.0, text="Comparison complete")
+        except Exception:  # noqa: BLE001 — cosmetic only
+            pass
+        _cmp_ok = len(_cmp_results)
+        _cmp_status.update(
+            label=(
+                f"Compared {_cmp_ok} of {_cmp_total} morphologies"
+                if _cmp_failures
+                else f"Compared {_cmp_total} morphologies"
+            ),
+            state="complete" if _cmp_results else "error",
+            expanded=bool(_cmp_failures),
+        )
+
+    if not _cmp_results:
+        st.error(
+            "No morphology could be run with these inputs. "
+            + " ".join(
+                f"**{m}**: {msg}" for m, msg in _cmp_failures.items()
+            )
+        )
+        st.stop()
+
+    st.session_state["morph_comparison"] = _cmp_results
+    st.session_state["morph_comparison_failures"] = _cmp_failures
+    # The payload of the FIRST compared morphology, kept only for the
+    # provenance columns in the CSV (laminate, geometry, loading) — every
+    # compared payload shares those; only the morphology differs.
+    st.session_state["morph_comparison_payload"] = _cmp_jobs[0][1]
+
+    usage_tracking.log_event(
+        "compare_morphologies",
+        props={
+            "n_morphologies": _cmp_total,
+            "morphologies": ",".join(_cmp_selected),
+            "loading": loading,
+            "analytical_only": all(
+                _cmp_results[m].get("fe") is None for m in _cmp_results
+            ),
+        },
+    )
+
+
 tab_analyze, tab_export, tab_help = st.tabs(
     ["Analyze", "Export", "Help"]
 )
@@ -3363,6 +3912,23 @@ with tab_analyze:
                 and _gs_live_payload is not None
                 and _gs_live_payload != _gs_stored_payload
             ),
+        )
+        st.divider()
+
+    # ----------------------------------------------------------------------
+    # Morphology comparison (issue #263). Like the acceptable limit above,
+    # it is its own answer and renders independently of a single run —
+    # "how sensitive is my knockdown to the morphology assumption?" is a
+    # question you ask before committing to one morphology. Same
+    # hash-compare staleness treatment (#374).
+    # ----------------------------------------------------------------------
+    _cmp_stored = st.session_state.get("morph_comparison")
+    if _cmp_stored:
+        _render_morphology_comparison(
+            _cmp_stored,
+            st.session_state.get("morph_comparison_payload"),
+            stale=_comparison_is_stale(),
+            failures=st.session_state.get("morph_comparison_failures"),
         )
         st.divider()
 
@@ -3902,6 +4468,41 @@ with tab_analyze:
         st.text(r["summary"])
 
 with tab_export:
+    # The morphology comparison (issue #263) exports independently of a
+    # single run: it is its own result, and gating it behind "results"
+    # would tell a user who has only compared that there is nothing to
+    # export when there plainly is.
+    _cmp_export = st.session_state.get("morph_comparison")
+    _cmp_export_payload = st.session_state.get("morph_comparison_payload")
+    if _cmp_export and _cmp_export_payload is not None:
+        st.subheader("Morphology comparison")
+        _cmp_export_rows = _comparison_rows(_cmp_export)
+        st.download_button(
+            "Download morphology comparison as CSV",
+            data=_comparison_csv(_cmp_export_rows, _cmp_export_payload),
+            file_name="wrinklefe_morphology_comparison.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download morphology comparison as JSON",
+            data=json.dumps(
+                {
+                    "wrinklefe_version": _app_wrinklefe_version(),
+                    "configuration": {
+                        k: (list(v) if isinstance(v, tuple) else v)
+                        for k, v in dict(_cmp_export_payload).items()
+                        if k != "morphology"
+                    },
+                    "morphologies": _cmp_export_rows,
+                },
+                indent=2,
+                default=str,
+            ).encode(),
+            file_name="wrinklefe_morphology_comparison.json",
+            mime="application/json",
+        )
+        st.divider()
+
     if "results" not in st.session_state:
         st.info("Run an analysis to enable export.")
     else:
@@ -4201,7 +4802,10 @@ with tab_help:
         "3. *Review* the results on the **Analyze** tab — the **Before / "
         "after** card up top shows strength and stiffness loss in plain "
         "language.\n"
-        "4. *Export* the run as JSON or CSV from the **Export** tab.\n\n"
+        "4. *Not sure which morphology to assume?* Click **Compare "
+        "morphologies** to run the same laminate across several and see "
+        "the spread — the morphology is usually the least-known input.\n"
+        "5. *Export* the run as JSON or CSV from the **Export** tab.\n\n"
         "In a hurry? *Try the demo above* for an instant analytical run with "
         "sensible defaults — the results appear on the **Analyze** tab.\n\n"
         "Switch on **Expert mode** at the top of the sidebar to expose the "

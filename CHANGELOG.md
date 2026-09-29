@@ -15,6 +15,57 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- App — **morphology comparison** (issue #263). One click runs the same
+  laminate, geometry and loading across several morphologies and shows
+  them together: a knockdown-per-morphology bar chart, a table
+  (knockdown, strength, θ_max, morphology factor, damage index, max FI,
+  governing criterion), most/least severe and the spread between them,
+  and a combined CSV/JSON download.
+
+  The morphology is usually the least-known input — amplitude and
+  wavelength come off a micrograph, the through-thickness form is partly
+  judgement — and the CLI has answered "how sensitive is my knockdown to
+  that assumption?" with one command for a long time. The app forced a
+  run per morphology with the numbers copied out by hand, because
+  session state holds exactly one result.
+
+  Details worth knowing:
+
+  - **Each compared morphology gets the payload the app would really
+    build for it.** `_assemble_cfg_payload` grew a `morphology_override`
+    rather than the comparison swapping the field on a finished tuple:
+    the surface-resin-pocket keys are gated on whether the morphology is
+    tool-flat, so a field swap would produce a config this app never
+    builds — `tool_flat` without its pinned side, or a legacy pocket
+    opt-in riding on a morphology that cannot carry it. *Analytical
+    only* is resolved per morphology for the same reason. With the
+    override unset every key is computed exactly as before, so the run
+    cache and the staleness comparison are unchanged.
+  - It runs N cached single solves rather than calling
+    `compare_morphologies`, so the comparison and a single run share the
+    result cache in both directions and every morphology gets the same
+    packaging — and the same live progress — the single-run view uses.
+  - **A morphology that rejects the current inputs no longer takes the
+    others down with it.** `tool_flat` refuses the app's own default
+    amplitude (0.366 mm against its 0.2928 mm bound — the crest-side
+    transition elements would invert), and losing four good answers to
+    the fifth's validation error defeats the point of the view. Failures
+    are collected, listed with their reasons, and the rest are shown.
+  - Staleness ignores the sidebar **Morphology** selector, since varying
+    it is the whole point, and catches every other input.
+  - The comparison exports without a separate single run: it is its own
+    result.
+
+### Changed
+- Viz — **`MORPHOLOGY_COLORS` covers every morphology `AnalysisConfig`
+  accepts.** It held the three dual-wrinkle modes plus `anti-stack`, so
+  `uniform`, `graded` and `tool_flat` all fell through to the `"gray"`
+  fallback — fine for a single-series plot, but a chart comparing all
+  six read as one series in three colours. Callers keep using
+  `.get(morph, "gray")`; the fallback is still right for a name this
+  package does not define.
+
+### Added
 - Validation — **the crack-band progressive-damage predictions are now
   pinned in the ledger** (`progressive_damage` section,
   `tests/test_validation/test_progressive_ledger.py`, marked `slow`).
