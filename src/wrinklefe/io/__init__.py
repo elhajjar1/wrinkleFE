@@ -12,6 +12,8 @@ Public API
 .. autofunction:: export_summary
 .. autofunction:: export_results_csv
 .. autofunction:: results_to_dict
+.. autofunction:: save_results
+.. autofunction:: load_results
 
 Two exporters, one name
 -----------------------
@@ -45,8 +47,26 @@ Both carry a ``provenance`` block built by
 :func:`wrinklefe.io.export.build_provenance`, so whichever one a user
 exports can support a reproducibility claim. (The structured document
 gained it in schema 1.2; before that only the legacy one had it.)
+
+Three tiers, not two
+--------------------
+
+Both of those are *report* tiers: they reduce anything large to summary
+statistics so the file stays a few KB. Underneath them sits the archive
+tier, :mod:`wrinklefe.io.archive`, whose :func:`save_results` /
+:func:`load_results` keep the whole result losslessly -- per-Gauss-point
+stress and strain, failure-index and mode fields, cohesive damage,
+separation and traction -- so a run can be reopened and re-plotted
+without solving again. Pick by what happens to the file: a report to
+read, or a result to post-process.
 """
 
+from wrinklefe.io.archive import (
+    ARCHIVE_FORMAT_VERSION,
+    ArchiveFormatError,
+    load_results,
+    save_results,
+)
 from wrinklefe.io.export import (
     build_analysis_summary,
     export_abaqus_inp,
@@ -75,4 +95,8 @@ __all__ = [
     "render_summary_markdown",
     "render_summary_pdf",
     "export_summary",
+    "save_results",
+    "load_results",
+    "ArchiveFormatError",
+    "ARCHIVE_FORMAT_VERSION",
 ]

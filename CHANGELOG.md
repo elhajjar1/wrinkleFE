@@ -15,6 +15,72 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- **Full-result archive** — `save_results` / `load_results` in
+  `wrinklefe.io.archive`, with `--save-results PATH` on `wrinklefe
+  analyze`, a **Download full result archive (.wfr)** button on the app's
+  Export tab, and `examples/17_archive_reload_results.py` (issue #277).
+
+  Results used to be write-only. An FE or CZM run holds the expensive
+  part of the computation — per-Gauss-point stress and strain,
+  failure-index and mode fields, cohesive damage, separation and
+  traction — and the JSON/CSV exports deliberately reduce anything large
+  to `{min, max, mean, p95, n}` so a report stays a few KB. So a CZM
+  solve that took an hour could not be reopened tomorrow to render a
+  different slice or a different component; a 75-point sweep produced 75
+  result objects of which only scalar summaries could be kept; and
+  sharing a result for someone else's post-processing meant sharing your
+  terminal. The only alternatives were screenshotting everything
+  immediately or solving again.
+
+  This is the archive tier *underneath* the report exports, not a
+  replacement for them:
+
+  ```python
+  from wrinklefe.io import load_results, save_results
+
+  save_results(result, "run.wfr")
+  restored = load_results("run.wfr")
+  plot_displacement_3d(restored.field_results)   # viz/ unchanged
+  ```
+
+  Details worth knowing:
+
+  - **A `.wfr` is one compressed `.npz` with a JSON manifest, and holds
+    no pickle.** Each array is an entry keyed by its dotted path in the
+    result graph (`field_results.stress_local`,
+    `failure_report.ply_failure_indices.larc05`); scalars, strings, the
+    config, the provenance block and the structure needed to rebuild the
+    objects go in a `uint8` manifest under `__manifest__`. Arrays are
+    written as plain numeric or unicode dtypes and read back with
+    `allow_pickle=False`, so opening an archive cannot execute anything
+    and does not depend on this package's class layout — a `.wfr` is
+    inspectable with nothing but `numpy` and `json`, which is also what
+    makes it a credible long-term format.
+  - **The object graph survives, not just the values.** `field_results`
+    and `mesh` share one `MeshData`, and `mesh` and the result share one
+    `Laminate`; the encoder records a reference the second time it meets
+    an object rather than writing it twice, so
+    `restored.field_results.mesh is restored.mesh` holds. Duplicating
+    them would have round-tripped every number correctly and still
+    broken any plot that compares the two.
+  - **Round-trip is bit-for-bit, and tested as such.** The tests compare
+    SHA-256 digests of the array bytes rather than `allclose`, on both a
+    plain FE run and a CZM run, and check that three `viz/` plots render
+    byte-identically from the reloaded result. A 144-element FE run
+    archives to 221 KB compressed, the 576-element run in the example
+    to 868 KB — roughly 1.5 KB per element, which is the per-Gauss-point
+    fields themselves and not overhead.
+  - **`ARCHIVE_FORMAT_VERSION` is pinned in the manifest and checked on
+    load**; an unknown major version raises `ArchiveFormatError` instead
+    of reading what it recognises. A half-read result is worse than a
+    refusal, because the numbers would still look plausible.
+  - **`--save-results` runs before `--output-json`**, so the expensive
+    artifact reaches disk first and a failure in the archive cannot be
+    mistaken for a report problem.
+
+  Distinct from config files (re-run the *input*) and the provenance
+  block (audit the *metadata*): this preserves the *output*.
+
 - App — **morphology comparison** (issue #263). One click runs the same
   laminate, geometry and loading across several morphologies and shows
   them together: a knockdown-per-morphology bar chart, a table
