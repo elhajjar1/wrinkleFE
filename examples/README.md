@@ -23,6 +23,7 @@ so they cannot rot.
 | [`14_stochastic_knockdown.py`](14_stochastic_knockdown.py) | Measurement uncertainty propagated to percentile knockdowns (`probabilistic_analysis` / `wrinklefe stochastic`) | ~15 s |
 | [`15_cure_residual_stress.py`](15_cure_residual_stress.py) | Cure cool-down residual stress on both paths (`delta_T` / `--delta-T`), and why its effect on failure is signed | ~15 s |
 | [`16_fit_measured_trace.py`](16_fit_measured_trace.py) | Micrograph CSV trace -> profile fit -> knockdown (`load_trace` / `rank_families` / `fit_profile`) | ~2 s |
+| [`17_archive_reload_results.py`](17_archive_reload_results.py) | Archive a full FE result and reload it without re-solving (`save_results` / `load_results` / `--save-results`) | ~15 s |
 | [`transverse_wrinkle_knockdown.py`](transverse_wrinkle_knockdown.py) | Localized (through-width) vs uniform wrinkle knockdown (`transverse_mode`) | ~20 s |
 
 Run any of them from this directory with the package installed

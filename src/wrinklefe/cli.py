@@ -290,6 +290,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-json", type=str, default=None,
         help="Export results to JSON file at specified path",
     )
+    p_analyze.add_argument(
+        "--save-results", type=str, default=None, dest="save_results",
+        metavar="PATH",
+        help=(
+            "Archive the COMPLETE result to PATH (conventionally .wfr) so it "
+            "can be reloaded later without re-solving: per-Gauss-point "
+            "stress/strain, failure indices and modes, and the cohesive "
+            "damage/separation/traction fields, all losslessly. This is a "
+            "different thing from --output-json, which writes a small report "
+            "with large arrays reduced to summary statistics. Reload with "
+            "wrinklefe.io.archive.load_results."
+        ),
+    )
 
     # ------------------------------------------------------------------ #
     # CZM (cohesive zone modelling) flags. Off by default; when
@@ -1504,6 +1517,19 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
                     f"warning: failed to save CZM figure: {exc}",
                     file=sys.stderr,
                 )
+
+    # Archive the full result if requested (issue #277). Before the JSON
+    # export below so a failure here cannot be mistaken for a report
+    # problem, and so the expensive thing is on disk first.
+    if given("save_results") and args.save_results is not None:
+        from wrinklefe.io.archive import save_results as _save_archive
+
+        _archive_path = _save_archive(result, args.save_results)
+        print(
+            f"\nFull result archived to: {_archive_path} "
+            f"({_archive_path.stat().st_size / 1024:.0f} KB) — reload with "
+            f"wrinklefe.io.archive.load_results"
+        )
 
     # Export to JSON if requested
     if given("output_json") and args.output_json is not None:

@@ -936,6 +936,59 @@ The Streamlit web app exposes the same exports as **Download results as
 JSON** and **Download per-ply results as CSV** buttons on the Export
 tab.
 
+### Archiving a full result (`.wfr`) — reload without re-solving
+
+The JSON and CSV exports are report tiers: they reduce per-Gauss-point
+fields to `{min, max, mean, p95, n}` so the file stays a few KB. That is
+the right trade for a report and the wrong one for post-processing —
+once the Python session ends, the expensive part of an FE or CZM run
+(stress and strain per Gauss point, failure-index and mode fields,
+cohesive damage, separation and traction) is gone, and the only way to
+plot a different slice tomorrow is to solve again.
+
+`save_results` / `load_results` are the archive tier underneath them:
+
+```python
+from wrinklefe.io import load_results, save_results
+
+save_results(result, "run.wfr")
+
+# ... a week later, in a different process ...
+restored = load_results("run.wfr")
+plot_displacement_3d(restored.field_results)   # viz/ takes it unchanged
+```
+
+A `.wfr` is a single compressed `.npz`: each array is stored losslessly
+under its dotted path in the result graph
+(`field_results.stress_local`,
+`failure_report.ply_failure_indices.larc05`), and everything else —
+scalars, the config, the provenance block, and the structure needed to
+rebuild the objects — goes in a JSON manifest. Round-tripping reproduces
+every array bit-for-bit and every scalar exactly, and it preserves the
+object graph rather than duplicating it, so `field_results.mesh is
+results.mesh` still holds on the reloaded result.
+
+**No pickle.** Arrays are written as plain numeric or unicode dtypes and
+read back with `allow_pickle=False`, so opening an archive cannot execute
+anything and does not depend on this package's class layout — a `.wfr` is
+inspectable with nothing but `numpy` and `json`. The manifest pins an
+`ARCHIVE_FORMAT_VERSION`, and a newer major version raises
+`ArchiveFormatError` on load rather than guessing: a half-read result is
+worse than a refusal, because the numbers would still look plausible.
+
+From the command line, `--save-results` writes the archive alongside any
+other output:
+
+```bash
+wrinklefe analyze --amplitude 0.6 --wavelength 20 --fe \
+    --save-results run.wfr
+```
+
+The Streamlit app offers the same file as **Download full result archive
+(.wfr)** on the Export tab. `examples/17_archive_reload_results.py`
+walks the round-trip end to end, including the bit-identity and
+plot-identity checks.
+
 ### Building a ply from its constituents (fibre volume fraction)
 
 The 11 built-in systems above are fixed cards. When the question is

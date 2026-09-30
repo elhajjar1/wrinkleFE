@@ -18,6 +18,7 @@ import json
 import logging
 import math
 import sys
+import tempfile
 from collections.abc import Callable, MutableMapping, Sequence
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
@@ -2440,6 +2441,12 @@ def _run_analysis(
         ),
         "fe": fe,
         "czm": czm_payload,
+        # The live AnalysisResults, for the full-result archive download
+        # (issue #277). Underscore-prefixed, so ``_strip_arrays`` keeps it
+        # out of the JSON export exactly as it already does for the CZM
+        # handle. Held for the archive and nothing else: a run that took an
+        # hour should be downloadable rather than only screenshottable.
+        "_result": result,
         # Progressive-damage summary — only when a progressive run happened
         # (``progressive_history`` is the reliable sentinel; the scalars
         # default to 0.0 / 1.0).
@@ -4545,6 +4552,70 @@ with tab_export:
             file_name="wrinklefe_results.json",
             mime="application/json",
         )
+
+        # Full-result archive (issue #277). Distinct from the JSON above,
+        # which is a report: that one reduces per-Gauss-point fields to
+        # summary statistics, this one keeps them, so the run can be
+        # reopened later — or handed to a colleague — without re-solving.
+        _archive_result = st.session_state["results"].get("_result")
+        if _archive_result is not None:
+            try:
+                from wrinklefe.io.archive import (
+                    DEFAULT_SUFFIX,
+                )
+                from wrinklefe.io.archive import (
+                    save_results as _save_archive,
+                )
+
+                # Encoded once per result, not once per rerun: Streamlit
+                # re-executes the whole script on every widget interaction,
+                # and re-walking a full field graph each time (leaving a temp
+                # directory behind each time) would make simply clicking
+                # around the Export tab expensive.
+                #
+                # Keyed by holding the result object and comparing with
+                # ``is``, not by ``id()``: an id is only unique among live
+                # objects, so a freed result's id could be reused by the next
+                # one and serve last run's bytes under this run's button.
+                _archive_cache = st.session_state.get("_archive_bytes")
+                if (
+                    _archive_cache is not None
+                    and _archive_cache[0] is _archive_result
+                ):
+                    _archive_bytes = _archive_cache[1]
+                else:
+                    with tempfile.TemporaryDirectory() as _archive_dir:
+                        _archive_bytes = _save_archive(
+                            _archive_result,
+                            Path(_archive_dir)
+                            / f"wrinklefe_result{DEFAULT_SUFFIX}",
+                        ).read_bytes()
+                    # One run's archive at a time: these are megabytes, and
+                    # only the current result has a button.
+                    st.session_state["_archive_bytes"] = (
+                        _archive_result, _archive_bytes,
+                    )
+            except Exception as _archive_exc:  # noqa: BLE001 — report it
+                st.caption(
+                    "Full-result archive unavailable for this run: "
+                    f"{_archive_exc}"
+                )
+            else:
+                st.download_button(
+                    "Download full result archive (.wfr, "
+                    f"{len(_archive_bytes) / 1024:.0f} KB)",
+                    data=_archive_bytes,
+                    file_name=f"wrinklefe_result{DEFAULT_SUFFIX}",
+                    mime="application/octet-stream",
+                    help=(
+                        "The complete result, losslessly: per-Gauss-point "
+                        "stress and strain, failure indices and modes, and "
+                        "the cohesive fields. Reload it with "
+                        "wrinklefe.io.archive.load_results to re-plot or "
+                        "post-process without re-solving. Unlike the JSON "
+                        "above, no array is reduced to summary statistics."
+                    ),
+                )
 
         fe = st.session_state["results"].get("fe")
         if fe and fe.get("retention_factors"):
