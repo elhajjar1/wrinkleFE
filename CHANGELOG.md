@@ -15,6 +15,70 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- **Shareable permalinks** — the app's **Share this case (link)** expander
+  turns the current sidebar into one URL, and opening that URL loads the
+  case into a fresh sidebar (issue #281). The codec is a library module,
+  `wrinklefe.io.permalink` (`encode_config` / `decode_config` /
+  `permalink_url`), so links can be built and read from Python too.
+
+  An analysis set up in the hosted app used to be trapped in the tab that
+  built it. A stress engineer could not send a colleague the exact
+  configured defect without dictating a dozen parameter values or
+  screenshotting the sidebar; a recurring team case could not be
+  bookmarked; a bug report against the app could not carry a reproducing
+  link.
+
+  Details worth knowing:
+
+  - **One schema.** The payload is the dict `AnalysisConfig.to_dict()`
+    writes to a config file, decoded through `AnalysisConfig.from_dict()`.
+    Config files and links share one definition and one validator, and the
+    app builds both from the same helper, so a link and a downloaded `.json`
+    of the same sidebar describe the same case.
+  - **A delta, and honest about it.** Only inputs that differ from the
+    defaults travel, then zlib + URL-safe base64: a two-parameter case is
+    132 characters of payload (979 in full), and every sidebar section
+    changed plus a custom material is 700 (1250 in full). The cost of a
+    delta is that a link means "these values, plus whatever the defaults
+    are when it is read". The envelope carries a digest of the default
+    baseline it was built against; if a later release changes a default,
+    the link still opens but says that unnamed inputs now take the current
+    default, rather than quietly reopening a different case.
+  - **The parameter stays in the URL, and is read once.** Leaving `?cfg=`
+    in the address bar keeps the link bookmarkable and makes a reload reopen
+    the case. It is consumed once per session — otherwise, since it is
+    still there on every Streamlit rerun, it would overwrite the visitor's
+    edits each time they touched a widget. A bad payload is likewise
+    reported once, not on every rerun.
+  - **Untrusted input, contained.** The encoded payload is capped at 8192
+    characters, and inflation is bounded through an incremental
+    decompressor, so a few KB of base64 cannot expand into megabytes on the
+    server (a 4 MiB zlib bomb inside the character limit is refused by the
+    inflation cap specifically). Every failure — base64, zlib, JSON,
+    envelope version, unknown key, out-of-range value — is one
+    `PermalinkError`. In the app it becomes a plain-English message at the
+    **top** of the sidebar with the decoder's reason in a caption, and the
+    defaults stay in place; it never produces an error page.
+  - **Inputs, not results.** A link reopens the case; the full-result
+    archive (`.wfr`) is how a finished run is handed over.
+  - **It works through the first-visit gate.** The acknowledgement gate
+    stops the script before the sidebar on a first visit, so the link is
+    consumed on the rerun after **Enter the app**, not lost. Verified in a
+    real browser (headless Chromium against `streamlit run`), since
+    `AppTest` cannot set query parameters: a link reopens its case through
+    the gate, an edit afterwards is not overwritten, a malformed link shows
+    its message in the first viewport with defaults loaded, and a link
+    copied from the Share expander in one browser reopens the same case in
+    a fresh one.
+
+  Found while verifying: the first version rendered the bad-link message in
+  the config-file block at the *bottom* of the sidebar — present on the
+  page, so a whole-page text check passed, but below the fold for a visitor
+  arriving at the top. It now renders where they land.
+
+  Also fixes a pytest-10 deprecation in the #277 archive tests (a
+  class-scoped fixture defined as an instance method).
+
 - **Full-result archive** — `save_results` / `load_results` in
   `wrinklefe.io.archive`, with `--save-results PATH` on `wrinklefe
   analyze`, a **Download full result archive (.wfr)** button on the app's

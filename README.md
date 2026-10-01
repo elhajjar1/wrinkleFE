@@ -92,7 +92,9 @@ mode also exposes the through-width `transverse_mode` envelope, and the
 sidebar **Config file** section can **download** the current settings as a
 portable `AnalysisConfig` JSON — round-tripping with the CLI `--config` /
 `--save-config` flags — or **load** a saved case (JSON/YAML) back into the
-sidebar.
+sidebar. **Share this case (link)** turns the same settings into a
+[permalink](#sharing-a-case-as-a-link-permalinks) you can paste into a
+chat, a bookmark or a bug report.
 
 A run reports live progress while it solves: the status box tracks the
 pipeline phase by phase (building the laminate → analytical predictions →
@@ -830,6 +832,55 @@ unknown key or a mismatched version fails loudly. YAML is supported when
 PyYAML is installed (it is not a required dependency). Library materials
 serialise by name, custom materials inline, and penetration-gate presets
 serialise by their registry name.
+
+### Sharing a case as a link (permalinks)
+
+The app's **Share this case (link)** expander, at the bottom of the
+sidebar, gives the current inputs as one URL. Opening it — in a fresh
+browser, on someone else's machine, from a bookmark — loads that exact case
+into the sidebar: layup, material (including a custom one), geometry,
+morphology, loading, mesh and CZM settings. It is the browser counterpart to
+a config file, and the two are built from the same inputs, so a link and a
+downloaded `.json` of the same sidebar describe the same case.
+
+```
+https://wrinklefe.streamlit.app/?cfg=eNo1jEsOgyAQhu_yrwlB21o7lzFERyQ...
+```
+
+A few properties worth knowing:
+
+- **Inputs, not results.** A link reopens the case; click **Run analysis**
+  to get the numbers. To hand over a finished run, use the full-result
+  archive on the Export tab
+  ([`.wfr`](#archiving-a-full-result-wfr--reload-without-re-solving)).
+- **Short.** Only inputs that differ from the defaults are carried, then
+  compressed: a two-parameter case is about 170 characters, and a config
+  with every sidebar section changed and a custom material about 740 —
+  well inside the limits of chat clients and mail gateways.
+- **Bookmarkable.** The `?cfg=` parameter stays in the address bar, so a
+  reload or a bookmark reopens the case. It is read **once** per visit: once
+  you start editing, your changes are not overwritten. Re-copy the link from
+  the expander after changing inputs.
+- **Safe to open.** The payload is treated as untrusted input — size-capped,
+  bounded on decompression, and validated through `AnalysisConfig.from_dict`
+  like any other config. A truncated or tampered link shows a plain-English
+  message at the top of the sidebar and leaves the defaults in place; it
+  never produces an error page.
+- **Says when it may have drifted.** Because only non-default inputs travel,
+  a link means "these values, plus the defaults". If a later release changes
+  a default, opening an old link still works but warns that any input it
+  did not name now uses the current default.
+
+The codec is an ordinary library module, so the same links can be built or
+read from Python:
+
+```python
+from wrinklefe.analysis import AnalysisConfig
+from wrinklefe.io import decode_config, permalink_url
+
+url = permalink_url(AnalysisConfig(amplitude=0.5), "https://wrinklefe.streamlit.app")
+config = decode_config(url.split("cfg=", 1)[1]).config
+```
 
 ### Probabilistic (stochastic) analysis
 
