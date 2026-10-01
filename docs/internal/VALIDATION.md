@@ -320,7 +320,7 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   criterion: material with Xc `AC318_S6C10`, UD `[0]₁₄` ply 0.44 mm,
   wrinkle geometry, compression, measured strength with a pristine
   baseline). **Inclusion deferred** pending a model capability tracked by
-  [issue #161](https://github.com/ranipdx-glitch/wrinkleFE/issues/161).
+  [issue #161](https://github.com/elhajjar1/wrinkleFE/issues/161).
   > **Update**: the single-wrinkle cases (S-M-1…5 and the near-surface
   > S-A-2) are now an **included** dataset — Dataset F above — predicted by
   > the two-parameter (θ, D/T, z) penetration gate (`AC318_S6C10_vacbag`),

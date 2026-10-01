@@ -1,8 +1,8 @@
 """Regression coverage for issue #183 (graded morphology pipeline).
 
 The reporter ([#183](
-https://github.com/ranipdx-glitch/wrinkleFE/issues/183), original
-report [#6](https://github.com/ranipdx-glitch/wrinkleFE/issues/6))
+https://github.com/elhajjar1/wrinkleFE/issues/183), original
+report [#6](https://github.com/elhajjar1/wrinkleFE/issues/6))
 saw two symptoms with the default README configuration:
 
 1. ``--morphology graded`` reportedly crashed somewhere in the

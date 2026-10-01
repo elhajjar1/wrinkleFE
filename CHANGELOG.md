@@ -187,6 +187,17 @@ version produced a given file.
     result.
 
 ### Changed
+- Docs — **the last links to the repository's old owner now use the
+  canonical URL, and a test keeps it that way** (issue #284). The
+  repository moved from `ranipdx-glitch` to `elhajjar1`; #395 unified seven
+  sites, but three survived where it didn't search: the Streamlit
+  deployment guide (which still told a deployer to pick
+  `ranipdx-glitch/wrinklefe`, a repository that no longer exists under that
+  name), an issue link in `VALIDATION.md`, and two in a test docstring.
+  Each issue number was checked against this repository before repointing
+  (a transfer preserves them). `tests/test_canonical_repo_url.py` now scans
+  every tracked text file and fails on any owner or casing other than
+  `github.com/elhajjar1/wrinkleFE`, naming the file and line.
 - Viz — **`MORPHOLOGY_COLORS` covers every morphology `AnalysisConfig`
   accepts.** It held the three dual-wrinkle modes plus `anti-stack`, so
   `uniform`, `graded` and `tool_flat` all fell through to the `"gray"`

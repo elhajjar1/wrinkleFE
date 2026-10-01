@@ -23,7 +23,7 @@ The Streamlit Cloud deployer reads from a GitHub repository, so make sure
 your branch is on GitHub and you know the branch name. For this repo:
 
 ```
-ranipdx-glitch/wrinklefe
+elhajjar1/wrinkleFE
 ```
 
 If you've been working on a feature branch (e.g. `claude/review-open-issues-uX18N`),
@@ -34,13 +34,13 @@ either deploy directly from that branch or merge to `main` first.
 1. Go to <https://share.streamlit.io>
 2. Click **Sign in with GitHub** and authorize the Streamlit app.
 3. On first sign-in, grant access to the GitHub org/account that owns the repo
-   (`ranipdx-glitch`).
+   (`elhajjar1`).
 
 ## 4. Create the app
 
 1. Click **Create app** (top right) → **Deploy a public app from GitHub**.
 2. Fill in:
-   - **Repository:** `ranipdx-glitch/wrinklefe`
+   - **Repository:** `elhajjar1/wrinkleFE`
    - **Branch:** `main` (or your feature branch)
    - **Main file path:** `app.py`
    - **App URL:** pick a sub-domain like `wrinklefe.streamlit.app`
