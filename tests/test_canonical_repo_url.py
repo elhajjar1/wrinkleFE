@@ -34,6 +34,13 @@ _SKIP_SUFFIXES = {
 }
 
 
+# This file holds deliberately stale examples to test the pattern itself
+# (``test_the_check_catches_both_kinds_of_drift``), so it is the one file the
+# scan must not read. Missing this once made the guard fail on itself in CI:
+# locally the file was still untracked, so ``git ls-files`` never listed it.
+_SELF = Path(__file__).resolve()
+
+
 def _tracked_text_files() -> list[Path]:
     try:
         out = subprocess.run(
@@ -45,6 +52,7 @@ def _tracked_text_files() -> list[Path]:
     return [
         _REPO_ROOT / name for name in out.splitlines()
         if Path(name).suffix.lower() not in _SKIP_SUFFIXES
+        and (_REPO_ROOT / name).resolve() != _SELF
     ]
 
 
