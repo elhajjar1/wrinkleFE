@@ -8,3 +8,7 @@ wrinklefe.io
 .. automodule:: wrinklefe.io.archive
    :members:
    :show-inheritance:
+
+.. automodule:: wrinklefe.io.permalink
+   :members:
+   :show-inheritance:

@@ -14,6 +14,8 @@ Public API
 .. autofunction:: results_to_dict
 .. autofunction:: save_results
 .. autofunction:: load_results
+.. autofunction:: encode_config
+.. autofunction:: decode_config
 
 Two exporters, one name
 -----------------------
@@ -77,6 +79,14 @@ from wrinklefe.io.export import (
     render_summary_markdown,
     render_summary_pdf,
 )
+from wrinklefe.io.permalink import (
+    PERMALINK_VERSION,
+    QUERY_PARAM,
+    PermalinkError,
+    decode_config,
+    encode_config,
+    permalink_url,
+)
 from wrinklefe.io.results import (
     SCHEMA_VERSION,
     export_results_csv,
@@ -99,4 +109,10 @@ __all__ = [
     "load_results",
     "ArchiveFormatError",
     "ARCHIVE_FORMAT_VERSION",
+    "encode_config",
+    "decode_config",
+    "permalink_url",
+    "PermalinkError",
+    "PERMALINK_VERSION",
+    "QUERY_PARAM",
 ]

@@ -57,6 +57,14 @@ from wrinklefe.io.export import (  # noqa: E402
     render_summary_markdown,
     render_summary_pdf,
 )
+from wrinklefe.io.permalink import (  # noqa: E402
+    QUERY_PARAM as PERMALINK_PARAM,
+)
+from wrinklefe.io.permalink import (  # noqa: E402
+    PermalinkError,
+    decode_config,
+    permalink_url,
+)
 from wrinklefe.viz import plotly_figs  # noqa: E402
 from wrinklefe.viz.style import (  # noqa: E402
     MORPHOLOGY_COLORS,
@@ -295,6 +303,14 @@ DEFAULTS: dict[str, object] = {
 }
 
 
+# Permalinks (issue #281). ``PERMALINK_FALLBACK_BASE_URL`` is only used when
+# the browser's own address is unavailable (outside a real script run); the
+# consumed flag makes an inbound ``?cfg=`` seed the sidebar once per session
+# rather than on every rerun -- see ``_consume_permalink`` for why.
+PERMALINK_FALLBACK_BASE_URL = "https://wrinklefe.streamlit.app"
+_PERMALINK_CONSUMED_KEY = "_permalink_consumed"
+
+
 # Session-state key and size cap for the manual analysis-result cache that
 # replaced ``@st.cache_data`` on the run path (issue #377). Defined up here so
 # ``reset_inputs`` can clear the cache; the cache helpers themselves live next
@@ -512,6 +528,64 @@ def _parse_uploaded_config(name: str, data: bytes | str) -> AnalysisConfig:
     else:
         raw = json.loads(text)
     return AnalysisConfig.from_dict(raw)
+
+
+def _app_base_url() -> str:
+    """Where this app is being served, for building an absolute permalink.
+
+    ``st.context.url`` is the browser's own address, so a link built from it
+    works wherever the app actually runs -- the hosted deployment, a
+    colleague's ``streamlit run`` on localhost, a reverse-proxied internal
+    copy. It is unavailable outside a real script run (notably under
+    ``AppTest``), so fall back to the public deployment rather than emitting
+    a relative link the user would have to assemble by hand.
+    """
+    try:
+        url = str(st.context.url or "")
+    except Exception:
+        url = ""
+    return url or PERMALINK_FALLBACK_BASE_URL
+
+
+def _consume_permalink(
+    params: MutableMapping[str, Any],
+    state: MutableMapping[str, Any],
+) -> tuple[AnalysisConfig | None, tuple[str, ...], str | None]:
+    """Decode an inbound ``?cfg=`` permalink, at most once per session.
+
+    Returns ``(config, warnings, error)``. Exactly one of ``config`` and
+    ``error`` is set when a payload was present; both are ``None`` when there
+    was nothing to read or it has already been read.
+
+    Two things make this one-shot rather than per-rerun. The parameter is
+    deliberately *left in the URL* so the link stays bookmarkable and a
+    reload still opens the case -- which means it is still there on every
+    rerun, and re-seeding from it would overwrite the visitor's edits every
+    time they touched a widget. And a bad payload would re-raise its error on
+    every rerun, so the consumed flag is set before the decode, not after it.
+
+    Taking ``params`` and ``state`` as arguments keeps it testable without a
+    Streamlit script run.
+    """
+    if state.get(_PERMALINK_CONSUMED_KEY):
+        return None, (), None
+    raw = params.get(PERMALINK_PARAM)
+    if raw is None:
+        # Nothing to consume, and nothing consumed: a permalink pasted into a
+        # live session (unlikely, but it costs nothing to allow) still works.
+        return None, (), None
+    state[_PERMALINK_CONSUMED_KEY] = True
+    # Streamlit hands back a list when a parameter is repeated; take the
+    # first rather than refusing, so a duplicated parameter degrades to the
+    # obvious reading instead of an error page.
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else ""
+    try:
+        decoded = decode_config(str(raw))
+    except PermalinkError as exc:
+        logger.warning("rejected inbound permalink: %s", exc)
+        return None, (), str(exc)
+    return decoded.config, decoded.warnings, None
 
 
 # ---------------------------------------------------------------------------
@@ -974,6 +1048,45 @@ with st.sidebar:
     # ``session_state["_pending_config"]`` and reruns; here — at the top of
     # the sidebar, before the widgets exist — we seed their keys, which is
     # the only point Streamlit allows a widget-backed key to be written.
+    # An inbound ``?cfg=`` permalink (issue #281) seeds through the same
+    # staging slot, so a shared link and an uploaded config file land in the
+    # sidebar by one path. Read here, before the pop below, because this is
+    # the last point before the widgets exist.
+    #
+    # The config-file uploader wins a tie: it is an action the visitor just
+    # took in this session, where the URL is where they arrived from.
+    (
+        _permalink_cfg,
+        _permalink_warnings,
+        _permalink_error,
+    ) = _consume_permalink(
+        cast("MutableMapping[str, Any]", st.query_params),
+        cast("MutableMapping[str, Any]", st.session_state),
+    )
+    # Feedback renders HERE, at the top of the sidebar, not in the
+    # config-file block at the bottom: someone arriving from a link lands at
+    # the top, and a message below the fold is a message they never see.
+    # Arriving at a silently defaulted sidebar from a shared link is the one
+    # outcome that most needs saying out loud.
+    if _permalink_error:
+        # The plain-English part leads; the decoder's reason (base64, zlib,
+        # validation, version) goes in a caption for whoever reports it.
+        st.error(
+            "That shared link could not be read, so the sidebar is showing "
+            "the defaults. It may have been cut short or changed when it was "
+            "copied, or made by a newer version of WrinkleFE — ask the sender "
+            "for the link again."
+        )
+        st.caption(f"Details: {_permalink_error}")
+    _permalink_applied = False
+    if _permalink_cfg is not None:
+        st.session_state.setdefault("_pending_config", _permalink_cfg)
+        # ``setdefault`` lost the tie if an upload was already staged; only
+        # announce the shared case if it is the one actually being applied.
+        _permalink_applied = (
+            st.session_state.get("_pending_config") is _permalink_cfg
+        )
+
     _pending_config = st.session_state.pop("_pending_config", None)
     if _pending_config is not None:
         _seed_state_from_config(
@@ -984,6 +1097,18 @@ with st.sidebar:
         for _run_key in ("results", "cfg_payload"):
             st.session_state.pop(_run_key, None)
         st.session_state["_config_loaded_toast"] = True
+
+    if _permalink_applied:
+        # The generic "Config loaded" success lives in the bottom block,
+        # where it suits a file the visitor just uploaded from there. A
+        # link's visitor is up here.
+        st.session_state.pop("_config_loaded_toast", None)
+        st.info(
+            "Opened a shared case — the sidebar holds the inputs from the "
+            "link. Results are not part of a link: click **Run analysis**."
+        )
+    for _permalink_warning in _permalink_warnings:
+        st.warning(_permalink_warning)
 
     # Same mechanism for "Apply this limit to the sidebar" (issue #280): the
     # Analyze tab stages ``(parameter, value)`` and reruns, and the geometry
@@ -2915,23 +3040,32 @@ def _live_cfg_payload() -> tuple | None:
         return None
 
 
-def _current_config_json() -> str | None:
-    """Serialise the current effective config from the live sidebar state.
+def _current_config() -> AnalysisConfig | None:
+    """The effective :class:`AnalysisConfig` the live sidebar state describes.
 
     Builds the same payload a run would use (:func:`_live_cfg_payload`) and
     turns it into an :class:`AnalysisConfig` via :func:`_config_from_payload`,
-    so the downloaded file is exactly the config the current inputs describe
-    and works before any run. Returns ``None`` when the inputs can't be
-    assembled into a valid config (e.g. a half-typed layup), so the download
-    button can disable itself instead of crashing.
+    so it is exactly the config the current inputs describe and is available
+    before any run. Returns ``None`` when the inputs can't be assembled into
+    a valid config (e.g. a half-typed layup), so a caller can disable its
+    button instead of crashing.
+
+    Shared by the config-file download and the permalink (issue #281): one
+    link and one file off the same inputs must describe the same case.
     """
     payload = _live_cfg_payload()
     if payload is None:
         return None
     try:
-        return _config_from_payload(payload).to_json()
+        return _config_from_payload(payload)
     except Exception:
         return None
+
+
+def _current_config_json() -> str | None:
+    """Serialise the current effective config, or ``None`` if there isn't one."""
+    config = _current_config()
+    return None if config is None else config.to_json()
 
 
 # ---------------------------------------------------------------------------
@@ -3266,6 +3400,30 @@ def _render_goalseek_result(
 with st.sidebar:
     if st.session_state.pop("_config_loaded_toast", False):
         st.success("Config loaded into the sidebar.")
+    with st.expander("Share this case (link)", expanded=False):
+        _share_cfg = _current_config()
+        if _share_cfg is None:
+            st.caption(
+                "Finish the sidebar inputs — the link is built from a valid "
+                "configuration, and one of them is currently incomplete."
+            )
+        else:
+            try:
+                _share_url = permalink_url(_share_cfg, _app_base_url())
+            except Exception as _share_exc:  # noqa: BLE001 — report it
+                st.caption(f"Could not build a link: {_share_exc}")
+            else:
+                st.code(_share_url, language=None)
+                st.caption(
+                    f"{len(_share_url)} characters. Opening it loads this "
+                    "exact case — layup, material (including a custom one), "
+                    "geometry, morphology, loading, mesh and CZM settings — "
+                    "into a fresh sidebar. Results are not in the link; "
+                    "re-run, or share the full-result archive from the "
+                    "Export tab. The link reflects the inputs as they are "
+                    "now, so re-copy it after changing them."
+                )
+
     with st.expander("Config file (save / load)", expanded=False):
         _cfg_json = _current_config_json()
         # Stash the serialised effective config so the download reflects the

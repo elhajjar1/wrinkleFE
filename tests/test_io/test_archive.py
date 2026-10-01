@@ -547,7 +547,8 @@ class TestStreamlitSurface:
     """
 
     @pytest.fixture(scope="class")
-    def ran_app(self):
+    @classmethod
+    def ran_app(cls):
         pytest.importorskip("streamlit", reason="Streamlit not installed.")
         import sys
 
