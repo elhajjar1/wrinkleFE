@@ -311,9 +311,11 @@ credentials and nothing is uploaded from a laptop.
    3.10/3.11/3.12) → `publish` (PyPI) → `github-release`. If the `pypi`
    environment has required reviewers, `publish` waits for an approval.
 
-6. **After the DOI exists** (once Zenodo archiving is on, below): add the
-   version/concept DOI to `CITATION.cff` under `identifiers:` and to the
-   README's citation entries and badge row, in a follow-up commit.
+6. **Nothing to do for the DOI.** Zenodo archives the GitHub Release and
+   mints a version DOI under the existing concept DOI
+   (`10.5281/zenodo.23105908`), which `CITATION.cff` and the README already cite and
+   which never changes. Check that the new version appears on the
+   [Zenodo record](https://doi.org/10.5281/zenodo.23105908).
 
 ### One-time setup (maintainer)
 
@@ -352,21 +354,13 @@ then on — so the toggle must be flipped *before* the release you want
 archived. Zenodo reads `CITATION.cff` for authors, title and license.
 
 Each release then gets a version DOI, and Zenodo also mints a **concept
-DOI** that always resolves to the latest version — that is the one to
-cite. Insert it in two places (step 6 above): `CITATION.cff` as
-
-```yaml
-identifiers:
-  - type: doi
-    value: 10.5281/zenodo.XXXXXXX
-    description: Concept DOI — always resolves to the latest release
-```
-
-and in the README, as a badge next to the existing ones and as
-`doi = {10.5281/zenodo.XXXXXXX}` in the BibTeX entry. Do **not** commit a
-placeholder DOI before one has been minted: an unresolvable identifier in
-a citation file propagates into other people's bibliographies, which is
-worse than having no DOI at all.
+DOI** that always resolves to the latest version. This is done: archiving
+was enabled and 1.2.0 minted the concept DOI `10.5281/zenodo.23105908`, which
+`CITATION.cff` (`doi:` and `identifiers:`) and the README (badge, plain-text
+citation, BibTeX) cite. It never changes, so later releases need no DOI
+edits. Version DOIs are deliberately not committed: the file is written
+before a release is archived, so it could only ever name the previous one.
+`tests/test_citation_doi.py` keeps the README and `CITATION.cff` in step.
 
 ### Rehearsing an upload
 

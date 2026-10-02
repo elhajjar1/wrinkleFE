@@ -1,13 +1,19 @@
 # Machine-readable citation metadata (CFF 1.2.0). Read by GitHub's "Cite
-# this repository" button and, once archiving is enabled, by Zenodo.
+# this repository" button and by Zenodo, which archives every release.
 #
 # `version` below is locked to pyproject.toml's [project].version by
 # tests/test_version.py, and `date-released` is the release date of that
 # version — bump BOTH as the first step of a release, before tagging (see
-# "Release procedure" in CONTRIBUTING.md). There is no software DOI yet;
-# once Zenodo archiving mints the concept DOI it goes under `identifiers:`
-# here and in the README (issue #284). A placeholder DOI is deliberately
-# not used: an unresolvable DOI in a citation file is worse than none.
+# "Release procedure" in CONTRIBUTING.md).
+#
+# `doi` is the Zenodo CONCEPT DOI (issue #284): it always resolves to the
+# latest archived release, so it never changes between releases. Each
+# release also gets its own version DOI on Zenodo; those are deliberately
+# not listed here, because this file is committed before a release is
+# archived and could only ever name the previous one. Zenodo builds its
+# record from a subset of these fields (title, version, license, abstract,
+# authors, keywords) and ignores `doi` / `identifiers`, so they cannot
+# disturb future archiving.
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
@@ -17,6 +23,11 @@ date-released: 2026-10-02
 license: MIT
 repository-code: "https://github.com/elhajjar1/wrinkleFE"
 url: "https://github.com/elhajjar1/wrinkleFE"
+doi: "10.5281/zenodo.23105908"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23105908"
+    description: "Concept DOI: all versions; always resolves to the latest release"
 abstract: >-
   WrinkleFE is a Python finite element package for predicting strength
   and stiffness knockdown in composite laminates containing fiber waviness

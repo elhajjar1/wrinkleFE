@@ -14,6 +14,21 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Added
+- Citation — **WrinkleFE has a software DOI:
+  [`10.5281/zenodo.23105908`](https://doi.org/10.5281/zenodo.23105908)**
+  (issue #284). Zenodo archived the 1.2.0 release and minted it. It is the
+  *concept* DOI, covering all versions and always resolving to the latest,
+  and it is now in `CITATION.cff` (`doi:` and `identifiers:`, so GitHub's
+  "Cite this repository" includes it) and in the README badge, plain-text
+  citation and BibTeX entry. 1.2.0's own version DOI
+  (`10.5281/zenodo.23105909`) is noted in the README for anyone pinning the
+  exact version. Version DOIs are not committed to `CITATION.cff`: it is
+  written before a release is archived, so it could only ever name the
+  previous one. Zenodo ignores both fields when it reads the file, so they
+  cannot affect future archiving. `tests/test_citation_doi.py` keeps the
+  four copies identical.
+
 ## [1.2.0] - 2026-10-02
 
 This changelog was started after the `v1.1.0` tag (2026-03-31) and never
