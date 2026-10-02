@@ -133,6 +133,9 @@ def _profile_classes() -> dict[str, type]:
     out: dict[str, type] = {"WrinkleSurface3D": WrinkleSurface3D}
 
     def _walk(cls: type) -> None:
+        # Annotated because mypy >= 2.4 cannot infer it from
+        # ``type.__subclasses__()`` on a bare ``type``.
+        sub: type
         for sub in cls.__subclasses__():
             out[sub.__name__] = sub
             _walk(sub)
