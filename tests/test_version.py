@@ -88,6 +88,10 @@ def test_citation_cff_version_matches_pyproject() -> None:
     )
 
 
-def test_version_is_canonical_one_zero_zero() -> None:
-    """Sanity check the canonical published version is 1.0.0."""
-    assert _read_pyproject_version() == "1.0.0"
+def test_version_is_the_current_release() -> None:
+    """Pin the released version so a bump is always deliberate.
+
+    Update this together with pyproject.toml and CITATION.cff as step 1
+    of a release (CONTRIBUTING.md, "Release procedure").
+    """
+    assert _read_pyproject_version() == "1.2.0"

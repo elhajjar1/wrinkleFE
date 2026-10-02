@@ -14,6 +14,12 @@ version produced a given file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-02
+
+This changelog was started after the `v1.1.0` tag (2026-03-31) and never
+had a 1.1.0 section, so this entry covers every change since 1.0.0,
+including those that first shipped in 1.1.0.
+
 ### Added
 - **Shareable permalinks** — the app's **Share this case (link)** expander
   turns the current sidebar into one URL, and opening that URL loads the
@@ -2028,5 +2034,6 @@ cohesive-zone delamination; five wrinkle morphologies; the material
 library; JSON/CSV/Abaqus/VTK export; a command-line interface; and the
 Streamlit web application.
 
-[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.2.0
 [1.0.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.0.0

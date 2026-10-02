@@ -14,7 +14,7 @@ body:
     attributes:
       label: WrinkleFE version
       description: "`python -c \"import wrinklefe; print(wrinklefe.__version__)\"`, or the version shown in the app footer / a results JSON `provenance.wrinklefe`."
-      placeholder: "1.0.0"
+      placeholder: "1.2.0"
     validations:
       required: true
   - type: dropdown
