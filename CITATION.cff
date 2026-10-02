@@ -12,8 +12,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "WrinkleFE"
-version: 1.0.0
-date-released: 2025-03-24
+version: 1.2.0
+date-released: 2026-10-02
 license: MIT
 repository-code: "https://github.com/elhajjar1/wrinkleFE"
 url: "https://github.com/elhajjar1/wrinkleFE"

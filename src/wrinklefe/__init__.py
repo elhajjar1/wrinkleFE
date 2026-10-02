@@ -11,4 +11,4 @@ try:
 except PackageNotFoundError:
     # Fallback for when the package isn't installed (e.g. running from source).
     # Keep this in sync with pyproject.toml and CITATION.cff.
-    __version__ = "1.0.0"
+    __version__ = "1.2.0"

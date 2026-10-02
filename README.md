@@ -1363,15 +1363,15 @@ If you use WrinkleFE in your research, please cite it. The quickest way is the
 [`CITATION.cff`](CITATION.cff) and exports APA or BibTeX. The full software
 citation:
 
-> Elhajjar, R. (2025). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.0.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/wrinkleFE
+> Elhajjar, R. (2026). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.2.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/wrinkleFE
 
 ```bibtex
 @software{elhajjar2025wrinklefe,
   author = {Elhajjar, Rani},
   title = {{WrinkleFE}: An Open-Source Finite Element Package for Strength
            Prediction of Wrinkled Composite Laminates},
-  year = {2025},
-  version = {1.0.0},
+  year = {2026},
+  version = {1.2.0},
   publisher = {GitHub},
   url = {https://github.com/elhajjar1/wrinkleFE},
   note = {University of Wisconsin-Milwaukee}
@@ -1380,9 +1380,10 @@ citation:
 
 > **Software DOI:** WrinkleFE does not have one yet. The DOI badge above is
 > the *article's*, not the software's. A citable software DOI will be added
-> here — and to `CITATION.cff` — once Zenodo archiving is enabled for the
-> repository, at which point every tagged release is archived automatically
-> and a concept DOI resolves to the latest one
+> here — and to `CITATION.cff` — once the first release is archived on
+> Zenodo (archiving is enabled for the repository); from then on every
+> release is archived automatically and a concept DOI resolves to the
+> latest one
 > ([issue #284](https://github.com/elhajjar1/wrinkleFE/issues/284)). Until
 > then the URL above is the citation target; please cite the version you
 > actually used.

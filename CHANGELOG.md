@@ -14,6 +14,12 @@ version produced a given file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-02
+
+This changelog was started after the `v1.1.0` tag (2026-03-31) and never
+had a 1.1.0 section, so this entry covers every change since 1.0.0,
+including those that first shipped in 1.1.0.
+
 ### Added
 - **Shareable permalinks** — the app's **Share this case (link)** expander
   turns the current sidebar into one URL, and opening that URL loads the
@@ -476,6 +482,7 @@ version produced a given file.
   future change on either side that shifts it fails rather than
   silently making the prose wrong.
 
+### Added
 - Core — **`wrinklefe.core.fit`: fit a `WrinkleProfile` to a measured
   trace** (issue #270).
 
@@ -841,6 +848,8 @@ version produced a given file.
   PNG signature, exactly 8,400,000 bytes each (2000x1400 raw RGB), so they
   could not have rendered in GitHub, Markdown or Sphinx even if linked. The
   directory drops from 18 MB to 1.5 MB; the blobs remain in git history.
+
+### Added
 - Analysis — **thermal / cure-residual loading is reachable from
   `AnalysisConfig`** (issue #273, Stage 1 — the FE initial-strain term is
   Stage 2). The CLT machinery (`LoadState.delta_T`,
@@ -2028,5 +2037,6 @@ cohesive-zone delamination; five wrinkle morphologies; the material
 library; JSON/CSV/Abaqus/VTK export; a command-line interface; and the
 Streamlit web application.
 
-[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.2.0
 [1.0.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.0.0
