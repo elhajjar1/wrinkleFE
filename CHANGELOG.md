@@ -482,6 +482,7 @@ including those that first shipped in 1.1.0.
   future change on either side that shifts it fails rather than
   silently making the prose wrong.
 
+### Added
 - Core — **`wrinklefe.core.fit`: fit a `WrinkleProfile` to a measured
   trace** (issue #270).
 
@@ -847,6 +848,8 @@ including those that first shipped in 1.1.0.
   PNG signature, exactly 8,400,000 bytes each (2000x1400 raw RGB), so they
   could not have rendered in GitHub, Markdown or Sphinx even if linked. The
   directory drops from 18 MB to 1.5 MB; the blobs remain in git history.
+
+### Added
 - Analysis — **thermal / cure-residual loading is reachable from
   `AnalysisConfig`** (issue #273, Stage 1 — the FE initial-strain term is
   Stage 2). The CLT machinery (`LoadState.delta_T`,
