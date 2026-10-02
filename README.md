@@ -2,7 +2,8 @@
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)
+[![Software DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23105908.svg)](https://doi.org/10.5281/zenodo.23105908)
+[![Article DOI](https://img.shields.io/badge/article%20DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![GitHub stars](https://img.shields.io/github/stars/elhajjar1/wrinkleFE?style=social)](https://github.com/elhajjar1/wrinkleFE)
 
@@ -1363,7 +1364,7 @@ If you use WrinkleFE in your research, please cite it. The quickest way is the
 [`CITATION.cff`](CITATION.cff) and exports APA or BibTeX. The full software
 citation:
 
-> Elhajjar, R. (2026). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.2.0) [Computer software]. University of Wisconsin-Milwaukee. https://github.com/elhajjar1/wrinkleFE
+> Elhajjar, R. (2026). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.2.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23105908
 
 ```bibtex
 @software{elhajjar2025wrinklefe,
@@ -1372,21 +1373,21 @@ citation:
            Prediction of Wrinkled Composite Laminates},
   year = {2026},
   version = {1.2.0},
-  publisher = {GitHub},
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.23105908},
   url = {https://github.com/elhajjar1/wrinkleFE},
   note = {University of Wisconsin-Milwaukee}
 }
 ```
 
-> **Software DOI:** WrinkleFE does not have one yet. The DOI badge above is
-> the *article's*, not the software's. A citable software DOI will be added
-> here — and to `CITATION.cff` — once the first release is archived on
-> Zenodo (archiving is enabled for the repository); from then on every
-> release is archived automatically and a concept DOI resolves to the
-> latest one
-> ([issue #284](https://github.com/elhajjar1/wrinkleFE/issues/284)). Until
-> then the URL above is the citation target; please cite the version you
-> actually used.
+> **Software DOI:** [`10.5281/zenodo.23105908`](https://doi.org/10.5281/zenodo.23105908) is the
+> *concept* DOI: it covers every version and always resolves to the latest
+> release, so it is the right default. To pin the exact version you used,
+> cite that release's own DOI from the
+> [Zenodo record](https://doi.org/10.5281/zenodo.23105908) instead (1.2.0 is
+> [`10.5281/zenodo.23105909`](https://doi.org/10.5281/zenodo.23105909)). The DOI badge for
+> the *Scientific Reports* article is a separate citation, for the
+> experimental data below.
 
 Please also cite the underlying experimental validation data:
 
