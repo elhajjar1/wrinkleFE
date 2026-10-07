@@ -41,9 +41,16 @@ def _czm_config(**overrides) -> AnalysisConfig:
     dual-wrinkle amplitude contract (issue #305): the concave mesh now
     composes to ~0.70*A rather than the previous ~1.37*A, so the older
     0.015 strain no longer opened the crest interface past the cohesive
-    initiation threshold. 0.025 restores the intended "just past
+    initiation threshold. 0.025 restored the intended "just past
     initiation" state (max damage ~0.04, still convergent) for the
     physically-correct geometry.
+
+    Recalibrated again for the fibre-angle sign fix: the unsigned angle
+    field had mirror-handed one flank's material frame, and with it
+    fixed the crest no longer opens past initiation at 0.025 (max
+    damage 0.000; CI and local agree). Measured on this config: 0.0275
+    -> 0.0007, 0.029 -> 0.054, 0.0295 -> 0.078. 0.029 restores the
+    intended state with margin on both sides.
     """
     mat = MaterialLibrary().get("IM7_8552")
     defaults = dict(
@@ -58,7 +65,7 @@ def _czm_config(**overrides) -> AnalysisConfig:
         nx=12,
         ny=4,
         nz_per_ply=1,
-        applied_strain=0.025,
+        applied_strain=0.029,
         enable_czm=True,
         czm_n_load_increments=20,
         verbose=False,
