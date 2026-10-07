@@ -65,6 +65,47 @@ _CRITICAL_CONFIG_FLAGS = (
     "material", "angles", "nx", "ny", "nz_per_ply", "applied_strain",
 )
 
+# Per-run JSON layouts for --output-json. "legacy" (top-level
+# 'wrinklefe_version') is deprecated since 1.3 and stays the default for
+# that release only; "structured" is the schema-versioned document of
+# wrinklefe.io.results. The two share no result paths (see wrinklefe.io).
+JSON_SCHEMA_CHOICES = ("legacy", "structured")
+
+
+def _add_json_schema_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json-schema", choices=JSON_SCHEMA_CHOICES, default="legacy",
+        dest="json_schema",
+        help=(
+            "Layout of each run in --output-json. 'legacy' (default) is "
+            "deprecated and will be removed in 2.0, when 'structured' (the "
+            "schema-versioned document of wrinklefe.io.results) becomes "
+            "the only layout. The two share no result paths."
+        ),
+    )
+
+
+def _per_run_json(result: AnalysisResults, json_schema: str) -> dict:
+    """One run in the requested --output-json layout."""
+    if json_schema == "structured":
+        from wrinklefe.io.results import results_to_dict
+
+        return results_to_dict(result)
+    from wrinklefe.io.export import _legacy_results_dict
+
+    return _legacy_results_dict(result)
+
+
+def _announce_legacy_json(json_schema: str) -> None:
+    """Tell a CLI user, once per write, that the legacy layout is going."""
+    if json_schema == "legacy":
+        print(
+            "note: --output-json wrote the legacy layout, which is "
+            "deprecated and will be removed in 2.0; pass --json-schema "
+            "structured for the schema-versioned layout.",
+            file=sys.stderr,
+        )
+
 
 def _resolve_version() -> str:
     """Return the installed package version, or the source fallback.
@@ -290,6 +331,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-json", type=str, default=None,
         help="Export results to JSON file at specified path",
     )
+    _add_json_schema_arg(p_analyze)
     p_analyze.add_argument(
         "--save-results", type=str, default=None, dest="save_results",
         metavar="PATH",
@@ -697,6 +739,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "stdout table is still printed"
         ),
     )
+    _add_json_schema_arg(p_compare)
     p_compare.add_argument(
         "--output-csv", type=str, default=None, dest="output_csv",
         help=(
@@ -766,6 +809,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "table is still printed"
         ),
     )
+    _add_json_schema_arg(p_sweep)
     p_sweep.add_argument(
         "--output-csv", type=str, default=None, dest="output_csv",
         help=(
@@ -1197,6 +1241,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "stdout summary is still printed"
         ),
     )
+    _add_json_schema_arg(p_critical)
     p_critical.add_argument(
         "--output-csv", type=str, default=None, dest="output_csv",
         help=(
@@ -1533,9 +1578,18 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
 
     # Export to JSON if requested
     if given("output_json") and args.output_json is not None:
-        from wrinklefe.io.export import export_results_json
-        export_results_json(result, args.output_json)
+        import json as _json
+        from pathlib import Path as _Path
+
+        json_schema = getattr(args, "json_schema", "legacy")
+        _out = _Path(args.output_json)
+        _out.parent.mkdir(parents=True, exist_ok=True)
+        _out.write_text(
+            _json.dumps(_per_run_json(result, json_schema), indent=2),
+            encoding="utf-8",
+        )
         print(f"\nResults exported to: {args.output_json}")
+        _announce_legacy_json(json_schema)
 
     # Export a one-row tidy CSV if requested (issue #375), reusing the
     # sweep/compare per-run writer so the schema matches.
@@ -1657,6 +1711,7 @@ def _cmd_compare(args: argparse.Namespace) -> None:
         ],
         args.output_json,
         args.output_csv,
+        args.json_schema,
     )
 
 
@@ -1664,6 +1719,7 @@ def _write_batch_outputs(
     rows: list[tuple[str, float | str, str, AnalysisResults]],
     output_json: str | None,
     output_csv: str | None,
+    json_schema: str = "legacy",
 ) -> None:
     """Write sweep/compare batch results to JSON and/or CSV (issue #266).
 
@@ -1672,12 +1728,14 @@ def _write_batch_outputs(
     rows : list of (parameter_name, parameter_value, morphology, results)
         One entry per run, in output order.
     output_json : str or None
-        Path for a JSON array of per-run objects, each matching the
-        ``analyze --output-json`` schema (:func:`analysis_results_to_dict`).
+        Path for a JSON array of per-run objects, each in the
+        ``analyze --output-json`` layout chosen by ``json_schema``.
     output_csv : str or None
         Path for a tidy CSV (one row per run, full float precision):
         ``parameter_name, parameter_value, morphology, knockdown,
         predicted_strength_MPa, max_failure_index, governing_criterion``.
+    json_schema : {"legacy", "structured"}
+        Per-run JSON layout (see :data:`JSON_SCHEMA_CHOICES`).
     """
     if output_json is None and output_csv is None:
         return
@@ -1686,14 +1744,13 @@ def _write_batch_outputs(
     import json
     from pathlib import Path
 
-    from wrinklefe.io.export import analysis_results_to_dict
-
     if output_json is not None:
-        payload = [analysis_results_to_dict(r) for _, _, _, r in rows]
+        payload = [_per_run_json(r, json_schema) for _, _, _, r in rows]
         path = Path(output_json)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"\nResults written to: {path}")
+        _announce_legacy_json(json_schema)
 
     if output_csv is not None:
         fieldnames = [
@@ -1831,6 +1888,7 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
         ],
         args.output_json,
         args.output_csv,
+        args.json_schema,
     )
 
 
@@ -2201,7 +2259,7 @@ def _cmd_critical(args: argparse.Namespace) -> None:
         print(f"\nSearch plot saved to: {args.save_plot}")
 
     _write_critical_outputs(
-        result, config, args.output_json, args.output_csv
+        result, config, args.output_json, args.output_csv, args.json_schema
     )
 
     sys.exit(0 if result.status == "converged" else 1)
@@ -2288,16 +2346,17 @@ def _print_critical_banner(result, config) -> None:
 
 
 def _write_critical_outputs(
-    result, config, output_json: str | None, output_csv: str | None
+    result, config, output_json: str | None, output_csv: str | None,
+    json_schema: str = "legacy",
 ) -> None:
-    """Write the critical-value search result to JSON and/or CSV."""
+    """Write the critical-value search result to JSON and/or CSV.
+
+    ``json_schema`` sets the layout of the per-run ``runs`` entries."""
     if output_json is None and output_csv is None:
         return
 
     import json
     from pathlib import Path
-
-    from wrinklefe.io.export import analysis_results_to_dict
 
     if output_json is not None:
         payload = {
@@ -2362,12 +2421,14 @@ def _write_critical_outputs(
         }
         if result.results is not None:
             payload["runs"] = [
-                analysis_results_to_dict(r) for r in result.results
+                _per_run_json(r, json_schema) for r in result.results
             ]
         path = Path(output_json)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"\nResults written to: {path}")
+        if result.results is not None:
+            _announce_legacy_json(json_schema)
 
     if output_csv is not None and result.results is not None:
         # Delegate to the shared batch writer so the row schema matches

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import platform
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -89,14 +90,26 @@ def build_provenance(
 # JSON export
 # ====================================================================== #
 
-def analysis_results_to_dict(results: AnalysisResults) -> dict:
-    """Serialise an :class:`~wrinklefe.analysis.AnalysisResults` to a dict.
+#: Shown by every entry point to the legacy JSON layout. The structured,
+#: schema-versioned document (:mod:`wrinklefe.io.results`) replaces it.
+LEGACY_JSON_DEPRECATION = (
+    "The legacy WrinkleFE JSON layout (top-level 'wrinklefe_version'; "
+    "wrinklefe.io.export.export_results_json / analysis_results_to_dict) "
+    "is deprecated since 1.3 and will be removed in 2.0. Use the "
+    "structured, schema-versioned export instead: "
+    "wrinklefe.io.results.export_results_json / results_to_dict, or "
+    "'--json-schema structured' on the command line."
+)
 
-    The per-run schema used by :func:`export_results_json` — shared so
-    batch consumers (the CLI ``sweep``/``compare`` ``--output-json``
-    arrays, issue #266) stay schema-identical with single-run exports.
-    Large array data (FE fields, Monte Carlo samples) is summarised
-    rather than written in full.
+
+def analysis_results_to_dict(results: AnalysisResults) -> dict:
+    """Serialise an :class:`~wrinklefe.analysis.AnalysisResults` to a dict
+    in the **legacy** layout.
+
+    .. deprecated:: 1.3
+        Removed in 2.0. Use :func:`wrinklefe.io.results.results_to_dict`,
+        the structured, schema-versioned document. The two layouts share
+        no result paths (see :mod:`wrinklefe.io`).
 
     Parameters
     ----------
@@ -107,6 +120,18 @@ def analysis_results_to_dict(results: AnalysisResults) -> dict:
     -------
     dict
         JSON-serialisable per-run dictionary.
+    """
+    warnings.warn(LEGACY_JSON_DEPRECATION, DeprecationWarning, stacklevel=2)
+    return _legacy_results_dict(results)
+
+
+def _legacy_results_dict(results: AnalysisResults) -> dict:
+    """The legacy per-run layout, without the deprecation warning.
+
+    Shared by the deprecated public entry points and the CLI, which keeps
+    the legacy layout as its default for one release and announces the
+    change itself. Large array data (FE fields) is summarised rather than
+    written in full.
     """
     cfg = results.config
     data: dict = {
@@ -159,39 +184,6 @@ def analysis_results_to_dict(results: AnalysisResults) -> dict:
             "max_displacement_node": int(max_disp_node),
         }
 
-    # Buckling summary (optional attribute)
-    buckling = getattr(results, "buckling_result", None)
-    if buckling is not None:
-        data["buckling"] = {
-            "critical_load_factor": float(buckling.critical_load_factor),
-        }
-
-    # Monte Carlo summary (optional attribute)
-    mc = getattr(results, "mc_results", None)
-    if mc is not None:
-        data["monte_carlo"] = {
-            "n_samples": mc.n_samples,
-            "mean_strength_MPa": float(mc.mean_strength),
-            "std_strength_MPa": float(mc.std_strength),
-            "cov_strength": float(mc.cov_strength),
-            "min_strength_MPa": float(mc.min_strength),
-            "percentile_5_MPa": float(mc.percentile_5),
-            "percentile_1_MPa": float(mc.percentile_1),
-        }
-
-    # Jensen gap summary (optional attribute)
-    jg = getattr(results, "jensen_gap", None)
-    if jg is not None:
-        data["jensen_gap"] = {
-            "strength_at_mean_MPa": float(jg.strength_at_mean),
-            "mean_of_strengths_MPa": float(jg.mean_of_strengths),
-            "jensen_gap_MPa": float(jg.jensen_gap),
-            "jensen_gap_percent": float(jg.jensen_gap_percent),
-            "mean_amplitude_mm": float(jg.mean_amplitude),
-            "mean_wavelength_mm": float(jg.mean_wavelength),
-            "mean_angle_rad": float(jg.mean_angle),
-        }
-
     return data
 
 
@@ -199,9 +191,13 @@ def export_results_json(
     results: AnalysisResults,
     filepath: str | Path,
 ) -> None:
-    """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON.
+    """Export an :class:`~wrinklefe.analysis.AnalysisResults` object to JSON
+    in the **legacy** layout.
 
-    Thin writer over :func:`analysis_results_to_dict`.
+    .. deprecated:: 1.3
+        Removed in 2.0. Use :func:`wrinklefe.io.results.export_results_json`,
+        which writes the structured, schema-versioned document. The two
+        layouts share no result paths (see :mod:`wrinklefe.io`).
 
     Parameters
     ----------
@@ -210,7 +206,8 @@ def export_results_json(
     filepath : str or Path
         Output JSON file path.
     """
-    data = analysis_results_to_dict(results)
+    warnings.warn(LEGACY_JSON_DEPRECATION, DeprecationWarning, stacklevel=2)
+    data = _legacy_results_dict(results)
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(json.dumps(data, indent=2), encoding="utf-8")

@@ -575,6 +575,7 @@ class TestProvenance:
         prov = json.loads(out.read_text())["provenance"]
         assert prov["solver"]["type"] == fe_result.config.solver
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")  # legacy
     def test_both_exporters_report_the_same_environment(
         self, fe_result, tmp_path
     ):
@@ -602,6 +603,7 @@ class TestProvenance:
         assert (major, minor) >= (1, 2)
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")  # legacy
 class TestLegacyExporterIsADifferentDocument:
     """The name collision is deliberate, but it is not interchangeable.
 

@@ -3,7 +3,8 @@
 Runs a small FE analysis and writes every export format the package
 supports natively (no extra dependencies required):
 
-- ``05_results.json`` — full analysis results for archiving;
+- ``05_results.json`` — schema-versioned results report (a few KB;
+  large fields summarised — see example 17 for a lossless archive);
 - ``05_mesh.inp``     — mesh + ply sets for commercial FE solvers;
 - ``05_fields.vtk``   — mesh + displacement/stress fields; open in
   ParaView (File > Open, then Apply) to inspect contours.
@@ -16,11 +17,8 @@ import json
 from pathlib import Path
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
-from wrinklefe.io.export import (
-    export_abaqus_inp,
-    export_results_json,
-    export_vtk,
-)
+from wrinklefe.io.export import export_abaqus_inp, export_vtk
+from wrinklefe.io.results import export_results_json  # schema-versioned
 
 config = AnalysisConfig(
     amplitude=0.366, wavelength=16.0, width=12.0,
@@ -38,5 +36,5 @@ for name in ("05_results.json", "05_mesh.inp", "05_fields.vtk"):
 
 # Round-trip check: the JSON is plain data, re-loadable anywhere.
 data = json.loads(Path("05_results.json").read_text())
-kd = data["analytical_predictions"]["analytical_knockdown"]
+kd = data["analytical"]["analytical_knockdown"]
 print(f"JSON knockdown round-trip: {kd:.4f}")

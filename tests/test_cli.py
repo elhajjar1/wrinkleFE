@@ -361,6 +361,45 @@ def test_compare_output_csv_and_json(tmp_path):
     ]
 
 
+def test_output_json_legacy_layout_is_announced_as_deprecated(
+    tmp_path, capsys
+):
+    """The default --output-json layout is still the legacy one for 1.3,
+    but every write says it is going and how to switch."""
+    import json
+
+    out = tmp_path / "a.json"
+    cli_main(["analyze", "--analytical-only", "--output-json", str(out)])
+    err = capsys.readouterr().err
+    assert "deprecated" in err and "--json-schema structured" in err
+    assert "wrinklefe_version" in json.loads(out.read_text())
+
+
+@pytest.mark.parametrize("command", [
+    ["analyze", "--analytical-only"],
+    ["sweep", "--parameter", "amplitude", "--min", "0.1", "--max", "0.2",
+     "--steps", "2"],
+    ["compare"],
+])
+def test_output_json_structured_layout(tmp_path, capsys, command):
+    """--json-schema structured writes the schema-versioned document of
+    wrinklefe.io.results (one per run) and prints no deprecation note."""
+    import json
+
+    from wrinklefe.io.results import SCHEMA_VERSION
+
+    out = tmp_path / "s.json"
+    cli_main([*command, "--json-schema", "structured",
+              "--output-json", str(out)])
+    assert "deprecated" not in capsys.readouterr().err
+    data = json.loads(out.read_text())
+    runs = data if isinstance(data, list) else [data]
+    assert runs
+    for run in runs:
+        assert run["schema_version"] == SCHEMA_VERSION
+        assert "wrinklefe_version" not in run
+
+
 def test_sweep_without_output_flags_writes_nothing(tmp_path, monkeypatch):
     """Default behaviour (stdout only) is preserved: no files appear."""
     monkeypatch.chdir(tmp_path)

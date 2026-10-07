@@ -59,6 +59,28 @@ version produced a given file.
     numbers stay true: the progressive figures against the ledger, the
     FE LaRC05 claims by re-running the six cases (slow lane).
 
+### Deprecated
+- Export — **the legacy JSON layout is deprecated and will be removed in
+  2.0.** `wrinklefe.io.export.export_results_json` (also re-exported as
+  `wrinklefe.io.export_results_json`) and
+  `wrinklefe.io.export.analysis_results_to_dict` raise a
+  `DeprecationWarning`; use `wrinklefe.io.results.export_results_json` /
+  `results_to_dict`, the structured, schema-versioned document. The two
+  layouts share no result paths, so merging them was never an option
+  that kept consumers working; one goes, with a release of warning.
+  - The CLI's `--output-json` on `analyze`, `sweep`, `compare` and
+    `critical` gains `--json-schema {legacy,structured}`. `legacy` stays
+    the default for this release, byte-identical to before, and each
+    write prints a one-line note to stderr; `structured` writes the
+    schema-versioned document per run. In 2.0 `structured` becomes the
+    only layout.
+  - Example 05 and the README use the structured export.
+
+### Removed
+- Export — the legacy layout's `buckling`, `monte_carlo` and
+  `jensen_gap` blocks are removed. They read attributes
+  `AnalysisResults` has never had, so no export ever contained them.
+
 ### Fixed
 - Docs — **two validation claims were wrong.**
   - `docs/internal/VALIDATION.md` said every crack-band error was positive
