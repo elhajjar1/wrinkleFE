@@ -94,4 +94,4 @@ def test_version_is_the_current_release() -> None:
     Update this together with pyproject.toml and CITATION.cff as step 1
     of a release (CONTRIBUTING.md, "Release procedure").
     """
-    assert _read_pyproject_version() == "1.2.0"
+    assert _read_pyproject_version() == "1.3.0"

@@ -14,6 +14,8 @@ version produced a given file.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-07
+
 ### Added
 - CI — **the lint job pins its tool versions** (`requirements-lint.txt`:
   ruff, mypy, scipy-stubs), installed as a pip constraints file so the
@@ -2242,6 +2244,7 @@ cohesive-zone delamination; five wrinkle morphologies; the material
 library; JSON/CSV/Abaqus/VTK export; a command-line interface; and the
 Streamlit web application.
 
-[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.3.0
 [1.2.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.2.0
 [1.0.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.0.0
