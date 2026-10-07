@@ -4,9 +4,10 @@ These tests target the LaRC05-specific physics that ``test_criteria.py``
 and ``test_evaluator.py`` do not exercise directly:
 
 - fibre tension with the quadratic shear-interaction term,
-- fibre kinking under compression via the misalignment-frame rotation
-  (the criterion only engages kinking when an initial misalignment
-  ``phi_0`` is supplied, by design of ``_compute_phi_c``),
+- fibre kinking under compression: the Xc-calibrated intrinsic
+  misalignment (a pristine ply kinks exactly at -Xc), the kink-plane
+  search, and the agreement between a wrinkle expressed in the stress
+  frame (the FE route) and one supplied as ``misalignment_angle``,
 - matrix tension governed by the *in-situ* transverse strength,
 - matrix compression resolved on the fracture plane at +/- alpha_0,
 - monotonic / proportional-loading behaviour and reserve factor.
@@ -18,10 +19,14 @@ the same data as ``MaterialLibrary().get("IM7_8552")``).
 
 import numpy as np
 import pytest
+from scipy.optimize import brentq
 
-from wrinklefe.core.material import OrthotropicMaterial
+from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial
+from wrinklefe.core.transforms import stress_transformation_3d
 from wrinklefe.failure.base import FailureResult
 from wrinklefe.failure.larc05 import LaRC05Criterion
+
+_LIBRARY = MaterialLibrary()
 
 
 @pytest.fixture
@@ -99,45 +104,104 @@ class TestLaRC05FibreTension:
 
 class TestLaRC05FibreKinking:
 
-    def test_compression_no_misalignment_takes_kinking_branch(
-        self, criterion, material
-    ):
-        """Under sigma_11 < 0 the fibre branch is kinking. With phi_0 = 0
-        the load-induced rotation is zero, so the rotated kink-band shear
-        vanishes and the kinking FI is 0 (documented behaviour of
-        ``_compute_phi_c``)."""
-        stress = np.array([-material.Xc, 0.0, 0.0, 0.0, 0.0, 0.0])
-        result = criterion.evaluate(stress, material)
-        assert result.detail["mode_fiber"] == "fiber_kinking"
-        assert result.detail["fi_fiber"] == pytest.approx(0.0, abs=1e-12)
+    def test_past_the_instability_the_index_is_finite_and_one_over_rf(self):
+        """Past the kinking instability the closed form has no value. The
+        index must stay finite there (consumers drop non-finite values, so
+        an inf would hide the worst point in a field), be at least 1, and
+        agree between the scalar and field paths."""
+        m = _LIBRARY.get("IM7_8552")
+        crit = LaRC05Criterion()
+        # |sigma_11| > G12: the misalignment denominator is non-positive.
+        stress = np.array([-1.5 * m.G12, 0.0, 0.0, 0.0, 0.0, 0.0])
+        res = crit.evaluate(stress, m)
+        assert res.mode == "fiber_kinking"
+        assert np.isfinite(res.index) and res.index >= 1.0
+        assert res.index == pytest.approx(1.0 / res.reserve_factor, rel=1e-9)
+        fi_field, _, rf_field = crit.evaluate_field(stress[None, :], m)
+        assert fi_field[0] == res.index
+        assert rf_field[0] == res.reserve_factor
 
-    def test_kinking_engages_with_misalignment(self, criterion, material):
-        """With a finite misalignment angle the kink-band frame sees a
-        non-zero shear and the kinking FI grows with |sigma_11|."""
-        ctx = {"misalignment_angle": 0.1}
+    @pytest.mark.parametrize("name", _LIBRARY.list_names())
+    def test_a_pristine_ply_kinks_exactly_at_Xc(self, name):
+        """The defining property of LaRC kinking: with no wrinkle, pure
+        fibre compression reaches FI = 1 at sigma_11 = -Xc. The previous
+        model had no intrinsic misalignment and gave FI = 0 here, so a
+        pristine ply could never fail in compression."""
+        m = _LIBRARY.get(name)
+        stress = np.array([-m.Xc, 0.0, 0.0, 0.0, 0.0, 0.0])
+        result = LaRC05Criterion().evaluate(stress, m)
+        assert result.index == pytest.approx(1.0, abs=1e-12)
+        assert result.detail["mode_fiber"] == "fiber_kinking"
+
+    def test_the_intrinsic_misalignment_is_a_few_degrees(self, criterion):
+        """phi_C follows from Xc, S_L and eta_L alone; for carbon and glass
+        it lands in the few-degree range the literature reports."""
+        for name in ("IM7_8552", "T700_2510", "AC318_S6C10"):
+            phi_c = criterion.intrinsic_misalignment(_LIBRARY.get(name), 0.5)
+            assert phi_c is not None
+            assert 2.0 < np.degrees(phi_c) < 6.0
+
+    def test_a_material_with_no_real_phi_c_falls_back_to_Xc(self, criterion):
+        """Neat resin: shear strength too high relative to Xc for any angle
+        to reproduce it, so the fibre-compression index is |s1| / Xc."""
+        resin = _LIBRARY.get("EPOXY_S6C10")
+        assert criterion.intrinsic_misalignment(resin, 0.5) is None
+        stress = np.array([-0.7 * resin.Xc, 0.0, 0.0, 0.0, 0.0, 0.0])
+        fi = LaRC05Criterion(ply_thickness=0.5).evaluate(stress, resin)
+        assert fi.detail["fi_fiber"] == pytest.approx(0.7, abs=1e-12)
+
+    def test_kinking_engages_and_grows_with_load(self, criterion, material):
         fi_lo = criterion.evaluate(
-            np.array([-800.0, 0.0, 0.0, 0.0, 0.0, 0.0]), material, ctx
+            np.array([-400.0, 0.0, 0.0, 0.0, 0.0, 0.0]), material
         ).index
         fi_hi = criterion.evaluate(
-            np.array([-1400.0, 0.0, 0.0, 0.0, 0.0, 0.0]), material, ctx
+            np.array([-800.0, 0.0, 0.0, 0.0, 0.0, 0.0]), material
         ).index
         assert 0.0 < fi_lo < fi_hi
 
-    def test_kinking_fi_unity_at_kinking_allowable(
-        self, criterion, material
+    @pytest.mark.parametrize("deg", [2, 5, 10])
+    def test_a_wrinkle_in_the_stress_frame_matches_one_given_as_context(
+        self, deg
     ):
-        """For phi_0 = 0.1 the kinking allowable is sigma_11 ~= -1164.7 MPa
-        (located numerically). At that load FI ~= 1.0, the *kinking* path
-        governs and the matrix path does not contribute."""
-        ctx = {"misalignment_angle": 0.1}
-        sigma_kink = -1164.6909607060759
-        stress = np.array([sigma_kink, 0.0, 0.0, 0.0, 0.0, 0.0])
-        result = criterion.evaluate(stress, material, ctx)
-        assert result.index == pytest.approx(1.0, abs=1e-3)
-        assert result.mode == "fiber_kinking"
-        # Kinking, not matrix, must be the governing sub-criterion.
-        assert result.detail["fi_fiber"] >= result.detail["fi_matrix"]
-        assert result.detail["fi_matrix"] == pytest.approx(0.0, abs=1e-10)
+        """Two ways to express the same out-of-plane misalignment must give
+        the same compressive strength: the FE route (stress rotated into a
+        fibre frame tilted about y, so the wrinkle appears as tau_13 and
+        the kink-plane search must find it) and the API route (unrotated
+        stress plus ``misalignment_angle``)."""
+        m = _LIBRARY.get("AC318_S6C10")
+        crit = LaRC05Criterion(ply_thickness=0.5)
+        theta = np.radians(deg)
+        T = stress_transformation_3d(theta, axis="y")
+
+        def strength(fi_of_load):
+            return brentq(lambda s0: fi_of_load(s0) - 1.0, 1.0, m.Xc)
+
+        def fe_route(s0):
+            return crit.evaluate(T @ np.array([-s0, 0, 0, 0, 0, 0.0]), m).index
+
+        def api_route(s0):
+            return crit.evaluate(
+                np.array([-s0, 0, 0, 0, 0, 0.0]), m,
+                {"misalignment_angle": theta},
+            ).index
+
+        assert strength(fe_route) == pytest.approx(strength(api_route), rel=2e-3)
+
+    def test_strength_falls_with_misalignment(self):
+        m = _LIBRARY.get("AC318_S6C10")
+        crit = LaRC05Criterion(ply_thickness=0.5)
+        strengths = [
+            brentq(
+                lambda s0, th=th: crit.evaluate(
+                    np.array([-s0, 0, 0, 0, 0, 0.0]), m,
+                    {"misalignment_angle": th},
+                ).index - 1.0,
+                1.0, 1.5 * m.Xc,
+            )
+            for th in np.radians([0.0, 2.0, 5.0, 10.0])
+        ]
+        assert strengths[0] == pytest.approx(m.Xc, rel=1e-9)
+        assert all(a > b for a, b in zip(strengths, strengths[1:]))
 
     def test_higher_misalignment_increases_kinking_fi(
         self, criterion, material
@@ -290,22 +354,145 @@ class TestLaRC05MonotonicityAndReserve:
         at_failure = criterion.evaluate(rf * stress, material)
         assert at_failure.index == pytest.approx(1.0, rel=1e-9)
 
-    def test_reserve_factor_is_inverse_of_index(self, criterion, material):
-        for stress, ctx in [
-            (np.array([0.5 * material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0]), None),
-            (np.array([0.0, 0.5 * material.Yt, 0.0, 0.0, 0.0, 0.0]), None),
-            (np.array([0.0, -0.5 * material.Yc, 0.0, 0.0, 0.0, 0.0]), None),
-            (
-                np.array([-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-                {"misalignment_angle": 0.10},
-            ),
-        ]:
-            result = criterion.evaluate(stress, material, ctx)
-            if result.index > 0:
-                assert result.reserve_factor == pytest.approx(
-                    1.0 / result.index, rel=1e-12
-                )
+    def test_reserve_factor_is_inverse_of_index_for_linear_modes(
+        self, criterion, material
+    ):
+        """Fibre tension and matrix tension keep rf = 1 / FI."""
+        for stress in (
+            np.array([0.5 * material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            np.array([0.0, 0.5 * material.Yt, 0.0, 0.0, 0.0, 0.0]),
+        ):
+            result = criterion.evaluate(stress, material)
+            assert result.reserve_factor == pytest.approx(
+                1.0 / result.index, rel=1e-12
+            )
 
+    def test_matrix_compression_reserve_factor_is_the_first_failure_load(
+        self, criterion, material
+    ):
+        """Friction makes the matrix-compression index nonlinear in load,
+        so 1 / FI is not the reserve factor. LaRC05 is calibrated so pure
+        transverse compression fails at exactly Yc: at half of it the
+        reserve is exactly 2 (1 / FI gives 1.77, under-reading it)."""
+        stress = np.array([0.0, -0.5 * material.Yc, 0.0, 0.0, 0.0, 0.0])
+        result = criterion.evaluate(stress, material)
+        assert result.mode == "matrix_compression"
+        assert result.reserve_factor == pytest.approx(2.0, rel=1e-9)
+        assert 1.0 / result.index < 0.95 * result.reserve_factor
+        at_rf = criterion.evaluate(result.reserve_factor * stress, material)
+        assert at_rf.index == pytest.approx(1.0, rel=1e-9)
+
+    def test_matrix_reserve_is_exact_under_friction(self, criterion, material):
+        """Over random matrix-compression states: FI(rf * sigma) = 1, and
+        the field path returns the same reserve factor bit for bit."""
+        rng = np.random.default_rng(7)
+        m = material
+        checked = 0
+        stresses = []
+        for _ in range(200):
+            s = np.array([
+                rng.uniform(-0.1, 0.1) * m.Xc,
+                -rng.uniform(0.0, 1.5) * m.Yc,
+                -rng.uniform(0.0, 1.0) * m.Yc,
+                rng.normal() * m.S23,
+                rng.normal() * 0.5 * m.S12,
+                rng.normal() * 0.5 * m.S12,
+            ]) * rng.uniform(0.3, 2.0)
+            r = criterion.evaluate(s, m)
+            if r.mode != "matrix_compression":
+                continue
+            assert np.isfinite(r.reserve_factor)
+            at_rf = criterion.evaluate(r.reserve_factor * s, m)
+            assert at_rf.index == pytest.approx(1.0, rel=1e-8)
+            stresses.append((s, r.reserve_factor))
+            checked += 1
+        assert checked > 30
+        field = np.array([s for s, _ in stresses])
+        _, _, rf_field = criterion.evaluate_field(field, m)
+        np.testing.assert_array_equal(rf_field, [rf for _, rf in stresses])
+
+    @pytest.mark.parametrize("load", [400.0, 1000.0, 3400.0])
+    def test_kinking_reserve_factor_is_the_first_failure_load(
+        self, criterion, material, load
+    ):
+        """Kinking is nonlinear in load, so its reserve factor is solved:
+        FI(rf * sigma) = 1, and just below rf the ply has not failed.
+        At 2.8 x Xc (3400 MPa) 1 / FI is not even close."""
+        ctx = {"misalignment_angle": 0.05}
+        stress = np.array([-load, 0.0, 0.0, 0.0, 0.0, 0.0])
+        rf = criterion.evaluate(stress, material, ctx).reserve_factor
+        assert criterion.evaluate(rf * stress, material, ctx).index == (
+            pytest.approx(1.0, abs=1e-9)
+        )
+        assert criterion.evaluate(
+            rf * (1.0 - 1e-6) * stress, material, ctx
+        ).index < 1.0
+
+    @staticmethod
+    def _assert_never_unfails(names, angles, n_dirs, n_loads, seed=0):
+        rng = np.random.default_rng(seed)
+        crit = LaRC05Criterion(ply_thickness=0.5)
+        for name in names:
+            m = _LIBRARY.get(name)
+            for deg in angles:
+                T = stress_transformation_3d(np.radians(deg), axis="y")
+                for _ in range(n_dirs):
+                    g = np.array([-1.0, *rng.uniform(-0.15, 0.15, 5)])
+                    loads = np.linspace(1.0, 8.0 * m.Xc, n_loads)
+                    fi = crit.evaluate_field(
+                        loads[:, None] * (T @ g)[None, :], m
+                    )[0]
+                    crossed = np.flatnonzero(fi >= 1.0)
+                    if crossed.size:
+                        assert np.all(fi[crossed[0]:] >= 1.0), (name, deg)
+
+    def test_a_failed_state_never_reports_fi_below_one(self):
+        """Safety property the reserve-factor solve relies on: under
+        proportional loading, once FI reaches 1 it never drops back below 1
+        (the closed-form misalignment is small-angle; past 45 degrees the
+        band is reported kinked, FI = 1 / reserve factor). Representative subset here;
+        the full sweep is the ``slow`` test below."""
+        self._assert_never_unfails(
+            ("IM7_8552", "AC318_S6C10"), (0, 20), n_dirs=1, n_loads=300
+        )
+
+    @pytest.mark.slow
+    def test_a_failed_state_never_reports_fi_below_one_full_sweep(self):
+        """Every library material, four wrinkle angles, random
+        compression-dominated directions out to 8 x Xc."""
+        self._assert_never_unfails(
+            _LIBRARY.list_names(), (0, 5, 20, 40), n_dirs=2, n_loads=600
+        )
+
+    @pytest.mark.parametrize(
+        "name, seed",
+        [("IM7_8552", 2), ("AC318_S6C10", 5), ("T700_2510", 9)],
+    )
+    def test_the_plane_search_is_accurate_near_failure(self, name, seed):
+        """The default kink-plane search (coarse grid + golden refinement of
+        the three best peaks) against a 1440-plane reference, on the
+        governing index, for states either side of the failure threshold —
+        where pass/fail and the reserve factor are decided.
+
+        Measured: 99.9 % of states agree to ~1e-6; a rare tail of states
+        with a narrow third lobe under-reads by up to ~0.2 %. Both bounds
+        are pinned so a regression in either shows up. (Refining the best
+        coarse *points* instead of peaks gave a 99.9th percentile of 2e-3:
+        the two best points sit on one lobe, so round-off decided which
+        lobe was climbed and equal FE stress fields gave LaRC05 fields
+        1e-4 apart.)"""
+        rng = np.random.default_rng(seed)
+        m = _LIBRARY.get(name)
+        stress = np.column_stack(
+            [-rng.uniform(100, 1.3 * m.Xc, 6000), rng.normal(0, 60, (6000, 5))]
+        )
+        ref = LaRC05Criterion(n_psi=1440).evaluate_field_indices(stress, m)[0]
+        fi = LaRC05Criterion().evaluate_field_indices(stress, m)[0]
+        near = np.isfinite(ref) & (ref > 0.3) & (ref < 2.0)
+        assert near.sum() > 500
+        rel = np.abs(fi[near] - ref[near]) / ref[near]
+        assert np.quantile(rel, 0.999) < 1e-5
+        assert rel.max() < 5e-3
 
 # ======================================================================
 # Context override must not mutate criterion state (issue #192)

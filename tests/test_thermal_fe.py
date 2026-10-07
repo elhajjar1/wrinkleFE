@@ -380,6 +380,18 @@ def _fe_config(delta_T: float, applied_strain: float = -0.005
     )
 
 
+def _matrix_plies_fi(result) -> np.ndarray:
+    """LaRC05 index in the 90 deg plies, where it is a matrix index.
+
+    The laminate-wide maximum is fibre kinking in the 0 deg plies under
+    compression, which residual transverse tension makes slightly *worse*
+    (it softens the kink band). The claims here are about the matrix.
+    """
+    assert result.failure_indices is not None
+    fi: np.ndarray = result.failure_indices["larc05"]
+    return fi[np.isin(result.mesh.ply_ids, [1, 2])]
+
+
 @pytest.mark.slow
 class TestPipeline:
     """``AnalysisConfig.delta_T`` reaches the FE fields — and only there.
@@ -439,8 +451,8 @@ class TestPipeline:
 
     def test_cooldown_raises_the_matrix_failure_index_in_tension(self, runs):
         """Residual matrix tension adds to mechanical matrix tension."""
-        cold = runs[+0.005, CURE_COOLDOWN_DT].failure_indices["larc05"]
-        neutral = runs[+0.005, 0.0].failure_indices["larc05"]
+        cold = _matrix_plies_fi(runs[+0.005, CURE_COOLDOWN_DT])
+        neutral = _matrix_plies_fi(runs[+0.005, 0.0])
         assert np.max(cold) > 1.2 * np.max(neutral)
 
     def test_cooldown_relieves_the_matrix_failure_index_in_compression(
@@ -452,8 +464,8 @@ class TestPipeline:
         model that reported one would be wrong for the compression cases
         this package mostly analyses.
         """
-        cold = runs[-0.005, CURE_COOLDOWN_DT].failure_indices["larc05"]
-        neutral = runs[-0.005, 0.0].failure_indices["larc05"]
+        cold = _matrix_plies_fi(runs[-0.005, CURE_COOLDOWN_DT])
+        neutral = _matrix_plies_fi(runs[-0.005, 0.0])
         assert np.max(cold) < np.max(neutral)
 
     def test_measured_modulus_is_not_moved_by_delta_T(self, runs):

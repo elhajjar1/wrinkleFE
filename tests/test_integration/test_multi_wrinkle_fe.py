@@ -51,7 +51,13 @@ class TestMultiWrinkleFE:
     def test_two_wrinkles_fe_runs_with_local_fi_peaks(self):
         """FE solve runs for 2 non-overlapping wrinkles and produces a
         local max-FI peak near each wrinkle centre."""
-        cfg = _two_wrinkle_config()
+        # Probed below failure (far-field FI ~0.26). With the Xc-calibrated
+        # LaRC05 kinking, pristine 0 deg plies carry a real kinking index,
+        # and at the default -1 % strain the far field is already past
+        # failure (FI ~1.55), where the kinking index flattens out and
+        # compresses every peak/far ratio. Below failure the ratio measures
+        # the localisation this test is about.
+        cfg = _two_wrinkle_config(applied_strain=-0.002)
         result = WrinkleAnalysis(cfg).run()
 
         assert result.field_results is not None
@@ -94,8 +100,14 @@ class TestMultiWrinkleFE:
         # while the far-field baseline is unchanged to 5e-8 (those elements
         # are pristine, so the transform order cannot touch them).  The
         # elevation the test exists to detect is still unambiguous; only the
-        # inflated margin is gone.  1.05 keeps the assertion meaningful with
-        # room for mesh/solver noise.
+        # inflated margin is gone.
+        #
+        # RE-PINNED AGAIN (LaRC05 kinking fix): the far field now carries a
+        # real kinking baseline (pristine plies kink at their Xc-calibrated
+        # misalignment instead of FI ~ 0), so the same wrinkle is a smaller
+        # relative elevation: measured 1.064 / 1.055 at -0.2 % strain. The
+        # far-field elements are pristine and uniform, so 1.03 still
+        # detects the peaks unambiguously.
         far = np.ones_like(x_c, dtype=bool)
         for center in centers:
             far &= np.abs(x_c - center) > 6.0
@@ -104,7 +116,7 @@ class TestMultiWrinkleFE:
         for center in centers:
             near = np.abs(x_c - center) < 4.0      # within lambda/2
             assert near.any()
-            assert fi[near].max() > 1.05 * fi[far].max(), (
+            assert fi[near].max() > 1.03 * fi[far].max(), (
                 f"expected a local FI peak near x={center:.1f} mm"
             )
             peaks.append(fi[near].max())
@@ -200,16 +212,31 @@ class TestMultiWrinkleFE:
         assert r_halves.modulus_retention == pytest.approx(
             r_full.modulus_retention, rel=1e-6
         )
-        # The FI field, like the scalar modulus_retention above, is a
+        # The stress field, like the scalar modulus_retention above, is a
         # post-solve quantity that the two-spec composition reduces in a
         # different summation order than the single full-amplitude spec.
         # The mesh nodes and angle field are bit-identical (1e-12 above),
-        # so the inputs match; only this FP-reduction order differs, by
-        # ~7e-6 on macOS arm64 — rel=1e-9 flakes there. atol=5e-5 is far
-        # inside any physical FI tolerance yet survives the platform noise.
+        # so the inputs match; only the solve's FP-reduction order differs.
+        # On macOS arm64 CI that moved the stresses by up to 0.128 MPa
+        # (7.4e-5 of the 1728 MPa peak; bit-for-bit on Linux). The noise
+        # is absolute, so it lands on near-zero shear components too. A
+        # real composition bug differs at O(1); 5e-4 of the peak is ~7x
+        # the measured noise.
+        s_full = r_full.field_results.stress_local
+        np.testing.assert_allclose(
+            r_halves.field_results.stress_local, s_full, rtol=0,
+            atol=5e-4 * float(np.abs(s_full).max()),
+            err_msg="coincident halves must give the same stress field",
+        )
+        # Fibre kinking is sensitive to exactly that shear: a 0.01 MPa
+        # shift of a near-zero tau moves the kink-band misalignment by
+        # ~1 % of the intrinsic phi_C. Measured: 7e-6-of-peak absolute
+        # stress noise moves the LaRC05 field by up to 2.3e-4 (macOS CI:
+        # 1.05e-4). rtol=1e-3 covers that with margin and is still far
+        # inside any physical FI tolerance.
         for crit, arr in r_full.failure_indices.items():
             np.testing.assert_allclose(
-                r_halves.failure_indices[crit], arr, rtol=1e-5, atol=5e-5,
+                r_halves.failure_indices[crit], arr, rtol=1e-3, atol=5e-5,
                 err_msg=f"{crit} FI field diverged between coincident "
                 "halves and the full-amplitude wrinkle",
             )

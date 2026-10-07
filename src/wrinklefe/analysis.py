@@ -2740,14 +2740,14 @@ class AnalysisResults:
     retention_factors: dict | None = None  # {criterion_name: float}
     baseline_fi: dict | None = None  # {criterion_name: float} pristine max FI
     #: Criteria whose retention factor is **not meaningful** because the
-    #: pristine baseline cannot fail under this criterion.  The classic
-    #: case is a unidirectional (all-0 deg) laminate scored by LaRC05:
-    #: fibre kinking needs a nonzero initial misalignment, and a *flat*
-    #: UD coupon has none, so its max FI is ~1e-10 and the ratio
-    #: ``pristine / wrinkled`` collapses to ~0 -- reading as "no strength
-    #: retained" when the truth is "this comparison is undefined here".
-    #: The numeric value is still reported (nothing silently changes
-    #: shape), but consumers should check this first.
+    #: pristine baseline cannot fail under this criterion: its max FI is
+    #: ~0, so the ratio ``pristine / wrinkled`` collapses to ~0 -- reading
+    #: as "no strength retained" when the truth is "this comparison is
+    #: undefined here". The numeric value is still reported (nothing
+    #: silently changes shape), but consumers should check this first.
+    #: (LaRC05 used to trigger this on unidirectional layups, when its
+    #: kinking mode lacked the Xc-calibrated intrinsic misalignment and a
+    #: flat UD coupon could not kink; it no longer does.)
     retention_degenerate: dict | None = None  # {criterion_name: bool}
 
     # Proportional load factor (issue #275).  Populated only when
@@ -5359,10 +5359,11 @@ class WrinkleAnalysis:
         self,
         laminate: Laminate,
         mesh: MeshData,
-    ) -> tuple[FailureEvaluator, list, np.ndarray, np.ndarray]:
+    ) -> tuple[FailureEvaluator, list, np.ndarray, np.ndarray | None]:
         """Resolve the per-element inputs the failure criteria need.
 
-        Returns ``(evaluator, materials, eval_ply_ids, fiber_angles)``.
+        Returns ``(evaluator, materials, eval_ply_ids, fiber_angles)``,
+        where ``fiber_angles`` is always ``None``: see below.
         Shared by :meth:`_evaluate_failure` and the proportional
         load-factor search (issue #275) so both evaluate the field
         through exactly the same material routing and misalignment
@@ -5374,14 +5375,19 @@ class WrinkleAnalysis:
         # Build material list for each ply
         materials = [ply.material for ply in laminate.plies]
 
-        # Per-element fiber angles from wrinkle geometry (for LaRC05 kinking)
-        elem_fiber_angles = mesh.element_fiber_angles_array()
+        # No per-element misalignment is passed to LaRC05. The FE local
+        # stress is already in the wrinkled fibre frame (the static solver
+        # rotates it by the same, resin-scaled, wrinkle angle), so the
+        # wrinkle reaches the kinking check as tau_13 and its kink-plane
+        # search finds it. Passing the angle again rotated already-rotated
+        # stresses a second time, in the wrong (in-plane) plane.
+        elem_fiber_angles: np.ndarray | None = None
 
         # Resin-pocket zone (Li et al. 2024/2025): route lens elements to
         # their pocket material (graded blend, or the binary resin card)
-        # so failure is evaluated at the locally-softened strengths, and
-        # scale the fibre angle by the retention factor so the LaRC05
-        # kink-band path is not double-counted at the resin centre.
+        # so failure is evaluated at the locally-softened strengths. (The
+        # resin retention of the fibre angle is already in the local
+        # stress frame, applied by the static solver.)
         eval_ply_ids = np.asarray(mesh.ply_ids)
         if mesh.resin_blend_materials:
             # Graded pocket: each blended element gets its own material.
@@ -5392,18 +5398,11 @@ class WrinkleAnalysis:
             eval_ply_ids = eval_ply_ids.copy()
             for e, idx in mat_index.items():
                 eval_ply_ids[e] = idx
-            if mesh.resin_blend is not None:
-                elem_fiber_angles = (
-                    elem_fiber_angles * (1.0 - mesh.resin_blend)
-                )
         elif mesh.resin_mask is not None and mesh.resin_material is not None:
             resin_idx = len(materials)
             materials = [*materials, mesh.resin_material]
             eval_ply_ids = np.where(
                 mesh.resin_mask, resin_idx, mesh.ply_ids
-            )
-            elem_fiber_angles = np.where(
-                mesh.resin_mask, 0.0, elem_fiber_angles
             )
 
         return evaluator, materials, eval_ply_ids, elem_fiber_angles
@@ -5617,12 +5616,9 @@ class WrinkleAnalysis:
             logger.warning(
                 "Pristine baseline cannot fail under %s (max FI %.3g vs "
                 "%.3g wrinkled), so retention_factors %s is not a strength "
-                "retention — it is an undefined ratio reported as ~0. This "
-                "is expected for a unidirectional layup scored by a "
-                "criterion whose fibre-kinking mode needs a nonzero initial "
-                "misalignment. Use the analytical knockdown (or the "
-                "penetration gate for UD) instead; see "
-                "AnalysisResults.retention_degenerate.",
+                "retention — it is an undefined ratio reported as ~0. Use "
+                "the analytical knockdown (or the penetration gate for UD) "
+                "instead; see AnalysisResults.retention_degenerate.",
                 ", ".join(bad),
                 min(baseline[n] for n in bad),
                 max_fi_w,

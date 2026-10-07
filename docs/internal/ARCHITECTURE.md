@@ -153,8 +153,8 @@ wrinkled-mesh FE path. Each is opt-in and composes with the others through
   `EPOXY_S6C10`, built via `OrthotropicMaterial.isotropic`.
 
 - **Progressive-damage FE** (`solver/progressive_damage.py`). The linear path
-  reports only a first-ply failure index, so for UD compression (where the
-  pristine LaRC05 index never activates) it returns no knockdown. The
+  reports only a first-ply failure index, i.e. the onset of failure, not
+  the load the coupon finally carries. The
   `ProgressiveDamageSolver` ramps the applied strain in increments, re-solving
   with the `StaticSolver` and degrading newly-failed elements (ply-discount, by
   failure-mode family) until each increment settles; the peak carried stress

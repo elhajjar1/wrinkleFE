@@ -1,11 +1,11 @@
 """The FE-strength caveat reaches users, and its claims stay true.
 
-Validation showed the FE strength outputs err on the unsafe side: FE LaRC05
-over-predicted retained strength on every non-reference Li (2025) case, and
-the crack-band progressive-damage model over-predicted the most severe
-wrinkle. That was documented only internally while the app and the NCR
-summary showed FE strength numbers with no qualification, next to a tool
-pitched for scrap/repair/accept decisions.
+Validation showed the FE strength outputs err on the unsafe side where it
+matters most: FE LaRC05 over-predicted retained strength on the most severe
+Li (2025) wrinkles, and the crack-band progressive-damage model
+over-predicted the most severe wrinkle. That was documented only internally
+while the app and the NCR summary showed FE strength numbers with no
+qualification, next to a tool pitched for scrap/repair/accept decisions.
 
 Two kinds of test:
 
@@ -242,17 +242,20 @@ class TestProgressiveClaimsMatchTheLedger:
 
 @pytest.mark.slow
 def test_the_fe_larc05_claims_still_hold():
-    """Six FE solves. "Never conservative" and "up to about 60%" must stay
-    true; when the FE path improves, this fails and the caveat is rewritten
+    """Six FE solves. The caveat says the FE over-predicts the two most
+    severe wrinkles "by up to about 30%" and under-predicts the milder
+    ones; when the FE path changes, this fails and the caveat is rewritten
     to match."""
     sys.path.insert(0, str(_ROOT / "validation"))
     import strength_error_summary as ses
 
     rows = ses.fe_larc05_errors()
-    non_reference = {
-        k: e for k, (_kd, _m, e) in rows.items() if k != ses.REFERENCE_CASE
-    }
-    assert len(non_reference) == 5
-    assert all(e > 0 for e in non_reference.values()), non_reference
-    assert 50.0 <= max(non_reference.values()) <= 70.0, non_reference
-    assert abs(rows[ses.REFERENCE_CASE][2]) < 1e-9
+    assert len(rows) == 6
+    non_conservative = {k for k, (_kd, _m, e) in rows.items() if e > 0.5}
+    # The two most severe: 1.5 mm at 20 deg, and 30 deg.
+    assert non_conservative == {"S-M-2", "S-M-3"}, rows
+    worst = max(e for _kd, _m, e in rows.values())
+    assert 25.0 <= worst <= 35.0, rows
+    assert "about 30%" in FE_STRENGTH_CAVEAT
+    milder = [e for k, (_kd, _m, e) in rows.items() if k not in non_conservative]
+    assert all(e < 0.5 for e in milder), rows

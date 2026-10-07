@@ -1,20 +1,24 @@
-"""Guards for the undefined-retention case on unidirectional layups.
+"""Guards for the undefined-retention case.
 
-``retention_factors[c] = max_FI_pristine(c) / max_FI_wrinkled(c)``. For an
-all-0 deg laminate scored by LaRC05 the *pristine* term is ~1e-10: fibre
-kinking needs a nonzero initial misalignment and a flat UD coupon has
-none. The ratio is then an undefined quantity reported as ~0, which reads
-as "no strength retained" when the truth is "this comparison does not
-apply here".
+``retention_factors[c] = max_FI_pristine(c) / max_FI_wrinkled(c)``. When a
+criterion cannot fail the *pristine* coupon at all, that ratio is an
+undefined quantity reported as ~0, which reads as "no strength retained"
+when the truth is "this comparison does not apply here". The number is
+still reported, but it is flagged, warned about, exported, and refused by a
+mesh-convergence study (where the artefact is identical at every
+refinement and so looks perfectly converged).
 
-Measured on the Li 2025 S-M-2 recipe: pristine max FI 1.66e-10 against a
-wrinkled 0.682, giving a retention of 2.4e-10.
+LaRC05 used to be that criterion on unidirectional layups: its kinking mode
+had no intrinsic misalignment, so a flat UD coupon could never kink
+(pristine max FI ~1e-10 on the Li 2025 S-M-2 recipe). That is fixed — the
+kinking model now carries the Xc-calibrated misalignment, so a pristine
+ply kinks at its compressive strength (see ``TestLaRC05NoLongerTriggersIt``).
 
-The number is still reported — nothing changes shape for existing
-consumers — but it is now flagged, warned about, exported, and refused by
-the one consumer where acting on it silently is worst: a mesh-convergence
-study, where the artefact is identical at every refinement and so looks
-perfectly converged.
+The guard is general, so it is now exercised with a criterion that
+genuinely cannot fail a flat coupon: ``FI = |tau_13| / S13``, which is
+exactly zero without a wrinkle and positive with one. It runs through the
+real pipeline (both FE solves, retention, flags, exports), injected as the
+default evaluator.
 """
 
 from __future__ import annotations
@@ -22,15 +26,34 @@ from __future__ import annotations
 import logging
 import warnings
 
+import numpy as np
 import pytest
 
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis
 from wrinklefe.convergence import _qoi_strength_retention
 from wrinklefe.core.material import MaterialLibrary
+from wrinklefe.failure.base import FailureCriterion, FailureResult
+from wrinklefe.failure.evaluator import FailureEvaluator
+from wrinklefe.failure.larc05 import LaRC05Criterion
+
+
+class _OutOfPlaneShearOnly(FailureCriterion):
+    """``FI = |tau_13| / S13``: zero on a flat coupon, so its pristine
+    baseline cannot fail — the condition the guard exists for."""
+
+    name = "tau13"
+
+    def evaluate(self, stress_local, material, context=None):
+        fi = abs(float(stress_local[4])) / material.S13
+        return FailureResult(
+            index=fi, mode="shear_13",
+            reserve_factor=1.0 / fi if fi > 0 else float("inf"),
+            criterion_name=self.name,
+        )
 
 
 def _ud_config(**over) -> AnalysisConfig:
-    """An all-0 deg UD laminate — the configuration that triggers it."""
+    """An all-0 deg UD laminate (the case that used to trigger the guard)."""
     kw = dict(
         amplitude=0.75, wavelength=12.9, width=12.9,
         morphology="graded", loading="compression",
@@ -64,9 +87,36 @@ def _run(cfg):
         return WrinkleAnalysis(cfg).run()
 
 
+def _run_with(criteria, cfg):
+    """Run with ``criteria`` as the default evaluator (restored after)."""
+    original = FailureEvaluator.default_criteria
+    FailureEvaluator.default_criteria = classmethod(  # type: ignore[method-assign]
+        lambda cls: cls(list(criteria))
+    )
+    try:
+        return _run(cfg)
+    finally:
+        FailureEvaluator.default_criteria = original  # type: ignore[method-assign]
+
+
 @pytest.fixture(scope="module")
 def ud_result():
+    """Default criteria (LaRC05) on the UD case: now sound."""
     return _run(_ud_config())
+
+
+@pytest.fixture(scope="module")
+def degenerate_result():
+    """Every criterion degenerate: only the tau_13 criterion."""
+    return _run_with([_OutOfPlaneShearOnly()], _ud_config())
+
+
+@pytest.fixture(scope="module")
+def partly_degenerate_result():
+    """One sound criterion (LaRC05) alongside the degenerate one."""
+    return _run_with(
+        [LaRC05Criterion(), _OutOfPlaneShearOnly()], _ud_config()
+    )
 
 
 @pytest.fixture(scope="module")
@@ -74,30 +124,50 @@ def md_result():
     return _run(_multidirectional_config())
 
 
+class TestLaRC05NoLongerTriggersIt:
+    """Pin the fix: a UD pristine coupon now fails under LaRC05."""
+
+    def test_the_pristine_ud_baseline_can_fail(self, ud_result):
+        # 1.66e-10 before the kinking fix; a pristine ply now kinks at Xc.
+        assert ud_result.baseline_fi["larc05"] > 0.1
+
+    def test_it_is_not_flagged(self, ud_result):
+        assert ud_result.retention_degenerate == {"larc05": False}
+
+    def test_its_retention_is_a_real_strength_ratio(self, ud_result):
+        assert 0.1 < ud_result.retention_factors["larc05"] <= 1.0
+
+
 class TestTheProblemIsReal:
-    """Pin the underlying numbers, so this is documented behaviour and
-    not a guard someone later removes as speculative."""
+    """The condition the guard handles, reproduced through the pipeline."""
 
-    def test_pristine_baseline_cannot_fail_on_a_ud_layup(self, ud_result):
-        assert ud_result.baseline_fi is not None
-        assert ud_result.baseline_fi["larc05"] < 1e-6
+    def test_the_pristine_baseline_cannot_fail(self, degenerate_result):
+        assert degenerate_result.baseline_fi["tau13"] < 1e-6
 
-    def test_the_wrinkled_case_does_fail_normally(self, ud_result):
+    def test_the_wrinkled_case_does_fail_normally(self, degenerate_result):
         """So the ~0 is the *baseline*, not a dead run."""
-        assert ud_result.failure_indices is not None
-        import numpy as np
+        fi = np.asarray(
+            degenerate_result.failure_indices["tau13"]
+        ).mean(axis=-1)
+        assert float(fi[np.isfinite(fi)].max()) > 0.01
 
-        fi = np.asarray(ud_result.failure_indices["larc05"]).mean(axis=-1)
-        assert float(fi[np.isfinite(fi)].max()) > 0.1
-
-    def test_the_resulting_retention_looks_like_total_loss(self, ud_result):
+    def test_the_resulting_retention_looks_like_total_loss(
+        self, degenerate_result
+    ):
         """The trap: a plausible-looking number meaning nothing."""
-        assert ud_result.retention_factors["larc05"] < 1e-6
+        assert degenerate_result.retention_factors["tau13"] < 1e-6
 
 
 class TestFlagging:
-    def test_ud_run_is_flagged(self, ud_result):
-        assert ud_result.retention_degenerate == {"larc05": True}
+    def test_the_degenerate_criterion_is_flagged(self, degenerate_result):
+        assert degenerate_result.retention_degenerate == {"tau13": True}
+
+    def test_only_the_degenerate_criterion_is_flagged(
+        self, partly_degenerate_result
+    ):
+        assert partly_degenerate_result.retention_degenerate == {
+            "larc05": False, "tau13": True,
+        }
 
     def test_multidirectional_run_is_not_flagged(self, md_result):
         assert md_result.retention_degenerate is not None
@@ -110,31 +180,46 @@ class TestFlagging:
 
     def test_a_warning_is_logged_naming_the_cause(self, caplog):
         with caplog.at_level(logging.WARNING, logger="wrinklefe.analysis"):
-            _run(_ud_config())
+            _run_with([_OutOfPlaneShearOnly()], _ud_config())
         text = "\n".join(r.getMessage() for r in caplog.records)
-        assert "larc05" in text
-        assert "unidirectional" in text
+        assert "tau13" in text
         assert "retention_degenerate" in text
 
-    def test_flag_keys_match_the_retention_keys(self, ud_result):
-        assert set(ud_result.retention_degenerate) == set(
-            ud_result.retention_factors
+    def test_a_sound_run_logs_no_such_warning(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="wrinklefe.analysis"):
+            _run(_ud_config())
+        assert not any(
+            "retention_degenerate" in r.getMessage() for r in caplog.records
         )
+
+    def test_flag_keys_match_the_retention_keys(
+        self, partly_degenerate_result
+    ):
+        r = partly_degenerate_result
+        assert set(r.retention_degenerate) == set(r.retention_factors)
 
 
 class TestConvergenceRefusesIt:
     """The one place acting on the artefact silently is worst."""
 
     def test_strength_retention_qoi_raises_on_a_degenerate_result(
-        self, ud_result
+        self, degenerate_result
     ):
         with pytest.raises(ValueError, match="undefined for this"):
-            _qoi_strength_retention(ud_result)
+            _qoi_strength_retention(degenerate_result)
 
-    def test_the_message_names_an_alternative(self, ud_result):
+    def test_the_message_names_an_alternative(self, degenerate_result):
         with pytest.raises(ValueError) as exc:
-            _qoi_strength_retention(ud_result)
+            _qoi_strength_retention(degenerate_result)
         assert "max_fi" in str(exc.value)
+
+    def test_a_real_partly_degenerate_run_returns_the_sound_minimum(
+        self, partly_degenerate_result
+    ):
+        r = partly_degenerate_result
+        assert _qoi_strength_retention(r) == pytest.approx(
+            r.retention_factors["larc05"]
+        )
 
     def test_a_healthy_result_still_returns_its_retention(self, md_result):
         value = _qoi_strength_retention(md_result)
@@ -155,15 +240,17 @@ class TestConvergenceRefusesIt:
 
 
 class TestExports:
-    def test_structured_export_carries_the_flag(self, ud_result, tmp_path):
+    def test_structured_export_carries_the_flag(
+        self, partly_degenerate_result, tmp_path
+    ):
         import json
 
         from wrinklefe.io.results import export_results_json
 
         out = tmp_path / "r.json"
-        export_results_json(ud_result, out)
+        export_results_json(partly_degenerate_result, out)
         knockdowns = json.loads(out.read_text())["knockdown_factors"]
-        assert knockdowns["fe_retention_degenerate"] == ["larc05"]
+        assert knockdowns["fe_retention_degenerate"] == ["tau13"]
 
     def test_structured_export_omits_it_when_sound(self, md_result, tmp_path):
         """A normal run's document is unchanged."""
@@ -177,6 +264,8 @@ class TestExports:
         assert "fe_retention_degenerate" not in knockdowns
 
     def test_summary_block_carries_the_flag(self, ud_result):
+        # The summary takes the flag as given; any result supplies the
+        # retention dict.
         from wrinklefe.io.export import build_analysis_summary
 
         summary = build_analysis_summary(

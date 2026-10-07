@@ -194,27 +194,30 @@ class TestLaRC05Criterion:
     def test_reserve_factor_is_inverse_of_index_below_failure(
         self, x850_material
     ):
-        """rf = 1 / index must hold uniformly now that every sub-FI is on
-        the linear-in-load scale. Pre-fix, rf for fiber_tension was
-        1 / fi but for kinking/matrix was 1 / sqrt(fi). See issue #79.
+        """rf = 1 / index for the sub-criteria that are linear in load
+        (issue #79: pre-fix, rf for fiber_tension was 1 / fi but for the
+        others 1 / sqrt(fi)). Fibre kinking is the exception: its index is
+        nonlinear in load, so its reserve factor is solved for and checked
+        by its defining property instead, FI(rf * sigma) = 1.
         """
         criterion = LaRC05Criterion()
-        cases = [
-            # (description, stress vector, context)
+        linear_cases = [
             ("half-Xt fibre tension",
-             np.array([0.5 * x850_material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0]),
-             None),
+             np.array([0.5 * x850_material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0])),
             ("half-Yt transverse tension",
-             np.array([0.0, 0.5 * x850_material.Yt, 0.0, 0.0, 0.0, 0.0]),
-             None),
-            ("compression with misalignment",
-             np.array([-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-             {"misalignment_angle": 0.10}),
+             np.array([0.0, 0.5 * x850_material.Yt, 0.0, 0.0, 0.0, 0.0])),
         ]
-        for label, stress, ctx in cases:
-            result = criterion.evaluate(stress, x850_material, ctx)
-            if result.index > 0:
-                assert_allclose(
-                    result.reserve_factor, 1.0 / result.index, rtol=1e-12,
-                    err_msg=f"rf != 1/index for case '{label}'",
-                )
+        for label, stress in linear_cases:
+            result = criterion.evaluate(stress, x850_material)
+            assert_allclose(
+                result.reserve_factor, 1.0 / result.index, rtol=1e-12,
+                err_msg=f"rf != 1/index for case '{label}'",
+            )
+        ctx = {"misalignment_angle": 0.10}
+        stress = np.array([-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        result = criterion.evaluate(stress, x850_material, ctx)
+        assert result.mode == "fiber_kinking"
+        at_rf = criterion.evaluate(
+            result.reserve_factor * stress, x850_material, ctx
+        )
+        assert_allclose(at_rf.index, 1.0, atol=1e-9)

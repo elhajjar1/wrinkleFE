@@ -4333,9 +4333,8 @@ with tab_analyze:
                     "Fraction of strength remaining under the *worst* of "
                     "all failure criteria evaluated. `1.0` = no loss; the "
                     "controlling criterion is shown below. Indicative only "
-                    "— see the caveat above: where checked against measured "
-                    "strength, this has over-predicted, never "
-                    "under-predicted."
+                    "— see the caveat above: against measured strength it "
+                    "over-predicted the most severe wrinkles."
                 ),
             )
             f3.metric(

@@ -411,11 +411,19 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   under-predicts the milder two (S-M-4 −7 % / −15 %, S-M-5 −3.5 % /
   −19 %). (Corrected 2026-10-07: this note previously said every error
   was positive; the "+15 %" quoted for the refined mesh was S-M-4's
-  −15 % with its sign dropped.) The FE LaRC05 path is never conservative
-  on this dataset: re-measured 2026-10-07 it over-predicts all five
-  non-reference cases, S-M-1 +12 %, S-M-2 +58 %, S-M-3 +43 %, S-M-4
-  +6 %, S-A-2 +1 % (S-M-5 is the normalisation reference, 0 % by
-  construction). Both FE strength paths therefore miss on the unsafe
+  −15 % with its sign dropped.) The FE LaRC05 path, after the LaRC05
+  kinking fix (a pristine ply now kinks at exactly Xc, so the FE is
+  measured against a true pristine baseline instead of being normalised
+  to S-M-5), over-predicts the two most severe wrinkles, S-M-2 +16 % and
+  S-M-3 +32 %, and under-predicts the rest: S-M-1 −5 %, S-M-4 −22 %,
+  S-M-5 −26 %, S-A-2 −26 %. Its four 20° cases all predict about 0.73
+  whatever the amplitude: first-ply FE sees the wrinkle's angle, not its
+  size. (Before the fix it over-predicted all five non-reference cases,
+  by up to +58 %.) The progressive-damage figures did not move with the
+  fix: on those meshes first failure is interlaminar shear (MaxStress
+  τ13, index 0.989 at the pinned peak on S-M-2 nx = 16), which the
+  corrected kinking index (0.948, up from 0.257) does not overtake.
+  Both FE strength paths therefore miss on the unsafe
   side exactly where it matters most, the severe wrinkles. Treat FE
   strength numbers as indicative, not as allowables; the app and the NCR
   summary carry this warning (`wrinklefe.io.export.FE_STRENGTH_CAVEAT`),

@@ -85,12 +85,15 @@ def _qoi_strength_retention(results: AnalysisResults) -> float:
             f"pristine baseline cannot fail under {', '.join(degenerate)}, "
             "so every retention factor is an ~0 artefact rather than a "
             "strength ratio, and it would not change with mesh refinement. "
-            "This is the expected outcome for a unidirectional layup under "
-            "a fibre-kinking criterion that needs a nonzero initial "
-            "misalignment. Converge on 'max_fi' or 'modulus_retention' "
-            "instead."
+            "Converge on 'max_fi' or 'modulus_retention' instead."
         )
-    return min(float(v) for v in results.retention_factors.values())
+    # The minimum over the SOUND criteria. Taking it over all of them
+    # returned the ~0 artefact of a degenerate one whenever any was
+    # present, which is exactly the number this guard exists to refuse.
+    return min(
+        float(v) for name, v in results.retention_factors.items()
+        if name not in degenerate
+    )
 
 
 def _qoi_max_damage(results: AnalysisResults) -> float:

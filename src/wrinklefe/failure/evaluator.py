@@ -262,12 +262,14 @@ class FailureEvaluator:
             Per-ply context forwarded to ``criterion.evaluate(..., context)``.
             Either a sequence indexable by integer ply index (e.g. a
             ``list`` of length ``n_plies``) or a ``dict`` keyed by ply
-            index.  Use this to flow wrinkle-driven
-            ``misalignment_angle`` (and other element-level data such as
-            ``ply_thickness``) into physics-based criteria like LaRC05.
+            index.  Use this to flow a known ``misalignment_angle`` (and
+            other element-level data such as ``ply_thickness``) into
+            physics-based criteria like LaRC05: CLT ply stresses are in the
+            unwrinkled ply frame, so here the angle is genuinely additional.
             Missing entries default to ``None``.  Defaults to ``None`` for
             backwards compatibility, in which case the no-wrinkle case is
-            evaluated.
+            evaluated (LaRC05 still kinks at Xc through its intrinsic
+            misalignment).
 
         Returns
         -------
@@ -409,9 +411,12 @@ class FailureEvaluator:
             Shape ``(n_elements,)`` integer array giving the ply index for
             each element.
         fiber_angles : np.ndarray or None, optional
-            Shape ``(n_elements,)`` per-element fibre misalignment angles
-            in radians from wrinkle geometry.  Passed to criteria (e.g.
-            LaRC05) via the ``context`` dict.
+            Shape ``(n_elements,)`` per-element *additional* fibre
+            misalignment (radians), passed to criteria via the ``context``
+            dict as ``misalignment_angle``. Leave it ``None`` for FE local
+            stresses: they are already in the wrinkled fibre frame, so the
+            wrinkle is in the stress state and passing its angle again
+            double-counts it (which is what ``WrinkleAnalysis`` used to do).
 
         Returns
         -------
@@ -482,7 +487,9 @@ class FailureEvaluator:
                 contexts = None
 
             for criterion in self.criteria:
-                indices, modes, _rf = criterion.evaluate_field(
+                # Reserve factors are not used here; skipping them saves
+                # LaRC05's per-point kinking root-find on every FE field.
+                indices, modes = criterion.evaluate_field_indices(
                     stress_flat, mat, contexts
                 )
                 fi_fields[criterion.name][elem_mask] = indices.reshape(
@@ -629,8 +636,9 @@ class FailureEvaluator:
             ]
             report = evaluator.evaluate_laminate(lam, load, ply_contexts=ply_contexts)
 
-        Without ``ply_contexts``, LaRC05 evaluates with ``phi_0 = 0``, i.e.
-        the no-wrinkle case.
+        Without ``ply_contexts``, LaRC05 evaluates with no additional
+        misalignment: the no-wrinkle case, in which a ply still kinks at
+        ``-Xc`` through LaRC05's intrinsic, Xc-calibrated misalignment.
 
         Returns
         -------

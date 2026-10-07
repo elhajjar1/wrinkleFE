@@ -532,26 +532,20 @@ class ProgressiveDamageSolver:
 
     def _effective_materials(
         self,
-    ) -> tuple[list[OrthotropicMaterial], np.ndarray, np.ndarray]:
-        """Build the per-element material list + ply-id index + fibre angles.
+    ) -> tuple[list[OrthotropicMaterial], np.ndarray, None]:
+        """Build the per-element material list + ply-id index.
 
         Honours, per element, the degradation override, then the resin
-        pocket, then the host ply.  Resin elements carry a zeroed fibre
-        angle (no fibres to kink).  Returns a deduplicated material list
+        pocket, then the host ply.  Returns a deduplicated material list
         and an index array suitable for ``FailureEvaluator.evaluate_field``.
+        The third element (fibre angles) is always ``None``: the local
+        stress is already in the wrinkled fibre frame, so LaRC05 must not
+        be handed the wrinkle angle a second time (see
+        ``WrinkleAnalysis._failure_eval_inputs``).
         """
         mesh = self.mesh
         n_elem = mesh.n_elements
         override = mesh.element_material_override or {}
-
-        elem_fiber = mesh.element_fiber_angles_array().copy()
-        # Scale the fibre angle by the resin retention factor (0 at a
-        # fibre-free resin centre, 1 in the bulk) so the kink-band path is
-        # not double-counted in the pocket.
-        if mesh.resin_blend is not None:
-            elem_fiber *= (1.0 - mesh.resin_blend)
-        elif mesh.resin_mask is not None:
-            elem_fiber[mesh.resin_mask] = 0.0
 
         materials: list[OrthotropicMaterial] = []
         index_of: dict[int, int] = {}
@@ -567,4 +561,4 @@ class ProgressiveDamageSolver:
                 index_of[key] = idx
                 materials.append(mat)
             eval_ply_ids[e] = idx
-        return materials, eval_ply_ids, elem_fiber
+        return materials, eval_ply_ids, None

@@ -597,18 +597,20 @@ _CRITICAL_LIMIT_BASIS = (
 # app. The figures behind it are in docs/interpreting_results.md
 # ("How far to trust each number") and docs/internal/VALIDATION.md.
 #
-# The direction matters more than the magnitude: every validation miss of
-# the FE strength paths is on the unsafe side for the most severe wrinkles,
-# which is exactly where a disposition is least tolerant of one. Plain
-# text, no Markdown, so JSON consumers and the PDF get the same words.
+# The direction matters more than the magnitude: the FE strength paths'
+# unsafe misses fall on the most severe wrinkles, which is exactly where a
+# disposition is least tolerant of one. Plain text, no Markdown, so JSON
+# consumers and the PDF get the same words. tests/test_fe_strength_caveat.py
+# re-derives every number quoted here and fails if one stops being true.
 FE_STRENGTH_CAVEAT = (
     "FE strength retention is indicative, not an allowable, and should not "
     "be used to override the analytical knockdown. Checked against measured "
-    "strength (six unidirectional glass/epoxy specimens) it was never "
-    "conservative: it over-predicted retained strength on every case except "
-    "its normalisation reference, by up to about 60%, worst on the most "
-    "severe wrinkles. It has not been checked against measured strength for "
-    "multidirectional laminates."
+    "strength (six unidirectional glass/epoxy specimens) it over-predicted "
+    "retained strength on the two most severe wrinkles, by up to about 30%, "
+    "while under-predicting the milder ones: it responds to a wrinkle's "
+    "angle but not its size, so it cannot tell a severe wrinkle from a mild "
+    "one at the same angle. It has not been checked against measured "
+    "strength for multidirectional laminates."
 )
 
 PROGRESSIVE_DAMAGE_CAVEAT = (
