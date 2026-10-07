@@ -123,6 +123,13 @@ class FailureCriterion(ABC):
             factor, and criterion name.
         """
 
+    #: True when :meth:`evaluate_field` is pinned bit-identical to the
+    #: per-point :meth:`evaluate` (index, mode and reserve factor), so a
+    #: caller may batch points through it without changing any result.
+    #: :meth:`FailureEvaluator.evaluate_laminate` does that for such
+    #: criteria; the others it evaluates point by point.
+    FIELD_PATH_IS_EXACT: bool = False
+
     def evaluate_field(
         self,
         stress_field: np.ndarray,

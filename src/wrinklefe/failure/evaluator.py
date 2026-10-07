@@ -228,6 +228,74 @@ class FailureEvaluator:
     # Laminate-level evaluation
     # ------------------------------------------------------------------
 
+    def _ply_results(
+        self,
+        laminate: Laminate,
+        loads: Sequence[LoadState],
+        ply_contexts: PlyContexts = None,
+    ) -> tuple[
+        dict[str, np.ndarray], dict[str, np.ndarray], dict[str, np.ndarray]
+    ]:
+        """Index, reserve factor and mode of every ply under every load.
+
+        Returns three dicts keyed by criterion name, each holding an
+        ``(n_loads, n_plies)`` array. A criterion whose field path is exact
+        (:attr:`FailureCriterion.FIELD_PATH_IS_EXACT`) is evaluated in one
+        :meth:`~FailureCriterion.evaluate_field` call per material over all
+        loads and plies; its per-point :meth:`~FailureCriterion.evaluate`
+        can be costly (LaRC05 solves its reserve factors), and the batch
+        gives the same numbers. Every other criterion is evaluated point
+        by point, exactly as before.
+        """
+        n_plies = laminate.n_plies
+        n_loads = len(loads)
+        # Full 6-component local stresses. CLT gives [s1, s2, t12]; the
+        # out-of-plane components are zero (plane stress).
+        stress = np.zeros((n_loads, n_plies, 6), dtype=np.float64)
+        for i, load in enumerate(loads):
+            for k in range(n_plies):
+                s2d = laminate.ply_stresses_local(load, k, position="mid")
+                stress[i, k, 0] = s2d[0]  # sigma_11
+                stress[i, k, 1] = s2d[1]  # sigma_22
+                stress[i, k, 5] = s2d[2]  # tau_12
+        contexts = [_ply_context(ply_contexts, k) for k in range(n_plies)]
+        materials = [laminate.plies[k].material for k in range(n_plies)]
+
+        fi: dict[str, np.ndarray] = {}
+        rf: dict[str, np.ndarray] = {}
+        modes: dict[str, np.ndarray] = {}
+        for criterion in self.criteria:
+            name = criterion.name
+            fi[name] = np.zeros((n_loads, n_plies))
+            rf[name] = np.full((n_loads, n_plies), np.inf)
+            modes[name] = np.full((n_loads, n_plies), "", dtype=object)
+            if criterion.FIELD_PATH_IS_EXACT:
+                groups: dict[int, list[int]] = {}
+                for k, mat in enumerate(materials):
+                    groups.setdefault(id(mat), []).append(k)
+                for plies in groups.values():
+                    rows = stress[:, plies, :].reshape(-1, 6)
+                    ctx = [contexts[k] for k in plies] * n_loads
+                    f, m, r = criterion.evaluate_field(
+                        rows, materials[plies[0]], ctx
+                    )
+                    fi[name][:, plies] = np.reshape(f, (n_loads, len(plies)))
+                    rf[name][:, plies] = np.reshape(r, (n_loads, len(plies)))
+                    modes[name][:, plies] = np.reshape(
+                        np.array([str(x) for x in m], dtype=object),
+                        (n_loads, len(plies)),
+                    )
+                continue
+            for i in range(n_loads):
+                for k in range(n_plies):
+                    res = criterion.evaluate(
+                        stress[i, k], materials[k], contexts[k]
+                    )
+                    fi[name][i, k] = res.index
+                    rf[name][i, k] = res.reserve_factor
+                    modes[name][i, k] = res.mode
+        return fi, rf, modes
+
     def evaluate_laminate(
         self,
         laminate: Laminate,
@@ -287,39 +355,12 @@ class FailureEvaluator:
         ...     laminate, load, ply_contexts=ply_contexts
         ... )  # doctest: +SKIP
         """
-        n_plies = laminate.n_plies
-
-        # Storage: per-criterion, per-ply
-        ply_fi: dict[str, np.ndarray] = {
-            c.name: np.zeros(n_plies) for c in self.criteria
-        }
-        ply_rf: dict[str, np.ndarray] = {
-            c.name: np.full(n_plies, np.inf) for c in self.criteria
-        }
-        ply_modes: dict[str, list[str]] = {
-            c.name: [""] * n_plies for c in self.criteria
-        }
-
-        # Evaluate each ply
-        for k in range(n_plies):
-            # CLT returns [sigma_1, sigma_2, tau_12] (3-component plane stress)
-            stress_2d = laminate.ply_stresses_local(load, k, position="mid")
-
-            # Expand to full 6-component vector for the failure criteria.
-            # sigma_33 = tau_23 = tau_13 = 0  (plane stress assumption)
-            stress_6 = np.zeros(6, dtype=np.float64)
-            stress_6[0] = stress_2d[0]  # sigma_11
-            stress_6[1] = stress_2d[1]  # sigma_22
-            stress_6[5] = stress_2d[2]  # tau_12
-
-            material = laminate.plies[k].material
-            ctx = _ply_context(ply_contexts, k)
-
-            for criterion in self.criteria:
-                result = criterion.evaluate(stress_6, material, ctx)
-                ply_fi[criterion.name][k] = result.index
-                ply_rf[criterion.name][k] = result.reserve_factor
-                ply_modes[criterion.name][k] = result.mode
+        fi_all, rf_all, modes_all = self._ply_results(
+            laminate, [load], ply_contexts
+        )
+        ply_fi = {name: fi_all[name][0] for name in fi_all}
+        ply_rf = {name: rf_all[name][0] for name in rf_all}
+        ply_modes = {name: list(modes_all[name][0]) for name in modes_all}
 
         # Build FPF and LPF for each criterion
         fpf: dict[str, dict] = {}
@@ -587,29 +628,29 @@ class FailureEvaluator:
             for c in self.criteria
         }
 
-        for i, theta in enumerate(angles):
+        loads = []
+        for theta in angles:
             # Construct unit load in the chosen plane
             load_vec = np.zeros(6, dtype=np.float64)
             load_vec[idx1] = np.cos(theta)
             load_vec[idx2] = np.sin(theta)
-            load = LoadState.from_vector(load_vec)
+            loads.append(LoadState.from_vector(load_vec))
 
-            # Evaluate laminate at unit load
-            report = self.evaluate_laminate(laminate, load, ply_contexts=ply_contexts)
+        # Every angle in one batch: the same per-ply results
+        # evaluate_laminate would compute angle by angle.
+        _, rf_all, _ = self._ply_results(laminate, loads, ply_contexts)
 
-            for criterion in self.criteria:
-                name = criterion.name
-                # Strength ratio = the smallest per-ply load scale R that
-                # drives any ply to its failure surface. For criteria linear
-                # in load scale this equals 1/FI_max; for nonlinear criteria
-                # (e.g. Tsai-Wu, quadratic in R) it does not. The FPF
-                # load_factor already encodes the correct quadratic root.
-                sr = float(report.fpf[name]["load_factor"])
-                if not np.isfinite(sr):
-                    sr = 1.0e12
-
-                envelopes[name][i, 0] = sr * np.cos(theta)
-                envelopes[name][i, 1] = sr * np.sin(theta)
+        for criterion in self.criteria:
+            name = criterion.name
+            # Strength ratio = the smallest per-ply load scale R that
+            # drives any ply to its failure surface, i.e. the FPF
+            # load_factor. For criteria linear in load scale this equals
+            # 1/FI_max; for nonlinear criteria (e.g. Tsai-Wu, quadratic in
+            # R) it does not, and the reserve factor encodes the root.
+            sr = rf_all[name].min(axis=1)
+            sr = np.where(np.isfinite(sr), sr, 1.0e12)
+            envelopes[name][:, 0] = sr * np.cos(angles)
+            envelopes[name][:, 1] = sr * np.sin(angles)
 
         return envelopes
 

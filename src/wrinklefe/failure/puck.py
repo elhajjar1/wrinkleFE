@@ -96,6 +96,9 @@ class PuckCriterion(FailureCriterion):
     """
 
     name = "puck"
+    # evaluate_field is pinned bit-identical to evaluate (issue #299,
+    # tests/test_failure/test_vectorized_field_issue299.py).
+    FIELD_PATH_IS_EXACT = True
 
     def __init__(
         self,
