@@ -444,7 +444,6 @@ class LaRC05Criterion(FailureCriterion):
         psi[:, :-1] = grid
         psi[:, -1] = np.arctan2(s[:, 4], s[:, 5])
         fi_grid = self._kink_fi_planes(*args, psi)
-        rows = np.arange(n)
         fi_point = fi_grid.max(axis=1)
 
         # Stage 2: golden-section refinement within one grid spacing of the
@@ -464,26 +463,30 @@ class LaRC05Criterion(FailureCriterion):
         top = np.argsort(score, axis=1, kind="stable")[:, -3:]
         half = np.pi / self.n_psi
         g = 0.5 * (np.sqrt(5.0) - 1.0)
-        for col in range(top.shape[1]):
-            centre = psi[rows, top[:, col]]
-            a, b = centre - half, centre + half
-            c, d = b - g * (b - a), a + g * (b - a)
-            fc = self._kink_fi_planes(*args, c[:, None])[:, 0]
-            fd = self._kink_fi_planes(*args, d[:, None])[:, 0]
-            for _ in range(self._PSI_REFINE_ITERS):
-                # Keep the half holding the larger interior value; one new
-                # evaluation per step (the other interior point is reused).
-                left = fc >= fd
-                a_new = np.where(left, a, c)
-                b_new = np.where(left, d, b)
-                c_new = np.where(left, b_new - g * (b_new - a_new), d)
-                d_new = np.where(left, c, a_new + g * (b_new - a_new))
-                f_eval = self._kink_fi_planes(
-                    *args, np.where(left, c_new, d_new)[:, None]
-                )[:, 0]
-                fc, fd = np.where(left, f_eval, fd), np.where(left, fc, f_eval)
-                a, b, c, d = a_new, b_new, c_new, d_new
-            fi_point = np.maximum(fi_point, np.maximum(fc, fd))
+        # All candidates refine together, one (N, n_candidates) evaluation
+        # per step: per-candidate arithmetic is unchanged, but the scalar
+        # path (N = 1, overhead-bound) makes a third of the calls.
+        centre = np.take_along_axis(psi, top, axis=1)
+        a, b = centre - half, centre + half
+        c, d = b - g * (b - a), a + g * (b - a)
+        fc = self._kink_fi_planes(*args, c)
+        fd = self._kink_fi_planes(*args, d)
+        for _ in range(self._PSI_REFINE_ITERS):
+            # Keep the half holding the larger interior value; one new
+            # evaluation per step (the other interior point is reused).
+            left = fc >= fd
+            a_new = np.where(left, a, c)
+            b_new = np.where(left, d, b)
+            c_new = np.where(left, b_new - g * (b_new - a_new), d)
+            d_new = np.where(left, c, a_new + g * (b_new - a_new))
+            f_eval = self._kink_fi_planes(
+                *args, np.where(left, c_new, d_new)
+            )
+            fc, fd = np.where(left, f_eval, fd), np.where(left, fc, f_eval)
+            a, b, c, d = a_new, b_new, c_new, d_new
+        fi_point = np.maximum(
+            fi_point, np.maximum(fc, fd).max(axis=1)
+        )
 
         # No real phi_C: kinking cannot be calibrated to Xc for this
         # material, so fall back to the plain compressive-strength ratio.
