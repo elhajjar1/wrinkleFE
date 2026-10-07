@@ -216,21 +216,24 @@ class TestMultiWrinkleFE:
         # post-solve quantity that the two-spec composition reduces in a
         # different summation order than the single full-amplitude spec.
         # The mesh nodes and angle field are bit-identical (1e-12 above),
-        # so the inputs match; only this FP-reduction order differs, by
-        # ~7e-6 of the peak stress on macOS arm64. That noise is absolute,
-        # so it lands on near-zero shear components too.
+        # so the inputs match; only the solve's FP-reduction order differs.
+        # On macOS arm64 CI that moved the stresses by up to 0.128 MPa
+        # (7.4e-5 of the 1728 MPa peak; bit-for-bit on Linux). The noise
+        # is absolute, so it lands on near-zero shear components too. A
+        # real composition bug differs at O(1); 5e-4 of the peak is ~7x
+        # the measured noise.
         s_full = r_full.field_results.stress_local
         np.testing.assert_allclose(
             r_halves.field_results.stress_local, s_full, rtol=0,
-            atol=5e-5 * float(np.abs(s_full).max()),
+            atol=5e-4 * float(np.abs(s_full).max()),
             err_msg="coincident halves must give the same stress field",
         )
         # Fibre kinking is sensitive to exactly that shear: a 0.01 MPa
         # shift of a near-zero tau moves the kink-band misalignment by
-        # ~1 % of the intrinsic phi_C. Measured: 7e-6 absolute stress
-        # noise moves the LaRC05 field by up to 2.3e-4 (macOS CI: 1.05e-4).
-        # rtol=1e-3 covers that with margin and is still far inside any
-        # physical FI tolerance; the stress check above is the tight one.
+        # ~1 % of the intrinsic phi_C. Measured: 7e-6-of-peak absolute
+        # stress noise moves the LaRC05 field by up to 2.3e-4 (macOS CI:
+        # 1.05e-4). rtol=1e-3 covers that with margin and is still far
+        # inside any physical FI tolerance.
         for crit, arr in r_full.failure_indices.items():
             np.testing.assert_allclose(
                 r_halves.failure_indices[crit], arr, rtol=1e-3, atol=5e-5,
