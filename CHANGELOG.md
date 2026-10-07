@@ -15,6 +15,18 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CI — **the lint job pins its tool versions** (`requirements-lint.txt`:
+  ruff, mypy, scipy-stubs), installed as a pip constraints file so the
+  pins never reach the published package's extras (`wrinklefe[all]`
+  includes `dev`). Unpinned, a new tool release changes the verdict with
+  no change to the code: mypy 2.4.0 turned lint red on `main` and on an
+  unrelated release PR at the same moment. Pinned, Dependabot (which
+  updates any pip `.txt` file) proposes each upgrade as a PR whose own CI
+  shows whether the tree still passes. The pre-commit ruff hook now runs
+  `python -m ruff`, so a ruff earlier on `PATH` cannot stand in for the
+  pinned one, and `CONTRIBUTING.md` installs with the same constraints.
+  `tests/test_requirements_consistency.py` holds the new file to
+  `pyproject.toml`'s ranges like the other two.
 - Safety — **the FE strength outputs now carry a caveat wherever a user
   sees them.** Validation had shown the FE strength paths err on the unsafe
   side, but that was recorded only in `docs/internal/VALIDATION.md` while

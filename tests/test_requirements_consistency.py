@@ -47,6 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 REQUIREMENTS = REPO_ROOT / "requirements.txt"
 REQUIREMENTS_TEST = REPO_ROOT / "requirements-test.txt"
+REQUIREMENTS_LINT = REPO_ROOT / "requirements-lint.txt"
 
 
 def _canonical(name: str) -> str:
@@ -106,8 +107,11 @@ def _floor(specifier: SpecifierSet) -> Version | None:
     return max(lows) if lows else None
 
 
-@pytest.mark.parametrize("requirements_path", [REQUIREMENTS, REQUIREMENTS_TEST],
-                         ids=["requirements.txt", "requirements-test.txt"])
+@pytest.mark.parametrize(
+    "requirements_path",
+    [REQUIREMENTS, REQUIREMENTS_TEST, REQUIREMENTS_LINT],
+    ids=["requirements.txt", "requirements-test.txt", "requirements-lint.txt"],
+)
 def test_requirements_floor_is_allowed_by_pyproject(requirements_path):
     """Every requirements floor must satisfy the pyproject constraint.
 

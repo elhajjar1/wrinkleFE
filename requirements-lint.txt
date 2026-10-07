@@ -1,0 +1,21 @@
+# Lint / type-check tool pins for the CI `lint` job, used as a pip
+# constraints file so they never reach the published package's extras:
+#
+#   pip install -e ".[dev,streamlit]" -c requirements-lint.txt
+#
+# Use the same command locally so the pre-commit hooks (which run the
+# installed ruff and mypy) give CI's verdict.
+#
+# Exact pins, unlike requirements-test.txt's ranges, on purpose: a new ruff
+# or mypy release changes what passes. mypy 2.4.0 rejected code 2.3.1
+# accepted and turned lint red on main and on an unrelated release PR at
+# the same moment. Pinned, an upgrade instead arrives as a Dependabot PR
+# whose own CI run shows whether the tree passes under the new version.
+# scipy-stubs is pinned for the same reason: mypy checks the scipy calls
+# against it.
+#
+# Each pin must satisfy pyproject.toml's `dev` extra
+# (tests/test_requirements_consistency.py).
+ruff==0.16.10
+mypy==2.4.0
+scipy-stubs==1.17.1.5

@@ -81,6 +81,7 @@ have landed, and drop any version that has reached end-of-life.
 type errors before pushing rather than after:
 
 ```bash
+pip install -e ".[all,dev]" -c requirements-lint.txt   # CI's exact ruff/mypy
 pip install pre-commit
 pre-commit install                        # ruff on every commit
 pre-commit install --hook-type pre-push   # + mypy before a push
@@ -88,14 +89,17 @@ pre-commit install --hook-type pre-push   # + mypy before a push
 
 | Hook   | Stage      | What runs                                              |
 |--------|------------|--------------------------------------------------------|
-| `ruff` | commit     | `ruff check` — the full `pyproject.toml` ruleset        |
+| `ruff` | commit     | `python -m ruff check` — the full `pyproject.toml` ruleset |
 | `mypy` | pre-push   | `python -m mypy src/wrinklefe app.py streamlit_viz.py`  |
 
 Both hooks are `language: system`: they invoke the ruff and mypy already
-in your environment rather than installing pinned copies in an isolated
-venv, so they cannot report a different answer than CI does. That does
-mean the mypy hook needs the full development install — `pip install -e
-".[all,dev]"` — because it type-checks `app.py` / `streamlit_viz.py`
+in your environment rather than installing their own copies in an isolated
+venv. Installed through `-c requirements-lint.txt`, those are the exact
+versions the CI lint job pins, so the hooks give CI's answer. Without the
+constraints file you get whatever ruff and mypy are current, and a release
+newer than CI's pin can disagree with it; mypy 2.4.0 rejected code 2.3.1
+accepted. Upgrades to the pins arrive as Dependabot PRs. The mypy hook also
+needs the full development install, because it type-checks `app.py` / `streamlit_viz.py`
 against the real streamlit and plotly packages, exactly as the lint job
 does. mypy is whole-tree and runs on the **pre-push** stage only; it is
 too slow to sit on every commit.
