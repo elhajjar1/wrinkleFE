@@ -1,12 +1,13 @@
 # Pre-commit hooks for wrinkleFE — a local mirror of .github/workflows/lint.yml.
 #
 # Every hook is `repo: local` / `language: system`, i.e. it runs the ruff and
-# mypy already installed in your development environment (`pip install -e
-# ".[all,dev]"`). That is deliberate: a pinned `rev:` on an upstream mirror
-# repo would install a *second*, differently-versioned ruff/mypy and start
-# reporting findings CI does not — or missing findings CI does. Local hooks
-# cannot drift from CI's tool versions because they are the same install.
+# mypy installed in your development environment. That is deliberate: a
+# pinned `rev:` on an upstream mirror repo would install a *second*,
+# differently-versioned ruff/mypy and start reporting findings CI does not —
+# or missing findings CI does. Install with the same constraints file the CI
+# lint job uses and the hooks run CI's exact ruff and mypy versions:
 #
+#   pip install -e ".[all,dev]" -c requirements-lint.txt
 #   pip install pre-commit
 #   pre-commit install                        # ruff on every commit
 #   pre-commit install --hook-type pre-push   # + mypy before a push
@@ -21,7 +22,10 @@ repos:
       # override. Fast enough for every commit.
       - id: ruff
         name: ruff check (full pyproject config)
-        entry: ruff check
+        # `python -m`, not a bare `ruff`: a ruff earlier on PATH (a pipx or
+        # ~/.local install) would otherwise run instead of the pinned one,
+        # exactly the version drift this file exists to prevent.
+        entry: python -m ruff check
         language: system
         types_or: [python, pyi]
         require_serial: true

@@ -26,10 +26,15 @@ jobs:
       # streamlit_viz.py against the REAL streamlit + plotly types rather
       # than the Any-typed fallback (issue #374): without it CI's mypy stays
       # green while the documented local gate fails on real type errors.
+      #
+      # `-c requirements-lint.txt` pins ruff, mypy and scipy-stubs exactly.
+      # Unpinned, a new tool release changes the verdict with no change to
+      # the code (mypy 2.4.0 did); pinned, Dependabot proposes the upgrade
+      # as a PR and that PR's CI shows whether the tree still passes.
       - name: Install lint tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,streamlit]"
+          pip install -e ".[dev,streamlit]" -c requirements-lint.txt
 
       # Full config: CI now runs ruff's complete pyproject.toml ruleset
       # (E, F, W, I, N, UP) with no --select override, completing the
