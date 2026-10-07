@@ -590,6 +590,36 @@ _CRITICAL_LIMIT_BASIS = (
 )
 
 
+
+# How far the FE *strength* outputs can be trusted. Defined once and quoted
+# verbatim by the NCR summary and the Streamlit app, so the warning a
+# reviewer reads on an NCR attachment is the warning an engineer saw in the
+# app. The figures behind it are in docs/interpreting_results.md
+# ("How far to trust each number") and docs/internal/VALIDATION.md.
+#
+# The direction matters more than the magnitude: every validation miss of
+# the FE strength paths is on the unsafe side for the most severe wrinkles,
+# which is exactly where a disposition is least tolerant of one. Plain
+# text, no Markdown, so JSON consumers and the PDF get the same words.
+FE_STRENGTH_CAVEAT = (
+    "FE strength retention is indicative, not an allowable, and should not "
+    "be used to override the analytical knockdown. Checked against measured "
+    "strength (six unidirectional glass/epoxy specimens) it was never "
+    "conservative: it over-predicted retained strength on every case except "
+    "its normalisation reference, by up to about 60%, worst on the most "
+    "severe wrinkles. It has not been checked against measured strength for "
+    "multidirectional laminates."
+)
+
+PROGRESSIVE_DAMAGE_CAVEAT = (
+    "Progressive-damage strength is a research output, not an allowable. "
+    "Its fracture-energy calibration holds only at the mesh density it was "
+    "fitted at (nx = 16, nz_per_ply = 2), and against measured strength it "
+    "over-predicted the most severe wrinkle (+24%, or +42% on a refined "
+    "mesh) while under-predicting milder ones."
+)
+
+
 def build_analysis_summary(
     *,
     defect: dict,
@@ -694,6 +724,7 @@ def build_analysis_summary(
             "critical_criterion": fe.get("critical_criterion"),
             "critical_mode": fe.get("critical_mode"),
             "critical_ply": fe.get("critical_ply"),
+            "caveat": FE_STRENGTH_CAVEAT,
         }
         crit = fe.get("critical_criterion")
         if crit:
@@ -712,6 +743,7 @@ def build_analysis_summary(
             "knockdown": prog.get("knockdown"),
             "strength_MPa": prog.get("strength_MPa"),
             "pristine_strength_MPa": prog.get("pristine_strength_MPa"),
+            "caveat": PROGRESSIVE_DAMAGE_CAVEAT,
         }
         criteria.append(
             "Progressive-damage (crack-band) finite-element strength "
@@ -957,6 +989,12 @@ def render_summary_markdown(summary: dict) -> str:
             f" (mode: {_fmt(fe_block['critical_mode'])}, "
             f"ply: {_fmt(fe_block['critical_ply'])})"
         )
+        # A summary built before the caveat existed has no key; it still
+        # gets the warning, because the number it qualifies is the same.
+        lines.append("")
+        lines.append(
+            f"> **Caveat:** {fe_block.get('caveat', FE_STRENGTH_CAVEAT)}"
+        )
     prog_block = ea.get("progressive_damage")
     if prog_block:
         lines.append("")
@@ -973,6 +1011,11 @@ def render_summary_markdown(summary: dict) -> str:
         lines.append(
             f"- Pristine strength: "
             f"{_fmt(prog_block['pristine_strength_MPa'])} MPa"
+        )
+        lines.append("")
+        lines.append(
+            "> **Caveat:** "
+            f"{prog_block.get('caveat', PROGRESSIVE_DAMAGE_CAVEAT)}"
         )
     # Acceptance limit (issue #280). Rendered as a sub-block of section 3
     # rather than a section of its own: it is only present when a limit was

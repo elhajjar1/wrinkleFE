@@ -15,6 +15,48 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Safety — **the FE strength outputs now carry a caveat wherever a user
+  sees them.** Validation had shown the FE strength paths err on the unsafe
+  side, but that was recorded only in `docs/internal/VALIDATION.md` while
+  the app and the NCR summary showed FE strength numbers unqualified, in a
+  tool pitched for scrap/repair/accept decisions. On the default app case
+  the analytical knockdown is 0.606 and the FE "strength retention" 0.781.
+  Re-measured against measured strength on current code: FE LaRC05
+  over-predicted retained strength on all five non-reference Li (2025) UD
+  cases, by up to +58%; the crack-band progressive-damage model
+  over-predicted the most severe wrinkle (+24%, +42% on a refined mesh)
+  while under-predicting milder ones. Neither has any measured-strength
+  check for multidirectional laminates.
+  - `wrinklefe.io.export.FE_STRENGTH_CAVEAT` and
+    `PROGRESSIVE_DAMAGE_CAVEAT` hold the wording once. The NCR summary
+    carries them in its data (`caveat` in the `finite_element` and
+    `progressive_damage` blocks) and renders them directly under those
+    blocks in the Markdown and PDF. A summary saved before this change
+    still renders the warning. The disposition itself is unchanged: it
+    was, and stays, driven by the analytical knockdown.
+  - The app shows the caveat above the FE strength metric, and the
+    metric's help text says it has over-predicted, never under-predicted.
+  - `docs/interpreting_results.md` gains "How far to trust each number":
+    signed errors for every validation dataset and each prediction path.
+    It no longer recommends `progressive_knockdown` as "the FE answer"
+    for UD compression, and adds "never let an FE strength number raise a
+    knockdown".
+  - `validation/strength_error_summary.py` regenerates every figure
+    quoted. `tests/test_fe_strength_caveat.py` checks the caveat is
+    delivered (app and NCR, and absent without FE results) and that its
+    numbers stay true: the progressive figures against the ledger, the
+    FE LaRC05 claims by re-running the six cases (slow lane).
+
+### Fixed
+- Docs — **two validation claims were wrong.**
+  - `docs/internal/VALIDATION.md` said every crack-band error was positive
+    and quoted the refined mesh as "+15 % to +42 %". The signs are mixed:
+    the "+15 %" was S-M-4's −15 % with its sign dropped. It now gives the
+    per-case signs, and the re-measured FE LaRC05 figures.
+  - The README said every single-wrinkle validation case sat inside the
+    ±20 % band. 43 of 48 do; of the five outside it, four are conservative
+    and one (+30 %) is the most severe compression wrinkle of dataset A.
+
 - Citation — **WrinkleFE has a software DOI:
   [`10.5281/zenodo.23105908`](https://doi.org/10.5281/zenodo.23105908)**
   (issue #284). Zenodo archived the 1.2.0 release and minted it. It is the
