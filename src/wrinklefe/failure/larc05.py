@@ -427,10 +427,10 @@ class LaRC05Criterion(FailureCriterion):
 
         The critical kink plane is found in two stages: a coarse grid over
         ``[0, π)`` plus the plane of maximum fibre-direction shear, then a
-        golden-section refinement around the two best of those. A grid
-        alone under-reads the index between its points, and always in the
-        unsafe direction (by up to 5 % at 36 planes). The refined value is
-        never below the coarse one.
+        golden-section refinement around the three best peaks of those. A
+        grid alone under-reads the index between its points, and always in
+        the unsafe direction (by up to 5 % at 36 planes). The refined value
+        is never below the coarse one.
         """
         n = s.shape[0]
         phi_c = self._phi_c_array(material, S12_is)
@@ -448,14 +448,24 @@ class LaRC05Criterion(FailureCriterion):
         fi_point = fi_grid.max(axis=1)
 
         # Stage 2: golden-section refinement within one grid spacing of the
-        # TWO best coarse planes. The index can have several lobes in psi;
-        # refining only the single best coarse point occasionally climbs
-        # the wrong one (measured: up to 0.3 % under-read near FI = 1).
-        top2 = np.argsort(fi_grid, axis=1)[:, -2:]
+        # THREE best coarse *peaks*. The index can have several lobes in
+        # psi. Refining the best coarse points instead climbs the wrong
+        # lobe: the two best points are usually neighbours on one lobe, so
+        # which lobe won flipped with round-off (equal stress fields gave
+        # indices 1e-4 apart) and the index was under-read by up to 1.4 %.
+        # A candidate is a local maximum of the pi-periodic grid, or the
+        # maximum-shear plane.
+        ring = fi_grid[:, :-1]
+        peak = (ring >= np.roll(ring, 1, axis=1)) & (
+            ring >= np.roll(ring, -1, axis=1)
+        )
+        score = np.where(np.column_stack([peak, np.ones(n, bool)]),
+                         fi_grid, -np.inf)
+        top = np.argsort(score, axis=1, kind="stable")[:, -3:]
         half = np.pi / self.n_psi
         g = 0.5 * (np.sqrt(5.0) - 1.0)
-        for col in range(top2.shape[1]):
-            centre = psi[rows, top2[:, col]]
+        for col in range(top.shape[1]):
+            centre = psi[rows, top[:, col]]
             a, b = centre - half, centre + half
             c, d = b - g * (b - a), a + g * (b - a)
             fc = self._kink_fi_planes(*args, c[:, None])[:, 0]

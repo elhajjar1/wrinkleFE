@@ -470,13 +470,17 @@ class TestLaRC05MonotonicityAndReserve:
     )
     def test_the_plane_search_is_accurate_near_failure(self, name, seed):
         """The default kink-plane search (coarse grid + golden refinement of
-        the two best planes) against a 1440-plane reference, on the
-        governing index, for states near the failure threshold — where
-        pass/fail and the reserve factor are decided.
+        the three best peaks) against a 1440-plane reference, on the
+        governing index, for states either side of the failure threshold —
+        where pass/fail and the reserve factor are decided.
 
-        Measured: 99.9 % of states agree to ~4e-7; a rare narrow-lobe tail
-        (transverse-shear-dominated states) under-reads by up to ~0.5 %.
-        Both bounds are pinned so a regression in either shows up."""
+        Measured: 99.9 % of states agree to ~1e-6; a rare tail of states
+        with a narrow third lobe under-reads by up to ~0.2 %. Both bounds
+        are pinned so a regression in either shows up. (Refining the best
+        coarse *points* instead of peaks gave a 99.9th percentile of 2e-3:
+        the two best points sit on one lobe, so round-off decided which
+        lobe was climbed and equal FE stress fields gave LaRC05 fields
+        1e-4 apart.)"""
         rng = np.random.default_rng(seed)
         m = _LIBRARY.get(name)
         stress = np.column_stack(
@@ -484,11 +488,11 @@ class TestLaRC05MonotonicityAndReserve:
         )
         ref = LaRC05Criterion(n_psi=1440).evaluate_field_indices(stress, m)[0]
         fi = LaRC05Criterion().evaluate_field_indices(stress, m)[0]
-        near = np.isfinite(ref) & (ref > 0.5) & (ref < 1.2)
+        near = np.isfinite(ref) & (ref > 0.3) & (ref < 2.0)
         assert near.sum() > 500
         rel = np.abs(fi[near] - ref[near]) / ref[near]
         assert np.quantile(rel, 0.999) < 1e-5
-        assert rel.max() < 1e-2
+        assert rel.max() < 5e-3
 
 # ======================================================================
 # Context override must not mutate criterion state (issue #192)

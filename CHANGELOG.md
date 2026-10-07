@@ -141,9 +141,9 @@ version produced a given file.
   ledger cases: first failure there is interlaminar shear (MaxStress
   `tau_13`, index 0.989 at the S-M-2 peak), which the corrected kinking
   index (0.948, was 0.257) does not overtake.
-- FE failure evaluation costs more: the kink-plane search roughly doubles
-  LaRC05 field evaluation (0.66 → 1.32 s on the default mesh; a default
-  FE analysis 2.2 → 3.0 s).
+- FE failure evaluation costs more: the kink-plane search makes LaRC05
+  field evaluation about 5× slower (80k points: 0.38 → 1.84 s), and a
+  default FE analysis takes 3.7 s instead of 2.2 s.
 - **CLT first-ply failure** (`FailureEvaluator.evaluate_laminate`) picks
   the first ply by the LaRC05 reserve factor, so its first-ply load and,
   where a matrix reserve had been under-read, the first ply itself can
