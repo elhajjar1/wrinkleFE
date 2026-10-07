@@ -363,14 +363,23 @@ load-stepped) system and evaluates ply failure.
   $K_\text{geo}$ used by the buckling route.
 - **Ply failure — LaRC05.** The default FE criterion
   (`failure/larc05.py`) is the Pinho/Camanho 3-D criterion: fibre tension,
-  fibre **kinking** under compression (stress rotated into the
-  misalignment frame, with a Mohr–Coulomb compressive matrix interaction),
-  in-situ matrix strengths, and a fracture-plane search for matrix
-  failure. Because LaRC05 kinking does *not* trigger for a pristine UD
-  ply at zero initial misalignment, the progressive-damage UD path pairs
-  it with a plain MaxStress $|\sigma_{11}|\ge X_c$ check (§4.3). Other
-  criteria available through `FailureEvaluator`: Hashin, Puck, Tsai-Wu,
-  Tsai-Hill, maximum stress, and maximum strain.
+  fibre **kinking** under compression, in-situ matrix strengths, and a
+  fracture-plane search for matrix failure. Kinking follows the published
+  LaRC04/05 model: an intrinsic misalignment $\varphi_C$, fixed by $X_c$,
+  $S_L$ and $\eta_L$ so that a pristine ply kinks exactly at
+  $\sigma_{11} = -X_c$; a search over the kink plane $\psi$ about the
+  fibre axis; the load-amplified misalignment
+  $\varphi = (\tau_{12\psi} \pm (G_{12}-X_c)\varphi_C)/(G_{12}+\sigma_{11}-\sigma_{2\psi})$;
+  and a Mohr–Coulomb check in the misaligned frame. The FE evaluates it
+  on stresses already rotated into the local wrinkled-fibre frame, so an
+  out-of-plane wrinkle reaches it as $\tau_{13}$ on a $\psi \approx 90°$
+  plane. (Before this was corrected, the criterion had no $\varphi_C$ — a
+  pristine UD ply could not kink at all — and re-rotated the FE's
+  already-rotated stresses by the wrinkle angle in the in-plane 1–2
+  plane.) The progressive-damage UD path also carries a plain MaxStress
+  $|\sigma_{11}|\ge X_c$ check (§4.3). Other criteria available through
+  `FailureEvaluator`: Hashin, Puck, Tsai-Wu, Tsai-Hill, maximum stress,
+  and maximum strain.
 - **Effective laminate stiffness** comes from Classical Lamination Theory
   (`core/laminate.py`): the ABD matrices $A=\sum \bar{Q}_k t_k$,
   $B=\tfrac12\sum \bar{Q}_k(z_k^2-z_{k-1}^2)$,

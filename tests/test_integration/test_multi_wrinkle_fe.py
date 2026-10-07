@@ -51,7 +51,13 @@ class TestMultiWrinkleFE:
     def test_two_wrinkles_fe_runs_with_local_fi_peaks(self):
         """FE solve runs for 2 non-overlapping wrinkles and produces a
         local max-FI peak near each wrinkle centre."""
-        cfg = _two_wrinkle_config()
+        # Probed below failure (far-field FI ~0.26). With the Xc-calibrated
+        # LaRC05 kinking, pristine 0 deg plies carry a real kinking index,
+        # and at the default -1 % strain the far field is already past
+        # failure (FI ~1.55), where the kinking index flattens out and
+        # compresses every peak/far ratio. Below failure the ratio measures
+        # the localisation this test is about.
+        cfg = _two_wrinkle_config(applied_strain=-0.002)
         result = WrinkleAnalysis(cfg).run()
 
         assert result.field_results is not None
@@ -94,8 +100,14 @@ class TestMultiWrinkleFE:
         # while the far-field baseline is unchanged to 5e-8 (those elements
         # are pristine, so the transform order cannot touch them).  The
         # elevation the test exists to detect is still unambiguous; only the
-        # inflated margin is gone.  1.05 keeps the assertion meaningful with
-        # room for mesh/solver noise.
+        # inflated margin is gone.
+        #
+        # RE-PINNED AGAIN (LaRC05 kinking fix): the far field now carries a
+        # real kinking baseline (pristine plies kink at their Xc-calibrated
+        # misalignment instead of FI ~ 0), so the same wrinkle is a smaller
+        # relative elevation: measured 1.064 / 1.055 at -0.2 % strain. The
+        # far-field elements are pristine and uniform, so 1.03 still
+        # detects the peaks unambiguously.
         far = np.ones_like(x_c, dtype=bool)
         for center in centers:
             far &= np.abs(x_c - center) > 6.0
@@ -104,7 +116,7 @@ class TestMultiWrinkleFE:
         for center in centers:
             near = np.abs(x_c - center) < 4.0      # within lambda/2
             assert near.any()
-            assert fi[near].max() > 1.05 * fi[far].max(), (
+            assert fi[near].max() > 1.03 * fi[far].max(), (
                 f"expected a local FI peak near x={center:.1f} mm"
             )
             peaks.append(fi[near].max())

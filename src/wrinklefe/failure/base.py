@@ -177,3 +177,20 @@ class FailureCriterion(ABC):
             modes[i] = r.mode
             reserve_factors[i] = r.reserve_factor
         return indices, modes, reserve_factors
+
+    def evaluate_field_indices(
+        self,
+        stress_field: np.ndarray,
+        material: OrthotropicMaterial,
+        contexts: list | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """:meth:`evaluate_field` returning only ``(indices, modes)``.
+
+        For callers that do not need reserve factors (the FE failure
+        fields). The default simply drops them; a criterion whose reserve
+        factor is expensive (LaRC05's kinking root-find) overrides this to
+        skip computing it. Indices and modes are always identical to
+        :meth:`evaluate_field`'s.
+        """
+        indices, modes, _ = self.evaluate_field(stress_field, material, contexts)
+        return indices, modes

@@ -88,17 +88,20 @@ the ratio was formed against.
 
 It does **not** mean ultimate strength. It is a ratio of failure indices
 from a single linear solve, so it reports the onset of the first ply
-failure, not the load the coupon finally carries. For pristine UD in
-compression the linear LaRC05 index never activates at all, so this path
-yields no useful knockdown — which is exactly why the progressive-damage
-path exists.
+failure, not the load the coupon finally carries — which is why the
+progressive-damage path exists. It is also a ratio of indices at one load,
+and the LaRC05 kinking index is mildly nonlinear in load, so it is a
+first-order strength ratio. (Before the LaRC05 kinking fix, a pristine UD
+ply could not kink at all and this ratio was undefined for UD layups; see
+`retention_degenerate`.)
 
 **Treat FE strength as indicative, never as an allowable.** Where the FE
-strength prediction has been checked against measured strength it was
-never conservative: on the six Li (2025) UD specimens it over-predicted
-retained strength on every case except its normalisation reference, by up
-to +58%, and it has no measured-strength validation at all for
-multidirectional laminates (see
+strength prediction has been checked against measured strength it missed
+on the unsafe side exactly where it matters most: on the six Li (2025) UD
+specimens it over-predicted retained strength on the two most severe
+wrinkles, by up to +32%, while under-predicting the four milder ones. It
+has no measured-strength validation at all for multidirectional
+laminates (see
 [How far to trust each number](#how-far-to-trust-each-number)). The app
 and the NCR summary print this warning next to the number.
 
@@ -234,17 +237,24 @@ Of the five cases outside ±20%, four are conservative. The one that is not
 knockdown 0.32, predicted 0.42).
 
 **FE strength (LaRC05)** — Li (2025) UD glass/epoxy, the only
-measured-strength check the FE path has. Normalised to the near-pristine
-S-M-5, whose error is therefore zero by construction:
+measured-strength check the FE path has. Wrinkled over pristine strength
+at first failure:
 
 | Case | Wrinkle | FE | Measured | Error |
 |---|---|---|---|---|
-| S-M-1 | 1.5 mm, 10° | 1.000 | 0.891 | +12.2% |
-| S-M-2 | 1.5 mm, 20° | 0.995 | 0.629 | **+58.1%** |
-| S-M-3 | 1.5 mm, 30° | 0.673 | 0.472 | **+42.5%** |
-| S-M-4 | 1.0 mm, 20° | 0.999 | 0.943 | +5.9% |
-| S-M-5 | 0.5 mm, 20° | 1.000 | 1.000 | 0.0% (reference) |
-| S-A-2 | 1.5 mm, 20°, near-surface | 0.995 | 0.981 | +1.4% |
+| S-M-1 | 1.5 mm, 10° | 0.844 | 0.891 | −5.3% |
+| S-M-2 | 1.5 mm, 20° | 0.731 | 0.629 | **+16.2%** |
+| S-M-3 | 1.5 mm, 30° | 0.622 | 0.472 | **+31.7%** |
+| S-M-4 | 1.0 mm, 20° | 0.734 | 0.943 | −22.2% |
+| S-M-5 | 0.5 mm, 20° | 0.737 | 1.000 | −26.3% |
+| S-A-2 | 1.5 mm, 20°, near-surface | 0.731 | 0.981 | −25.5% |
+
+The four 20° cases all predict about 0.73 whatever the amplitude: the FE
+first-ply path sees the wrinkle's angle, not its size, so it over-predicts
+the severe 20° wrinkle and under-predicts the mild ones. (These figures
+follow the LaRC05 kinking fix. Before it, a pristine UD ply could not kink,
+the FE strengths had to be normalised to the S-M-5 wrinkle, and the FE
+over-predicted every non-reference case, by up to +58%.)
 
 **Progressive damage (crack band)** — the predictions pinned in the
 validation ledger:

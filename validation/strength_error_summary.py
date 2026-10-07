@@ -16,14 +16,13 @@ Three sections:
 1. **Analytical paths** on every single-wrinkle dataset, each predicted by
    the model that physically applies to it (the same cases and models as
    ``plot_all_validation.py``).
-2. **FE LaRC05 strength** on the Li (2025) UD cases. Not
-   ``retention_factors``: a flat UD pristine baseline cannot fail under
-   LaRC05 (max FI ~1e-10), so that ratio is undefined
-   (``AnalysisResults.retention_degenerate``). The basis documented in
-   ``docs/internal/VALIDATION.md`` is used instead: LaRC05 max FI scales
-   about linearly with load, so strength ~ E_eff / FI, normalised to the
-   near-pristine wrinkle S-M-5 (whose error is therefore zero by
-   construction) and capped at 1.
+2. **FE LaRC05 strength** on the Li (2025) UD cases: wrinkled over
+   pristine strength at first failure, ``(E_eff,w / E_eff,p) * (FI_p /
+   FI_w)``, capped at 1 (stress at failure ~ E_eff * eps / FI). Possible
+   since the kinking fix gave LaRC05 its Xc-calibrated intrinsic
+   misalignment: before it, a flat UD pristine coupon could not fail
+   (max FI ~1e-10) and the FE strengths had to be normalised to the
+   near-pristine *wrinkle* S-M-5 instead.
 3. **Progressive damage (crack band)**: the values pinned in the
    validation ledger, not re-run here (minutes per case; the slow test
    lane re-checks them).
@@ -81,7 +80,7 @@ def fe_larc05_errors() -> dict[str, tuple[float, float, float]]:
     """``{case: (FE knockdown, measured, error %)}`` for Li (2025) UD.
 
     Also used by ``tests/test_fe_strength_caveat.py`` to keep the caveat's
-    claims ("never conservative", "up to about 60%") true.
+    claims true.
     """
     from validate import case_config
 
@@ -89,7 +88,7 @@ def fe_larc05_errors() -> dict[str, tuple[float, float, float]]:
 
     ledger = json.loads(LEDGER.read_text())
     ds = next(d for d in ledger["datasets"] if d["name"].startswith("li_2025"))
-    raw = {}
+    out = {}
     for case in ds["cases"]:
         cfg = case_config(ds, case)
         kw = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
@@ -99,36 +98,25 @@ def fe_larc05_errors() -> dict[str, tuple[float, float, float]]:
             warnings.simplefilter("ignore")
             r = WrinkleAnalysis(type(cfg)(**kw)).run()
         fi = np.asarray(r.failure_indices["larc05"]).mean(axis=-1)
-        fi = fi[np.isfinite(fi)]
-        raw[case["case"]] = (float(fi.max()),
-                             float(r.modulus_retention_global),
-                             float(case["measured_kd"]))
-    ref_fi, ref_e, _ = raw[REFERENCE_CASE]
-    out = {}
-    for name, (fi, e_eff, meas) in raw.items():
-        kd = min((e_eff / fi) / (ref_e / ref_fi), 1.0)
-        out[name] = (kd, meas, _err(kd, meas))
+        fi_w = float(fi[np.isfinite(fi)].max())
+        fi_p = float(r.baseline_fi["larc05"])
+        meas = float(case["measured_kd"])
+        kd = min(float(r.modulus_retention_global) * fi_p / fi_w, 1.0)
+        out[case["case"]] = (kd, meas, _err(kd, meas))
     return out
-
-
-#: The near-pristine wrinkle the FE strengths are normalised to; its error
-#: is zero by construction.
-REFERENCE_CASE = "S-M-5"
 
 
 def fe_larc05_section() -> None:
     rows = fe_larc05_errors()
     print("2. FE LaRC05 strength, Li (2025) UD glass/epoxy "
-          f"(normalised to {REFERENCE_CASE})")
+          "(wrinkled / pristine)")
     print(f"   {'case':7s} {'FE KD':>7s} {'meas.':>7s} {'error%':>8s}")
     for name, (kd, meas, e) in rows.items():
-        tag = "  (reference)" if name == REFERENCE_CASE else ""
-        print(f"   {name:7s} {kd:7.3f} {meas:7.3f} {e:+8.1f}{tag}")
+        print(f"   {name:7s} {kd:7.3f} {meas:7.3f} {e:+8.1f}")
     errs = [e for _, _, e in rows.values()]
     print(f"   -> MAE {statistics.mean(abs(e) for e in errs):.1f} %, "
           f"non-conservative on "
-          f"{sum(e > _NON_CONSERVATIVE_PCT for e in errs)} of "
-          f"{len(errs) - 1} non-reference cases\n")
+          f"{sum(e > _NON_CONSERVATIVE_PCT for e in errs)} of {len(errs)}\n")
 
 
 def progressive_section() -> None:

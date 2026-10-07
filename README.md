@@ -1180,10 +1180,11 @@ that is not (+30%) is the most severe compression wrinkle in dataset A.
 > knockdown (the penetration gate for UD) is the validated strength path.
 > The FE strength outputs — `retention_factors` and
 > `progressive_knockdown` — have only one measured-strength check (six UD
-> glass/epoxy specimens), and there they were never conservative: FE
-> LaRC05 over-predicted retained strength on every case except its
-> normalisation reference, by up to +58%, and the progressive-damage model
-> over-predicted the most severe wrinkle by +24% (+42% on a refined mesh).
+> glass/epoxy specimens), and there they missed on the unsafe side
+> exactly where it matters most: FE LaRC05 over-predicted retained strength
+> on the two most severe wrinkles, by up to +32% (while under-predicting
+> the four milder ones), and the progressive-damage model over-predicted
+> the most severe wrinkle by +24% (+42% on a refined mesh).
 > Neither has been checked against measured strength for multidirectional
 > laminates. The app and the NCR summary show this warning beside the FE
 > numbers; the per-case figures are in
@@ -1259,8 +1260,9 @@ The criteria below live in `src/wrinklefe/failure/` and can be selected
 through `FailureEvaluator` or used independently:
 
 - **LaRC04/05** (`larc05.py`) — Pinho/Camanho 3-D criterion with
-  fibre-kinking under compression, in-situ matrix strengths, and a
-  fracture-plane search. Default for the FE solve.
+  fibre-kinking under compression (Xc-calibrated intrinsic misalignment and
+  a kink-plane search, so a pristine ply kinks at exactly `-Xc`), in-situ
+  matrix strengths, and a fracture-plane search. Default for the FE solve.
 - **Tsai-Wu** (`tsai_wu.py`) — 3-D tensor-polynomial criterion with a
   configurable interaction coefficient.
 - **Tsai-Hill** (`tsai_hill.py`) — 3-D extension of the classical

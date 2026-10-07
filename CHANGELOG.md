@@ -83,6 +83,65 @@ version produced a given file.
   cannot affect future archiving. `tests/test_citation_doi.py` keeps the
   four copies identical.
 
+- Failure — **LaRC05 fibre kinking now follows the published LaRC04/05
+  model, so a pristine ply kinks at exactly `Xc`.** Fixed, all on
+  the FE path:
+  - A ply with no wrinkle could not kink at all: the old kinking branch
+    rotated the stress only by the wrinkle angle, so with no wrinkle it
+    reduced to a matrix check and missed fibre compression entirely.
+    `retention_factors` therefore had no pristine baseline for UD layups
+    (`retention_degenerate`) and the Li (2025) FE comparison had to be
+    normalised to one of its own wrinkled specimens. Kinking now carries
+    the intrinsic misalignment `phi_C` calibrated from `Xc` and `S_L`
+    (`LaRC05Criterion.intrinsic_misalignment`), searches the kink plane,
+    and adds the load-induced rotation in closed form. A pristine ply
+    kinks at exactly `-Xc` for every library material (resin, which has
+    no real `phi_C`, falls back to `|sigma_11| / Xc`).
+  - The FE counted the wrinkle twice. `stress_local` is already in the
+    wrinkled fibre frame, and the analysis also passed the wrinkle angle
+    to LaRC05 as an extra misalignment, applied in the in-plane (1-2)
+    plane. The FE paths (`WrinkleAnalysis`, progressive damage) now pass
+    no extra angle; the kink-plane search finds the wrinkle as `tau_13`.
+    `FailureEvaluator`'s `fiber_angles` is documented as an *additional*
+    misalignment, to be left `None` for FE local stresses.
+  - `FailureResult.reserve_factor` for kinking is now the exact load
+    multiple to failure (a root-find, since the kinking index is not
+    linear in load), not `1/FI`. Field evaluation keeps a fast path
+    (`evaluate_field_indices`) that skips it, used by the analysis.
+  - Past the kinking instability (far beyond failure) the closed form has
+    no value. The index there is `1 / reserve factor`, finite and at
+    least 1, so a field never carries an `inf` that consumers filtering
+    non-finite values would silently drop.
+- Convergence — `strength_retention` in `convergence_study` now ignores
+  criteria flagged `retention_degenerate`, as its docstring said it did.
+
+### Numerical results
+- **Every FE strength output changes**: `failure_indices`,
+  `retention_factors`, `baseline_fi` and the per-element reserve factors
+  from LaRC05 (MaxStress is unchanged). On the Li (2025) UD specimens,
+  against a true pristine baseline now, FE LaRC05 over-predicts retained
+  strength on the two most severe wrinkles (S-M-2 +16%, S-M-3 +32%) and
+  under-predicts the four milder ones (−5% to −26%). Before, it
+  over-predicted all five non-reference cases, by up to +58%.
+  `FE_STRENGTH_CAVEAT` and the docs quote the new figures.
+- **The default case's FE retention rises, 0.781 → 0.937** (analytical
+  knockdown unchanged, 0.606). The old value came from matrix compression
+  in a 90° ply, inflated by the double-counted wrinkle angle; fibre
+  kinking in a 0° ply now governs. It holds under mesh refinement
+  (0.91–0.94 at nx = 12/24/48; a reserve-factor ratio gives 0.87–0.91).
+  Multidirectional FE strength still has no measured-strength check, and
+  the rule stands: never let an FE strength number raise a knockdown.
+- Progressive damage (`progressive_knockdown`) is unchanged on the pinned
+  ledger cases: first failure there is interlaminar shear (MaxStress
+  `tau_13`, index 0.989 at the S-M-2 peak), which the corrected kinking
+  index (0.948, was 0.257) does not overtake.
+- FE failure evaluation costs more: the kink-plane search roughly doubles
+  LaRC05 field evaluation (0.66 → 1.32 s on the default mesh; a default
+  FE analysis 2.2 → 3.0 s).
+- Known approximation, unchanged: the matrix-compression reserve factor
+  is still `1/FI`, which overstates it by up to ~8% where friction
+  matters.
+
 ## [1.2.0] - 2026-10-02
 
 This changelog was started after the `v1.1.0` tag (2026-03-31) and never
