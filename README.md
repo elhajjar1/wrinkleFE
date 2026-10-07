@@ -1169,10 +1169,26 @@ possible — their raw data are not included.
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every single-wrinkle case (Datasets A–F) inside a ±20% band,
+plot of every single-wrinkle case (Datasets A–F) against a ±20% band,
 with each dataset predicted by the model that physically applies to it
 (Budiansky–Fleck / three-mechanism for the multidirectional cases A–D,
-the penetration gate for the UD cases E/F).
+the penetration gate for the UD cases E/F). 43 of the 48 cases fall
+inside the band. Of the five outside it, four are conservative; the one
+that is not (+30%) is the most severe compression wrinkle in dataset A.
+
+> **FE strength is indicative, not an allowable.** The analytical
+> knockdown (the penetration gate for UD) is the validated strength path.
+> The FE strength outputs — `retention_factors` and
+> `progressive_knockdown` — have only one measured-strength check (six UD
+> glass/epoxy specimens), and there they were never conservative: FE
+> LaRC05 over-predicted retained strength on every case except its
+> normalisation reference, by up to +58%, and the progressive-damage model
+> over-predicted the most severe wrinkle by +24% (+42% on a refined mesh).
+> Neither has been checked against measured strength for multidirectional
+> laminates. The app and the NCR summary show this warning beside the FE
+> numbers; the per-case figures are in
+> [Interpreting results](docs/interpreting_results.md#how-far-to-trust-each-number)
+> and `python validation/strength_error_summary.py` regenerates them.
 
 ### Stiffness (modulus) knockdown
 

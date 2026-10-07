@@ -396,18 +396,30 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   > collapsing to 0.32–0.57 with errors −33 % to −62 % (MAE 46 %) and
   > attributed it to earlier FI-driven initiation on the steeper
   > resolved misalignment. That no longer reproduces: the magnitudes are
-  > about half and the **sign is reversed** — today the refined mesh is
-  > *non-conservative* (+15 % to +42 %), not over-conservative. The
+  > about half and the signs are mixed — today the refined mesh
+  > over-predicts the most severe wrinkle (S-M-2 +42 %) and
+  > under-predicts the milder two (S-M-4 −15 %, S-M-5 −19 %), rather than
+  > being uniformly over-conservative. The
   > conclusion (mesh-locked calibration) is unchanged and, with the
   > ordering inversion, better supported. The nx = 16 figures also
   > drifted slightly over the same period (S-M-4 0.912 → 0.878) while
   > the MAE held near 11.5 %; nothing pinned them at the time, which is
   > why they are in the ledger now.
 
-  Note the direction on both meshes: every crack-band error above is
-  **positive** — the model over-predicts retained strength. That matches
-  the FE LaRC05 path, which is likewise non-conservative on all six
-  cases. Treat FE strength numbers as indicative, not as allowables.
+  Note the direction on both meshes: the crack band **over-predicts the
+  most severe wrinkle** (S-M-2: +24 % at nx = 16, +42 % at nx = 36) and
+  under-predicts the milder two (S-M-4 −7 % / −15 %, S-M-5 −3.5 % /
+  −19 %). (Corrected 2026-10-07: this note previously said every error
+  was positive; the "+15 %" quoted for the refined mesh was S-M-4's
+  −15 % with its sign dropped.) The FE LaRC05 path is never conservative
+  on this dataset: re-measured 2026-10-07 it over-predicts all five
+  non-reference cases, S-M-1 +12 %, S-M-2 +58 %, S-M-3 +43 %, S-M-4
+  +6 %, S-A-2 +1 % (S-M-5 is the normalisation reference, 0 % by
+  construction). Both FE strength paths therefore miss on the unsafe
+  side exactly where it matters most, the severe wrinkles. Treat FE
+  strength numbers as indicative, not as allowables; the app and the NCR
+  summary carry this warning (`wrinklefe.io.export.FE_STRENGTH_CAVEAT`),
+  and `validation/strength_error_summary.py` regenerates every figure.
   The FE remains an open research direction, no longer tracked by a
   blocking issue. S-A-2's
   through-thickness position is no longer out of scope: the

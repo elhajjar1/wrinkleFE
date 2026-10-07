@@ -53,6 +53,7 @@ from wrinklefe.goalseek import (  # noqa: E402
     find_critical_value,
 )
 from wrinklefe.io.export import (  # noqa: E402
+    FE_STRENGTH_CAVEAT,
     build_analysis_summary,
     render_summary_markdown,
     render_summary_pdf,
@@ -4306,6 +4307,12 @@ with tab_analyze:
         fe = r.get("fe")
         if fe is not None:
             st.subheader("FE solution")
+            # Above the metrics, not below them or behind an expander: the
+            # strength-retention number sits right next to it, and the
+            # validated direction of its error is the unsafe one. Same words
+            # as the NCR summary (FE_STRENGTH_CAVEAT), so the app and the
+            # attachment cannot disagree.
+            st.warning(f"**Caveat:** {FE_STRENGTH_CAVEAT}")
             f1, f2, f3 = st.columns(3)
             f1.metric(
                 "Modulus retention", f"{fe['modulus_retention']:.3f}",
@@ -4325,7 +4332,10 @@ with tab_analyze:
                 help=(
                     "Fraction of strength remaining under the *worst* of "
                     "all failure criteria evaluated. `1.0` = no loss; the "
-                    "controlling criterion is shown below."
+                    "controlling criterion is shown below. Indicative only "
+                    "— see the caveat above: where checked against measured "
+                    "strength, this has over-predicted, never "
+                    "under-predicted."
                 ),
             )
             f3.metric(
