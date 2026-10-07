@@ -78,8 +78,20 @@ def analysis_result():
 # JSON export tests
 # ======================================================================
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestJSONExport:
-    """Tests for export_results_json."""
+    """Tests for the legacy export_results_json (deprecated since 1.3; it
+    keeps working until 2.0, so its contract stays pinned)."""
+
+    def test_is_deprecated_in_favour_of_the_structured_export(
+        self, analysis_result, tmp_path
+    ):
+        out = tmp_path / "results.json"
+        with pytest.warns(DeprecationWarning, match="removed in 2.0") as rec:
+            export_results_json(analysis_result, out)
+        # Attributed to the caller, not to wrinklefe internals.
+        assert rec[0].filename == __file__
+        assert "wrinklefe.io.results" in str(rec[0].message)
 
     def test_produces_valid_json(self, analysis_result, tmp_path):
         """Exported file is valid JSON."""

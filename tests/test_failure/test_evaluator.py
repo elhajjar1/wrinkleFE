@@ -197,3 +197,46 @@ class TestEvaluateField:
         assert mode_fields["larc05"][0, 0] in (
             "fiber_kinking", "matrix_tension", "matrix_compression"
         )
+
+
+class TestBatchedLaminateEvaluation:
+    """evaluate_laminate and strength_ratio_envelope batch criteria whose
+    field path is exact (FIELD_PATH_IS_EXACT) through evaluate_field. The
+    batch must reproduce the per-ply evaluate() results exactly."""
+
+    @pytest.fixture
+    def laminate(self):
+        mat = OrthotropicMaterial()
+        return Laminate.from_angles(
+            [0, 45, -45, 90, 90, -45, 45, 0], mat, ply_thickness=0.183
+        )
+
+    def test_report_matches_per_ply_evaluate(self, laminate):
+        crit = LaRC05Criterion()
+        assert crit.FIELD_PATH_IS_EXACT
+        load = LoadState(Nx=-600.0, Ny=150.0, Nxy=80.0)
+        ctxs = [{"misalignment_angle": 0.01 * k} for k in range(8)]
+        report = FailureEvaluator([crit]).evaluate_laminate(
+            laminate, load, ply_contexts=ctxs
+        )
+        for k in range(laminate.n_plies):
+            s = laminate.ply_stresses_local(load, k, position="mid")
+            stress = np.array([s[0], s[1], 0.0, 0.0, 0.0, s[2]])
+            ref = crit.evaluate(stress, laminate.plies[k].material, ctxs[k])
+            assert report.ply_failure_indices["larc05"][k] == ref.index
+        fpf = report.fpf["larc05"]
+        s = laminate.ply_stresses_local(load, fpf["ply"], position="mid")
+        ref = crit.evaluate(
+            np.array([s[0], s[1], 0.0, 0.0, 0.0, s[2]]),
+            laminate.plies[fpf["ply"]].material, ctxs[fpf["ply"]],
+        )
+        assert fpf["load_factor"] == ref.reserve_factor
+        assert fpf["mode"] == ref.mode
+
+    def test_envelope_points_are_the_fpf_load_factor(self, laminate):
+        ev = FailureEvaluator([LaRC05Criterion()])
+        env = ev.strength_ratio_envelope(laminate, "Nx-Ny", n_points=8)
+        for i, theta in enumerate(np.linspace(0, 2 * np.pi, 8, endpoint=False)):
+            load = LoadState(Nx=np.cos(theta), Ny=np.sin(theta))
+            sr = ev.evaluate_laminate(laminate, load).fpf["larc05"]["load_factor"]
+            assert np.hypot(*env["larc05"][i]) == pytest.approx(sr, rel=1e-12)

@@ -33,11 +33,12 @@ configuration value is reachable by the same path in both, partly
 through outright renames (``configuration`` against ``config``,
 ``analytical_predictions`` against ``analytical``).
 
-That is deliberate, not drift (see :mod:`wrinklefe.io`), but it means
-the two are not interchangeable: a consumer written against one reads
+The two are not interchangeable: a consumer written against one reads
 essentially nothing from the other.  Tell them apart by their top-level
 keys -- this document has ``schema_version``, the legacy one has
-``wrinklefe_version``.
+``wrinklefe_version``.  The legacy layout is deprecated since 1.3 and
+will be removed in 2.0, leaving this as the one JSON export (see
+:mod:`wrinklefe.io`).
 """
 
 from __future__ import annotations

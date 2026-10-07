@@ -20,15 +20,16 @@ Public API
 Two exporters, one name
 -----------------------
 
-The legacy ``export_results_json`` (in :mod:`wrinklefe.io.export`) and
-the schema-versioned one in :mod:`wrinklefe.io.results` coexist
-deliberately. The legacy entry remains what ``wrinklefe.io`` re-exports,
-so existing callers do not break; consumers who want the structured
-document (``per_ply`` table, ``first_ply_failure``,
-``knockdown_factors``, ``schema_version``) import it directly from
-:mod:`wrinklefe.io.results`.
+The legacy ``export_results_json`` (in :mod:`wrinklefe.io.export`) is
+**deprecated since 1.3 and will be removed in 2.0**; it, and its
+``analysis_results_to_dict``, raise a ``DeprecationWarning``. Use the
+schema-versioned one in :mod:`wrinklefe.io.results` (``per_ply`` table,
+``first_ply_failure``, ``knockdown_factors``, ``schema_version``). Until
+2.0 the legacy entry remains what ``wrinklefe.io`` re-exports, so
+existing callers keep working, and the CLI's ``--output-json`` keeps it
+as its default; ``--json-schema structured`` selects the new layout.
 
-Be aware of what that costs. The two documents are almost entirely
+Be aware of what switching costs. The two documents are almost entirely
 disjoint: on an FE run the legacy one emits 33 leaf paths and the
 structured one 138, sharing only ``provenance`` and the three ``mesh``
 counts, and on an analytical-only run nothing outside ``provenance``.
@@ -37,7 +38,7 @@ path in both -- even the common blocks were renamed (``configuration``
 against ``config``, ``analytical_predictions`` against
 ``analytical``). So these two imports::
 
-    from wrinklefe.io import export_results_json           # legacy
+    from wrinklefe.io import export_results_json           # legacy (deprecated)
     from wrinklefe.io.results import export_results_json    # structured
 
 write files with nothing in common, and a consumer written against one

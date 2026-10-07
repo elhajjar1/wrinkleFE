@@ -158,7 +158,8 @@ def test_exported_in_json_payloads():
     assert (rd["knockdown_factors"]["analytical_modulus"]
             == rd["analytical"]["analytical_modulus_knockdown"])
 
-    ed = analysis_results_to_dict(result)
+    with pytest.warns(DeprecationWarning):  # legacy layout, removed in 2.0
+        ed = analysis_results_to_dict(result)
     assert ed["analytical_predictions"]["analytical_modulus_knockdown"] < 1.0
 
 

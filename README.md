@@ -988,6 +988,16 @@ The Streamlit web app exposes the same exports as **Download results as
 JSON** and **Download per-ply results as CSV** buttons on the Export
 tab.
 
+On the command line, `analyze`, `sweep`, `compare` and `critical` write
+JSON with `--output-json`. Pass `--json-schema structured` to get the
+schema-versioned document above (one per run). The default is still the
+older layout (top-level `wrinklefe_version`, written by
+`wrinklefe.io.export.export_results_json`), which is **deprecated since
+1.3 and will be removed in 2.0**; the CLI prints a note each time it
+writes it, and the Python functions raise a `DeprecationWarning`. The two
+layouts share no result paths, so a consumer written against one reads
+nothing from the other.
+
 ### Archiving a full result (`.wfr`) — reload without re-solving
 
 The JSON and CSV exports are report tiers: they reduce per-Gauss-point

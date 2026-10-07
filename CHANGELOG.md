@@ -59,6 +59,28 @@ version produced a given file.
     numbers stay true: the progressive figures against the ledger, the
     FE LaRC05 claims by re-running the six cases (slow lane).
 
+### Deprecated
+- Export — **the legacy JSON layout is deprecated and will be removed in
+  2.0.** `wrinklefe.io.export.export_results_json` (also re-exported as
+  `wrinklefe.io.export_results_json`) and
+  `wrinklefe.io.export.analysis_results_to_dict` raise a
+  `DeprecationWarning`; use `wrinklefe.io.results.export_results_json` /
+  `results_to_dict`, the structured, schema-versioned document. The two
+  layouts share no result paths, so merging them was never an option
+  that kept consumers working; one goes, with a release of warning.
+  - The CLI's `--output-json` on `analyze`, `sweep`, `compare` and
+    `critical` gains `--json-schema {legacy,structured}`. `legacy` stays
+    the default for this release, byte-identical to before, and each
+    write prints a one-line note to stderr; `structured` writes the
+    schema-versioned document per run. In 2.0 `structured` becomes the
+    only layout.
+  - Example 05 and the README use the structured export.
+
+### Removed
+- Export — the legacy layout's `buckling`, `monte_carlo` and
+  `jensen_gap` blocks are removed. They read attributes
+  `AnalysisResults` has never had, so no export ever contained them.
+
 ### Fixed
 - Docs — **two validation claims were wrong.**
   - `docs/internal/VALIDATION.md` said every crack-band error was positive
@@ -142,8 +164,14 @@ version produced a given file.
   `tau_13`, index 0.989 at the S-M-2 peak), which the corrected kinking
   index (0.948, was 0.257) does not overtake.
 - FE failure evaluation costs more: the kink-plane search makes LaRC05
-  field evaluation about 5× slower (80k points: 0.38 → 1.84 s), and a
-  default FE analysis takes 3.7 s instead of 2.2 s.
+  field evaluation about 5× slower (80k points: 0.38 → 1.8 s), and a
+  default FE analysis takes 2.7 s instead of 2.2 s. A single-point
+  `LaRC05Criterion.evaluate()` costs ~8.5 ms (was 0.11 ms) because it
+  solves both reserve factors; `FailureEvaluator.evaluate_laminate` and
+  `strength_ratio_envelope` therefore batch LaRC05 (and Puck and
+  Budiansky-Fleck, whose batched path is pinned bit-identical) through
+  `evaluate_field`, with identical results. A 72-point LaRC05 envelope of
+  an 8-ply laminate takes 0.2 s (14 s point by point).
 - **CLT first-ply failure** (`FailureEvaluator.evaluate_laminate`) picks
   the first ply by the LaRC05 reserve factor, so its first-ply load and,
   where a matrix reserve had been under-read, the first ply itself can
