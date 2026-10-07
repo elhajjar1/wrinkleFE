@@ -357,16 +357,59 @@ class TestLaRC05MonotonicityAndReserve:
     def test_reserve_factor_is_inverse_of_index_for_linear_modes(
         self, criterion, material
     ):
-        """Fibre tension and the matrix modes keep rf = 1 / FI."""
+        """Fibre tension and matrix tension keep rf = 1 / FI."""
         for stress in (
             np.array([0.5 * material.Xt, 0.0, 0.0, 0.0, 0.0, 0.0]),
             np.array([0.0, 0.5 * material.Yt, 0.0, 0.0, 0.0, 0.0]),
-            np.array([0.0, -0.5 * material.Yc, 0.0, 0.0, 0.0, 0.0]),
         ):
             result = criterion.evaluate(stress, material)
             assert result.reserve_factor == pytest.approx(
                 1.0 / result.index, rel=1e-12
             )
+
+    def test_matrix_compression_reserve_factor_is_the_first_failure_load(
+        self, criterion, material
+    ):
+        """Friction makes the matrix-compression index nonlinear in load,
+        so 1 / FI is not the reserve factor. LaRC05 is calibrated so pure
+        transverse compression fails at exactly Yc: at half of it the
+        reserve is exactly 2 (1 / FI gives 1.77, under-reading it)."""
+        stress = np.array([0.0, -0.5 * material.Yc, 0.0, 0.0, 0.0, 0.0])
+        result = criterion.evaluate(stress, material)
+        assert result.mode == "matrix_compression"
+        assert result.reserve_factor == pytest.approx(2.0, rel=1e-9)
+        assert 1.0 / result.index < 0.95 * result.reserve_factor
+        at_rf = criterion.evaluate(result.reserve_factor * stress, material)
+        assert at_rf.index == pytest.approx(1.0, rel=1e-9)
+
+    def test_matrix_reserve_is_exact_under_friction(self, criterion, material):
+        """Over random matrix-compression states: FI(rf * sigma) = 1, and
+        the field path returns the same reserve factor bit for bit."""
+        rng = np.random.default_rng(7)
+        m = material
+        checked = 0
+        stresses = []
+        for _ in range(200):
+            s = np.array([
+                rng.uniform(-0.1, 0.1) * m.Xc,
+                -rng.uniform(0.0, 1.5) * m.Yc,
+                -rng.uniform(0.0, 1.0) * m.Yc,
+                rng.normal() * m.S23,
+                rng.normal() * 0.5 * m.S12,
+                rng.normal() * 0.5 * m.S12,
+            ]) * rng.uniform(0.3, 2.0)
+            r = criterion.evaluate(s, m)
+            if r.mode != "matrix_compression":
+                continue
+            assert np.isfinite(r.reserve_factor)
+            at_rf = criterion.evaluate(r.reserve_factor * s, m)
+            assert at_rf.index == pytest.approx(1.0, rel=1e-8)
+            stresses.append((s, r.reserve_factor))
+            checked += 1
+        assert checked > 30
+        field = np.array([s for s, _ in stresses])
+        _, _, rf_field = criterion.evaluate_field(field, m)
+        np.testing.assert_array_equal(rf_field, [rf for _, rf in stresses])
 
     @pytest.mark.parametrize("load", [400.0, 1000.0, 3400.0])
     def test_kinking_reserve_factor_is_the_first_failure_load(

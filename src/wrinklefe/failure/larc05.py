@@ -77,6 +77,7 @@ References
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -510,26 +511,50 @@ class LaRC05Criterion(FailureCriterion):
         row is frozen), so a one-row call (the scalar path) is bit-identical
         to the same row in a field.
         """
-        n = s.shape[0]
-
-        def g(scale: np.ndarray) -> np.ndarray:
-            fi = self._kink_fi_raw(
-                s * scale[:, None], material, phi_extra, Yt_is, S12_is
+        def fi_at(scale: np.ndarray, rows: np.ndarray) -> np.ndarray:
+            return self._kink_fi_raw(
+                s[rows] * scale[:, None], material, phi_extra[rows],
+                Yt_is[rows], S12_is[rows],
             )
-            # inf (kinked) is simply "failed"; cap it so the secant step
-            # stays finite.
-            capped: np.ndarray = np.minimum(fi, 1.0e6) - 1.0
-            return capped
 
-        fi_one = self._kink_fi_raw(s, material, phi_extra, Yt_is, S12_is)
+        return self._reserve(fi_at, s.shape[0])
+
+    def _reserve(
+        self,
+        fi_at: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        n: int,
+    ) -> np.ndarray:
+        """Load scale ``R`` with ``FI(R · σ) = 1`` for ``n`` rows.
+
+        ``fi_at(scale, rows)`` returns the index of rows ``rows`` with
+        their stress scaled by ``scale``; it may return ``inf`` for a
+        failed state. Requires ``FI < 1`` below the first crossing and
+        ``FI >= 1`` from it on. Brackets by doubling, then Illinois. Returns
+        the bracket's failed end (so ``FI(R · σ) >= 1``), and ``inf`` for
+        a row that is unloaded or whose index never reaches 1.
+        """
+        def g(scale: np.ndarray, active: np.ndarray) -> np.ndarray:
+            """``FI - 1`` at ``scale`` for the ``active`` rows only (rows
+            are independent, so evaluating a subset is bit-identical);
+            other rows get ``nan`` and are never read."""
+            out = np.full(n, np.nan)
+            rows = np.flatnonzero(active)
+            if rows.size:
+                fi = fi_at(scale[rows], rows)
+                # inf (kinked) is simply "failed"; cap it so the secant
+                # step stays finite.
+                out[rows] = np.minimum(fi, 1.0e6) - 1.0
+            return out
+
+        fi_one = fi_at(np.ones(n), np.arange(n))
         unloaded = fi_one == 0.0
         positive = fi_one > 0.0
         # 1 / FI is the reserve factor for a linear index, so a good first
-        # guess. A row already kinked at scale 1 (FI = inf) starts its
+        # guess. A row already failed at scale 1 (FI = inf) starts its
         # bracket there instead of at 1 / inf = 0.
         first = positive & np.isfinite(fi_one)
         r_hi = np.where(first, 1.0 / np.where(first, fi_one, 1.0), 1.0)
-        g_hi = g(r_hi)
+        g_hi = np.where(unloaded, 0.0, g(r_hi, ~unloaded))
         r_lo = np.zeros(n)
         g_lo = np.full(n, -1.0)  # FI(0) = 0
         for _ in range(64):  # expand until the upper end is failed
@@ -539,12 +564,15 @@ class LaRC05Criterion(FailureCriterion):
             r_lo = np.where(below, r_hi, r_lo)
             g_lo = np.where(below, g_hi, g_lo)
             r_hi = np.where(below, 2.0 * r_hi, r_hi)
-            g_hi = np.where(below, g(r_hi), g_hi)
+            g_hi = np.where(below, g(r_hi, below), g_hi)
+        # Still unfailed after 2**64 x the first guess: it never fails
+        # (a friction-saturated matrix plane).
+        never = (g_hi < 0.0) & ~unloaded
 
         # Illinois: regula falsi that halves the stale end's value, so it
         # cannot stall on one side.
         side = np.zeros(n)  # +1: hi moved last, -1: lo moved last
-        done = unloaded | (r_hi - r_lo <= self._RF_RTOL * r_hi)
+        done = unloaded | never | (r_hi - r_lo <= self._RF_RTOL * r_hi)
         for _ in range(self._RF_MAX_ITERS):
             if done.all():
                 break
@@ -557,9 +585,9 @@ class LaRC05Criterion(FailureCriterion):
             # Stay strictly inside the bracket.
             inside = (r_new > r_lo) & (r_new < r_hi)
             r_new = np.where(inside, r_new, 0.5 * (r_lo + r_hi))
-            g_new = g(r_new)
-            failed = g_new >= 0.0
             upd = ~done
+            g_new = g(r_new, upd)
+            failed = g_new >= 0.0
             hi_moves = upd & failed
             lo_moves = upd & ~failed
             r_hi = np.where(hi_moves, r_new, r_hi)
@@ -569,8 +597,10 @@ class LaRC05Criterion(FailureCriterion):
             g_lo = np.where(hi_moves & (side > 0), 0.5 * g_lo, g_lo)
             g_hi = np.where(lo_moves & (side < 0), 0.5 * g_hi, g_hi)
             side = np.where(hi_moves, 1.0, np.where(lo_moves, -1.0, side))
-            done = done | (r_hi - r_lo <= self._RF_RTOL * r_hi) | (g_new == 0.0)
-        out: np.ndarray = np.where(unloaded, np.inf, r_hi)
+            done = done | (r_hi - r_lo <= self._RF_RTOL * r_hi) | (
+                upd & (g_new == 0.0)
+            )
+        out: np.ndarray = np.where(unloaded | never, np.inf, r_hi)
         return out
 
     def _fibre_kinking(
@@ -740,8 +770,9 @@ class LaRC05Criterion(FailureCriterion):
 
         # Reserve factor: the load scale to first failure. Fibre tension is
         # linear in load, so 1 / FI is exact there; kinking is not, so its
-        # reserve factor is solved for (see ``_kink_reserve``). The matrix
-        # sub-criterion keeps 1 / FI.
+        # reserve factor is solved for (see ``_kink_reserve``), and so is
+        # the matrix one, which friction makes nonlinear too
+        # (``_matrix_reserve``).
         if s1 >= 0:
             rf_fiber = 1.0 / fi_fiber if fi_fiber > 0 else float("inf")
         else:
@@ -754,7 +785,14 @@ class LaRC05Criterion(FailureCriterion):
                     np.array([S12_is], dtype=np.float64),
                 )[0]
             )
-        rf_matrix = 1.0 / fi_matrix if fi_matrix > 0 else float("inf")
+        rf_matrix = float(
+            self._matrix_reserve(
+                stress_local[None, :],
+                material,
+                np.array([Yt_is], dtype=np.float64),
+                np.array([S12_is], dtype=np.float64),
+            )[0]
+        )
         rf = min(rf_fiber, rf_matrix)
 
         detail = {
@@ -902,39 +940,22 @@ class LaRC05Criterion(FailureCriterion):
     # ``evaluate_field``.
     _FIELD_CHUNK = 2048
 
-    def _evaluate_field_block(
+    def _matrix_fi_rows(
         self,
         s: np.ndarray,
         material: OrthotropicMaterial,
-        phi_0: np.ndarray,
         Yt_is: np.ndarray,
         S12_is: np.ndarray,
-        *,
-        want_rf: bool = True,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-        """One cache-sized block of the vectorised evaluation."""
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Vectorised matrix fracture-plane search over ``(N, 6)`` rows.
+
+        Returns the matrix index and whether its critical plane is in
+        tension. Bit-identical per row to :meth:`_matrix_failure`.
+        """
         n = s.shape[0]
-        s1, s2, s3 = s[:, 0], s[:, 1], s[:, 2]
+        s2, s3 = s[:, 1], s[:, 2]
         t23, t13, t12 = s[:, 3], s[:, 4], s[:, 5]
-
-        # --- Fibre tension (sigma_11 >= 0) ---------------------------
-        tension = s1 >= 0
-        fi_ft = (s1 / material.Xt) ** 2 + (t12 / material.S12) ** 2
-        if material.S13 > 0:
-            fi_ft = fi_ft + (t13 / material.S13) ** 2
-        fi_ft = np.sqrt(np.maximum(fi_ft, 0.0))
-
-        # --- Fibre kinking (sigma_11 < 0) ----------------------------
-        # The same function evaluate() calls, so the paths agree exactly.
-        fi_kink = self._kink_fi(s, material, phi_0, Yt_is, S12_is)
         mu_L, mu_T = self._friction_coefficients(material)
-
-        fi_fiber = np.where(tension, fi_ft, fi_kink)
-        modes_fiber = np.where(
-            tension, "fiber_tension", "fiber_kinking"
-        ).astype("U32")
-
-        # --- Matrix failure (fracture-plane search, (N, n_theta)) ----
         alpha_0_rad = np.radians(material.alpha_0)
         tan_2a = np.tan(2.0 * alpha_0_rad)
         S_T = material.Yc * np.cos(alpha_0_rad) * (
@@ -975,10 +996,71 @@ class LaRC05Criterion(FailureCriterion):
         rows = np.arange(n)
         idx_max = np.argmax(fi_grid, axis=1)
         fi_matrix = np.sqrt(np.maximum(fi_grid[rows, idx_max], 0.0))
+        tension_at_max: np.ndarray = plane_tension[rows, idx_max]
+        return fi_matrix, tension_at_max
+
+    def _matrix_reserve(
+        self,
+        s: np.ndarray,
+        material: OrthotropicMaterial,
+        Yt_is: np.ndarray,
+        S12_is: np.ndarray,
+    ) -> np.ndarray:
+        """Exact load scale ``R`` with ``matrix FI(R · σ) = 1``, per row.
+
+        On a compressive fracture plane friction raises the strength with
+        the load (``S + μ|σ_n|``), so the index grows more slowly than the
+        load and ``1 / FI`` is not the reserve factor: below failure it
+        under-reads it (by over half in measured states), past failure it
+        over-reads it. On every plane the index still rises monotonically
+        with load (``λτ / (S + μλ|σ_n|)`` is increasing for ``μ >= 0``),
+        so the maximum over planes does too and the bracketed root-find
+        applies. A row whose planes all saturate below 1 never fails
+        (``inf``).
+        """
+
+        def fi_at(scale: np.ndarray, rows: np.ndarray) -> np.ndarray:
+            return self._matrix_fi_rows(
+                s[rows] * scale[:, None], material, Yt_is[rows], S12_is[rows],
+            )[0]
+
+        return self._reserve(fi_at, s.shape[0])
+
+    def _evaluate_field_block(
+        self,
+        s: np.ndarray,
+        material: OrthotropicMaterial,
+        phi_0: np.ndarray,
+        Yt_is: np.ndarray,
+        S12_is: np.ndarray,
+        *,
+        want_rf: bool = True,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """One cache-sized block of the vectorised evaluation."""
+        s1, t13, t12 = s[:, 0], s[:, 4], s[:, 5]
+
+        # --- Fibre tension (sigma_11 >= 0) ---------------------------
+        tension = s1 >= 0
+        fi_ft = (s1 / material.Xt) ** 2 + (t12 / material.S12) ** 2
+        if material.S13 > 0:
+            fi_ft = fi_ft + (t13 / material.S13) ** 2
+        fi_ft = np.sqrt(np.maximum(fi_ft, 0.0))
+
+        # --- Fibre kinking (sigma_11 < 0) ----------------------------
+        # The same function evaluate() calls, so the paths agree exactly.
+        fi_kink = self._kink_fi(s, material, phi_0, Yt_is, S12_is)
+
+        fi_fiber = np.where(tension, fi_ft, fi_kink)
+        modes_fiber = np.where(
+            tension, "fiber_tension", "fiber_kinking"
+        ).astype("U32")
+
+        # --- Matrix failure (fracture-plane search, (N, n_theta)) ----
+        fi_matrix, matrix_tension = self._matrix_fi_rows(
+            s, material, Yt_is, S12_is
+        )
         modes_matrix = np.where(
-            plane_tension[rows, idx_max],
-            "matrix_tension",
-            "matrix_compression",
+            matrix_tension, "matrix_tension", "matrix_compression",
         ).astype("U32")
 
         # --- Governing criterion -------------------------------------
@@ -988,7 +1070,7 @@ class LaRC05Criterion(FailureCriterion):
             "U32"
         )
         # Reserve factors exactly as evaluate() forms them: 1 / FI for
-        # fibre tension and matrix, the solved load scale for kinking.
+        # fibre tension, the solved load scale for kinking and matrix.
         def _inv(x: np.ndarray) -> np.ndarray:
             return np.where(x > 0, 1.0 / np.where(x > 0, x, 1.0), np.inf)
 
@@ -1000,5 +1082,7 @@ class LaRC05Criterion(FailureCriterion):
             rf_fiber[comp] = self._kink_reserve(
                 s[comp], material, phi_0[comp], Yt_is[comp], S12_is[comp]
             )
-        reserve_factors = np.minimum(rf_fiber, _inv(fi_matrix))
+        reserve_factors = np.minimum(
+            rf_fiber, self._matrix_reserve(s, material, Yt_is, S12_is)
+        )
         return indices, modes, reserve_factors

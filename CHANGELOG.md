@@ -104,10 +104,16 @@ version produced a given file.
     no extra angle; the kink-plane search finds the wrinkle as `tau_13`.
     `FailureEvaluator`'s `fiber_angles` is documented as an *additional*
     misalignment, to be left `None` for FE local stresses.
-  - `FailureResult.reserve_factor` for kinking is now the exact load
-    multiple to failure (a root-find, since the kinking index is not
-    linear in load), not `1/FI`. Field evaluation keeps a fast path
-    (`evaluate_field_indices`) that skips it, used by the analysis.
+  - `FailureResult.reserve_factor` is now the exact load multiple to
+    failure for kinking **and matrix compression**, from a bracketed
+    root-find, not `1/FI`. Neither index is linear in load: kinking
+    because the misalignment grows with it, matrix compression because
+    friction raises the fracture-plane strength with it. For matrix
+    compression `1/FI` under-read the reserve below failure (by over half
+    in sampled states; pure transverse compression at half `Yc` gave 1.77
+    instead of the exact 2) and over-read it past failure. Field
+    evaluation keeps a fast path (`evaluate_field_indices`) that skips
+    the reserve factors, used by the analysis.
   - Past the kinking instability (far beyond failure) the closed form has
     no value. The index there is `1 / reserve factor`, finite and at
     least 1, so a field never carries an `inf` that consumers filtering
@@ -138,9 +144,10 @@ version produced a given file.
 - FE failure evaluation costs more: the kink-plane search roughly doubles
   LaRC05 field evaluation (0.66 → 1.32 s on the default mesh; a default
   FE analysis 2.2 → 3.0 s).
-- Known approximation, unchanged: the matrix-compression reserve factor
-  is still `1/FI`, which overstates it by up to ~8% where friction
-  matters.
+- **CLT first-ply failure** (`FailureEvaluator.evaluate_laminate`) picks
+  the first ply by the LaRC05 reserve factor, so its first-ply load and,
+  where a matrix reserve had been under-read, the first ply itself can
+  change. The FE strength outputs do not use reserve factors.
 
 ## [1.2.0] - 2026-10-02
 
