@@ -1002,8 +1002,12 @@ class WrinkleConfiguration:
         (issue #252, "compose then differentiate"): per-wrinkle signed
         slopes, scaled by the same through-thickness decay and amplitude
         modulation as the displacement, are summed and the angle is
-        ``arctan(|dz_total/dx|)``. Nodes outside every wrinkle zone
-        receive angle = 0.
+        ``arctan(dz_total/dx)`` — signed, so the two flanks of a
+        wrinkle carry opposite handedness. Nodes outside every wrinkle
+        zone receive angle = 0. (Before the sign fix the field was
+        ``arctan|dz/dx|``, which rotated the material frame the same way
+        on both flanks; the stiffness rotation is odd in the angle, so
+        one flank of every wrinkle was mis-handed.)
 
         Because displacement and angle derive from one field, two
         coincident half-amplitude wrinkles are exactly equivalent to a
@@ -1032,17 +1036,20 @@ class WrinkleConfiguration:
         Returns
         -------
         np.ndarray
-            Shape (N,) array of fiber misalignment angles [radians].
-            All values are non-negative.
+            Shape (N,) array of **signed** fiber misalignment angles
+            [radians]: positive where the fibre tilts toward +z
+            (``dz/dx > 0``), negative on the opposite flank. Report a
+            severity with ``np.abs()`` (Jin et al., 2026, Eq. 3 defines
+            the misalignment *magnitude*); the FE consumes the sign.
 
         Notes
         -----
-        The fiber angle at a point is the slope of the deformed surface
-        the node actually sits on (Jin et al., 2026, Eq. 3):
+        The fiber angle at a point is the signed slope of the deformed
+        surface the node actually sits on:
 
         .. math::
 
-            \\theta(x) = \\arctan\\left|\\frac{dz_{total}}{dx}\\right|,
+            \\theta(x) = \\arctan\\frac{dz_{total}}{dx},
             \\qquad
             \\frac{dz_{total}}{dx}
             = \\sum_w \\frac{dz_w}{dx}\\,\\Phi_w(p)\\,s_w(x, y)
@@ -1090,7 +1097,7 @@ class WrinkleConfiguration:
 
             slope_total += slope * decay
 
-        return np.arctan(np.abs(slope_total))
+        return np.arctan(slope_total)
 
     # ------------------------------------------------------------------
     # Convenience constructors

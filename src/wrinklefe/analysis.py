@@ -3637,7 +3637,7 @@ class WrinkleAnalysis:
 
         # 4b. Mesh-based max fiber angle (accounts for decay mode)
         results.mesh_max_angle_rad = (
-            float(np.max(mesh.fiber_angles))
+            float(np.max(np.abs(mesh.fiber_angles)))
             if mesh.fiber_angles.size > 0 else 0.0
         )
 
@@ -4133,7 +4133,7 @@ class WrinkleAnalysis:
         )
         results.mesh = mesh
         if mesh.fiber_angles.size > 0:
-            results.mesh_max_angle_rad = float(np.max(mesh.fiber_angles))
+            results.mesh_max_angle_rad = float(np.max(np.abs(mesh.fiber_angles)))
 
         # Boundary conditions: ``compression_bcs`` is sign-agnostic (the
         # sign of ``applied_strain`` selects compression vs tension), so

@@ -214,7 +214,10 @@ class MeshData:
         Shape ``(n_elements,)`` — ply index (0-based) for each element.
     fiber_angles : np.ndarray
         Shape ``(n_nodes,)`` — local fiber misalignment angle from wrinkle
-        geometry (radians).
+        geometry (radians), **signed**: positive where the fibre tilts
+        toward +z. The FE consumes ``-fiber_angles`` as the material
+        rotation about y (see ``tests/test_solver/test_angle_sign.py``);
+        report severities with ``np.abs()``.
     ply_angles : np.ndarray
         Shape ``(n_elements,)`` — nominal ply orientation angle (degrees).
     nx : int

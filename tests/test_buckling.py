@@ -96,8 +96,11 @@ class TestBucklingKnockdown:
         # Dense symmetric-definite reference values (loose tol absorbs
         # cross-platform LAPACK noise; the old garbage was orders of
         # magnitude off, ~0.1-2.4, so this still catches a regression).
+        # lamw re-pinned 8.6487 -> 8.6257 with the fibre-angle sign fix
+        # (the unsigned field mirror-handed one flank's material frame;
+        # the pristine bar has no wrinkle, so lam0 is untouched).
         assert lam0 == pytest.approx(8.2995, rel=2e-3)
-        assert lamw == pytest.approx(8.6487, rel=2e-3)
+        assert lamw == pytest.approx(8.6257, rel=2e-3)
         # Negative finding: the factor RISES with the wrinkle, it does not
         # fall -- the UD knockdown must come from the penetration gate.
         assert lamw > lam0

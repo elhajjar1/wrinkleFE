@@ -84,7 +84,7 @@ def _legacy_fiber_angles_at_nodes(
     n_nodes = len(nodes)
     # Per-node scalar loop mirroring the composed-field semantics of
     # fiber_angles_at_nodes (issue #252, "compose then differentiate"):
-    # sum the decayed signed slopes, then take arctan of the magnitude.
+    # sum the decayed signed slopes, then take the SIGNED arctan.
     slope_total = np.zeros(n_nodes, dtype=np.float64)
 
     for wrinkle in cfg.wrinkles:
@@ -115,7 +115,7 @@ def _legacy_fiber_angles_at_nodes(
 
             slope_total[node_idx] += slope * decay * amp_scale
 
-    return np.arctan(np.abs(slope_total))
+    return np.arctan(slope_total)
 
 
 # ----------------------------------------------------------------------

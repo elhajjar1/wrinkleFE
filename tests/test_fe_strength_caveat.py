@@ -226,12 +226,17 @@ class TestProgressiveClaimsMatchTheLedger:
             round(self._err(calibrated)), round(self._err(refined)),
         ]
 
-    def test_the_milder_wrinkles_really_are_under_predicted(self, recipes):
+    def test_the_milder_wrinkles_really_are_within_a_few_percent(
+        self, recipes
+    ):
+        """The caveat says the milder wrinkles come out "within a few per
+        cent". (Before the fibre-angle sign fix they were under-predicted,
+        -7% / -3.5%; the sign fix moved them to -2.0% / +0.3%.)"""
         milder = [
             c for c in recipes["nx16_calibrated"]["cases"]
             if c["case"] != "S-M-2"
         ]
-        assert milder and all(self._err(c) < 0 for c in milder)
+        assert milder and all(abs(self._err(c)) < 5.0 for c in milder)
 
     def test_the_quoted_mesh_is_the_calibrated_one(self, recipes):
         r = recipes["nx16_calibrated"]
@@ -243,9 +248,11 @@ class TestProgressiveClaimsMatchTheLedger:
 @pytest.mark.slow
 def test_the_fe_larc05_claims_still_hold():
     """Six FE solves. The caveat says the FE over-predicts the two most
-    severe wrinkles "by up to about 30%" and under-predicts the milder
+    severe wrinkles "by up to about 40%" and under-predicts the milder
     ones; when the FE path changes, this fails and the caveat is rewritten
-    to match."""
+    to match. (Measured +38.7% worst after the fibre-angle sign fix; the
+    mis-handed flank had been inflating wrinkle-zone FI, which partially
+    masked the over-prediction.)"""
     sys.path.insert(0, str(_ROOT / "validation"))
     import strength_error_summary as ses
 
@@ -255,7 +262,7 @@ def test_the_fe_larc05_claims_still_hold():
     # The two most severe: 1.5 mm at 20 deg, and 30 deg.
     assert non_conservative == {"S-M-2", "S-M-3"}, rows
     worst = max(e for _kd, _m, e in rows.values())
-    assert 25.0 <= worst <= 35.0, rows
-    assert "about 30%" in FE_STRENGTH_CAVEAT
+    assert 34.0 <= worst <= 44.0, rows
+    assert "about 40%" in FE_STRENGTH_CAVEAT
     milder = [e for k, (_kd, _m, e) in rows.items() if k not in non_conservative]
     assert all(e < 0.5 for e in milder), rows

@@ -715,18 +715,28 @@ def _fe_config(**overrides) -> AnalysisConfig:
 
 @pytest.mark.slow
 def test_fe_path_compression_acceptance_limit():
-    """T-50 (AC3c): a real FE round-trip on the FE-only objective."""
+    """T-50 (AC3c): a real FE round-trip on the FE-only objective.
+
+    Target/bracket re-pinned with the fibre-angle sign fix: the unsigned
+    field mirror-handed one wrinkle flank, which made the wrinkled bar
+    spuriously compliant; with consistent handedness this mesh retains
+    0.99906 at amplitude 0.23 and 0.99593 at the mesh-inversion cap
+    (mesh_amplitude_safe = 0.4575 for nz_per_ply = 1), so the old 0.99
+    target is unreachable on this mesh. 0.998 crosses near 0.33; rtol
+    tightens to 1e-3 because the flatness guard reads rtol*target as its
+    threshold and the whole reachable retention range is ~0.004.
+    """
     result = find_critical_value(
         _fe_config(), objective="modulus_retention_global",
-        target_knockdown=0.99, bracket=(0.01, 0.45), scan_points=3,
-        rtol=1e-2, analytical_only=False,
+        target_knockdown=0.998, bracket=(0.01, 0.45), scan_points=3,
+        rtol=1e-3, analytical_only=False,
     )
     assert result.analytical_only is False
     assert result.status == "converged"
     forward = WrinkleAnalysis(result.critical_config).run(
         analytical_only=False
     )
-    assert forward.modulus_retention_global >= 0.99
+    assert forward.modulus_retention_global >= 0.998
 
 
 @pytest.mark.slow
@@ -739,15 +749,15 @@ def test_fe_path_tension_acceptance_limit():
     """
     result = find_critical_value(
         _fe_config(loading="tension"),
-        objective="modulus_retention_global", target_knockdown=0.99,
-        bracket=(0.01, 0.45), scan_points=3, rtol=1e-2,
+        objective="modulus_retention_global", target_knockdown=0.998,
+        bracket=(0.01, 0.45), scan_points=3, rtol=1e-3,
         analytical_only=False,
     )
     assert result.status == "converged"
     forward = WrinkleAnalysis(result.critical_config).run(
         analytical_only=False
     )
-    assert forward.modulus_retention_global >= 0.99
+    assert forward.modulus_retention_global >= 0.998
 
 
 def test_fe_path_clamps_the_amplitude_bound(monkeypatch):
