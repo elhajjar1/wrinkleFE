@@ -212,16 +212,28 @@ class TestMultiWrinkleFE:
         assert r_halves.modulus_retention == pytest.approx(
             r_full.modulus_retention, rel=1e-6
         )
-        # The FI field, like the scalar modulus_retention above, is a
+        # The stress field, like the scalar modulus_retention above, is a
         # post-solve quantity that the two-spec composition reduces in a
         # different summation order than the single full-amplitude spec.
         # The mesh nodes and angle field are bit-identical (1e-12 above),
         # so the inputs match; only this FP-reduction order differs, by
-        # ~7e-6 on macOS arm64 — rel=1e-9 flakes there. atol=5e-5 is far
-        # inside any physical FI tolerance yet survives the platform noise.
+        # ~7e-6 of the peak stress on macOS arm64. That noise is absolute,
+        # so it lands on near-zero shear components too.
+        s_full = r_full.field_results.stress_local
+        np.testing.assert_allclose(
+            r_halves.field_results.stress_local, s_full, rtol=0,
+            atol=5e-5 * float(np.abs(s_full).max()),
+            err_msg="coincident halves must give the same stress field",
+        )
+        # Fibre kinking is sensitive to exactly that shear: a 0.01 MPa
+        # shift of a near-zero tau moves the kink-band misalignment by
+        # ~1 % of the intrinsic phi_C. Measured: 7e-6 absolute stress
+        # noise moves the LaRC05 field by up to 2.3e-4 (macOS CI: 1.05e-4).
+        # rtol=1e-3 covers that with margin and is still far inside any
+        # physical FI tolerance; the stress check above is the tight one.
         for crit, arr in r_full.failure_indices.items():
             np.testing.assert_allclose(
-                r_halves.failure_indices[crit], arr, rtol=1e-5, atol=5e-5,
+                r_halves.failure_indices[crit], arr, rtol=1e-3, atol=5e-5,
                 err_msg=f"{crit} FI field diverged between coincident "
                 "halves and the full-amplitude wrinkle",
             )
