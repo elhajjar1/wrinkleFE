@@ -1,0 +1,7 @@
+# Papers referenced by the validation database live here in LOCAL clones
+# only. PDFs are never committed: most are publisher-copyrighted
+# (interlibrary-loan or paywalled copies), and this is a public
+# repository. The transcription of their DATA, with citation, lives in
+# tests/test_validation/ledger.json and docs/internal/VALIDATION.md.
+# CC-BY papers may be added explicitly via `git add -f` if desired.
+*.pdf
