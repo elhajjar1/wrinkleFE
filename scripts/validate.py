@@ -56,7 +56,22 @@ def case_config(dataset: dict, case: dict, *, with_gate: bool = False):
     def field(key):
         return case[key] if key in case else dataset[key]
 
+    def optional(key, cfg_key=None, cast=float):
+        # Optional recipe fields (dataset-level, case-overridable):
+        # Dataset H's one-sided surface trough needs an envelope width
+        # that is not the wavelength, interfaces near the top surface
+        # and a through-thickness position on the PLAIN path too.
+        if key in case or key in dataset:
+            kwargs[cfg_key or key] = cast(field(key))
+
     kwargs = {}
+    optional("width_mm", "width")
+    optional("interface_1", cast=int)
+    optional("interface_2", cast=int)
+    optional("wrinkle_z_position")
+    optional("surface_pocket_side", cast=str)
+    optional("surface_transition_plies", cast=int)
+    optional("enable_surface_resin_pockets", cast=bool)
     if with_gate:
         import wrinklefe.core.penetration_gate as pg
 
@@ -67,7 +82,7 @@ def case_config(dataset: dict, case: dict, *, with_gate: bool = False):
     return AnalysisConfig(
         amplitude=case["amplitude_p2p_mm"] / 2.0,
         wavelength=case["wavelength_mm"],
-        width=case["wavelength_mm"],
+        width=kwargs.pop("width", None) or case["wavelength_mm"],
         morphology=field("morphology"),
         loading=field("loading"),
         material=MaterialLibrary().get(field("material")),

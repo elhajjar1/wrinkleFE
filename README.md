@@ -1130,10 +1130,14 @@ strengths:
   defect.
 
 These act as regression guards on the analytical model. For the
-multidirectional datasets (Elhajjar 2025, Mukhopadhyay 2015, Li et al.
-2026) the repository does not ship the experimental data points, so
-case-level error statistics for them are not reproducible in-repo.
-(Tracking issue: #22.)
+multidirectional datasets of the accompanying paper (Elhajjar 2025,
+Mukhopadhyay 2015, Li et al. 2026) the repository does not ship the
+experimental data points, so case-level error statistics for them are
+not reproducible in-repo (tracking issue: #22). The exception is
+**Dataset H — Shi et al. (2025)**, whose measured knockdowns (a UD and
+a multidirectional CFRP laminate, three wrinkle severities each) are
+transcribed into the ledger from the paper's text (CC BY), making it
+the first in-repo multidirectional measured-strength set.
 
 For the **unidirectional** datasets the situation is different: the
 committed validation ledger
@@ -1194,10 +1198,12 @@ that is not (+30%) is the most severe compression wrinkle in dataset A.
 > exactly where it matters most: FE LaRC05 over-predicted retained strength
 > on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
-> the most severe wrinkle by +24% (+42% on a refined mesh).
-> Neither has been checked against measured strength for multidirectional
-> laminates. The app and the NCR summary show this warning beside the FE
-> numbers; the per-case figures are in
+> the most severe wrinkle by +24% (+42% on a refined mesh). On the one
+> multidirectional laminate with measured strengths (three CFRP wrinkles,
+> Shi et al. 2025, Dataset H) FE LaRC05 ran conservative (−8% to −1%) —
+> a first check, not a validation; the progressive model
+> has no multidirectional check. The app and the NCR summary show this
+> warning beside the FE numbers; the per-case figures are in
 > [Interpreting results](docs/interpreting_results.md#how-far-to-trust-each-number)
 > and `python validation/strength_error_summary.py` regenerates them.
 
@@ -1365,6 +1371,8 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 - Li, X. et al. (2024). Composites Science and Technology, 256:110762.
 - Li, Y. et al. (2025). Polymer Composites, 46:15176-15187.
 - Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593.
+- Shi, J., Yang, G., Sun, N., Zheng, J., Qian, J., Wang, W. & Song, K. (2025). Materials, 18:4503. https://doi.org/10.3390/ma18194503 (Dataset H)
+- Luong, H.M., Trevarthen, J., Butler, R., Srisuriyachot, J. & Lunt, A.J.G. (2025). Composites Part B, 307:112818. https://doi.org/10.1016/j.compositesb.2025.112818 (review; knockdown context)
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

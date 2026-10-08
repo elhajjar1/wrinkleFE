@@ -28,7 +28,8 @@ from wrinklefe.core.material import MaterialLibrary
 # Frozen built-in roster. Update only if the library intentionally adds
 # or removes a material. The nine fibre/epoxy laminate prepregs are the
 # issue #88 roster; ``EPOXY_S6C10`` is the isotropic neat-epoxy card
-# added for the resin-pocket zone (Li 2024/2025 UD glass datasets).
+# added for the resin-pocket zone (Li 2024/2025 UD glass datasets);
+# ``T700_SHI2025`` is the Shi et al. (2025) Dataset H vendor card.
 EXPECTED_BUILTIN_NAMES = frozenset({
     "AC318_S6C10",
     "AS4_3501_6",
@@ -38,6 +39,7 @@ EXPECTED_BUILTIN_NAMES = frozenset({
     "S2_GLASS_EPOXY",
     "T300_914",
     "T700_2510",
+    "T700_SHI2025",
     "T800S_M21",
     "IM6G_3501_6",
     "EPOXY_S6C10",

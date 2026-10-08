@@ -266,3 +266,29 @@ def test_the_fe_larc05_claims_still_hold():
     assert "about 40%" in FE_STRENGTH_CAVEAT
     milder = [e for k, (_kd, _m, e) in rows.items() if k not in non_conservative]
     assert all(e < 0.5 for e in milder), rows
+
+
+@pytest.mark.slow
+def test_the_multidirectional_claim_still_holds():
+    """Six FE solves (Dataset H, Shi 2025). The caveat says the one
+    multidirectional measured-strength check ran conservative, about
+    -8% to -1%; the UD half of the same dataset is all-conservative
+    context in the docs. If the FE path changes, this fails and the
+    caveat is rewritten to match (exactly like the Li test above)."""
+    sys.path.insert(0, str(_ROOT / "validation"))
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import strength_error_summary as ses
+
+    rows = ses.fe_larc05_errors_shi()
+    md = {k: e for k, (_kd, _m, e) in rows.items() if k.startswith("H-MD")}
+    ud = {k: e for k, (_kd, _m, e) in rows.items() if k.startswith("H-UD")}
+    assert len(md) == 3 and len(ud) == 3
+    # Conservative to near-exact, with headroom for platform noise and
+    # small re-pins; a real regression (double-digit unsafe, or the
+    # conservative floor collapsing) escapes these bands.
+    assert -15.0 <= min(md.values()) <= -3.0, rows
+    assert -6.0 <= max(md.values()) <= 4.0, rows
+    assert "ran conservative, about -8% to -1%" in FE_STRENGTH_CAVEAT
+    # The UD half stays conservative (the FE sees the steep local
+    # stress concentration this short-span wrinkle produces).
+    assert all(e < 0.0 for e in ud.values()), rows

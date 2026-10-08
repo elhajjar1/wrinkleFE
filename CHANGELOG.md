@@ -14,6 +14,35 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Added
+- Validation — **Dataset H: Shi et al. (2025), the first in-repo
+  multidirectional measured-strength set** (Materials 18:4503, CC BY;
+  every value transcribed from the paper's text). Two 20-ply CFRP
+  laminates with a one-sided 5.5 mm surface wrinkle at t/T = 10/20/30%:
+  `[0]_20` (measured KD 0.638/0.494/0.400) and
+  `[45/0/−45/90/45/0/−45/0/45/0]s` (0.760/0.475/0.326). New material
+  card `T700_SHI2025` (vendor Tables 2–3); ledger datasets
+  `shi_2025_ud_cfrp_compression` / `shi_2025_md_cfrp_compression` with
+  pinned analytical and modulus baselines; `scripts/validate.py` grows
+  optional recipe fields (envelope width, interfaces, z-position,
+  tool-flat surface options) — existing datasets byte-identical.
+  - **The FE LaRC05 retention path gets its first multidirectional
+    measured-strength check and runs conservative: −7.7/−7.4/−0.9%**
+    (tool_flat recipe, nx = 48; mesh-checked at nx = 64). The UD half
+    is strongly conservative (−26/−37/−40%). The card's GIc/GIIc are
+    literature-typical T700/epoxy values (the paper reports none);
+    they set LaRC05's in-situ strengths and CZM capability.
+    `FE_STRENGTH_CAVEAT` now states the multidirectional result
+    instead of "has not been checked"; a slow truth-test pins it.
+  - The analytical path on the multidirectional half over-predicts
+    badly (+5.8/+55.6/+115.2% — the measured severities exceed the UD
+    half's, with buckling participation at t/T = 30%); on the UD half
+    it is +0.2/+11.8/+25.9%, the angle-saturation pattern the
+    penetration gate addresses (no gate preset calibrated for this
+    material yet). Docs carry both tables.
+  - Context reference: Luong et al. (2025), Composites Part B
+    307:112818 (CC BY review; knockdown ranges, no case data).
+
 ## [1.3.0] - 2026-10-07
 
 ### Added

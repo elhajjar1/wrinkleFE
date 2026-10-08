@@ -119,6 +119,68 @@ def fe_larc05_section() -> None:
           f"{sum(e > _NON_CONSERVATIVE_PCT for e in errs)} of {len(errs)}\n")
 
 
+def fe_larc05_errors_shi() -> dict[str, tuple[float, float, float]]:
+    """``{case: (FE knockdown, measured, error %)}`` for Shi (2025), Dataset H.
+
+    Covers BOTH halves (H-UD-* and H-MD-*). The multidirectional half is
+    the first measured-strength check of the FE retention path on a
+    multidirectional laminate; ``tests/test_fe_strength_caveat.py`` keeps
+    the caveat's claim about it true.
+
+    FE recipe: the ledger's analytical recipe is a plain graded profile
+    (the analytical path reads only the peak angle); the FE mesh instead
+    uses the one-sided geometry the specimens actually have —
+    ``morphology='tool_flat'`` with the flat tool face on the bottom and
+    a 10-ply ramp (see the ledger's ``geometry_note``; for these
+    symmetric layups the flat-bottom crest is the z-mirror of the
+    paper's flat-bottom dip, which is a symmetry of the specimen).
+    nx = 48 is mesh-checked: at nx = 64 every error moves by < 2.5
+    percentage points (H-MD: -5.8/-5.0/-3.0 %).
+    """
+    from validate import case_config
+
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    ledger = json.loads(LEDGER.read_text())
+    out = {}
+    for ds in ledger["datasets"]:
+        if not ds["name"].startswith("shi_2025"):
+            continue
+        for case in ds["cases"]:
+            cfg = case_config(ds, case)
+            kw = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
+            kw.update(
+                analytical_only=False, verbose=False, nx=48, ny=4,
+                nz_per_ply=1, morphology="tool_flat",
+                surface_pocket_side="bottom", surface_transition_plies=10,
+                enable_surface_resin_pockets=True,
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                r = WrinkleAnalysis(type(cfg)(**kw)).run()
+            fi = np.asarray(r.failure_indices["larc05"]).mean(axis=-1)
+            fi_w = float(fi[np.isfinite(fi)].max())
+            fi_p = float(r.baseline_fi["larc05"])
+            meas = float(case["measured_kd"])
+            kd = min(float(r.modulus_retention_global) * fi_p / fi_w, 1.0)
+            out[case["case"]] = (kd, meas, _err(kd, meas))
+    return out
+
+
+def fe_larc05_shi_section() -> None:
+    rows = fe_larc05_errors_shi()
+    print("2b. FE LaRC05 strength, Shi (2025) CFRP, Dataset H "
+          "(wrinkled / pristine; tool_flat recipe, nx=48)")
+    print(f"   {'case':8s} {'FE KD':>7s} {'meas.':>7s} {'error%':>8s}")
+    for name, (kd, meas, e) in rows.items():
+        print(f"   {name:8s} {kd:7.3f} {meas:7.3f} {e:+8.1f}")
+    md = [e for n, (_k, _m, e) in rows.items() if n.startswith("H-MD")]
+    ud = [e for n, (_k, _m, e) in rows.items() if n.startswith("H-UD")]
+    print(f"   -> multidirectional (first measured check): "
+          f"{min(md):+.1f} % to {max(md):+.1f} %; UD all conservative "
+          f"({min(ud):+.1f} % to {max(ud):+.1f} %)\n")
+
+
 def progressive_section() -> None:
     pd = json.loads(LEDGER.read_text())["progressive_damage"]
     print("3. Progressive damage (crack band), pinned ledger values")
@@ -134,6 +196,7 @@ def progressive_section() -> None:
 def main() -> None:
     analytical_section()
     fe_larc05_section()
+    fe_larc05_shi_section()
     progressive_section()
 
 
