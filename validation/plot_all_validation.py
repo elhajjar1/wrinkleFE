@@ -2,8 +2,9 @@
 """Single combined validation chart: predicted vs experimental knockdown.
 
 Plots every *single-wrinkle* experimental case in the WrinkleFE validation
-database (Datasets A-F of VALIDATION_DATA) on one parity axes, with the
-+/-20 % pass corridor around the y = x diagonal.
+database (Datasets A-F of VALIDATION_DATA, plus the ledger's Dataset H)
+on one parity axes, with the +/-20 % pass corridor around the y = x
+diagonal.
 
 The point of putting them on one chart is to show, at a glance, that we do
 **not** use one method everywhere: each dataset is predicted with the model
@@ -15,6 +16,12 @@ encodes the dataset:
     compression, the three-mechanism min() for tension, with the
     morphology factor for Wang's concave/convex cases).  These are
     scale-invariant in D/T.
+  * Dataset H (Shi 2025, UD + multidirectional) -> shown TWICE: the
+    angle-based analytical prediction (hollow-side markers, like A-D;
+    no penetration-gate preset is calibrated for this carbon material)
+    AND the first-ply FE LaRC05 retention (X markers), which is the
+    measured-checked path for the multidirectional half. The ledger
+    recipe drives both, via scripts/validate.py case_config.
   * Unidirectional laminates (E, F)          -> the two-parameter
     penetration gate ``KD = 1 - (1 - KD_angle(theta)) * S(D/T) * P(z)``,
     which the angle-only models cannot reproduce (the Li grids vary
@@ -200,6 +207,62 @@ def dataset_F():
             for th, dt, z, kd in grid]
 
 
+def _ledger_dataset(name_prefix: str):
+    import json
+
+    ledger = json.loads(
+        (REPO / "tests" / "test_validation" / "ledger.json").read_text()
+    )
+    return next(d for d in ledger["datasets"]
+                if d["name"].startswith(name_prefix))
+
+
+def _dataset_H_analytical(half: str):
+    """Shi (2025) Dataset H, analytical path, recipe-exact via the ledger."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    from validate import case_config
+
+    ds = _ledger_dataset(f"shi_2025_{half}")
+    out = []
+    for case in ds["cases"]:
+        res = WrinkleAnalysis(case_config(ds, case)).run(analytical_only=True)
+        out.append((float(case["measured_kd"]),
+                    float(res.analytical_knockdown)))
+    return out
+
+
+def dataset_H_ud():
+    """Shi (2025) UD CFRP -- plain BF (no gate preset for this carbon)."""
+    return _dataset_H_analytical("ud")
+
+
+def dataset_H_md():
+    """Shi (2025) multidirectional CFRP -- angle-based analytical."""
+    return _dataset_H_analytical("md")
+
+
+_H_FE_CACHE: dict[str, list] = {}
+
+
+def _dataset_H_fe(prefix: str):
+    """Shi (2025) first-ply FE LaRC05 retention (one 6-solve pass, cached)."""
+    if not _H_FE_CACHE:
+        sys.path.insert(0, str(REPO / "validation"))
+        from strength_error_summary import fe_larc05_errors_shi
+
+        for case, (kd, meas, _e) in fe_larc05_errors_shi().items():
+            _H_FE_CACHE.setdefault(case[:4], []).append((meas, kd))
+    return _H_FE_CACHE[prefix]
+
+
+def dataset_H_ud_fe():
+    return _dataset_H_fe("H-UD")
+
+
+def dataset_H_md_fe():
+    return _dataset_H_fe("H-MD")
+
+
 # Dataset -> (cases, colour, marker, method label, method family).
 DATASETS = {
     "A Elhajjar comp": (dataset_A, "#1f77b4", "o", "BF kink-band"),
@@ -208,8 +271,14 @@ DATASETS = {
     "C Mukhopadhyay tens": (dataset_C_tens, "#98df8a", "s", "3-mechanism"),
     "C Mukhopadhyay onset": (dataset_C_onset, "#bcbd22", "P", "3-mech onset"),
     "D Wang conc/conv": (dataset_D, "#9467bd", "^", "BF + morphology"),
-    "E Li2024 UD": (dataset_E, "#ff7f0e", "D", "penetration gate"),
-    "F Li2025 UD": (dataset_F, "#d62728", "*", "penetration gate (+pos)"),
+    "E Li2024 UD comp": (dataset_E, "#ff7f0e", "D", "penetration gate"),
+    "F Li2025 UD comp": (dataset_F, "#d62728", "*", "penetration gate (+pos)"),
+    "H Shi2025 UD comp": (dataset_H_ud, "#8c564b", "v", "BF kink-band"),
+    "H Shi2025 MD comp": (dataset_H_md, "#e377c2", "v", "BF kink-band"),
+    "H Shi2025 UD comp (FE)": (dataset_H_ud_fe, "#8c564b", "X",
+                          "FE LaRC05 retention"),
+    "H Shi2025 MD comp (FE)": (dataset_H_md_fe, "#e377c2", "X",
+                          "FE LaRC05 retention"),
 }
 
 
@@ -247,7 +316,7 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
-    ax.set_title("WrinkleFE validation -- all single-wrinkle cases (A-F)\n"
+    ax.set_title("WrinkleFE validation -- all single-wrinkle cases (A-H)\n"
                  "marker = method, colour = dataset, band = +/-20 %")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=7.5, loc="lower right", framealpha=0.95)

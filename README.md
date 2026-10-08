@@ -1183,12 +1183,19 @@ possible — their raw data are not included.
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every single-wrinkle case (Datasets A–F) against a ±20% band,
-with each dataset predicted by the model that physically applies to it
-(Budiansky–Fleck / three-mechanism for the multidirectional cases A–D,
-the penetration gate for the UD cases E/F). 43 of the 48 cases fall
-inside the band. Of the five outside it, four are conservative; the one
-that is not (+30%) is the most severe compression wrinkle in dataset A.
+plot of every single-wrinkle case (Datasets A–F plus Dataset H) against
+a ±20% band, with each dataset predicted by the model that physically
+applies to it (Budiansky–Fleck / three-mechanism for the
+multidirectional cases A–D, the penetration gate for the UD cases E/F;
+Dataset H, which has no gate preset, is plotted twice — analytical and
+first-ply FE LaRC05 retention). 49 of the 60 points fall inside the
+band. Of the eleven outside it, seven are conservative (four legacy
+plus Dataset H's strongly-conservative UD FE points); the four that are
+not are the most severe compression wrinkle in dataset A (+30%) and the
+analytical predictions for Dataset H's severe cases (+26% UD; +56% and
++115% on the multidirectional half, where the FE retention path is
+within −8% to −1% — the reason the docs steer multidirectional strength
+reads to the FE).
 
 > **FE strength is indicative, not an allowable.** The analytical
 > knockdown (the penetration gate for UD) is the validated strength path.
