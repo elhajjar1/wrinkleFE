@@ -213,14 +213,19 @@ of `(KD_exp, KD_pred)` pairs rather than an absolute-strength axis.
 ### Consolidated parity chart
 
 `validation/plot_all_validation.py` renders every single-wrinkle case
-(Datasets A–F) on one predicted-vs-experimental parity plot with a ±20 %
-corridor, writing `validation/fig_all_validation_parity.png`. Each
-dataset is predicted by the model that physically applies to it:
-multidirectional A–D via the analytical Budiansky–Fleck / three-mechanism
-models run through `WrinkleAnalysis`, UD E/F via the penetration gate.
-This is the single cross-dataset predicted-vs-experimental view. Running
-the script prints the per-dataset scorecard; the UD entries are
-**E: 2.8 % MAE, 9/9** and **F: 5.0 % MAE, 6/6** (within ±20 %).
+(Datasets A–F plus Dataset H) on one predicted-vs-experimental parity
+plot with a ±20 % corridor, writing
+`validation/fig_all_validation_parity.png`. Each dataset is predicted
+by the model that physically applies to it: multidirectional A–D via
+the analytical Budiansky–Fleck / three-mechanism models run through
+`WrinkleAnalysis`, UD E/F via the penetration gate; Dataset H (no gate
+preset for its carbon material) is plotted twice, analytical AND
+first-ply FE LaRC05 retention, both recipe-exact from the ledger. This
+is the single cross-dataset predicted-vs-experimental view. Running
+the script prints the per-dataset scorecard; headline entries are
+**E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
+MAE, 3/3** (within ±20 %); overall **49 of 60** points sit inside the
+corridor.
 
 ## Interlaminar (CZM) validation evidence — Phase 7
 
