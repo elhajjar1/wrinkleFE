@@ -568,6 +568,8 @@ class MaterialLibrary:
     - ``IM7_8552`` : Hexcel IM7 / 8552 (toughened epoxy, widely characterised)
     - ``T300_914`` : Toray T300 / Hexcel 914 (legacy European aerospace)
     - ``T700_2510`` : Toray T700SC / Cytec 2510 (OOA VBO system)
+    - ``T700_SHI2025`` : T700-class CFRP of Shi et al. (2025), Materials
+      18:4503 (wrinkled-laminate compression; Dataset H)
     - ``AC318_S6C10`` : AC318 / S6C10-800 S-glass / epoxy, *moulded*
       realization (Li et al. 2026)
     - ``AC318_S6C10_vacbag`` : same prepreg, *vacuum-bag* realization
@@ -591,7 +593,8 @@ class MaterialLibrary:
     >>> sorted(lib.list_names())  # doctest: +NORMALIZE_WHITESPACE
     ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
      'IM10_8552', 'IM6G_3501_6', 'IM7_8552', 'KEVLAR49_EPOXY',
-     'S2_GLASS_EPOXY', 'T300_914', 'T700_2510', 'T800S_M21']
+     'S2_GLASS_EPOXY', 'T300_914', 'T700_2510', 'T700_SHI2025',
+     'T800S_M21']
     """
 
     def __init__(self) -> None:
@@ -783,6 +786,41 @@ class MaterialLibrary:
             beta1=0.0, beta2=0.38, beta3=0.38,
             gamma_Y=0.02,
             GIc=0.23, GIIc=0.90, alpha_0=53.0,
+            sigma_max=50.0, tau_max=75.0,
+        ))
+
+        # 4b. T700-class CFRP of Shi et al. (2025)  (Dataset H).
+        #     Vendor UD-lamina properties from Tables 2-3 of Shi, Yang,
+        #     Sun, Zheng, Qian, Wang & Song (2025), Materials 18:4503,
+        #     DOI 10.3390/ma18194503 (CC BY): the wrinkled-laminate
+        #     compression dataset (20 plies x 0.19 mm, one-sided surface
+        #     trough).  The paper's own multiscale FE used these values
+        #     and matched its experiments within 9 %.  Notes:
+        #     - The paper lists G23 = G12 = 4.5 GPa with nu23 = 0.35
+        #       (not transversely isotropic); kept as published.
+        #     - Measured pristine UD strength is 865.7 MPa (ASTM D6641,
+        #       clamped ends) vs the vendor Xc = 1450 — the dataset's
+        #       measured knockdowns are ratios to the measured pristine,
+        #       recorded as pristine_strength_MPa in the ledger.
+        #     - CTEs / cohesive / toughness values are NOT reported in
+        #       the paper: CTEs are typical CFRP (no thermal load in the
+        #       dataset); GIc/GIIc are typical T700-class/epoxy literature
+        #       values (same openly-generic approach as T700_2510), NOT
+        #       from the paper — they set LaRC05's in-situ strengths and
+        #       CZM capability; cohesive strengths generic.
+        self.add(OrthotropicMaterial(
+            name="T700_SHI2025",
+            E1=145_000.0, E2=8_500.0, E3=8_500.0,
+            G12=4_500.0, G13=4_500.0, G23=4_500.0,
+            nu12=0.30, nu13=0.30, nu23=0.35,
+            Xt=2_700.0, Xc=1_450.0,
+            Yt=90.0, Yc=200.0,
+            Zt=90.0, Zc=200.0,
+            S12=110.0, S13=110.0, S23=110.0,
+            alpha1=-0.5e-6, alpha2=28.0e-6, alpha3=28.0e-6,
+            beta1=0.0, beta2=0.38, beta3=0.38,
+            gamma_Y=0.02,
+            GIc=0.25, GIIc=0.90, alpha_0=53.0,
             sigma_max=50.0, tau_max=75.0,
         ))
 

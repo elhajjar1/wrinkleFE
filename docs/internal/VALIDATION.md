@@ -37,10 +37,11 @@ The pinned values are regression baselines, not claims of experimental
 agreement — the measured-vs-predicted error per dataset is printed
 alongside. This is the harness whose absence forced the revert of the
 graded-decay fix (issue #254, commit `00584b4`). The ledger currently
-holds the Li (2025) single-wrinkle compression cases; the
-multidirectional case data (Elhajjar 2025, Mukhopadhyay 2015, Li 2026)
-are not yet in the repository and should be added to the ledger as their
-points land.
+holds the Li (2025) single-wrinkle compression cases, Hsiao & Daniel
+(1996) and the Shi (2025) Dataset H pair (the first in-repo
+multidirectional measured strengths); the remaining multidirectional
+case data (Elhajjar 2025, Mukhopadhyay 2015, Li 2026) are not yet in
+the repository and should be added to the ledger as their points land.
 
 ## Included datasets
 
@@ -69,6 +70,54 @@ See the table in [README.md](../../README.md). Current sources:
   (θ ≈ 7.2°, modulus knockdown 0.941, strength knockdown 0.660). The
   first carbon system and the first dataset carrying a measured
   **stiffness** knockdown — see *Stiffness / modulus validation* below.
+- **Dataset H — Shi, Yang, Sun, Zheng, Qian, Wang & Song (2025)**,
+  *Materials* 18:4503, DOI 10.3390/ma18194503 (CC BY, so the measured
+  values are transcribed directly from the paper's text — no digitised
+  figures). Two 20-ply CFRP laminates (T700-class vendor card
+  `T700_SHI2025`), 140 × 12 × 3.8 mm, ASTM D6641 compression, each with
+  a **single one-sided wrinkle**: a trough of depth t at the top
+  surface over a 5.5 mm span, decaying to a flat bottom (t/T = 10/20/
+  30% → peak angles 12.2/23.5/33.1°, D/T = t/T).
+  - **H-UD** `[0]_20`: measured KD 0.638/0.494/0.400 (pristine 39.5 kN
+    = 866 MPa; vendor Xc is 1450 — clamped-end D6641, so knockdowns are
+    ratios to the measured pristine). Third UD strength set, first
+    carbon one with an amplitude sweep at fixed span. Plain analytical
+    (Budiansky–Fleck floor): +0.2/+11.8/+25.9% — dead-on at 12° and
+    drifting unsafe with angle, the saturation the penetration gate
+    exists for; no gate preset is calibrated for this material yet
+    (3 points would overfit the gate — wait for more carbon data).
+    First-ply FE (tool_flat recipe, nx = 48): −26.2/−36.7/−39.9%,
+    strongly conservative — the FE sees the full local concentration
+    of this short-span wrinkle while the specimens carry on past
+    first-ply failure.
+  - **H-MD** `[45/0/−45/90/45/0/−45/0/45/0]s`: measured KD
+    0.760/0.475/0.326 (pristine 33.7 kN = 739 MPa). **The first
+    measured multidirectional strength set in the ledger**, and the
+    severities are *worse* than the UD half at the same t/T — the
+    paper attributes the 30% failures to buckling participation from
+    the one-sided stiffness asymmetry, which no first-ply path models.
+    The analytical path over-predicts badly here (+5.8/+55.6/+115.2%)
+    and the docs steer multidirectional users to the FE accordingly.
+    **First-ply FE retention: −7.7/−7.4/−0.9%** — conservative
+    across the board (`FE_STRENGTH_CAVEAT` now carries this; the slow
+    test in `tests/test_fe_strength_caveat.py` keeps it true).
+    Mesh-checked at nx = 64 (every error within 2.5 points of nx = 48;
+    MD −5.8/−5.0/−3.0%). The card's GIc/GIIc are literature-typical
+    T700/epoxy values, not from the paper; they set LaRC05's in-situ
+    strengths, so the FE figures rest on that choice (documented on
+    the card).
+  - Geometry representation: the ledger's analytical recipe is the
+    plain graded profile (the analytical path reads only the peak
+    angle); the FE recipe is `morphology='tool_flat'`, flat face on
+    the bottom, 10-ply ramp — for these symmetric layups the
+    flat-bottom *crest* it builds is the z-mirror of the paper's
+    flat-bottom *dip*, and the mirror is a symmetry of the specimen,
+    so the response is equivalent. The real assumption is the decay
+    shape itself (the paper sketches it; Figs. 3 and 8).
+  - Context reference: Luong, Trevarthen, Butler, Srisuriyachot & Lunt
+    (2025), *Composites Part B* 307:112818 — a CC BY review compiling
+    wrinkle knockdown ranges (compressive 30–75%); no case-level data,
+    cited for context only.
 
 ### Stiffness / modulus validation
 

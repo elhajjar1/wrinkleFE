@@ -99,9 +99,10 @@ ply could not kink at all and this ratio was undefined for UD layups; see
 strength prediction has been checked against measured strength it missed
 on the unsafe side exactly where it matters most: on the six Li (2025) UD
 specimens it over-predicted retained strength on the two most severe
-wrinkles, by up to +39%, while under-predicting the four milder ones. It
-has no measured-strength validation at all for multidirectional
-laminates (see
+wrinkles, by up to +39%, while under-predicting the four milder ones. On
+the one multidirectional laminate with measured strengths (three CFRP
+wrinkles, Shi et al. 2025, Dataset H) it ran conservative, −8% to −1%
+— a first check, not a validation (see
 [How far to trust each number](#how-far-to-trust-each-number)). The app
 and the NCR summary print this warning next to the number.
 
@@ -255,6 +256,29 @@ the severe 20° wrinkle and under-predicts the mild ones. (These figures
 follow the LaRC05 kinking fix. Before it, a pristine UD ply could not kink,
 the FE strengths had to be normalised to the S-M-5 wrinkle, and the FE
 over-predicted every non-reference case, by up to +58%.)
+
+**Dataset H — Shi et al. (2025) CFRP** (first-ply FE, `tool_flat`
+recipe, nx = 48; `validation/strength_error_summary.py` section 2b). The
+multidirectional half is the first measured-strength check of the FE
+retention path outside UD:
+
+| Case | Layup | t/T | FE retention | Measured | Error |
+|---|---|---|---|---|---|
+| H-MD-10 | [45/0/−45/90/45/0/−45/0/45/0]s | 10% | 0.702 | 0.760 | −7.7% |
+| H-MD-20 | 〃 | 20% | 0.440 | 0.475 | −7.4% |
+| H-MD-30 | 〃 | 30% | 0.323 | 0.326 | −0.9% |
+| H-UD-10 | [0]₂₀ | 10% | 0.471 | 0.638 | −26.2% |
+| H-UD-20 | 〃 | 20% | 0.313 | 0.494 | −36.7% |
+| H-UD-30 | 〃 | 30% | 0.240 | 0.400 | −39.9% |
+
+Conservative across the board: −8% to −1% on the multidirectional
+laminate, and strongly conservative on the UD half, where the FE sees
+the full local stress concentration of this short (5.5 mm span)
+one-sided wrinkle while the specimens carry on past first-ply failure.
+One dataset, three cases per layup, with buckling participation in the
+30% failures — a first check, not a validation. (Mesh-checked: at
+nx = 64 every error moves by less than 2.5 percentage points, MD
+−5.8/−5.0/−3.0%.)
 
 **Progressive damage (crack band)** — the predictions pinned in the
 validation ledger:
