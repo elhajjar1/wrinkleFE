@@ -225,7 +225,11 @@ class GlobalAssembler:
         # centre carries no misalignment (scale 0), the lens boundary the
         # full angle (scale 1), so the wrinkle defect is counted once.
         angle_scale = self.mesh.resin_angle_scale(elem_idx)
-        wrinkle_angles = angle_scale * self.mesh.fiber_angles[node_ids]
+        # The field is the signed geometric angle (positive = fibre tilts
+        # toward +z). rotate_stiffness_3d(C, phi, axis='y') aligns the
+        # 1-axis with (cos phi, 0, -sin phi), so the rotation angle is the
+        # NEGATED field (pinned by tests/test_solver/test_angle_sign.py).
+        wrinkle_angles = -angle_scale * self.mesh.fiber_angles[node_ids]
 
         return Hex8Element(
             node_coords=node_coords,

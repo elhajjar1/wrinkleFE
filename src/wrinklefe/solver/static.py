@@ -792,8 +792,11 @@ class StaticSolver:
             else:
                 fiber_angles_local = mesh_fiber_angles[node_ids]  # (8,)
                 # One matmul gives the interpolated wrinkle angle per GP,
-                # scaled by the resin retention factor.
-                wrinkle_angles_gp = angle_scale * (N_gp @ fiber_angles_local)
+                # scaled by the resin retention factor and NEGATED: the
+                # field is the signed geometric angle, and the stiffness /
+                # recovery rotation convention is its negation (must match
+                # the assembler; tests/test_solver/test_angle_sign.py).
+                wrinkle_angles_gp = -angle_scale * (N_gp @ fiber_angles_local)
 
             T_ply = stress_transformation_3d(ply_angle_rad, axis='z')
             # Engineering STRAIN needs its own transformation: T_eps =

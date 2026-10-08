@@ -375,4 +375,4 @@ class TestSmoke:
         nodes, ply = _strip(np.linspace(-6.0, 6.0, 5), n_plies=4)
         ang = cfg.fiber_angles_at_nodes(nodes, ply, n_plies=4)
         assert ang.shape == (nodes.shape[0],)
-        assert np.all(ang >= 0.0)
+        assert np.all(np.isfinite(ang))

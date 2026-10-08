@@ -114,7 +114,7 @@ def test_through_thickness_decay_helper_drives_both_methods(monkeypatch):
 
     expected_dz = raw_dz * sentinel_value
     # Composed-field angles (#252): decay scales the slope, not the angle.
-    expected_angle = np.arctan(np.abs(profile.slope(x)) * sentinel_value)
+    expected_angle = np.arctan(profile.slope(x) * sentinel_value)
 
     deformed = cfg.apply_to_nodes(nodes, ply_ids, N_PLIES)
     angles = cfg.fiber_angles_at_nodes(nodes, ply_ids, n_plies=N_PLIES)
@@ -159,10 +159,10 @@ def test_apply_to_nodes_and_fiber_angles_share_graded_decay():
     nodes_steep = np.zeros((N_PLIES, 3), dtype=np.float64)
     nodes_steep[:, 0] = x_steep
     angles = cfg.fiber_angles_at_nodes(nodes_steep, ply_ids, n_plies=N_PLIES)
-    raw_slope = np.abs(profile.slope(nodes_steep[:, 0]))
-    assert raw_slope[0] > 1e-9, "slope at quarter-wavelength should be non-zero"
-    # Composed-field angles (#252): angle = arctan(decay * |slope|), so
-    # the decay is recovered in slope space.
+    raw_slope = profile.slope(nodes_steep[:, 0])
+    assert abs(raw_slope[0]) > 1e-9, "slope at quarter-wavelength should be non-zero"
+    # Composed-field angles (#252): angle = arctan(decay * slope) -- the
+    # field is SIGNED, so the signed baseline recovers a positive decay.
     decay_from_angle = np.tan(angles) / raw_slope
 
     # --- The two recovered decay vectors must agree exactly. --------------
@@ -216,7 +216,7 @@ def test_decay_parity_across_modes(decay_mode):
     nodes_steep = np.zeros((N_PLIES, 3), dtype=np.float64)
     nodes_steep[:, 0] = WAVELENGTH / 4.0
     angles = cfg.fiber_angles_at_nodes(nodes_steep, ply_ids, n_plies=N_PLIES)
-    raw_slope = np.abs(profile.slope(nodes_steep[:, 0]))
+    raw_slope = profile.slope(nodes_steep[:, 0])
     decay_from_angle = np.tan(angles) / raw_slope
 
     npt.assert_allclose(

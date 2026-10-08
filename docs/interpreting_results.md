@@ -99,7 +99,7 @@ ply could not kink at all and this ratio was undefined for UD layups; see
 strength prediction has been checked against measured strength it missed
 on the unsafe side exactly where it matters most: on the six Li (2025) UD
 specimens it over-predicted retained strength on the two most severe
-wrinkles, by up to +32%, while under-predicting the four milder ones. It
+wrinkles, by up to +39%, while under-predicting the four milder ones. It
 has no measured-strength validation at all for multidirectional
 laminates (see
 [How far to trust each number](#how-far-to-trust-each-number)). The app
@@ -242,14 +242,14 @@ at first failure:
 
 | Case | Wrinkle | FE | Measured | Error |
 |---|---|---|---|---|
-| S-M-1 | 1.5 mm, 10° | 0.844 | 0.891 | −5.3% |
-| S-M-2 | 1.5 mm, 20° | 0.731 | 0.629 | **+16.2%** |
-| S-M-3 | 1.5 mm, 30° | 0.622 | 0.472 | **+31.7%** |
-| S-M-4 | 1.0 mm, 20° | 0.734 | 0.943 | −22.2% |
-| S-M-5 | 0.5 mm, 20° | 0.737 | 1.000 | −26.3% |
-| S-A-2 | 1.5 mm, 20°, near-surface | 0.731 | 0.981 | −25.5% |
+| S-M-1 | 1.5 mm, 10° | 0.847 | 0.891 | −4.9% |
+| S-M-2 | 1.5 mm, 20° | 0.756 | 0.629 | **+20.1%** |
+| S-M-3 | 1.5 mm, 30° | 0.655 | 0.472 | **+38.7%** |
+| S-M-4 | 1.0 mm, 20° | 0.767 | 0.943 | −18.7% |
+| S-M-5 | 0.5 mm, 20° | 0.759 | 1.000 | −24.1% |
+| S-A-2 | 1.5 mm, 20°, near-surface | 0.756 | 0.981 | −23.0% |
 
-The four 20° cases all predict about 0.73 whatever the amplitude: the FE
+The four 20° cases all predict about 0.76 whatever the amplitude: the FE
 first-ply path sees the wrinkle's angle, not its size, so it over-predicts
 the severe 20° wrinkle and under-predicts the mild ones. (These figures
 follow the LaRC05 kinking fix. Before it, a pristine UD ply could not kink,
@@ -261,13 +261,16 @@ validation ledger:
 
 | Mesh | Case | Predicted | Measured | Error |
 |---|---|---|---|---|
-| nx = 16 (calibrated) | S-M-2 | 0.781 | 0.629 | **+24.2%** |
-| nx = 16 (calibrated) | S-M-4 | 0.878 | 0.943 | −6.9% |
-| nx = 16 (calibrated) | S-M-5 | 0.965 | 1.000 | −3.5% |
-| nx = 36 (refined) | S-M-2 | 0.891 | 0.629 | **+41.7%** |
+| nx = 16 (calibrated) | S-M-2 | 0.822 | 0.629 | **+30.7%** |
+| nx = 16 (calibrated) | S-M-4 | 0.924 | 0.943 | −2.0% |
+| nx = 16 (calibrated) | S-M-5 | 1.003 | 1.000 | +0.3% |
+| nx = 36 (refined) | S-M-2 | 0.882 | 0.629 | **+40.3%** |
 
 The pattern across all three: the unsafe misses concentrate on the most
-severe wrinkles, which is where a disposition can least afford one. The
+severe wrinkles, which is where a disposition can least afford one. (The
+milder two now sit within a few per cent, but the fracture-energy
+calibration predates the fibre-angle sign fix, so treat that agreement
+as fortuitous until the calibration is redone.) The
 analytical knockdown (the penetration gate for UD) is the validated
 strength path; carry the usual design margin on it, and more for severe
 wrinkles.

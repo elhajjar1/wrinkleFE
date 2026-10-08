@@ -280,7 +280,7 @@ class TestGradedDecayParity:
         )
         x = 2.0  # non-zero slope and non-zero displacement here
         prof_val = prof.displacement(np.array([x]))[0]
-        slope_base = np.abs(prof.slope(np.array([x]))[0])
+        slope_base = prof.slope(np.array([x]))[0]
 
         # ply_ids spans the full laminate so fiber_angles_at_nodes infers
         # the same n_plies that apply_to_nodes is given (see issue #146).
@@ -321,17 +321,20 @@ class TestFiberAnglesBaseline:
 # ----------------------------------------------------------------------
 
 class TestFiberAnglesSlopeMagnitude:
-    """At an interface ply the angle equals ``arctan|dz/dx|``; its peak
-    over the domain equals ``profile.max_angle()``; output is always
-    non-negative (RSS of |arctan(slope)| contributions)."""
+    """At an interface ply the angle equals ``arctan(dz/dx)`` — SIGNED,
+    so the two flanks of a wrinkle carry opposite handedness; the peak
+    of its magnitude over the domain equals ``profile.max_angle()``."""
 
-    def test_angle_equals_arctan_abs_slope(self, gaussian_wrinkle):
+    def test_angle_equals_arctan_signed_slope(self, gaussian_wrinkle):
         cfg = _single_config(gaussian_wrinkle, ply_interface=1)
-        xs = np.array([1.0, 2.0, 3.0, 5.0])
+        # Stations on both flanks: the sign must follow the slope.
+        xs = np.array([-5.0, -3.0, -2.0, -1.0, 1.0, 2.0, 3.0, 5.0])
         nodes, ply = _strip(xs, n_plies=4)
         ang = cfg.fiber_angles_at_nodes(nodes, ply)
-        expected = np.arctan(np.abs(gaussian_wrinkle.slope(xs)))
+        expected = np.arctan(gaussian_wrinkle.slope(xs))
         npt.assert_allclose(ang[ply == 1], expected, rtol=1e-12, atol=1e-14)
+        # Both signs genuinely present in the probe.
+        assert (expected > 0).any() and (expected < 0).any()
 
     def test_peak_angle_matches_profile_max_angle(self, gaussian_wrinkle):
         """Sampling the steepest part of the wrinkle at an interface ply
@@ -341,14 +344,15 @@ class TestFiberAnglesSlopeMagnitude:
         xs = np.linspace(xlo, xhi, 4097)
         nodes, ply = _strip(xs, n_plies=4)
         ang = cfg.fiber_angles_at_nodes(nodes, ply)
-        peak = ang[ply == 1].max()
+        peak = np.abs(ang[ply == 1]).max()
         npt.assert_allclose(
             peak, gaussian_wrinkle.max_angle(), rtol=1e-4, atol=1e-6
         )
 
-    def test_all_angles_non_negative_fuzz(self):
+    def test_angle_sign_follows_slope_fuzz(self):
         """Fuzz over profile / decay_floor / ply_ids: every returned angle
-        must be >= 0 (pins the non-negativity invariant)."""
+        is finite, bounded by the profile's max angle, and carries the
+        sign of the local slope (zero-decay nodes are exactly zero)."""
         rng = np.random.default_rng(20260516)
         for _ in range(25):
             amp = float(rng.uniform(0.0, 1.0))
@@ -367,10 +371,13 @@ class TestFiberAnglesSlopeMagnitude:
             xs = rng.uniform(-3.0 * w, 3.0 * w, size=7)
             nodes, ply = _strip(xs, n_plies=n_plies)
             out = cfg.fiber_angles_at_nodes(nodes, ply)
-            assert np.all(out >= 0.0), (
-                f"negative angle for amp={amp}, lam={lam}, mode={mode}"
-            )
             assert np.all(np.isfinite(out))
+            assert np.all(np.abs(out) <= prof.max_angle() + 1e-12)
+            # Where the angle is nonzero its sign matches the slope's
+            # (decay scales the magnitude only, never the sign).
+            s_at = np.sign(prof.slope(nodes[:, 0]))
+            nz = np.abs(out) > 1e-12
+            assert np.all(np.sign(out[nz]) == s_at[nz])
 
 
 # ----------------------------------------------------------------------
@@ -530,7 +537,7 @@ def test_partial_ply_ids_decay_stays_synced():
     cfg = _single_config(prof, ply_interface=3)  # true laminate: 8 plies
     x = 2.0
     prof_val = prof.displacement(np.array([x]))[0]
-    ang_base = np.arctan(np.abs(prof.slope(np.array([x]))[0]))
+    ang_base = np.arctan(prof.slope(np.array([x]))[0])
 
     # Caller passes nodes for plies 0..5 only; top ply (7) absent.
     ply = np.array([0, 1, 2, 3, 4, 5])
@@ -630,7 +637,7 @@ class TestIssue1718DefaultDecayBC:
         # non-zero so we can divide cleanly.
         x = 2.5
         prof_val = prof.displacement(np.array([x]))[0]
-        ang_base = np.arctan(np.abs(prof.slope(np.array([x]))[0]))
+        ang_base = np.arctan(prof.slope(np.array([x]))[0])
 
         nodes, ply = _strip(np.array([x]), n_plies=n_plies)
         dz = (cfg.apply_to_nodes(nodes, ply, n_plies=n_plies) - nodes)[:, 2]

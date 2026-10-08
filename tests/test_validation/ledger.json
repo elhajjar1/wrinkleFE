@@ -183,7 +183,7 @@
             "wavelength_mm": 12.9,
             "z_frac": 0.5,
             "measured_kd": 0.629,
-            "expected_progressive_kd": 0.781
+            "expected_progressive_kd": 0.822
           },
           {
             "case": "S-M-4",
@@ -191,7 +191,7 @@
             "wavelength_mm": 8.6,
             "z_frac": 0.5,
             "measured_kd": 0.943,
-            "expected_progressive_kd": 0.878
+            "expected_progressive_kd": 0.924
           },
           {
             "case": "S-M-5",
@@ -199,7 +199,7 @@
             "wavelength_mm": 4.3,
             "z_frac": 0.5,
             "measured_kd": 1.0,
-            "expected_progressive_kd": 0.965
+            "expected_progressive_kd": 1.003
           }
         ]
       },
@@ -221,7 +221,7 @@
             "wavelength_mm": 12.9,
             "z_frac": 0.5,
             "measured_kd": 0.629,
-            "expected_progressive_kd": 0.891
+            "expected_progressive_kd": 0.882
           }
         ]
       }

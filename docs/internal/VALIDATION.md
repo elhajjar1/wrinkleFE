@@ -419,10 +419,23 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   S-M-5 −26 %, S-A-2 −26 %. Its four 20° cases all predict about 0.73
   whatever the amplitude: first-ply FE sees the wrinkle's angle, not its
   size. (Before the fix it over-predicted all five non-reference cases,
-  by up to +58 %.) The progressive-damage figures did not move with the
+  by up to +58 %.) (Re-measured 2026-10-07 after the fibre-angle sign
+  fix — the unsigned angle field had mirror-handed the material frame on
+  the positive-slope flank of every wrinkle, inflating wrinkle-zone FI:
+  S-M-1 −4.9 %, S-M-2 +20.1 %, S-M-3 +38.7 %, S-M-4 −18.7 %, S-M-5
+  −24.1 %, S-A-2 −23.0 %; the four 20° cases now sit near 0.76. The
+  masking FI inflation was an artefact, so removing it makes the unsafe
+  over-prediction LARGER; the caveat quotes "about 40%".) The progressive-damage figures did not move with the
   fix: on those meshes first failure is interlaminar shear (MaxStress
   τ13, index 0.989 at the pinned peak on S-M-2 nx = 16), which the
   corrected kinking index (0.948, up from 0.257) does not overtake.
+  The fibre-angle sign fix DID move them (it changes the stress field
+  itself): re-pinned 2026-10-07 to S-M-2 0.822 (+30.7 %), S-M-4 0.924
+  (−2.0 %), S-M-5 1.003 (+0.3 %) at nx = 16, and S-M-2 0.882 (+40.3 %)
+  at nx = 36. The milder wrinkles now land within a few per cent, but
+  Gf was calibrated against the pre-fix stress field, so that agreement
+  is not yet earned; the severe-wrinkle over-prediction grows, as on
+  the linear path.
   Both FE strength paths therefore miss on the unsafe
   side exactly where it matters most, the severe wrinkles. Treat FE
   strength numbers as indicative, not as allowables; the app and the NCR

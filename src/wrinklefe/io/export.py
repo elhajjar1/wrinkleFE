@@ -603,7 +603,7 @@ FE_STRENGTH_CAVEAT = (
     "FE strength retention is indicative, not an allowable, and should not "
     "be used to override the analytical knockdown. Checked against measured "
     "strength (six unidirectional glass/epoxy specimens) it over-predicted "
-    "retained strength on the two most severe wrinkles, by up to about 30%, "
+    "retained strength on the two most severe wrinkles, by up to about 40%, "
     "while under-predicting the milder ones: it responds to a wrinkle's "
     "angle but not its size, so it cannot tell a severe wrinkle from a mild "
     "one at the same angle. It has not been checked against measured "
@@ -614,8 +614,8 @@ PROGRESSIVE_DAMAGE_CAVEAT = (
     "Progressive-damage strength is a research output, not an allowable. "
     "Its fracture-energy calibration holds only at the mesh density it was "
     "fitted at (nx = 16, nz_per_ply = 2), and against measured strength it "
-    "over-predicted the most severe wrinkle (+24%, or +42% on a refined "
-    "mesh) while under-predicting milder ones."
+    "over-predicted the most severe wrinkle (+31%, or +40% on a refined "
+    "mesh); the milder wrinkles came out within a few per cent."
 )
 
 

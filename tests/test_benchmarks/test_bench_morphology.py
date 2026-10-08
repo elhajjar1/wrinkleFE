@@ -60,5 +60,5 @@ def test_bench_apply_and_angles(benchmark):
     assert np.abs(deformed[:, 2] - nodes[:, 2]).max() > 0.0
     assert angles.shape == (nodes.shape[0],)
     assert np.all(np.isfinite(angles))
-    assert np.all(angles >= 0.0)
+    assert np.all(np.isfinite(angles))  # signed field since the sign fix
     assert angles.max() > 0.0

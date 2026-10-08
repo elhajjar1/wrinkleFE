@@ -140,6 +140,24 @@ version produced a given file.
     no value. The index there is `1 / reserve factor`, finite and at
     least 1, so a field never carries an `inf` that consumers filtering
     non-finite values would silently drop.
+- Mesh/FE — **the fibre-angle field is now signed, and one flank of
+  every wrinkle was mirror-handed.** The nodal field was
+  `arctan|dz/dx|`, and the element stiffness and stress recovery rotated
+  the material frame by it directly. The rotated stiffness is odd in the
+  angle (its `sigma_11`–`gamma_13` coupling flips sign), and
+  `rotate_stiffness_3d(C, phi, axis='y')` aligns the fibre with
+  `(cos phi, 0, -sin phi)` — pinned numerically against a direct
+  fourth-order tensor rotation in `tests/test_solver/test_angle_sign.py`
+  — so the correct rotation is `-arctan(dz/dx)`: the unsigned field was
+  right on the negative-slope flank and mirror-handed on the
+  positive-slope flank of every wrinkle. `fiber_angles_at_nodes` (and
+  `MeshData.fiber_angles`) now return the signed geometric angle,
+  positive where the fibre tilts toward +z; the assembler and the
+  stress recovery negate it. Report severities with `np.abs()` —
+  `mesh_max_angle_rad` already does. (The field was documented as
+  Jin et al. (2026) Eq. 3, which defines the misalignment *magnitude*
+  for severity classification; the material frame needs the signed
+  slope, which no magnitude can carry.)
 - Convergence — `strength_retention` in `convergence_study` now ignores
   criteria flagged `retention_degenerate`, as its docstring said it did.
 
@@ -151,9 +169,11 @@ version produced a given file.
   strength on the two most severe wrinkles (S-M-2 +16%, S-M-3 +32%) and
   under-predicts the four milder ones (−5% to −26%). Before, it
   over-predicted all five non-reference cases, by up to +58%.
-  `FE_STRENGTH_CAVEAT` and the docs quote the new figures.
+  (Superseded by the fibre-angle sign fix below; the caveat and docs
+  quote those final figures.)
 - **The default case's FE retention rises, 0.781 → 0.937** (analytical
-  knockdown unchanged, 0.606). The old value came from matrix compression
+  knockdown unchanged, 0.606; 0.956 after the fibre-angle sign fix
+  below). The old value came from matrix compression
   in a 90° ply, inflated by the double-counted wrinkle angle; fibre
   kinking in a 0° ply now governs. It holds under mesh refinement
   (0.91–0.94 at nx = 12/24/48; a reserve-factor ratio gives 0.87–0.91).
@@ -163,6 +183,28 @@ version produced a given file.
   ledger cases: first failure there is interlaminar shear (MaxStress
   `tau_13`, index 0.989 at the S-M-2 peak), which the corrected kinking
   index (0.948, was 0.257) does not overtake.
+- **The fibre-angle sign fix shifts every FE strength output again**
+  (`failure_indices`, `retention_factors`, stress/strain fields on any
+  wrinkled mesh; analytical predictions and the ledger are untouched).
+  The mis-handed flank had inflated wrinkle-zone FI, so removing the
+  artefact RAISES FE retention and makes the unsafe over-prediction of
+  severe wrinkles larger: on the Li (2025) UD specimens, S-M-2 +16% →
+  +20% and S-M-3 +32% → **+39%**, while the four milder, conservative
+  cases improve (S-M-1 −4.9%, S-M-4 −18.7%, S-M-5 −24.1%, S-A-2
+  −23.0%); `FE_STRENGTH_CAVEAT` now says "about 40%". The default
+  case's FE retention rises 0.937 → 0.956. The multi-wrinkle local-FI
+  elevation drops from ~6% to ~1.6% (the old margin was mostly the
+  artefact); its test margin is re-pinned at 1.01.
+- **Progressive damage moves with the sign fix** (unlike with the
+  kinking fix — this one changes the stress field itself). Re-pinned:
+  S-M-2 0.781 → 0.822 (+31% vs measured), S-M-4 0.878 → 0.924 (−2.0%),
+  S-M-5 0.965 → 1.003 (+0.3%), refined-mesh S-M-2 0.891 → 0.882
+  (+40%). `PROGRESSIVE_DAMAGE_CAVEAT` now reads "+31%, or +40% on a
+  refined mesh"; the milder wrinkles land within a few per cent, but
+  the Gf calibration predates the fix, so that agreement is fortuitous
+  until recalibrated. The wrinkled-bar buckling factor re-pins 8.6487 →
+  8.6257, and the FE goal-seek acceptance tests re-target (this mesh
+  now retains ≥ 0.9959 at every safe amplitude).
 - FE failure evaluation costs more: the kink-plane search makes LaRC05
   field evaluation about 5× slower (80k points: 0.38 → 1.8 s), and a
   default FE analysis takes 2.7 s instead of 2.2 s. A single-point

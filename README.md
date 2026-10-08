@@ -1192,7 +1192,7 @@ that is not (+30%) is the most severe compression wrinkle in dataset A.
 > `progressive_knockdown` — have only one measured-strength check (six UD
 > glass/epoxy specimens), and there they missed on the unsafe side
 > exactly where it matters most: FE LaRC05 over-predicted retained strength
-> on the two most severe wrinkles, by up to +32% (while under-predicting
+> on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
 > the most severe wrinkle by +24% (+42% on a refined mesh).
 > Neither has been checked against measured strength for multidirectional

@@ -179,7 +179,10 @@ def test_recover_element_results_local_matches_manual_transform(
         for g in sample_gps:
             xi, eta, zeta = gp_coords[g]
             N = Hex8Element.shape_functions(xi, eta, zeta)
-            phi = float(N @ fiber_angles_local)
+            # The nodal field is the signed geometric angle; the frame
+            # rotation is its negation (see tests/test_solver/
+            # test_angle_sign.py for the convention pin).
+            phi = -float(N @ fiber_angles_local)
             T_wrinkle = stress_transformation_3d(phi, axis='y')
             T_wrinkle_eps = strain_transformation_3d(phi, axis='y')
 

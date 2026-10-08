@@ -105,9 +105,15 @@ class TestMultiWrinkleFE:
         # RE-PINNED AGAIN (LaRC05 kinking fix): the far field now carries a
         # real kinking baseline (pristine plies kink at their Xc-calibrated
         # misalignment instead of FI ~ 0), so the same wrinkle is a smaller
-        # relative elevation: measured 1.064 / 1.055 at -0.2 % strain. The
-        # far-field elements are pristine and uniform, so 1.03 still
-        # detects the peaks unambiguously.
+        # relative elevation: measured 1.064 / 1.055 at -0.2 % strain.
+        #
+        # RE-PINNED AGAIN (fibre-angle sign fix): the unsigned angle field
+        # had mirror-handed the material frame on the positive-slope flank
+        # of each wrinkle, inflating the local FI peak; with the signed
+        # field the elevation is measured 1.0155 / 1.0154 at -0.2 % strain
+        # (and grows only slowly with strain: 1.0165 at -0.6 %). The far
+        # field is pristine and uniform to ~1e-4, so a 1.01 margin still
+        # detects both peaks unambiguously.
         far = np.ones_like(x_c, dtype=bool)
         for center in centers:
             far &= np.abs(x_c - center) > 6.0
@@ -116,7 +122,7 @@ class TestMultiWrinkleFE:
         for center in centers:
             near = np.abs(x_c - center) < 4.0      # within lambda/2
             assert near.any()
-            assert fi[near].max() > 1.03 * fi[far].max(), (
+            assert fi[near].max() > 1.01 * fi[far].max(), (
                 f"expected a local FI peak near x={center:.1f} mm"
             )
             peaks.append(fi[near].max())
