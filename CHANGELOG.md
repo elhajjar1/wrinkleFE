@@ -57,6 +57,36 @@ version produced a given file.
   reading (0.613) as a sensitivity. Parity chart: 50 of 62 points in
   band.
 
+### Fixed
+- Analysis — **`AnalysisConfig(loading="tension")` solved the FE in
+  compression.** The default `applied_strain` was a fixed `-0.01`
+  whatever `loading` said, so a tension config that left the strain
+  unset ran the FE in compression while the analytical path reported
+  tension. The CLI's `analyze`, `converge` and `critical` commands
+  inherited the same trap with `--loading tension` and no `--strain`.
+  The Streamlit app was not affected because it signs the strain from
+  the loading mode.
+  - An unset `applied_strain` now defaults to 1 % in the `loading`
+    direction: −0.01 for compression, +0.01 for tension.
+  - An explicit strain whose sign contradicts `loading` now raises
+    `ValueError`. Zero is allowed, and the check is skipped when
+    `load_state` drives the solve.
+  - On the CLI, `--loading` given over a `--config` file without
+    `--strain` keeps the file's strain magnitude and gives it the new
+    loading's sign.
+
+### Numerical results
+- **Tension configs that left `applied_strain` unset now run the FE in
+  tension instead of compression.** This changes the FE failure
+  indices, retention factors, modulus, and the CZM and progressive
+  outputs. Analytical knockdowns are unchanged. Every
+  in-repo validation dataset already set its strain explicitly, so no
+  ledger value moves.
+- **Saved configs with `loading="tension"` and a negative
+  `applied_strain` (or compression with a positive one) no longer
+  load.** They described a contradictory analysis; flip the strain's
+  sign, or delete it to take the loading's default.
+
 ## [1.3.0] - 2026-10-07
 
 ### Added

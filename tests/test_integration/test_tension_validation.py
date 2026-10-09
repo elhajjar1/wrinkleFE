@@ -45,10 +45,13 @@ def _small_config(material, **overrides):
         ny=4,
         nz_per_ply=1,
         domain_width=10.0,
-        applied_strain=0.005,
         verbose=False,
     )
     defaults.update(overrides)
+    # 0.5 % in the loading direction (a contradicting sign is rejected).
+    if "applied_strain" not in defaults:
+        tension = defaults["loading"] == "tension"
+        defaults["applied_strain"] = 0.005 if tension else -0.005
     return AnalysisConfig(**defaults)
 
 

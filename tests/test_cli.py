@@ -1360,6 +1360,34 @@ def test_critical_config_file_precedence(tmp_path):
     assert cfg.ply_thickness == pytest.approx(0.25)
     assert cfg.wavelength == pytest.approx(20.0)
     assert cfg.loading == "tension"         # overridden on the command line
+    # The file's -0.01 (compression) strain is re-pointed into tension
+    # rather than contradicting the overridden loading.
+    assert cfg.applied_strain == pytest.approx(0.01)
+
+
+def test_critical_config_file_strain_magnitude_kept_on_loading_flip(tmp_path):
+    from wrinklefe.analysis import AnalysisConfig
+
+    path = tmp_path / "base.json"
+    AnalysisConfig(loading="compression", applied_strain=-0.004).save_json(path)
+
+    captured, patcher = _capture_critical()
+    with patcher, pytest.raises(SystemExit):
+        cli_main([
+            "critical", "--config", str(path),
+            "--target-knockdown", "0.85", "--loading", "tension",
+        ])
+    assert captured["config"].applied_strain == pytest.approx(0.004)
+
+
+def test_analyze_strain_contradicting_loading_exits_2(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_main([
+            "analyze", "--analytical-only", "--loading", "tension",
+            "--strain", "-0.01",
+        ])
+    assert exc.value.code == 2
+    assert "contradicts loading" in capsys.readouterr().err
 
 
 def test_critical_tension_without_a_config_file():
@@ -1575,6 +1603,13 @@ def test_converge_defaults_thread_into_the_study():
     assert config.loading == "compression"
     assert (config.nx, config.ny, config.nz_per_ply) == (12, 6, 1)
     assert config.applied_strain == pytest.approx(-0.01)
+
+
+def test_converge_tension_without_strain_solves_in_tension():
+    captured, patcher = _stub_convergence_study()
+    with patcher:
+        cli_main(["converge", "--loading", "tension"])
+    assert captured["config"].applied_strain == pytest.approx(0.01)
 
 
 def test_converge_flags_map_into_config_and_study():

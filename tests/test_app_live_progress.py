@@ -77,7 +77,7 @@ def _analytical_payload(**overrides) -> tuple:
         "loading": "compression",
         "ply_thickness": 0.125,
         "angles_tuple": (0.0, 45.0, -45.0, 90.0),
-        "applied_strain": 0.01,
+        "applied_strain": -0.01,
         "material_tuple": tuple(sorted(material_dict.items())),
         "analytical_only": True,
     }

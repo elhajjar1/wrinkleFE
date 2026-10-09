@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from wrinklefe.analysis import AnalysisResults
+    from wrinklefe.analysis import AnalysisConfig, AnalysisResults
 
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
@@ -138,6 +138,28 @@ def _normalize_morphology(value: str) -> str:
     still exits with code 2.
     """
     return value.replace("-", "_")
+
+
+def _strain_follows_loading(base: AnalysisConfig, overrides: dict) -> dict:
+    """Point an inherited strain in the direction an explicit ``--loading`` asks.
+
+    A ``--config`` file stores ``applied_strain`` with its sign, so
+    ``--loading tension`` on top of a compression file would otherwise
+    inherit ``-0.01`` and contradict itself (``AnalysisConfig`` rejects
+    that). When ``--loading`` is given without ``--strain`` and the file
+    has no ``load_state``, keep the file's strain magnitude but give it the
+    new loading's sign. An explicit ``--strain`` is left for the config's
+    own sign check.
+    """
+    if (
+        "loading" not in overrides
+        or "applied_strain" in overrides
+        or base.load_state is not None
+    ):
+        return overrides
+    tension = str(overrides["loading"]).lower().strip() == "tension"
+    magnitude = abs(float(base.applied_strain))
+    return {**overrides, "applied_strain": magnitude if tension else -magnitude}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -282,7 +304,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument(
         "--strain", type=float, default=-0.01,
-        help="Applied nominal strain (default: -0.01)",
+        help=(
+            "Applied nominal strain (default: 1%% in the --loading "
+            "direction, i.e. -0.01 compression / +0.01 tension; an "
+            "explicit value must agree in sign with --loading)"
+        ),
     )
     p_analyze.add_argument(
         "--delta-T", type=float, default=0.0, dest="delta_T",
@@ -950,8 +976,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Level-0 elements per ply through-thickness (default: 1)",
     )
     p_converge.add_argument(
-        "--strain", type=float, default=-0.01,
-        help="Applied strain (default: -0.01)",
+        "--strain", type=float, default=None,
+        help=(
+            "Applied strain (default: 1%% in the --loading direction, i.e. "
+            "-0.01 compression / +0.01 tension; an explicit value must "
+            "agree in sign with --loading)"
+        ),
     )
     p_converge.add_argument(
         "--levels", type=int, default=4,
@@ -1146,7 +1176,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_critical.add_argument(
         "--strain", type=float, default=-0.01, dest="applied_strain",
-        help="Applied strain (default: -0.01)",
+        help=(
+            "Applied strain (default: 1%% in the --loading direction, "
+            "i.e. -0.01 compression / +0.01 tension; an explicit value "
+            "must agree in sign with --loading)"
+        ),
     )
     p_critical.add_argument(
         "--parameter", type=str, default="amplitude",
@@ -1494,7 +1528,9 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
         if base is None:
             config = AnalysisConfig(**overrides)
         else:
-            config = dataclasses.replace(base, **overrides)
+            config = dataclasses.replace(
+                base, **_strain_follows_loading(base, overrides)
+            )
     except (ValueError, KeyError, NotImplementedError) as exc:
         print(f"error: invalid configuration: {exc}", file=sys.stderr)
         sys.exit(2)
@@ -1656,7 +1692,9 @@ def _cmd_compare(args: argparse.Namespace) -> None:
     try:
         if getattr(args, "config", None):
             base = AnalysisConfig.load(args.config)
-            config = dataclasses.replace(base, **overrides)
+            config = dataclasses.replace(
+                base, **_strain_follows_loading(base, overrides)
+            )
         else:
             config = AnalysisConfig(**{**_geom_defaults, **overrides})
     except (OSError, ValueError, KeyError, ImportError,
@@ -1842,7 +1880,9 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
     try:
         if getattr(args, "config", None):
             base = AnalysisConfig.load(args.config)
-            config = dataclasses.replace(base, **overrides)
+            config = dataclasses.replace(
+                base, **_strain_follows_loading(base, overrides)
+            )
         else:
             config = AnalysisConfig(**{**_geom_defaults, **overrides})
     except (OSError, ValueError, KeyError, ImportError,
@@ -1944,7 +1984,7 @@ def _cmd_converge(args: argparse.Namespace) -> None:
         nx=args.nx,
         ny=args.ny,
         nz_per_ply=args.nz_per_ply,
-        applied_strain=args.strain,
+        **({} if args.strain is None else {"applied_strain": args.strain}),
     )
 
     refine = tuple(a.strip() for a in args.refine.split(",") if a.strip())
@@ -2187,7 +2227,9 @@ def _cmd_critical(args: argparse.Namespace) -> None:
     try:
         if args.config is not None:
             base = AnalysisConfig.load(args.config)
-            config = dataclasses.replace(base, **geometry)
+            config = dataclasses.replace(
+                base, **_strain_follows_loading(base, geometry)
+            )
         else:
             config = AnalysisConfig(**geometry)
     except (OSError, ValueError, KeyError, ImportError,

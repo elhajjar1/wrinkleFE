@@ -23,7 +23,7 @@ that definition, not this page, is authoritative.
 | Cohesive peak tractions (`sigma_max`, `tau_max`, `czm_sigma_max`, `czm_tau_max`) | MPa | Mode-I peak normal traction and Mode-II peak shear traction on the ply interface. | `OrthotropicMaterial`, `AnalysisConfig` |
 | Cohesive penalty stiffness (`czm_penalty`) | N/mm³ | Initial interface stiffness of the bilinear traction–separation law. | `AnalysisConfig.czm_penalty` |
 | Cohesive energy (`czm_energy_dissipated`) | N·mm | Total dissipated cohesive energy across all interfaces. | `AnalysisResults` |
-| Strain (`applied_strain`, `progressive_max_strain`, `gamma_Y`) | — | A **fraction**, not a percentage: the default `applied_strain = -0.01` is 1 % compression. | `AnalysisConfig.applied_strain` |
+| Strain (`applied_strain`, `progressive_max_strain`, `gamma_Y`) | — | A **fraction**, not a percentage. Left unset, `applied_strain` is 1 % in the `loading` direction: `-0.01` for compression, `+0.01` for tension. | `AnalysisConfig.applied_strain` |
 | Ply and misalignment angles | degrees | See [Angles](#angles) below. | `core/layup.py`, `AnalysisConfig.angles` |
 | Phase offset (`phase`, `WrinkleSpec.phase_offset`) | radians | Dual-wrinkle phase φ between the two wrinkle centrelines (`stack` = 0, `convex` = +π/2, `concave` = −π/2). | `AnalysisConfig.phase`, `MORPHOLOGY_PHASES` |
 | Fibre volume fraction (`vf_nominal`, `vf_max`, `Vf_local`) | — | A **fraction** in `[0, 1]`, not a percentage. `vf_max` defaults to 0.75 (just under square packing). | `core/micromechanics.py`, `core/compaction.py` |
@@ -92,7 +92,8 @@ strains in the compliance matrix.
 ## Signs
 
 - **`applied_strain` is signed**: negative is compression, positive is
-  tension. The default is `-0.01`.
+  tension. Left unset it follows `loading`: `-0.01` for compression,
+  `+0.01` for tension.
 - **CLT force resultants are signed the same way**: `LoadState(Nx=-1000.0)`
   is uniaxial compression.
 - **Strength allowables are unsigned magnitudes.** `Xc`, `Yc`, `Zc` are
@@ -100,7 +101,12 @@ strains in the compliance matrix.
   convention lives on the load, not on the allowable.
 - **`loading`** (`'compression'` / `'tension'`) selects the physics
   (kink-band vs the three-mechanism tension model). It is a separate
-  switch from the sign of `applied_strain` — set both consistently.
+  switch from the sign of `applied_strain`, and the two must agree.
+  An explicit strain whose sign contradicts `loading` raises
+  `ValueError` (zero is allowed). The check is skipped when
+  `load_state` drives the solve. On the CLI, `--loading` given over a
+  `--config` file without `--strain` keeps the file's strain magnitude
+  and re-signs it.
 - **`delta_T` is a change from the stress-free (cure) state, not an
   absolute temperature.** `delta_T = T_service − T_stress_free`, so a
   cure cool-down is **negative**: a 177 °C cure taken to 22 °C service

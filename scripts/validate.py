@@ -74,9 +74,8 @@ def case_config(dataset: dict, case: dict, *, with_gate: bool = False):
     optional("surface_transition_plies", cast=int)
     optional("enable_surface_resin_pockets", cast=bool)
     optional("decay_floor")
-    # Tension datasets MUST set this: AnalysisConfig's default strain is
-    # compressive regardless of ``loading`` (the FE would solve in
-    # compression while the analytical path reports tension).
+    # Optional: AnalysisConfig's unset strain is 1 % in the ``loading``
+    # direction, and an explicit value must agree with it in sign.
     optional("applied_strain")
     optional("domain_length_mm", "domain_length")
     optional("domain_width_mm", "domain_width")
