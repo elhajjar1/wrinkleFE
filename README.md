@@ -1206,11 +1206,12 @@ reads to the FE).
 > exactly where it matters most: FE LaRC05 over-predicted retained strength
 > on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
-> the most severe wrinkle by +24% (+42% on a refined mesh). On the one
-> multidirectional laminate with measured strengths (three CFRP wrinkles,
-> Shi et al. 2025, Dataset H) FE LaRC05 ran conservative (−8% to −1%) —
-> a first check, not a validation; the progressive model
-> has no multidirectional check. The app and the NCR summary show this
+> the most severe wrinkle by +24% (+42% on a refined mesh). On
+> multidirectional laminates in compression FE LaRC05 has erred both
+> ways: conservative (−8% to −1%) on Shi et al. 2025 (Dataset H), but
+> unsafe on Datasets A, C and D, by up to +92% (the head-to-head in
+> `validation/strength_error_summary.py`, section 4); the progressive
+> model has no multidirectional check. The app and the NCR summary show this
 > warning beside the FE numbers; the per-case figures are in
 > [Interpreting results](docs/interpreting_results.md#how-far-to-trust-each-number)
 > and `python validation/strength_error_summary.py` regenerates them.

@@ -208,9 +208,9 @@ interpolation of the scan curve."*
   Where they genuinely bracket the answer, the lower (more conservative)
   number is the one to carry into a disposition.
 - **Never let an FE strength number raise a knockdown.** The FE strength
-  paths have only ever erred on the unsafe side in validation, so an FE
-  result *above* the analytical knockdown is not evidence that the part
-  is stronger.
+  paths have erred on the unsafe side in validation, by up to +92% on a
+  multidirectional laminate, so an FE result *above* the analytical
+  knockdown is not evidence that the part is stronger.
 
 ## How far to trust each number
 
@@ -243,8 +243,11 @@ A = 0.73 mm, measured knockdown 0.32, predicted 0.42), and Dataset H's
 severe cases — +25.9% on the UD half, and +55.6% / +115.2% on the
 multidirectional half, where the measured severities exceed the UD
 half's (buckling participation) and an angle-only model cannot follow.
-For multidirectional strength, read the FE retention table below
-(−8% to −1% on those same cases) rather than the analytical column.
+On those same cases the FE retention ran conservative (−8% to −1%, table
+below), but on the other multidirectional compression datasets it is the
+FE that misses on the unsafe side: see
+[the head-to-head](#head-to-head-which-model-when-provisional). No model
+is yet validated for severe multidirectional compression.
 
 **FE strength (LaRC05)** — Li (2025) UD glass/epoxy, the FE path's
 first measured-strength check (Datasets H and I below are the second and
@@ -307,6 +310,70 @@ as fortuitous until the calibration is redone.) The
 analytical knockdown (the penetration gate for UD) is the validated
 strength path; carry the usual design margin on it, and more for severe
 wrinkles.
+
+### Head-to-head: which model, when (provisional)
+
+The tables above mostly score each dataset with the one model that
+applies to it. Section 4 of `validation/strength_error_summary.py`
+(issue #433) instead runs **every applicable model on every strength
+dataset**, on the same cases. The FE on Datasets A–E is given exactly
+the inputs the analytical model gets: same amplitude, wavelength,
+envelope, layup and material, at the default interfaces and
+through-thickness decay. Per-case values, with the wrinkle angle, are
+in `validation/head_to_head_cases.csv`.
+
+| Dataset | Analytical | Gate | FE LaRC05 (first ply) |
+|---|---|---|---|
+| A Elhajjar, MD compression (13) | **+0.9%** mean, 5 unsafe, worst +29.6% | — | +4.1%, 7 unsafe, worst +23.8% |
+| B Elhajjar, MD tension (7) | **−0.7%**, 3 unsafe, worst +9.7% | — | −16.4%, 3 unsafe, worst +9.2% |
+| C Mukhopadhyay, MD compression (3) | **−7.7%**, 0 unsafe | — | +38.7%, 3 unsafe, worst +48.2% |
+| C Mukhopadhyay, MD tension (3) | −19.9%, 0 unsafe | — | **−7.5%**, 1 unsafe, worst +5.5% |
+| C Mukhopadhyay, onset (3) | −13.9%, 1 unsafe | — | +6.8%, 2 unsafe, worst +19.4% |
+| D Wang, MD compression (4) | **−16.3%**, 0 unsafe | — | +46.4%, 4 unsafe, worst +92.3% |
+| E Li 2024, UD glass (9) | −37.4%, 0 unsafe | +0.1% *(fitted)* | +30.4%, 9 unsafe, worst +61.2% |
+| F Li 2025, UD glass (6) | −58.2%, 0 unsafe | +0.4% *(fitted)* | −2.0%, 2 unsafe, worst +38.7% |
+| H Shi, UD carbon (3) | +12.6%, 2 unsafe, worst +25.9% | −19.6% *(blind, moulded preset)* | −34.3%, 0 unsafe |
+| H Shi, MD compression (3) | +58.8%, 3 unsafe, worst +115.2% | — | **−5.3%**, 0 unsafe |
+| I Calvo, MD tension (1) | **−8.4%** | — | −25.7% |
+
+Mean signed error; "unsafe" counts cases predicted above the
+measurement. "—" means the gate is UD-scoped and has no
+multidirectional form.
+
+Split by severity, multidirectional compression (A, C, D, H) reads:
+
+| Peak angle | n | Analytical | FE LaRC05 |
+|---|---|---|---|
+| < 5° | 6 | −7.8% mean, 0 unsafe | +8.5%, 4 unsafe |
+| 5–10° | 5 | −11.2%, 0 unsafe | +28.4%, 5 unsafe |
+| ≥ 10° | 12 | +16.9%, **8 unsafe**, worst +115% | +12.2%, **5 unsafe**, worst +92% |
+
+**Provisional guidance.** Confidence reflects the number of independent
+sources behind each row, not the size of the errors.
+
+| Case | Use | Evidence | Confidence |
+|---|---|---|---|
+| Multidirectional compression, peak angle < 10° | Analytical kink-band. FE is unsafe here (9 of 11). | 11 cases, 3 labs | **Moderate** |
+| Multidirectional compression, peak angle ≥ 10° | Neither model is reliable. Analytical fails on Shi (up to +115%), FE fails on Wang and Mukhopadhyay (up to +92%). Take the lower of the two and add margin. | 12 cases, 4 labs, disagreeing | **Low**: issue #434 |
+| Multidirectional tension, ultimate | Analytical three-mechanism. | 11 cases, 3 labs; no unsafe miss above 10° | **Moderate** |
+| Tension, damage onset | FE first ply is closer (MAE 10% vs 15%), but unsafe on 2 of 3. | 3 cases, 1 lab | **Low**: issue #436 |
+| UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | **Fit only** |
+| UD carbon compression | No reliable model. The blind gate swings from −20% (moulded preset) to +22…+40% (vacuum-bag preset); kink-band up to +26%; FE −26% to −40%. | 3 cases, 1 lab | **Low**: issue #435 |
+
+Caveats on the FE column:
+- The A–E FE recipe uses the analytical inputs at the default interfaces
+  and decay. It is not tuned per specimen the way Dataset H's one-sided
+  `tool_flat` recipe is, which is one reason Shi is the only
+  multidirectional dataset where the FE ran conservative.
+- On Dataset D the FE gives the same retention for the convex and
+  concave pairs, so it does not reproduce the morphology difference that
+  Wang measured (0.677 vs 0.419 at A = 0.76 mm).
+- Mesh-checked on one case each of A, B, C and D: nx = 72, two elements
+  per ply or ny = 4 move the retention by at most 4 points, and
+  refinement makes it *less* conservative.
+- In tension the FE is a first-ply quantity scored against a measured
+  ultimate (B, C tension, I), so its conservatism there is partly by
+  construction.
 
 ## Severity bands
 

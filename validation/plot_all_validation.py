@@ -71,16 +71,26 @@ WANG = [45, 0, -45, 90, 45, 0, -45, 0, 45, 0]
 WANG = WANG + WANG[::-1]                                   # [...]_s, 20 plies
 
 
-def _analytical_kd(A, lam, *, material, angles, t_ply, loading,
-                   morphology="uniform", onset=False):
-    """Run the analytical pipeline and return the predicted knockdown."""
-    cfg = AnalysisConfig(
+def case_config(A, lam, *, material, angles, t_ply, loading,
+                morphology="uniform"):
+    """The A-D recipe: one ``AnalysisConfig`` per experimental case.
+
+    Shared with ``strength_error_summary.py``, which runs the same
+    configs through the FE so the two paths see identical inputs.
+    """
+    return AnalysisConfig(
         amplitude=A, wavelength=lam, width=0.75 * lam,
         morphology=morphology, loading=loading,
         material=ML.get(material), angles=angles, ply_thickness=t_ply,
-        applied_strain=(+0.01 if loading == "tension" else -0.01),
         analytical_only=True,
     )
+
+
+def _analytical_kd(A, lam, *, material, angles, t_ply, loading,
+                   morphology="uniform", onset=False):
+    """Run the analytical pipeline and return the predicted knockdown."""
+    cfg = case_config(A, lam, material=material, angles=angles,
+                      t_ply=t_ply, loading=loading, morphology=morphology)
     res = WrinkleAnalysis(cfg).run()
     if onset and res.analytical_onset_knockdown is not None:
         return float(res.analytical_onset_knockdown)
@@ -90,17 +100,50 @@ def _analytical_kd(A, lam, *, material, angles, t_ply, loading,
 # ----------------------------------------------------------------------
 # Experimental cases.  Each entry yields (KD_exp, KD_pred).
 # ----------------------------------------------------------------------
+A_ROWS = [  # Elhajjar (2025) compression: (A_mm, KD_exp)
+    (0.0073, 1.02), (0.0122, 1.00), (0.0194, 0.95), (0.0243, 0.90),
+    (0.0486, 0.80), (0.0729, 0.72), (0.1215, 0.62), (0.1944, 0.52),
+    (0.2430, 0.47), (0.3645, 0.40), (0.4860, 0.37), (0.6075, 0.35),
+    (0.7290, 0.32),
+]
+B_ROWS = [  # Elhajjar (2025) tension: (A_mm, KD_exp)
+    (0.0073, 1.00), (0.0122, 0.95), (0.0243, 0.90), (0.1215, 0.77),
+    (0.2430, 0.65), (0.4860, 0.55), (0.7290, 0.47),
+]
+C_COMP_ROWS = [(0.168, 0.82), (0.372, 0.68), (0.492, 0.67)]
+C_TENS_ROWS = [(0.168, 0.94), (0.372, 0.83), (0.492, 0.77)]
+C_ONSET_ROWS = [(0.372, 0.70), (0.492, 0.67), (0.570, 0.51)]
+D_ROWS = [  # Wang (2021): (A_mm, morphology, KD_exp)
+    (0.38, "convex", 0.729), (0.76, "convex", 0.677),
+    (0.38, "concave", 0.635), (0.76, "concave", 0.419),
+]
+E_GRID = [  # Li (2024), VALIDATION_DATA section 2.7: (theta_deg, D/T, KD_exp)
+    (4.9, 0.025, 0.907), (10.6, 0.026, 0.823), (16.0, 0.026, 0.758),
+    (16.7, 0.056, 0.612), (15.8, 0.079, 0.523), (16.5, 0.083, 0.545),
+    (14.2, 0.105, 0.506), (16.6, 0.042, 0.657), (15.9, 0.059, 0.558),
+]
+
+F_GRID = [  # Li (2025), ledger case order: (theta_deg, D/T, z, KD_exp);
+    # S-A-2 is the near-surface case.
+    (10.3, 0.122, 0.5, 0.891), (20.1, 0.122, 0.5, 0.629),
+    (30.2, 0.122, 0.5, 0.472), (20.1, 0.081, 0.5, 0.943),
+    (20.1, 0.041, 0.5, 1.000), (20.1, 0.122, 10.0 / 14.0, 0.981),
+]
+
+
+def elhajjar_wavelength(A):
+    return max(19.9 * A, 8.2)
+
+
+def mukhopadhyay_wavelength(A):
+    return max(22.0 * A, 10.0)
+
+
 def dataset_A():
     """Elhajjar (2025) compression -- BF kink-band, T700/2510."""
-    rows = [  # (A_mm, KD_exp)
-        (0.0073, 1.02), (0.0122, 1.00), (0.0194, 0.95), (0.0243, 0.90),
-        (0.0486, 0.80), (0.0729, 0.72), (0.1215, 0.62), (0.1944, 0.52),
-        (0.2430, 0.47), (0.3645, 0.40), (0.4860, 0.37), (0.6075, 0.35),
-        (0.7290, 0.32),
-    ]
     out = []
-    for A, kd in rows:
-        lam = max(19.9 * A, 8.2)
+    for A, kd in A_ROWS:
+        lam = elhajjar_wavelength(A)
         out.append((kd, _analytical_kd(A, lam, material="T700_2510",
                                        angles=ELHAJJAR, t_ply=0.152,
                                        loading="compression")))
@@ -109,13 +152,9 @@ def dataset_A():
 
 def dataset_B():
     """Elhajjar (2025) tension -- three-mechanism, T700/2510."""
-    rows = [
-        (0.0073, 1.00), (0.0122, 0.95), (0.0243, 0.90), (0.1215, 0.77),
-        (0.2430, 0.65), (0.4860, 0.55), (0.7290, 0.47),
-    ]
     out = []
-    for A, kd in rows:
-        lam = max(19.9 * A, 8.2)
+    for A, kd in B_ROWS:
+        lam = elhajjar_wavelength(A)
         out.append((kd, _analytical_kd(A, lam, material="T700_2510",
                                        angles=ELHAJJAR, t_ply=0.152,
                                        loading="tension")))
@@ -124,10 +163,9 @@ def dataset_B():
 
 def dataset_C_comp():
     """Mukhopadhyay (2015) compression -- BF kink-band, IM7/8552."""
-    rows = [(0.168, 0.82), (0.372, 0.68), (0.492, 0.67)]
     out = []
-    for A, kd in rows:
-        lam = max(22.0 * A, 10.0)
+    for A, kd in C_COMP_ROWS:
+        lam = mukhopadhyay_wavelength(A)
         out.append((kd, _analytical_kd(A, lam, material="IM7_8552",
                                        angles=MUKHO, t_ply=0.125,
                                        loading="compression",
@@ -137,10 +175,9 @@ def dataset_C_comp():
 
 def dataset_C_tens():
     """Mukhopadhyay (2015) tension ultimate -- three-mechanism."""
-    rows = [(0.168, 0.94), (0.372, 0.83), (0.492, 0.77)]
     out = []
-    for A, kd in rows:
-        lam = max(22.0 * A, 10.0)
+    for A, kd in C_TENS_ROWS:
+        lam = mukhopadhyay_wavelength(A)
         out.append((kd, _analytical_kd(A, lam, material="IM7_8552",
                                        angles=MUKHO, t_ply=0.125,
                                        loading="tension",
@@ -150,10 +187,9 @@ def dataset_C_tens():
 
 def dataset_C_onset():
     """Mukhopadhyay (2015) delamination onset -- KD_oop mechanism."""
-    rows = [(0.372, 0.70), (0.492, 0.67), (0.570, 0.51)]
     out = []
-    for A, kd in rows:
-        lam = max(22.0 * A, 10.0)
+    for A, kd in C_ONSET_ROWS:
+        lam = mukhopadhyay_wavelength(A)
         out.append((kd, _analytical_kd(A, lam, material="IM7_8552",
                                        angles=MUKHO, t_ply=0.125,
                                        loading="tension", onset=True,
@@ -168,12 +204,8 @@ def dataset_D():
     closest built-in card (the morphology asymmetry, not the exact
     modulus, is the feature under test here).
     """
-    rows = [  # (A_mm, morphology, KD_exp)
-        (0.38, "convex", 0.729), (0.76, "convex", 0.677),
-        (0.38, "concave", 0.635), (0.76, "concave", 0.419),
-    ]
     out = []
-    for A, morph, kd in rows:
+    for A, morph, kd in D_ROWS:
         out.append((kd, _analytical_kd(A, 24.0, material="T800S_M21",
                                        angles=WANG, t_ply=0.19,
                                        loading="compression",
@@ -183,28 +215,16 @@ def dataset_D():
 
 def dataset_E():
     """Li (2024) UD compression -- penetration gate (moulded), z = mid."""
-    # (theta_deg, D/T, KD_exp) from VALIDATION_DATA section 2.7.
-    grid = [
-        (4.9, 0.025, 0.907), (10.6, 0.026, 0.823), (16.0, 0.026, 0.758),
-        (16.7, 0.056, 0.612), (15.8, 0.079, 0.523), (16.5, 0.083, 0.545),
-        (14.2, 0.105, 0.506), (16.6, 0.042, 0.657), (15.9, 0.059, 0.558),
-    ]
     return [(kd, penetration_gate_kd(th, dt, GATE_LI2024_MOULDED,
                                      z_position=0.5))
-            for th, dt, kd in grid]
+            for th, dt, kd in E_GRID]
 
 
 def dataset_F():
     """Li (2025) UD compression -- penetration gate (vacuum-bag) + z."""
-    # (theta_deg, D/T, z, KD_exp); S-A-2 is the near-surface case.
-    grid = [
-        (10.3, 0.122, 0.5, 0.891), (20.1, 0.122, 0.5, 0.629),
-        (30.2, 0.122, 0.5, 0.472), (20.1, 0.081, 0.5, 0.943),
-        (20.1, 0.041, 0.5, 1.000), (20.1, 0.122, 10.0 / 14.0, 0.981),
-    ]
     return [(kd, penetration_gate_kd(th, dt, GATE_LI2025_VACBAG,
                                      z_position=z))
-            for th, dt, z, kd in grid]
+            for th, dt, z, kd in F_GRID]
 
 
 def _ledger_dataset(name_prefix: str):

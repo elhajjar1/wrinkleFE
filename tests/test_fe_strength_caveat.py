@@ -270,11 +270,11 @@ def test_the_fe_larc05_claims_still_hold():
 
 @pytest.mark.slow
 def test_the_multidirectional_claim_still_holds():
-    """Six FE solves (Dataset H, Shi 2025). The caveat says the one
-    multidirectional measured-strength check ran conservative, about
-    -8% to -1%; the UD half of the same dataset is all-conservative
-    context in the docs. If the FE path changes, this fails and the
-    caveat is rewritten to match (exactly like the Li test above)."""
+    """Six FE solves (Dataset H, Shi 2025). The caveat says FE ran
+    conservative on this multidirectional study, about -8% to -1%; the
+    UD half of the same dataset is all-conservative context in the docs.
+    If the FE path changes, this fails and the caveat is rewritten to
+    match (exactly like the Li test above)."""
     sys.path.insert(0, str(_ROOT / "validation"))
     sys.path.insert(0, str(_ROOT / "scripts"))
     import strength_error_summary as ses
@@ -288,7 +288,33 @@ def test_the_multidirectional_claim_still_holds():
     # conservative floor collapsing) escapes these bands.
     assert -15.0 <= min(md.values()) <= -3.0, rows
     assert -6.0 <= max(md.values()) <= 4.0, rows
-    assert "ran conservative, about -8% to -1%" in FE_STRENGTH_CAVEAT
+    assert "about -8% to -1% (conservative) on one CFRP" in FE_STRENGTH_CAVEAT
     # The UD half stays conservative (the FE sees the steep local
     # stress concentration this short-span wrinkle produces).
     assert all(e < 0.0 for e in ud.values()), rows
+
+
+@pytest.mark.slow
+def test_the_multidirectional_overprediction_claim_still_holds():
+    """Twenty FE solves (Datasets A, C and D in compression, the
+    head-to-head of issue #433). The caveat says FE over-predicts
+    retained strength on three multidirectional studies "by up to about
+    90%"; when the FE path changes, this fails and the caveat is
+    rewritten to match."""
+    sys.path.insert(0, str(_ROOT / "validation"))
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import strength_error_summary as ses
+
+    worst = {}
+    for label, cases in ses._md_cases().items():
+        if label[0] not in "ACD" or "tens" in label or "onset" in label:
+            continue
+        errs = [ses._err(ses._fe_retention_kd(cfg, **ses._MD_FE_MESH), kd)
+                for _case, _theta, kd, cfg in cases]
+        worst[label] = max(errs)
+    assert len(worst) == 3, worst
+    # Each of the three studies has at least one unsafe miss ...
+    assert all(e > 0.5 for e in worst.values()), worst
+    # ... and the worst sits near the quoted ~90% (measured +92.3%).
+    assert 80.0 <= max(worst.values()) <= 100.0, worst
+    assert "by up to about 90%" in FE_STRENGTH_CAVEAT
