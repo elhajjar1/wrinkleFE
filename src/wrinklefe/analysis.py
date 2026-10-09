@@ -934,6 +934,22 @@ def _gate_from_jsonable(value: dict | None) -> GateParameters | None:
     return GATE_PRESETS[name]
 
 
+#: Magnitude of the default applied strain; the sign follows ``loading``.
+_DEFAULT_STRAIN_MAGNITUDE = 0.01
+
+
+class _UnsetStrain(float):
+    """Marks an ``applied_strain`` the caller never set.
+
+    A plain ``-0.01`` default made ``AnalysisConfig(loading="tension")``
+    solve the FE in *compression* while the analytical path reported
+    tension. With this marker, ``__post_init__`` can tell "never set"
+    from an explicit ``-0.01`` and resolve the default from ``loading``
+    (``-0.01`` compression, ``+0.01`` tension). After resolution the
+    attribute is a plain ``float``.
+    """
+
+
 @dataclass
 class AnalysisConfig:
     """Configuration for a wrinkle analysis run.
@@ -1105,7 +1121,13 @@ class AnalysisConfig:
         Domain width in y [mm].  Default 20.0.
     applied_strain : float
         Applied nominal strain for displacement-controlled loading.
-        Default ``-0.01`` (1 % compression).
+        Default: 1 % in the direction ``loading`` names — ``-0.01`` for
+        compression, ``+0.01`` for tension. An explicit value must agree
+        in sign with ``loading`` (zero is allowed, e.g. thermal-only);
+        a contradiction raises ``ValueError``, because the FE solves in
+        the direction of the strain while the analytical path follows
+        ``loading``. Not checked when ``load_state`` is set (the legacy
+        pair is then ignored).
     delta_T : float
         Uniform temperature change **from the stress-free (cure)
         state**, in deg C.  Default ``0.0`` (no thermal load).
@@ -1281,8 +1303,8 @@ class AnalysisConfig:
     domain_length: float = 0.0  # 0 → auto = 3 * wavelength
     domain_width: float = 20.0
 
-    # Loading parameters
-    applied_strain: float = -0.01
+    # Loading parameters (an unset strain follows ``loading``)
+    applied_strain: float = _UnsetStrain(-_DEFAULT_STRAIN_MAGNITUDE)
 
     # Thermal / cure-residual loading (issue #273).
     #
@@ -1541,6 +1563,12 @@ class AnalysisConfig:
     czm_newton_tol: float = 1.0e-4
 
     def __post_init__(self) -> None:
+        if type(self.applied_strain) is _UnsetStrain:
+            tension = str(self.loading).lower().strip() == "tension"
+            self.applied_strain = (
+                _DEFAULT_STRAIN_MAGNITUDE if tension
+                else -_DEFAULT_STRAIN_MAGNITUDE
+            )
         if self.domain_length <= 0:
             if self.wrinkles:
                 # Multi-wrinkle: size the domain from the union of the
@@ -1803,6 +1831,19 @@ class AnalysisConfig:
                 f"AnalysisConfig.applied_strain must be finite, "
                 f"got {self.applied_strain}"
             )
+        if self.load_state is None:
+            tension = self.loading.lower().strip() == "tension"
+            if (tension and self.applied_strain < 0.0) or (
+                not tension and self.applied_strain > 0.0
+            ):
+                raise ValueError(
+                    f"AnalysisConfig.applied_strain = {self.applied_strain} "
+                    f"contradicts loading={self.loading!r}: the FE would "
+                    f"solve in {'compression' if tension else 'tension'} "
+                    f"while the analytical path reports {self.loading}. "
+                    f"Flip the strain's sign, or omit applied_strain to use "
+                    f"the loading's default (1 % in that direction)."
+                )
 
         # --- Thermal / cure-residual load (issue #273) ----------------
         if not math.isfinite(self.delta_T):

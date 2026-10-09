@@ -156,11 +156,12 @@ See the table in [README.md](../../README.md). Current sources:
     interacting waves); waves made by inserted strips (local thickening
     travels with the waviness); decay toward the tool face unmeasured.
   - Found while integrating it: `AnalysisConfig(loading="tension")`
-    keeps the default compressive `applied_strain = -0.01`, so the FE
-    solves in compression while the analytical path reports tension
-    (the app signs the strain from the loading, so it is unaffected).
-    The Dataset I recipe sets `applied_strain` explicitly; the core
-    trap is tracked separately.
+    kept the default compressive `applied_strain = -0.01`, so the FE
+    solved in compression while the analytical path reported tension.
+    The app was unaffected because it signs the strain from the loading.
+    This is now fixed: an unset strain follows `loading`, and a
+    contradicting one raises. The Dataset I recipe still sets
+    `applied_strain` explicitly.
 
 ### Stiffness / modulus validation
 

@@ -46,7 +46,7 @@ def test_fully_specified_valid_config_constructs():
         ny=2,
         nz_per_ply=1,
         domain_width=10.0,
-        applied_strain=-0.005,
+        applied_strain=0.005,
     )
     assert cfg.morphology == "concave"
 
@@ -313,3 +313,54 @@ def test_amplitude_profile_threaded_into_wrinkle_configuration():
     assert wc.amplitude_profile == "gaussian"
     assert wc.amplitude_profile_decay_length == 5.0
     assert wc.amplitude_profile_axis == "y"
+
+
+# ---------------------------------------------------------------------------
+# applied_strain follows loading
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "loading, expected",
+    [("compression", -0.01), ("tension", 0.01), (" Tension ", 0.01)],
+)
+def test_default_strain_follows_loading(loading, expected):
+    """An unset strain is 1 % in the loading direction, so the FE solves the
+    same load case the analytical path reports."""
+    assert AnalysisConfig(loading=loading).applied_strain == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "loading, strain", [("tension", -0.005), ("compression", 0.005)]
+)
+def test_strain_contradicting_loading_raises(loading, strain):
+    with pytest.raises(ValueError, match="contradicts loading"):
+        AnalysisConfig(loading=loading, applied_strain=strain)
+
+
+@pytest.mark.parametrize(
+    "loading, strain",
+    [("tension", 0.02), ("compression", -0.02), ("tension", 0.0),
+     ("compression", -0.01)],
+)
+def test_strain_agreeing_with_loading_is_kept(loading, strain):
+    cfg = AnalysisConfig(loading=loading, applied_strain=strain)
+    assert cfg.applied_strain == strain
+    assert type(cfg.applied_strain) is float  # no sentinel leaks out
+
+
+def test_sign_check_skipped_when_load_state_drives_the_solve():
+    """``load_state`` overrides the legacy loading/strain pair entirely."""
+    from wrinklefe.core.laminate import LoadState
+
+    cfg = AnalysisConfig(
+        loading="tension", applied_strain=-0.005,
+        load_state=LoadState(Nx=-1000.0),
+    )
+    assert cfg.applied_strain == -0.005
+
+
+def test_resolved_strain_survives_json_round_trip(tmp_path):
+    path = tmp_path / "cfg.json"
+    AnalysisConfig(loading="tension").save_json(path)
+    assert AnalysisConfig.load(path).applied_strain == pytest.approx(0.01)
