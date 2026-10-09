@@ -575,6 +575,8 @@ class MaterialLibrary:
     - ``AC318_S6C10_vacbag`` : same prepreg, *vacuum-bag* realization
       (Li 2025; measured ``Xc = 335.5`` MPa, ``E1 = 50.8`` GPa)
     - ``T800S_M21`` : Hexcel T800S / M21 toughened epoxy (A350 / A400M primary)
+    - ``M21E_IMA`` : M21E / IMA-12K (measured ply card of Calvo et al.
+      2023, Composite Structures 323:117498; Dataset I)
     - ``IM10_8552`` : Hexcel IM10 / 8552 (high-strain toughened epoxy)
     - ``IM6G_3501_6`` : Hercules IM6G / 3501-6 carbon / epoxy (Hsiao &
       Daniel 1996 wavy-UD compression study; Dataset G)
@@ -593,8 +595,8 @@ class MaterialLibrary:
     >>> sorted(lib.list_names())  # doctest: +NORMALIZE_WHITESPACE
     ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
      'IM10_8552', 'IM6G_3501_6', 'IM7_8552', 'KEVLAR49_EPOXY',
-     'S2_GLASS_EPOXY', 'T300_914', 'T700_2510', 'T700_SHI2025',
-     'T800S_M21']
+     'M21E_IMA', 'S2_GLASS_EPOXY', 'T300_914', 'T700_2510',
+     'T700_SHI2025', 'T800S_M21']
     """
 
     def __init__(self) -> None:
@@ -908,6 +910,32 @@ class MaterialLibrary:
             Yt=70.0, Yc=290.0,
             Zt=70.0, Zc=290.0,
             S12=98.0, S13=98.0, S23=80.0,
+            alpha1=-0.4e-6, alpha2=30.0e-6, alpha3=30.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.02,
+            GIc=0.21, GIIc=0.77, alpha_0=53.0,
+            sigma_max=80.0, tau_max=90.0,
+        ))
+
+        # 6b. M21E / IMA-12K  (Calvo et al. 2023; Dataset I).
+        #     Titania M21E/34%/UD194/IMA-12K prepreg. MEASURED ply
+        #     properties from Table 2 of Calvo, Quinonero-Moya, Feito,
+        #     Miguelez et al. (2023), Composite Structures 323:117498 (DIC
+        #     + extensometer, ASTM D3039/D3518): E1 167, E2 9.5, G12 5.8
+        #     GPa, nu12 0.21, Xt 2938, Yt 53, S12 145 MPa. Every field the
+        #     paper does not report is inherited from the M21-family card
+        #     T800S_M21 above (compression strengths, through-thickness
+        #     terms, CTEs, toughness, cohesive strengths) and is
+        #     approximate; the dataset is tension, so Xc does not enter it.
+        self.add(OrthotropicMaterial(
+            name="M21E_IMA",
+            E1=167_000.0, E2=9_500.0, E3=9_500.0,
+            G12=5_800.0, G13=5_800.0, G23=2_800.0,
+            nu12=0.21, nu13=0.21, nu23=0.50,
+            Xt=2_938.0, Xc=1_680.0,
+            Yt=53.0, Yc=290.0,
+            Zt=53.0, Zc=290.0,
+            S12=145.0, S13=145.0, S23=80.0,
             alpha1=-0.4e-6, alpha2=30.0e-6, alpha3=30.0e-6,
             beta1=0.0, beta2=0.4, beta3=0.4,
             gamma_Y=0.02,

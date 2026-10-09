@@ -1183,14 +1183,15 @@ possible — their raw data are not included.
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every single-wrinkle case (Datasets A–F plus Dataset H) against
+plot of every case (Datasets A–F plus Datasets H and I) against
 a ±20% band, with each dataset predicted by the model that physically
 applies to it (Budiansky–Fleck / three-mechanism for the
 multidirectional cases A–D, the penetration gate for the UD cases E/F;
-Dataset H, which has no gate preset, is plotted twice — analytical and
-first-ply FE LaRC05 retention). 49 of the 60 points fall inside the
-band. Of the eleven outside it, seven are conservative (four legacy
-plus Dataset H's strongly-conservative UD FE points); the four that are
+Datasets H and I, which have no gate preset, are plotted twice —
+analytical and first-ply FE LaRC05 retention). 50 of the 62 points fall
+inside the band. Of the twelve outside it, eight are conservative (four
+legacy, Dataset H's three UD FE points and Dataset I's FE point); the
+four that are
 not are the most severe compression wrinkle in dataset A (+30%) and the
 analytical predictions for Dataset H's severe cases (+26% UD; +56% and
 +115% on the multidirectional half, where the FE retention path is
@@ -1380,6 +1381,7 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 - Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593.
 - Shi, J., Yang, G., Sun, N., Zheng, J., Qian, J., Wang, W. & Song, K. (2025). Materials, 18:4503. https://doi.org/10.3390/ma18194503 (Dataset H)
 - Luong, H.M., Trevarthen, J., Butler, R., Srisuriyachot, J. & Lunt, A.J.G. (2025). Composites Part B, 307:112818. https://doi.org/10.1016/j.compositesb.2025.112818 (review; knockdown context)
+- Calvo, J.V., Quiñonero-Moya, A.R., Feito, N., Miguélez, M.H. et al. (2023). Composite Structures, 323:117498. https://doi.org/10.1016/j.compstruct.2023.117498 (Dataset I)
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

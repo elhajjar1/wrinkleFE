@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -72,6 +73,35 @@ def case_config(dataset: dict, case: dict, *, with_gate: bool = False):
     optional("surface_pocket_side", cast=str)
     optional("surface_transition_plies", cast=int)
     optional("enable_surface_resin_pockets", cast=bool)
+    optional("decay_floor")
+    # Tension datasets MUST set this: AnalysisConfig's default strain is
+    # compressive regardless of ``loading`` (the FE would solve in
+    # compression while the analytical path reports tension).
+    optional("applied_strain")
+    optional("domain_length_mm", "domain_length")
+    optional("domain_width_mm", "domain_width")
+    # Distributed multi-wave recipes (Dataset I): every wave shares the
+    # case's amplitude / wavelength / width and is placed at its own
+    # longitudinal station and ply interface. A station x maps to the
+    # phase offset that shifts the domain-centred profile there.
+    placements = case.get("wrinkle_placements",
+                          dataset.get("wrinkle_placements"))
+    if placements:
+        from wrinklefe.analysis import WrinkleSpec
+
+        lam = float(case["wavelength_mm"])
+        width = float(kwargs.get("width", lam))
+        centre = float(kwargs.get("domain_length", 0.0)) / 2.0
+        kwargs["wrinkles"] = [
+            WrinkleSpec(
+                amplitude=case["amplitude_p2p_mm"] / 2.0,
+                wavelength=lam,
+                width=width,
+                ply_interface=int(pl["ply_interface"]),
+                phase_offset=2.0 * math.pi * (float(pl["x_mm"]) - centre) / lam,
+            )
+            for pl in placements
+        ]
     if with_gate:
         import wrinklefe.core.penetration_gate as pg
 
