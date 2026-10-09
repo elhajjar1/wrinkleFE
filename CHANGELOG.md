@@ -42,6 +42,20 @@ version produced a given file.
     material yet). Docs carry both tables.
   - Context reference: Luong et al. (2025), Composites Part B
     307:112818 (CC BY review; knockdown ranges, no case data).
+- Validation — **Dataset I: Calvo et al. (2023), the first distributed
+  multi-wave and first new tension strength set** (Composite Structures
+  323:117498). A 22-ply M21E/IMA laminate with seven strip-induced
+  waves through the thickness: measured strength KD 0.841, initial
+  modulus 0.992. New material card `M21E_IMA` (the paper's measured ply
+  table); the ledger's recipe gains `wrinkle_placements` (station +
+  interface per wave), `decay_floor`, domain size and an explicit
+  `applied_strain`. Analytical three-mechanism 0.770 (**−8.4%**, inside
+  ±20%; the paper's own CLT model gives 0.643); first-ply FE 0.624
+  (−25.7%, conservative by construction in tension). The paper's wave
+  length/height/angle are mutually inconsistent for a sinusoid; the
+  recipe matches the measured angle and documents the 9.3° literal
+  reading (0.613) as a sensitivity. Parity chart: 50 of 62 points in
+  band.
 
 ## [1.3.0] - 2026-10-07
 

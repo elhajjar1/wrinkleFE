@@ -181,6 +181,51 @@ def fe_larc05_shi_section() -> None:
           f"({min(ud):+.1f} % to {max(ud):+.1f} %)\n")
 
 
+def fe_larc05_errors_calvo(nx: int = 200) -> dict[str, tuple[float, float, float]]:
+    """``{case: (FE knockdown, measured, error %)}`` for Calvo (2023), Dataset I.
+
+    Tension, multidirectional, seven distributed waves: the ledger recipe
+    (multi-wave placements, graded decay with floor 0.5) run through the
+    FE. First-ply retention, so it reads the onset of off-axis matrix
+    cracking against a fibre-governed measured ultimate: expected to be
+    conservative. nx = 200 (1 mm columns, ~13 per bump) is mesh-checked
+    against nx = 300.
+    """
+    from validate import case_config
+
+    from wrinklefe.analysis import WrinkleAnalysis
+
+    ledger = json.loads(LEDGER.read_text())
+    ds = next(d for d in ledger["datasets"] if d["name"].startswith("calvo_2023"))
+    out = {}
+    for case in ds["cases"]:
+        cfg = case_config(ds, case)
+        kw = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
+        kw.update(analytical_only=False, verbose=False, nx=nx, ny=2,
+                  nz_per_ply=1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            r = WrinkleAnalysis(type(cfg)(**kw)).run()
+        fi = np.asarray(r.failure_indices["larc05"]).mean(axis=-1)
+        fi_w = float(fi[np.isfinite(fi)].max())
+        fi_p = float(r.baseline_fi["larc05"])
+        meas = float(case["measured_kd"])
+        kd = min(float(r.modulus_retention_global) * fi_p / fi_w, 1.0)
+        out[case["case"]] = (kd, meas, _err(kd, meas))
+    return out
+
+
+def fe_larc05_calvo_section() -> None:
+    rows = fe_larc05_errors_calvo()
+    print("2c. FE LaRC05 strength, Calvo (2023) CFRP tension, Dataset I "
+          "(7 distributed waves, nx=200)")
+    print(f"   {'case':8s} {'FE KD':>7s} {'meas.':>7s} {'error%':>8s}")
+    for name, (kd, meas, e) in rows.items():
+        print(f"   {name:8s} {kd:7.3f} {meas:7.3f} {e:+8.1f}")
+    print("   -> first-ply retention vs a fibre-governed tension ultimate "
+          "(conservative by construction)\n")
+
+
 def progressive_section() -> None:
     pd = json.loads(LEDGER.read_text())["progressive_damage"]
     print("3. Progressive damage (crack band), pinned ledger values")
@@ -197,6 +242,7 @@ def main() -> None:
     analytical_section()
     fe_larc05_section()
     fe_larc05_shi_section()
+    fe_larc05_calvo_section()
     progressive_section()
 
 

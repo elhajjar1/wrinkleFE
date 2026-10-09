@@ -118,6 +118,49 @@ See the table in [README.md](../../README.md). Current sources:
     (2025), *Composites Part B* 307:112818 — a CC BY review compiling
     wrinkle knockdown ranges (compressive 30–75%); no case-level data,
     cited for context only.
+- **Dataset I — Calvo, Quiñonero-Moya, Feito, Miguélez et al. (2023)**,
+  *Composite Structures* 323:117498 (© Elsevier; values transcribed
+  with citation). The first **tension** strength set since B/C, the
+  first **distributed multi-wave** case, and the first experimental
+  exercise of WrinkleFE's multi-wrinkle composition. 22-ply M21E/IMA
+  `[45/0/−45/90/0/90/0/90/−45/0/45]s`, 200 × 15 × 4.1 mm, quasi-static
+  tension; material card `M21E_IMA` from the paper's MEASURED ply table
+  (E1 167, E2 9.5, G12 5.8 GPa, ν12 0.21, Xt 2938, Yt 53, S12 145 MPa;
+  the rest inherited from `T800S_M21`).
+  - **Geometry:** seven transverse-strip waves at 17.5…77.5% of the
+    length (20 mm pitch), centre wave 2 plies below the top, the others
+    7/13/18 plies below it moving outward — encoded with the ledger's
+    new `wrinkle_placements` recipe field (a station + interface per
+    wave). The paper's three wave numbers are mutually inconsistent for
+    a sinusoidal bump (λ 9.6 mm & δ 0.5 mm imply a 9.3° tangent, but the
+    measured θ is 6.8°); the recipe keeps the measured height and
+    matches the measured angle (bump length 13.2 mm), since the peak
+    angle is what the models consume. Matching via δ instead gives the
+    same analytical KD within 0.4%; the literal 9.3° reading gives
+    0.613 (documented sensitivity).
+  - **Measured (batch means, B5 vs B4):** strength KD **0.841**
+    (930 / 1106 MPa); initial modulus 0.992; end-of-test modulus 0.906
+    (after off-axis ply cracking).
+  - **Analytical (three-mechanism tension): 0.770, −8.4%** —
+    conservative, inside ±20%, matrix-mechanism governed. Calvo's own
+    CLT-with-waviness model predicts 0.643 on the same basis, so the
+    shipped analytical path lands closer to their test than their model
+    does. Closed-form modulus KD 0.945 vs 0.992 initial (−4.7%).
+  - **First-ply FE retention: 0.624, −25.7%** (nx = 200; 0.640 at
+    nx = 300) — conservative by construction: first-ply in tension is
+    off-axis matrix cracking, while the measured ultimate is fibre-
+    governed after those plies crack. Sensitive to the unmeasured
+    decay floor (0.45–0.62 over floors 0.25–0.75 at the literal
+    geometry).
+  - **Caveats:** effectively one strength point (a batch mean of
+    interacting waves); waves made by inserted strips (local thickening
+    travels with the waviness); decay toward the tool face unmeasured.
+  - Found while integrating it: `AnalysisConfig(loading="tension")`
+    keeps the default compressive `applied_strain = -0.01`, so the FE
+    solves in compression while the analytical path reports tension
+    (the app signs the strain from the loading, so it is unaffected).
+    The Dataset I recipe sets `applied_strain` explicitly; the core
+    trap is tracked separately.
 
 ### Stiffness / modulus validation
 
@@ -213,19 +256,20 @@ of `(KD_exp, KD_pred)` pairs rather than an absolute-strength axis.
 ### Consolidated parity chart
 
 `validation/plot_all_validation.py` renders every single-wrinkle case
-(Datasets A–F plus Dataset H) on one predicted-vs-experimental parity
+(Datasets A–F plus Datasets H and I) on one predicted-vs-experimental parity
 plot with a ±20 % corridor, writing
 `validation/fig_all_validation_parity.png`. Each dataset is predicted
 by the model that physically applies to it: multidirectional A–D via
 the analytical Budiansky–Fleck / three-mechanism models run through
-`WrinkleAnalysis`, UD E/F via the penetration gate; Dataset H (no gate
-preset for its carbon material) is plotted twice, analytical AND
-first-ply FE LaRC05 retention, both recipe-exact from the ledger. This
+`WrinkleAnalysis`, UD E/F via the penetration gate; Datasets H and I
+(no gate preset for their carbon materials) are plotted twice,
+analytical AND first-ply FE LaRC05 retention, both recipe-exact from
+the ledger. This
 is the single cross-dataset predicted-vs-experimental view. Running
 the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
-MAE, 3/3** (within ±20 %); overall **49 of 60** points sit inside the
-corridor.
+MAE, 3/3** and **I (analytical): 8.4 %, 1/1** (within ±20 %); overall
+**50 of 62** points sit inside the corridor.
 
 ## Interlaminar (CZM) validation evidence — Phase 7
 

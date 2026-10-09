@@ -254,6 +254,69 @@
         }
       ],
       "recipe_note": "Ledger (analytical) recipe: plain graded profile at the default mid interfaces - the analytical path reads only the wrinkle PROFILE (peak angle), not the through-thickness decay, so the one-sided tool_flat representation is not needed here and is FE-only by design (its surface pockets are mesh physics). The FE scoring recipe in validation/strength_error_summary.py uses morphology='tool_flat' with the flat face on the bottom and a 10-ply ramp; see geometry_note."
+    },
+    {
+      "name": "calvo_2023_md_cfrp_tension",
+      "reference": "Calvo, Quinonero-Moya, Feito, Miguelez et al. (2023), Composite Structures 323:117498, DOI 10.1016/j.compstruct.2023.117498",
+      "status": "active - Dataset I. First TENSION strength set since B/C, first distributed multi-wave case, and the first experimental exercise of WrinkleFE's multi-wrinkle composition. Batch means (B5 with waves vs B4 without); effectively one strength point. See VALIDATION.md 'Dataset I'.",
+      "material": "M21E_IMA",
+      "layup": "[45/0/-45/90/0/90/0/90/-45/0/45]s",
+      "ply_thickness_mm": 0.186364,
+      "loading": "tension",
+      "morphology": "graded",
+      "decay_floor": 0.5,
+      "domain_length_mm": 200.0,
+      "domain_width_mm": 15.0,
+      "pristine_strength_MPa": 1106.0,
+      "amplitude_convention": "config amplitude = wave height delta (paper Fig. 2) = 0.5 mm; amplitude_p2p_mm = 2*delta only to fit the shared schema.",
+      "width_convention": "wavelength_mm = 2 x the single-bump length; width_mm = half the bump length (Gaussian envelope isolating one bump per wave).",
+      "geometry_note": "Seven transverse-strip waves at 17.5/27.5/.../77.5% of the 200 mm specimen (20 mm pitch), centre wave 2 plies below the top and the others 7, 13, 18 plies below it moving outward symmetrically (paper Sec. 2.1). The paper's three wave numbers are mutually inconsistent for a sinusoidal bump: lambda = 9.6 +/- 1 mm and delta = 0.5 mm give a 9.3 deg peak tangent, but the measured inclination is theta = 6.8 +/- 1.3 deg. The recipe keeps the measured height and matches the measured angle (bump length 13.2 mm), because the peak angle is what the analytical models consume; matching via delta = 0.366 instead gives the same analytical KD within 0.4 %. The literal 9.6/0.5 reading (9.3 deg) gives 0.613 - a documented sensitivity, not the recipe. Decay toward the tool side is unmeasured: graded with floor 0.5 (the wave persists toward the bag side); FE retention spans 0.45-0.62 over floors 0.25-0.75 at the literal geometry.",
+      "wrinkle_placements": [
+        {
+          "x_mm": 35.0,
+          "ply_interface": 3
+        },
+        {
+          "x_mm": 55.0,
+          "ply_interface": 8
+        },
+        {
+          "x_mm": 75.0,
+          "ply_interface": 14
+        },
+        {
+          "x_mm": 95.0,
+          "ply_interface": 19
+        },
+        {
+          "x_mm": 115.0,
+          "ply_interface": 14
+        },
+        {
+          "x_mm": 135.0,
+          "ply_interface": 8
+        },
+        {
+          "x_mm": 155.0,
+          "ply_interface": 3
+        }
+      ],
+      "width_mm": 6.6,
+      "cases": [
+        {
+          "case": "I-B5",
+          "amplitude_p2p_mm": 1.0,
+          "wavelength_mm": 26.4,
+          "peak_angle_deg": 6.8,
+          "measured_strength_MPa": 930.0,
+          "measured_kd": 0.841,
+          "measured_kd_modulus": 0.992,
+          "expected_analytical_kd": 0.770313,
+          "expected_analytical_modulus_kd": 0.945299,
+          "note": "Batch means: B5 (7 waves) 930 MPa vs B4 (no waves) 1106 MPa (paper Table 3). measured_kd_modulus is the INITIAL apparent modulus ratio 76.2/76.8; the end-of-test ratio (after off-axis ply cracking) is 64.3/71.0 = 0.906. Calvo's own CLT-with-waviness model predicts strength KD 815/1268 = 0.643 and modulus 0.916 initial."
+        }
+      ],
+      "applied_strain": 0.01
     }
   ],
   "progressive_damage": {

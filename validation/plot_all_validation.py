@@ -2,9 +2,9 @@
 """Single combined validation chart: predicted vs experimental knockdown.
 
 Plots every *single-wrinkle* experimental case in the WrinkleFE validation
-database (Datasets A-F of VALIDATION_DATA, plus the ledger's Dataset H)
-on one parity axes, with the +/-20 % pass corridor around the y = x
-diagonal.
+database (Datasets A-F of VALIDATION_DATA, plus the ledger's Datasets H
+and I; I is a distributed seven-wave tension case) on one parity axes,
+with the +/-20 % pass corridor around the y = x diagonal.
 
 The point of putting them on one chart is to show, at a glance, that we do
 **not** use one method everywhere: each dataset is predicted with the model
@@ -255,6 +255,28 @@ def _dataset_H_fe(prefix: str):
     return _H_FE_CACHE[prefix]
 
 
+def dataset_I():
+    """Calvo (2023) MD CFRP tension, 7 distributed waves -- 3-mechanism."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    from validate import case_config
+
+    ds = _ledger_dataset("calvo_2023")
+    out = []
+    for case in ds["cases"]:
+        res = WrinkleAnalysis(case_config(ds, case)).run(analytical_only=True)
+        out.append((float(case["measured_kd"]),
+                    float(res.analytical_knockdown)))
+    return out
+
+
+def dataset_I_fe():
+    """Calvo (2023) first-ply FE LaRC05 retention (tension)."""
+    sys.path.insert(0, str(REPO / "validation"))
+    from strength_error_summary import fe_larc05_errors_calvo
+
+    return [(meas, kd) for kd, meas, _e in fe_larc05_errors_calvo().values()]
+
+
 def dataset_H_ud_fe():
     return _dataset_H_fe("H-UD")
 
@@ -279,6 +301,9 @@ DATASETS = {
                           "FE LaRC05 retention"),
     "H Shi2025 MD comp (FE)": (dataset_H_md_fe, "#e377c2", "X",
                           "FE LaRC05 retention"),
+    "I Calvo2023 MD tens": (dataset_I, "#7f7f7f", "h", "3-mechanism"),
+    "I Calvo2023 MD tens (FE)": (dataset_I_fe, "#7f7f7f", "X",
+                                 "FE LaRC05 retention"),
 }
 
 
@@ -316,7 +341,7 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
-    ax.set_title("WrinkleFE validation -- all single-wrinkle cases (A-H)\n"
+    ax.set_title("WrinkleFE validation -- all cases (A-I)\n"
                  "marker = method, colour = dataset, band = +/-20 %")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=7.5, loc="lower right", framealpha=0.95)
