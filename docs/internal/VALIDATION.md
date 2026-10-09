@@ -254,6 +254,28 @@ material cards (`AC318_S6C10` vs `AC318_S6C10_vacbag`) and two gate
 presets, and why the cross-dataset comparison below uses a parity plot
 of `(KD_exp, KD_pred)` pairs rather than an absolute-strength axis.
 
+### Head-to-head model matrix (issue #433)
+
+`validation/strength_error_summary.py` section 4 scores every applicable
+model on every strength dataset on the same cases, and writes the
+per-case values with wrinkle angle to
+`validation/head_to_head_cases.csv`. New series beyond the parity chart:
+- FE LaRC05 first-ply retention on A–E. The FE gets the analytical
+  recipe's own inputs; E uses Dataset F's ledger recipe with the
+  moulded card.
+- The kink-band model on E and F.
+- The shipped gate presets, unchanged, on Shi UD carbon, as a blind
+  transfer probe.
+
+Headline: on multidirectional compression the analytical model is
+conservative below 10° peak angle (11 cases, 3 labs), where the FE is
+unsafe on 9 of 11. Above 10° both models fail, on different datasets
+(analytical up to +115% on Shi, FE up to +92% on Wang). The guidance
+table, with confidence levels, is in `docs/interpreting_results.md`
+("Head-to-head: which model, when"). Follow-up data needs are issues
+#434 (severe multidirectional compression), #435 (UD carbon, blind
+gate test) and #436 (tension onset plus ultimate).
+
 ### Consolidated parity chart
 
 `validation/plot_all_validation.py` renders every single-wrinkle case

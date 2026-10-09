@@ -56,6 +56,30 @@ version produced a given file.
   recipe matches the measured angle and documents the 9.3° literal
   reading (0.613) as a sensitivity. Parity chart: 50 of 62 points in
   band.
+- Validation — **head-to-head model matrix** (issue #433):
+  `validation/strength_error_summary.py` section 4 runs every applicable
+  model on every strength dataset on the same cases, and writes
+  `validation/head_to_head_cases.csv` (per case, with wrinkle angle).
+  This adds FE LaRC05 on Datasets A–E, kink-band on E/F, and a blind
+  transfer probe of the shipped gate presets on Shi UD carbon.
+  `docs/interpreting_results.md` gains a provisional "which model, when"
+  table with confidence levels.
+  - On multidirectional compression below 10° peak angle the analytical
+    model is conservative on all 11 cases from 3 labs, while the FE is
+    unsafe on 9 of 11.
+  - Above 10° both models fail, on different datasets: analytical up
+    to +115% (Shi), FE up to +92% (Wang). The earlier reading "use FE
+    for severe multidirectional wrinkles", based on Shi alone, does not
+    hold.
+  - The shipped gate presets do not transfer to UD carbon: −20% with
+    the moulded preset, +22% to +40% with the vacuum-bag one.
+
+### Changed
+- `FE_STRENGTH_CAVEAT` (app warning and NCR summary) no longer says the
+  FE "ran conservative" on multidirectional laminates. It now says the
+  FE has erred both ways there: about −8% to −1% on one study,
+  over-predicting retained strength by up to about 90% on three others.
+  The README's FE note says the same. A slow test pins the new claim.
 
 ### Fixed
 - Analysis — **`AnalysisConfig(loading="tension")` solved the FE in
