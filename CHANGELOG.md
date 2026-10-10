@@ -82,6 +82,19 @@ version produced a given file.
   The README's FE note says the same. A slow test pins the new claim.
 
 ### Fixed
+- Docs — **the kink-band docstrings called the law concave.**
+  `BudianskyFleckKinkBand` said `1 / (1 + theta / gamma_Y)` is concave
+  in the angle, so evaluating at the mean angle overestimates the mean
+  knockdown, with "typical Jensen gaps of 5–15%". The law is convex: 20%
+  angle scatter raises the mean knockdown by only +0.002 to +0.006, and
+  the effect of scatter shows in the 5th percentile, 0.01–0.06 below
+  the point value.
+  - The concave response Elhajjar (2025) measured is in the depth ratio
+    D/T, which only the penetration gate represents.
+  - `tests/test_failure/test_kinkband_jensen.py` pins all of this: the
+    law's convexity, the size of the gap through the analytical pipeline,
+    and the gate's concave region below its threshold. (The plotting
+    docstring was corrected earlier, in #394.)
 - Analysis — **`AnalysisConfig(loading="tension")` solved the FE in
   compression.** The default `applied_strain` was a fixed `-0.01`
   whatever `loading` said, so a tension config that left the strain

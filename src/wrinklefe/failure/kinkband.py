@@ -4,12 +4,15 @@ This module provides two classes from the existing dual-wrinkle analytical
 model:
 
 1. **BudianskyFleckKinkBand** -- Kink-band compression failure combined
-   with interlaminar damage.  The key concave knockdown function::
+   with interlaminar damage.  The kink-band knockdown function::
 
        KD = 1 / (1 + theta_eff / gamma_Y)
 
-   creates fat-tailed failure distributions via Jensen's inequality when
-   the fibre misalignment theta_eff is a random variable.
+   is *convex* in theta_eff, so angle scatter alone raises the mean
+   knockdown slightly and shows its risk in the low percentiles.  The
+   concave, fat-left-tailed response measured by Elhajjar (2025) lives in
+   the wrinkle depth ratio D/T, which this angle-only law does not see
+   (see the class Notes).
 
 2. **InterlaminarDamage** -- Analytical damage index model calibrated
    against Jin et al. FE simulations::
@@ -72,15 +75,25 @@ class BudianskyFleckKinkBand(FailureCriterion):
 
     Notes
     -----
-    The kink-band knockdown ``1 / (1 + theta / gamma_Y)`` is a **concave**
-    function of the misalignment angle.  By Jensen's inequality, for any
-    random variable theta::
+    The kink-band knockdown ``1 / (1 + theta / gamma_Y)`` is a **convex**
+    function of the misalignment angle
+    (``d^2 KD / d theta^2 = 2 / (gamma_Y^2 (1 + theta/gamma_Y)^3) > 0``).
+    By Jensen's inequality, for a random angle theta::
 
-        E[f(theta)] <= f(E[theta])
+        E[f(theta)] >= f(E[theta])
 
-    meaning that computing the knockdown at the mean angle **overestimates**
-    the mean knockdown (and hence the mean strength).  Typical Jensen gaps
-    are 5-15 % for realistic wrinkle distributions.
+    so the knockdown at the mean angle slightly *underestimates* the mean
+    knockdown.  The gap is small: +0.002 to +0.006 for 20 % angle scatter.
+    What scatter does do is pull the low percentiles down (the 5th
+    percentile sits 0.01-0.06 below the mean-angle value), so read
+    percentiles, not the mean.  ``tests/test_failure/test_kinkband_jensen.py``
+    pins both.
+
+    Elhajjar (2025) measures strength as *concave* in the wrinkle depth
+    ratio D/T, which gives the opposite sign and a fat left tail.  That is
+    a depth effect an angle-only law cannot produce; the penetration gate
+    (:mod:`wrinklefe.core.penetration_gate`) is concave in D/T below its
+    threshold and does.
     """
 
     name = "budiansky_fleck"
