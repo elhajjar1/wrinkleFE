@@ -162,6 +162,69 @@ See the table in [README.md](../../README.md). Current sources:
     This is now fixed: an unset strain follows `loading`, and a
     contradicting one raises. The Dataset I recipe still sets
     `applied_strain` explicitly.
+- **Dataset J — Thor, Mandel, Nagler, Maier, Tauchner, Sause &
+  Hinterhölzl (2021)**, *Int. J. Material Forming* 14:19–37,
+  DOI 10.1007/s12289-020-01540-5 (CC BY 4.0). The **second lab** with
+  severe multidirectional compression (issue #434). IM7/8552 (existing
+  card `IM7_8552`), 0.131 mm plies, quasi-isotropic `[0/45/−45/90]5s`
+  and UD `[0]40`. Sinusoidal waves were moulded on a one-sided female
+  tool, so the whole laminate is wavy (a globally curved coupon):
+  recipe `morphology='uniform'`. Five specimens per configuration,
+  ASTM D6641; Table 3 means.
+  - **Geometry:** wave 1 A = 1.19 mm, L = 27.9 mm (θ = 15.0°,
+    A/t = 0.23); wave 2 A = 0.29 mm, L = 14.5 mm (θ = 7.2°, A/t = 0.06).
+    The methods text gives A₂ = 0.58 mm, but four figure legends and
+    captions and the measured profile (2A = 0.58 mm) give 0.29 mm; with
+    0.58 mm the quasi-isotropic wave 2 analytical error would be −21%
+    instead of −8%.
+  - **Measured strength KD:** quasi-isotropic **0.347** / 0.678; UD
+    0.252 / 0.496. Moduli are in the ledger too (quasi-isotropic
+    0.537 / 1.067, UD 0.490 / 0.846).
+  - **Analytical:** quasi-isotropic wave 1 **+52.1% (unsafe)**, wave 2
+    −7.9%; UD −56.8% / −58.9%. The severe quasi-isotropic miss matches
+    Shi's (+56% / +115%) from an independent lab.
+  - **First-ply FE (ledger recipe, nx = 48):** quasi-isotropic −8.8% /
+    −3.6%; UD −5.0% / +2.2%. Mesh-checked: nx = 72, nz_per_ply = 2 or
+    ny = 4 move it by at most 0.03. The mesh carries the coupon's own
+    waviness, so the FE sees the bending the angle model cannot.
+  - **Blind gate (UD):** moulded preset 0.496 / 0.761 against 0.252 /
+    0.496 measured (+97% / +53%, unsafe); the vacuum-bag preset is
+    further off.
+  - **Mechanism (the paper):** wave 1 fails by bending from the wave
+    geometry, delamination first and then fibre breakage; wave 2 by
+    fibre kinking then delamination. A bending model is issue #439.
+  - **Caveats:** the pristine reference is a thinner planar coupon
+    (16 plies, 2.1 mm, 10 mm wide; 3 specimens for quasi-isotropic)
+    than the 40-ply wavy coupons, so the knockdowns may carry a
+    thickness effect (the quasi-isotropic wave 2 modulus ratio of 1.07
+    points that way); globally curved coupons, not embedded wrinkles.
+- **Dataset K — Pilato, Butler, Trevarthen & Lunt (2022)**,
+  *Materials & Design* 222:111055, DOI 10.1016/j.matdes.2022.111055
+  (CC BY 4.0). The first **naturally occurring** wrinkles: coupons cut
+  from an industrial part. Near-UD carbon `[0₄/0ʷ/0₂/0ʷ/0]` (UD plies
+  0.355 mm, woven 0/90 plies 0.31 mm, 3.1 mm), ASTM D3410. New card
+  `UD_CFRP_PILATO2022` from the paper's Tables 1–3 (E1 115 GPa,
+  Xc 754 MPa). The recipe represents each UD ply as two 0° sub-plies
+  and each woven ply as a 0/90 pair: 18 sub-plies at 3.1/18 mm, 11% at
+  90° against about 10% in the real laminate.
+  - **Geometry:** Side-1 peak-to-peak amplitudes and mean wavelengths
+    (Table 13), which reproduce the paper's Table 14 severities
+    (A/L 0.0147–0.0184, θ 5.3–6.6°). Side 2 is about half as steep
+    (about 3°): the wrinkle varies across the coupon width. The
+    effective wrinkle height (10.8–16.9 mm) exceeds the thickness, so
+    the wrinkle spans it: `morphology='uniform'`.
+  - **Measured strength KD:** 0.586–0.684 (5 coupons), against a
+    pristine mean of 689.9 MPa (4 coupons, CV 2.5%).
+  - **Analytical (kink-band): −77% to −79%**, the same over-
+    conservatism the angle-only law shows on every UD set.
+  - **First-ply FE (ledger recipe, nx = 48): −1.2% to +9.3%.**
+  - **Blind gate:** moulded preset +22% to +36%, vacuum-bag +46% to
+    +70%, both unsafe. The gate reads D/T as amplitude over thickness,
+    about 0.04 here, although the wrinkle penetrates the whole
+    thickness: amplitude ratio and penetration depth are different
+    quantities, and papers rarely report the second.
+  - **Caveats:** one severity cluster; each coupon has its own natural
+    geometry; the material is unnamed; two woven plies approximated.
 
 ### Stiffness / modulus validation
 
@@ -268,9 +331,14 @@ per-case values with wrinkle angle to
   transfer probe.
 
 Headline: on multidirectional compression the analytical model is
-conservative below 10° peak angle (11 cases, 3 labs), where the FE is
-unsafe on 9 of 11. Above 10° both models fail, on different datasets
-(analytical up to +115% on Shi, FE up to +92% on Wang). The guidance
+conservative below 10° peak angle (12 cases, 4 labs), where the FE is
+unsafe on 9 of 12. Above 10° the analytical model is unsafe at high
+amplitude-to-thickness (Shi up to +115%, Thor +52%). The FE is accurate
+there when its mesh reproduces the specimen's geometry (Shi, Thor: −9%
+to −1%) and unsafe on the generic recipes (Wang +92%, Mukhopadhyay
++48%). Datasets J and K add the UD-carbon blind gate test: the shipped
+presets are unsafe on 7 of 10 UD carbon cases. A bending-dominated model
+for the high amplitude-to-thickness regime is issue #439. The guidance
 table, with confidence levels, is in `docs/interpreting_results.md`
 ("Head-to-head: which model, when"). Follow-up data needs are issues
 #434 (severe multidirectional compression), #435 (UD carbon, blind
@@ -279,20 +347,21 @@ gate test) and #436 (tension onset plus ultimate).
 ### Consolidated parity chart
 
 `validation/plot_all_validation.py` renders every single-wrinkle case
-(Datasets A–F plus Datasets H and I) on one predicted-vs-experimental parity
+(Datasets A–F plus Datasets H to K) on one predicted-vs-experimental parity
 plot with a ±20 % corridor, writing
 `validation/fig_all_validation_parity.png`. Each dataset is predicted
 by the model that physically applies to it: multidirectional A–D via
 the analytical Budiansky–Fleck / three-mechanism models run through
-`WrinkleAnalysis`, UD E/F via the penetration gate; Datasets H and I
+`WrinkleAnalysis`, UD E/F via the penetration gate; Datasets H to K
 (no gate preset for their carbon materials) are plotted twice,
 analytical AND first-ply FE LaRC05 retention, both recipe-exact from
 the ledger. This
 is the single cross-dataset predicted-vs-experimental view. Running
 the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
-MAE, 3/3** and **I (analytical): 8.4 %, 1/1** (within ±20 %); overall
-**50 of 62** points sit inside the corridor.
+MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
+MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
+**60 of 80** points sit inside the corridor.
 
 ## Interlaminar (CZM) validation evidence — Phase 7
 

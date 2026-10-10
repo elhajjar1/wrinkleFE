@@ -215,6 +215,33 @@ def fe_larc05_errors_calvo(nx: int = 200) -> dict[str, tuple[float, float, float
     return out
 
 
+#: FE mesh for Datasets J and K (whole-thickness waves, ``uniform``).
+#: Mesh-checked on the first case of each: nx = 72, nz_per_ply = 2 or
+#: ny = 4 move the retention by at most 0.03.
+_JK_FE_MESH = {"nx": 48, "ny": 2, "nz_per_ply": 1}
+
+
+@functools.cache
+def fe_larc05_errors_ledger(prefix: str) -> dict[str, tuple[float, float, float]]:
+    """``{case: (FE knockdown, measured, error %)}`` for one ledger dataset.
+
+    Used for Datasets J (Thor 2021) and K (Pilato 2022), whose ledger
+    recipes are whole-thickness waves (``morphology='uniform'``): the FE
+    mesh carries the coupon's own waviness, so its retention includes the
+    bending that the angle-based model does not see (issue #439).
+    """
+    from validate import case_config
+
+    ledger = json.loads(LEDGER.read_text())
+    ds = next(d for d in ledger["datasets"] if d["name"].startswith(prefix))
+    out = {}
+    for case in ds["cases"]:
+        kd = _fe_retention_kd(case_config(ds, case), **_JK_FE_MESH)
+        meas = float(case["measured_kd"])
+        out[case["case"]] = (kd, meas, _err(kd, meas))
+    return out
+
+
 def fe_larc05_calvo_section() -> None:
     rows = fe_larc05_errors_calvo()
     print("2c. FE LaRC05 strength, Calvo (2023) CFRP tension, Dataset I "
@@ -261,12 +288,17 @@ NOT_APPLICABLE = {
     ("D Wang conc/conv", "gate (fitted)"): _GATE_MD,
     ("H Shi2025 MD comp", "gate (fitted)"): _GATE_MD,
     ("I Calvo2023 MD tens", "gate (fitted)"): _GATE_MD,
+    ("J Thor2021 QI comp", "gate (fitted)"): _GATE_MD,
     ("E Li2024 UD comp", "gate (blind)"):
         "in-sample: the moulded preset was fitted to these cases",
     ("F Li2025 UD comp", "gate (blind)"):
         "in-sample: the vacuum-bag preset was fitted to these cases",
     ("H Shi2025 UD comp", "gate (fitted)"):
         "no preset is calibrated for this carbon (see gate (blind))",
+    ("J Thor2021 UD comp", "gate (fitted)"):
+        "no preset is calibrated for IM7/8552 (see gate (blind))",
+    ("K Pilato2022 UD comp", "gate (fitted)"):
+        "no preset is calibrated for this material (see gate (blind))",
 }
 
 
@@ -358,13 +390,15 @@ def head_to_head() -> list[dict]:
       Mukhopadhyay onset series).
     * **gate (fitted)** -- the shipped preset on the data it was fitted
       to (E, F): a fit quality, not a prediction.
-    * **gate (blind)** -- the shipped presets, unchanged, on Shi (2025)
-      UD carbon, which neither was fitted to. Their ``gamma_Y`` was fitted
-      to glass, so this is a transfer probe; the column holds the
-      moulded-preset value and the CSV also carries the vacuum-bag one.
+    * **gate (blind)** -- the shipped presets, unchanged, on UD carbon
+      neither was fitted to (Shi 2025, Thor 2021, Pilato 2022). Their
+      ``gamma_Y`` was fitted to glass, so this is a transfer probe; the
+      column holds the moulded-preset value and the CSV also carries the
+      vacuum-bag one.
     * **FE LaRC05** -- first-ply retention (:func:`_fe_retention_kd`).
       A-E use the analytical recipe's own inputs; F, H, I reuse sections
-      2, 2b and 2c. In tension it is a first-ply quantity scored against
+      2, 2b and 2c; J and K run their ledger recipes
+      (:func:`fe_larc05_errors_ledger`). In tension it is a first-ply quantity scored against
       the measured ultimate (B, C-tens, I), except the onset series.
     """
     import plot_all_validation as pav
@@ -454,6 +488,33 @@ def head_to_head() -> list[dict]:
             float(case["peak_angle_deg"]), float(case["measured_kd"]),
             analytical=float(an.analytical_knockdown),
             **{"FE LaRC05": fe[case["case"]][0]}))
+
+    from wrinklefe.core.layup import parse_layup
+
+    for prefix, label in (("thor_2021_qi", "J Thor2021 QI comp"),
+                          ("thor_2021_ud", "J Thor2021 UD comp"),
+                          ("pilato_2022", "K Pilato2022 UD comp")):
+        ds = ledger_ds(prefix)
+        fe = fe_larc05_errors_ledger(prefix)
+        thickness = (len(parse_layup(ds["layup"]))
+                     * float(ds["ply_thickness_mm"]))
+        unidirectional = "UD" in label
+        for case in ds["cases"]:
+            an = WrinkleAnalysis(case_config(ds, case)).run(
+                analytical_only=True)
+            theta = float(case["peak_angle_deg"])
+            dt = float(case["amplitude_p2p_mm"]) / 2.0 / thickness
+            r = row(label, case["case"], theta, float(case["measured_kd"]),
+                    dt=dt if unidirectional else None,
+                    analytical=float(an.analytical_knockdown),
+                    **{"FE LaRC05": fe[case["case"]][0]})
+            if unidirectional:
+                r["gate (blind)"] = penetration_gate_kd(
+                    theta, dt, GATE_LI2024_MOULDED)
+                r["gate (blind, vacuum-bag preset)"] = penetration_gate_kd(
+                    theta, dt, GATE_LI2025_VACBAG)
+            rows.append(r)
+
     return rows
 
 
@@ -494,7 +555,7 @@ def head_to_head_section() -> None:
     vac = [_err(r["gate (blind, vacuum-bag preset)"], r["measured"])
            for r in rows if "gate (blind, vacuum-bag preset)" in r]
     print(f"   (gate (blind) is the moulded preset; the vacuum-bag preset on "
-          f"the same Shi UD cases: {min(vac):+.1f} % to {max(vac):+.1f} %)")
+          f"the same UD carbon cases: {min(vac):+.1f} % to {max(vac):+.1f} %)")
     print("   Not applicable:")
     for (d, m), why in NOT_APPLICABLE.items():
         if m != "gate (fitted)" or why != _GATE_MD:

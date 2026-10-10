@@ -3,7 +3,7 @@
 
 Plots every *single-wrinkle* experimental case in the WrinkleFE validation
 database (Datasets A-F of VALIDATION_DATA, plus the ledger's Datasets H
-and I; I is a distributed seven-wave tension case) on one parity axes,
+to K; I is a distributed seven-wave tension case) on one parity axes,
 with the +/-20 % pass corridor around the y = x diagonal.
 
 The point of putting them on one chart is to show, at a glance, that we do
@@ -22,6 +22,10 @@ encodes the dataset:
     AND the first-ply FE LaRC05 retention (X markers), which is the
     measured-checked path for the multidirectional half. The ledger
     recipe drives both, via scripts/validate.py case_config.
+  * Datasets J (Thor 2021, quasi-isotropic + UD IM7/8552) and K
+    (Pilato 2022, near-UD industrial wrinkles) -> shown twice the same
+    way. Both are whole-thickness waves, which the FE mesh reproduces;
+    no gate preset is calibrated for either material.
   * Unidirectional laminates (E, F)          -> the two-parameter
     penetration gate ``KD = 1 - (1 - KD_angle(theta)) * S(D/T) * P(z)``,
     which the angle-only models cannot reproduce (the Li grids vary
@@ -297,6 +301,56 @@ def dataset_I_fe():
     return [(meas, kd) for kd, meas, _e in fe_larc05_errors_calvo().values()]
 
 
+def _ledger_analytical(prefix: str):
+    """A ledger dataset's analytical prediction, recipe-exact."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    from validate import case_config
+
+    ds = _ledger_dataset(prefix)
+    out = []
+    for case in ds["cases"]:
+        res = WrinkleAnalysis(case_config(ds, case)).run(analytical_only=True)
+        out.append((float(case["measured_kd"]),
+                    float(res.analytical_knockdown)))
+    return out
+
+
+def _ledger_fe(prefix: str):
+    """A ledger dataset's first-ply FE LaRC05 retention."""
+    sys.path.insert(0, str(REPO / "validation"))
+    from strength_error_summary import fe_larc05_errors_ledger
+
+    return [(meas, kd)
+            for kd, meas, _e in fe_larc05_errors_ledger(prefix).values()]
+
+
+def dataset_J_qi():
+    """Thor (2021) quasi-isotropic IM7/8552, whole-thickness waves -- BF."""
+    return _ledger_analytical("thor_2021_qi")
+
+
+def dataset_J_ud():
+    """Thor (2021) UD IM7/8552 -- plain BF (no gate preset for IM7/8552)."""
+    return _ledger_analytical("thor_2021_ud")
+
+
+def dataset_K():
+    """Pilato (2022) near-UD industrial wrinkles -- plain BF."""
+    return _ledger_analytical("pilato_2022")
+
+
+def dataset_J_qi_fe():
+    return _ledger_fe("thor_2021_qi")
+
+
+def dataset_J_ud_fe():
+    return _ledger_fe("thor_2021_ud")
+
+
+def dataset_K_fe():
+    return _ledger_fe("pilato_2022")
+
+
 def dataset_H_ud_fe():
     return _dataset_H_fe("H-UD")
 
@@ -324,11 +378,20 @@ DATASETS = {
     "I Calvo2023 MD tens": (dataset_I, "#7f7f7f", "h", "3-mechanism"),
     "I Calvo2023 MD tens (FE)": (dataset_I_fe, "#7f7f7f", "X",
                                  "FE LaRC05 retention"),
+    "J Thor2021 QI comp": (dataset_J_qi, "#393b79", "p", "BF kink-band"),
+    "J Thor2021 QI comp (FE)": (dataset_J_qi_fe, "#393b79", "X",
+                                "FE LaRC05 retention"),
+    "J Thor2021 UD comp": (dataset_J_ud, "#6b6ecf", "p", "BF kink-band"),
+    "J Thor2021 UD comp (FE)": (dataset_J_ud_fe, "#6b6ecf", "X",
+                                "FE LaRC05 retention"),
+    "K Pilato2022 UD comp": (dataset_K, "#e7ba52", "<", "BF kink-band"),
+    "K Pilato2022 UD comp (FE)": (dataset_K_fe, "#e7ba52", "X",
+                                  "FE LaRC05 retention"),
 }
 
 
 def main():
-    fig, ax = plt.subplots(figsize=(8.2, 8.0))
+    fig, ax = plt.subplots(figsize=(12.5, 8.0))
 
     # +/-20 % corridor around the parity diagonal.
     xs = np.linspace(0.0, 1.15, 50)
@@ -361,10 +424,12 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
-    ax.set_title("WrinkleFE validation -- all cases (A-I)\n"
+    ax.set_title("WrinkleFE validation -- all cases (A-K)\n"
                  "marker = method, colour = dataset, band = +/-20 %")
     ax.grid(alpha=0.3)
-    ax.legend(fontsize=7.5, loc="lower right", framealpha=0.95)
+    # 20 series: the legend sits outside the axes so it hides no points.
+    ax.legend(fontsize=7.5, loc="upper left", bbox_to_anchor=(1.02, 1.0),
+              framealpha=0.95)
     fig.tight_layout()
     out = REPO / "validation" / "fig_all_validation_parity.png"
     fig.savefig(out, dpi=300)

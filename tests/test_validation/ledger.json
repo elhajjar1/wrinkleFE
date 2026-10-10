@@ -317,6 +317,165 @@
         }
       ],
       "applied_strain": 0.01
+    },
+    {
+      "name": "thor_2021_qi_im7_compression",
+      "status": "active - Dataset J (quasi-isotropic half). Second-lab severe multidirectional compression (issue #434). See VALIDATION.md 'Dataset J'.",
+      "layup": "[0/45/-45/90]_5s",
+      "pristine_strength_MPa": 686.4,
+      "pristine_modulus_GPa": 62.2,
+      "material": "IM7_8552",
+      "ply_thickness_mm": 0.131,
+      "loading": "compression",
+      "morphology": "uniform",
+      "reference": "Thor, Mandel, Nagler, Maier, Tauchner, Sause & Hinterhoelzl (2021), Int. J. Material Forming 14:19-37, DOI 10.1007/s12289-020-01540-5 (CC BY 4.0)",
+      "amplitude_convention": "config amplitude = A, the half peak-to-peak amplitude of the paper's Fig. 1 (2A); amplitude_p2p_mm = 2A.",
+      "width_convention": "config width = wavelength (one sinusoidal wave of length L; matches the Li 2025 / Hsiao-Daniel recipe).",
+      "geometry_note": "Waves were moulded on a one-sided female metal tool, so the WHOLE laminate (both surfaces) follows the sine: a globally curved coupon, modelled as morphology='uniform'. Wave 1: A = 1.19 mm, L = 27.9 mm. Wave 2: the methods text gives A2 = 0.58 mm, but Figs. 7, 8, 16 and 20 give A = 0.29 mm and the measured profile in Fig. 10b shows 2A = 0.58 mm, so A = 0.29 mm is used; with A = 0.58 mm the peak angle would be 14.1 deg instead of 7.2 deg. Wavy coupons are 40 plies (5.1 mm), 25 mm wide (QI) or 10 mm (UD); the 0.131 mm data-sheet ply gives 5.24 mm.",
+      "baseline_note": "Measured strengths and moduli are Table 3 means of 5 specimens per wave. The pristine reference is a THINNER planar coupon: 16 plies (2.1 mm), 10 mm wide, 3 specimens (QI) or 5 (UD). Knockdowns are wavy / reference as published, so they may carry a thickness effect.",
+      "failure_note": "Thor et al. report that wave 1 (A/t = 0.23) fails by bending from the wave geometry: delamination first, then fibre breakage. Wave 2 (A/t = 0.06) fails by fibre kinking followed by delamination. See issue #439.",
+      "cases": [
+        {
+          "case": "J-QI-1",
+          "amplitude_p2p_mm": 2.38,
+          "wavelength_mm": 27.9,
+          "peak_angle_deg": 15.0,
+          "measured_strength_MPa": 237.9,
+          "measured_kd": 0.3466,
+          "measured_kd_modulus": 0.537,
+          "note": "wave 1, Table 3: 237.9 MPa, E 33.4 GPa vs reference 686.4 MPa, 62.2 GPa.",
+          "expected_analytical_kd": 0.5271,
+          "expected_analytical_modulus_kd": 0.77795
+        },
+        {
+          "case": "J-QI-2",
+          "amplitude_p2p_mm": 0.58,
+          "wavelength_mm": 14.5,
+          "peak_angle_deg": 7.2,
+          "measured_strength_MPa": 465.7,
+          "measured_kd": 0.6785,
+          "measured_kd_modulus": 1.0675,
+          "note": "wave 2, Table 3: 465.7 MPa, E 66.4 GPa. The modulus ratio above 1 points to the thinner reference coupon.",
+          "expected_analytical_kd": 0.62499,
+          "expected_analytical_modulus_kd": 0.93315
+        }
+      ]
+    },
+    {
+      "name": "thor_2021_ud_im7_compression",
+      "status": "active - Dataset J (UD half). UD carbon at two severities; no penetration-gate preset is calibrated for IM7/8552 (issue #435). See VALIDATION.md 'Dataset J'.",
+      "layup": "[0]_40",
+      "pristine_strength_MPa": 1322.3,
+      "pristine_modulus_GPa": 160.6,
+      "material": "IM7_8552",
+      "ply_thickness_mm": 0.131,
+      "loading": "compression",
+      "morphology": "uniform",
+      "reference": "Thor, Mandel, Nagler, Maier, Tauchner, Sause & Hinterhoelzl (2021), Int. J. Material Forming 14:19-37, DOI 10.1007/s12289-020-01540-5 (CC BY 4.0)",
+      "amplitude_convention": "config amplitude = A, the half peak-to-peak amplitude of the paper's Fig. 1 (2A); amplitude_p2p_mm = 2A.",
+      "width_convention": "config width = wavelength (one sinusoidal wave of length L; matches the Li 2025 / Hsiao-Daniel recipe).",
+      "geometry_note": "Waves were moulded on a one-sided female metal tool, so the WHOLE laminate (both surfaces) follows the sine: a globally curved coupon, modelled as morphology='uniform'. Wave 1: A = 1.19 mm, L = 27.9 mm. Wave 2: the methods text gives A2 = 0.58 mm, but Figs. 7, 8, 16 and 20 give A = 0.29 mm and the measured profile in Fig. 10b shows 2A = 0.58 mm, so A = 0.29 mm is used; with A = 0.58 mm the peak angle would be 14.1 deg instead of 7.2 deg. Wavy coupons are 40 plies (5.1 mm), 25 mm wide (QI) or 10 mm (UD); the 0.131 mm data-sheet ply gives 5.24 mm.",
+      "baseline_note": "Measured strengths and moduli are Table 3 means of 5 specimens per wave. The pristine reference is a THINNER planar coupon: 16 plies (2.1 mm), 10 mm wide, 3 specimens (QI) or 5 (UD). Knockdowns are wavy / reference as published, so they may carry a thickness effect.",
+      "failure_note": "Thor et al. report that wave 1 (A/t = 0.23) fails by bending from the wave geometry: delamination first, then fibre breakage. Wave 2 (A/t = 0.06) fails by fibre kinking followed by delamination. See issue #439.",
+      "cases": [
+        {
+          "case": "J-UD-1",
+          "amplitude_p2p_mm": 2.38,
+          "wavelength_mm": 27.9,
+          "peak_angle_deg": 15.0,
+          "measured_strength_MPa": 333.5,
+          "measured_kd": 0.2522,
+          "measured_kd_modulus": 0.49,
+          "note": "wave 1, Table 3: 333.5 MPa, E 78.7 GPa vs reference 1322.3 MPa, 160.6 GPa.",
+          "expected_analytical_kd": 0.1089,
+          "expected_analytical_modulus_kd": 0.69824
+        },
+        {
+          "case": "J-UD-2",
+          "amplitude_p2p_mm": 0.58,
+          "wavelength_mm": 14.5,
+          "peak_angle_deg": 7.2,
+          "measured_strength_MPa": 655.5,
+          "measured_kd": 0.4957,
+          "measured_kd_modulus": 0.8462,
+          "note": "wave 2, Table 3: 655.5 MPa, E 135.9 GPa.",
+          "expected_analytical_kd": 0.20381,
+          "expected_analytical_modulus_kd": 0.91
+        }
+      ]
+    },
+    {
+      "name": "pilato_2022_ud_industrial_compression",
+      "status": "active - Dataset K. Naturally occurring (industrial) wrinkles in a near-UD carbon laminate; one severity cluster (5-7 deg). No gate preset is calibrated for this material (issue #435). See VALIDATION.md 'Dataset K'.",
+      "reference": "Pilato, Butler, Trevarthen & Lunt (2022), Materials & Design 222:111055, DOI 10.1016/j.matdes.2022.111055 (CC BY 4.0)",
+      "material": "UD_CFRP_PILATO2022",
+      "layup": "[0_8/0/90/0_4/0/90/0_2]",
+      "ply_thickness_mm": 0.17222,
+      "loading": "compression",
+      "morphology": "uniform",
+      "pristine_strength_MPa": 689.9,
+      "amplitude_convention": "amplitude_p2p_mm = the mean of the Side-1 top and bottom peak-to-peak amplitudes (Table 13); config amplitude = half. This reproduces the paper's own Table 14 severities A/L.",
+      "width_convention": "wavelength_mm = the mean of the Side-1 and Side-2 wavelengths (Table 13); config width = wavelength.",
+      "geometry_note": "Laminate [0_4/0w/0_2/0w/0], UD plies 0.355 mm and woven 0/90 plies 0.31 mm, 3.1 mm thick, 10 mm wide, 15 mm gauge (ASTM D3410). The recipe uses one UD card: each UD ply becomes two 0-deg sub-plies and each woven ply a 0/90 pair, 18 sub-plies at 3.1/18 mm (11% at 90 deg vs about 10% in the real laminate). Wrinkles are natural, from an industrial part: each coupon's geometry differs. Side 2 amplitudes are about half of Side 1 (peak angles about 3 deg vs 5-7 deg); the paper's severities use Side 1. The effective wrinkle height h = 10.8-16.9 mm exceeds the 3.1 mm thickness, so the wrinkle spans the whole thickness: morphology='uniform'.",
+      "baseline_note": "Pristine = mean of coupons #1-#4 (712.9, 678.5, 692.4, 675.8 MPa; CV 2.5%). No moduli are tabulated.",
+      "failure_note": "The paper's FE model fails the pristine coupons by fibre compression and the wrinkled ones by delamination; post-test inspection found delaminations and fibre breakage through the thickness.",
+      "cases": [
+        {
+          "case": "K-6",
+          "amplitude_p2p_mm": 0.255,
+          "wavelength_mm": 8.685,
+          "peak_angle_deg": 5.3,
+          "measured_strength_MPa": 471.7,
+          "measured_kd": 0.6837,
+          "note": "Table 12: 471.7 MPa; Table 13 Side 1 2A 0.214/0.296 mm, L 8.55/8.82 mm.",
+          "expected_analytical_kd": 0.15506,
+          "expected_analytical_modulus_kd": 0.94399
+        },
+        {
+          "case": "K-7",
+          "amplitude_p2p_mm": 0.2465,
+          "wavelength_mm": 7.83,
+          "peak_angle_deg": 5.6,
+          "measured_strength_MPa": 458.8,
+          "measured_kd": 0.665,
+          "note": "Table 12: 458.8 MPa; Table 13 Side 1 2A 0.283/0.21 mm, L 8.01/7.65 mm.",
+          "expected_analytical_kd": 0.1466,
+          "expected_analytical_modulus_kd": 0.93621
+        },
+        {
+          "case": "K-8",
+          "amplitude_p2p_mm": 0.297,
+          "wavelength_mm": 8.55,
+          "peak_angle_deg": 6.2,
+          "measured_strength_MPa": 404.5,
+          "measured_kd": 0.5863,
+          "note": "Table 12: 404.5 MPa; Table 13 Side 1 2A 0.324/0.27 mm, L 8.55/8.55 mm.",
+          "expected_analytical_kd": 0.13536,
+          "expected_analytical_modulus_kd": 0.92355
+        },
+        {
+          "case": "K-9",
+          "amplitude_p2p_mm": 0.3055,
+          "wavelength_mm": 8.3,
+          "peak_angle_deg": 6.6,
+          "measured_strength_MPa": 417.3,
+          "measured_kd": 0.6049,
+          "note": "Table 12: 417.3 MPa; Table 13 Side 1 2A 0.329/0.282 mm, L 8.3/8.3 mm.",
+          "expected_analytical_kd": 0.12912,
+          "expected_analytical_modulus_kd": 0.91508
+        },
+        {
+          "case": "K-10",
+          "amplitude_p2p_mm": 0.2605,
+          "wavelength_mm": 8.08,
+          "peak_angle_deg": 5.8,
+          "measured_strength_MPa": 426.8,
+          "measured_kd": 0.6186,
+          "note": "Table 12: 426.8 MPa; Table 13 Side 1 2A 0.261/0.26 mm, L 7.36/8.8 mm.",
+          "expected_analytical_kd": 0.1438,
+          "expected_analytical_modulus_kd": 0.93334
+        }
+      ]
     }
   ],
   "progressive_damage": {

@@ -73,13 +73,40 @@ version produced a given file.
     hold.
   - The shipped gate presets do not transfer to UD carbon: −20% with
     the moulded preset, +22% to +40% with the vacuum-bag one.
+- Validation — **Datasets J and K: a second lab for severe
+  multidirectional compression, and the first naturally occurring
+  wrinkles** (issue #434).
+  - **J, Thor et al. (2021)**, *Int. J. Material Forming* 14:19–37
+    (CC BY): IM7/8552 quasi-isotropic `[0/45/−45/90]5s` and UD `[0]40`
+    with whole-thickness sinusoidal waves (15.0° and 7.2°). Measured
+    strength KD: quasi-isotropic 0.347 / 0.678, UD 0.252 / 0.496.
+  - **K, Pilato et al. (2022)**, *Materials & Design* 222:111055
+    (CC BY): coupons cut from an industrial part, near-UD carbon with
+    two woven plies, natural wrinkles at 5–7°, KD 0.59–0.68. New card
+    `UD_CFRP_PILATO2022`.
+  - Three new ledger datasets with pinned analytical and modulus
+    baselines (existing datasets untouched); parity chart now 60 of 80
+    in band, legend moved outside the axes; head-to-head (section 4)
+    covers J and K, including the blind gate on their UD halves.
+  - **Findings.** The analytical model is +52% unsafe on Thor's severe
+    quasi-isotropic wave, the same high amplitude-to-thickness pattern
+    as Shi's, from an independent lab. Thor attribute it to bending
+    of the wavy coupon (delamination, then fibre breakage). First-ply
+    FE on the specimen's own geometry is within −9% to +9% on all nine
+    J and K cases. The shipped gate presets are unsafe on 7 of 10 UD
+    carbon cases (up to +97%). A bending-dominated model for this
+    regime is issue #439.
+  - `docs/interpreting_results.md` guidance table updated:
+    multidirectional compression above 10° now names FE on the measured
+    profile; UD carbon moves from Low to Low–moderate confidence.
 
 ### Changed
 - `FE_STRENGTH_CAVEAT` (app warning and NCR summary) no longer says the
   FE "ran conservative" on multidirectional laminates. It now says the
-  FE has erred both ways there: about −8% to −1% on one study,
-  over-predicting retained strength by up to about 90% on three others.
-  The README's FE note says the same. A slow test pins the new claim.
+  FE has erred both ways there: about −9% to −1% on two studies (Shi
+  and Thor), over-predicting retained strength by up to about 90% on
+  three others. The README's FE note says the same. Slow tests pin both
+  claims.
 
 ### Fixed
 - Docs — **the kink-band docstrings called the law concave.**

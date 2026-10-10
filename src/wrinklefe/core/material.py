@@ -6,7 +6,7 @@ This module provides:
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.
 - MaterialLibrary: A registry of named materials with JSON serialisation and
-  eleven built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
+  fourteen built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
 
 Compliance and stiffness matrices follow standard Voigt notation
 (11, 22, 33, 23, 13, 12) consistent with most composite-mechanics texts.
@@ -557,7 +557,7 @@ class OrthotropicMaterial:
 class MaterialLibrary:
     """Named collection of :class:`OrthotropicMaterial` instances.
 
-    Provides eleven built-in fibre-reinforced composite systems (carbon,
+    Provides fourteen built-in fibre-reinforced composite systems (carbon,
     S-glass, and aramid / epoxy) plus an isotropic neat-epoxy card for the
     resin-pocket zone, and supports JSON serialisation for user-defined
     materials.
@@ -570,6 +570,8 @@ class MaterialLibrary:
     - ``T700_2510`` : Toray T700SC / Cytec 2510 (OOA VBO system)
     - ``T700_SHI2025`` : T700-class CFRP of Shi et al. (2025), Materials
       18:4503 (wrinkled-laminate compression; Dataset H)
+    - ``UD_CFRP_PILATO2022`` : industrial UD carbon / epoxy ply of Pilato
+      et al. (2022), Materials & Design 222:111055 (Dataset K)
     - ``AC318_S6C10`` : AC318 / S6C10-800 S-glass / epoxy, *moulded*
       realization (Li et al. 2026)
     - ``AC318_S6C10_vacbag`` : same prepreg, *vacuum-bag* realization
@@ -596,7 +598,7 @@ class MaterialLibrary:
     ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
      'IM10_8552', 'IM6G_3501_6', 'IM7_8552', 'KEVLAR49_EPOXY',
      'M21E_IMA', 'S2_GLASS_EPOXY', 'T300_914', 'T700_2510',
-     'T700_SHI2025', 'T800S_M21']
+     'T700_SHI2025', 'T800S_M21', 'UD_CFRP_PILATO2022']
     """
 
     def __init__(self) -> None:
@@ -824,6 +826,33 @@ class MaterialLibrary:
             gamma_Y=0.02,
             GIc=0.25, GIIc=0.90, alpha_0=53.0,
             sigma_max=50.0, tau_max=75.0,
+        ))
+
+        # 4c. Industrial UD CFRP of Pilato et al. (2022)  (Dataset K).
+        #     Unnamed industrial carbon/epoxy UD ply from Tables 1-3 of
+        #     Pilato, Butler, Trevarthen & Lunt (2022), Materials & Design
+        #     222:111055, DOI 10.1016/j.matdes.2022.111055 (CC BY): E1 115,
+        #     E2 7.5, G12 3.2, G23 2.59 GPa, nu12 0.30, nu23 0.45; Xt 1873,
+        #     Xc 754, Yt 42, Yc 213, S12 77 MPa (Table 3); delamination
+        #     properties sigma_I 42, sigma_II 73 MPa, GIc 0.26, GIIc 1.002
+        #     N/mm (Table 2).  The laminate also has two woven 0/90 plies
+        #     (E 63 GPa, Xc 370 MPa); the Dataset K recipe models each as a
+        #     0/90 pair of this UD card.  Not reported, so generic: Z = Y,
+        #     S13 = S12, S23 estimated, CTEs typical CFRP.
+        self.add(OrthotropicMaterial(
+            name="UD_CFRP_PILATO2022",
+            E1=115_000.0, E2=7_500.0, E3=7_500.0,
+            G12=3_200.0, G13=3_200.0, G23=2_590.0,
+            nu12=0.30, nu13=0.30, nu23=0.45,
+            Xt=1_873.0, Xc=754.0,
+            Yt=42.0, Yc=213.0,
+            Zt=42.0, Zc=213.0,
+            S12=77.0, S13=77.0, S23=60.0,
+            alpha1=-0.4e-6, alpha2=28.0e-6, alpha3=28.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.02,
+            GIc=0.26, GIIc=1.002, alpha_0=53.0,
+            sigma_max=42.0, tau_max=73.0,
         ))
 
         # 5. AC318 / S6C10-800  (S-glass fiber / epoxy, Li et al. 2026)

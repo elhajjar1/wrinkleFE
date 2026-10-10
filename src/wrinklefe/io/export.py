@@ -607,9 +607,9 @@ FE_STRENGTH_CAVEAT = (
     "while under-predicting the milder ones: it responds to a wrinkle's "
     "angle but not its size, so it cannot tell a severe wrinkle from a mild "
     "one at the same angle. On multidirectional laminates in compression "
-    "it has erred both ways: about -8% to -1% (conservative) on one CFRP "
-    "study, but over-predicting retained strength on three others, by up "
-    "to about 90%."
+    "it has erred both ways: about -9% to -1% (conservative) on two CFRP "
+    "studies, but over-predicting retained strength on three others, by "
+    "up to about 90%."
 )
 
 PROGRESSIVE_DAMAGE_CAVEAT = (

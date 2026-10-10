@@ -30,7 +30,8 @@ from wrinklefe.core.material import MaterialLibrary
 # issue #88 roster; ``EPOXY_S6C10`` is the isotropic neat-epoxy card
 # added for the resin-pocket zone (Li 2024/2025 UD glass datasets);
 # ``T700_SHI2025`` is the Shi et al. (2025) Dataset H vendor card;
-# ``M21E_IMA`` is the Calvo et al. (2023) Dataset I measured card.
+# ``M21E_IMA`` is the Calvo et al. (2023) Dataset I measured card;
+# ``UD_CFRP_PILATO2022`` is the Pilato et al. (2022) Dataset K card.
 EXPECTED_BUILTIN_NAMES = frozenset({
     "AC318_S6C10",
     "AS4_3501_6",
@@ -42,6 +43,7 @@ EXPECTED_BUILTIN_NAMES = frozenset({
     "T700_2510",
     "T700_SHI2025",
     "M21E_IMA",
+    "UD_CFRP_PILATO2022",
     "T800S_M21",
     "IM6G_3501_6",
     "EPOXY_S6C10",
