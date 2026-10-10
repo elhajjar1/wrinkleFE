@@ -99,6 +99,26 @@ version produced a given file.
   - `docs/interpreting_results.md` guidance table updated:
     multidirectional compression above 10° now names FE on the measured
     profile; UD carbon moves from Low to Low–moderate confidence.
+- Validation — **bending-mode investigation** (issue #439):
+  `validation/bending_mode_study.py` measures each compression case's
+  load-path eccentricity e/t. That is the offset of the section's
+  stiffness-weighted centroid at the wrinkle, read from the case's own
+  generated mesh. The study writes `validation/bending_mode_cases.csv`.
+  Write-up: `docs/internal/BENDING_MODE_INVESTIGATION.md`, published as
+  a docs page.
+  - The deployed analytical model is never more than 15% unsafe below
+    e/t = 0.10 (39 cases). Above e/t = 0.15 it is unsafe on 7 of 8,
+    where first-ply FE on the specimen geometry is never unsafe (−40%
+    to −1%). Using the deployed model below 0.10 and FE above cuts the
+    more-than-15%-unsafe cases from 6 to 1, and the worst miss from
+    +115% to +20%.
+  - A closed-form eccentric-column knockdown fixes the whole-thickness
+    waves (Thor +52% → +15%, Elhajjar +30% → +10%) but not Shi's
+    one-sided trough, so it is not shipped.
+  - Recommendation: report e/t with an out-of-regime flag; prefer FE on
+    the measured profile above the threshold. No shipped prediction
+    changes. The `interpreting_results` guidance gains an eccentricity
+    row.
 
 ### Changed
 - `FE_STRENGTH_CAVEAT` (app warning and NCR summary) no longer says the

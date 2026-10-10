@@ -19,6 +19,7 @@ theory
 api/index
 validation
 wrinkle_modeling_findings
+bending_mode_investigation
 architecture
 deployment_streamlit
 contributing
