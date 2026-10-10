@@ -367,6 +367,7 @@ sources behind each row, not the size of the errors.
 |---|---|---|---|
 | Multidirectional compression, peak angle < 10° | Analytical kink-band. FE is unsafe here (9 of 12). | 12 cases, 4 labs | **Moderate** |
 | Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness (Shi up to +115%, Thor +52%). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | **Low**: issues #434, #439 |
+| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. Below e/t = 0.10 the reverse holds. See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | **Low–moderate**: issue #439 |
 | Multidirectional tension, ultimate | Analytical three-mechanism. | 11 cases, 3 labs; no unsafe miss above 10° | **Moderate** |
 | Tension, damage onset | FE first ply is closer (MAE 10% vs 15%), but unsafe on 2 of 3. | 3 cases, 1 lab | **Low**: issue #436 |
 | UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | **Fit only** |
