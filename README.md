@@ -1183,20 +1183,20 @@ possible — their raw data are not included.
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every case (Datasets A–F plus Datasets H and I) against
+plot of every case (Datasets A–F plus Datasets H to K) against
 a ±20% band, with each dataset predicted by the model that physically
 applies to it (Budiansky–Fleck / three-mechanism for the
 multidirectional cases A–D, the penetration gate for the UD cases E/F;
-Datasets H and I, which have no gate preset, are plotted twice —
-analytical and first-ply FE LaRC05 retention). 50 of the 62 points fall
-inside the band. Of the twelve outside it, eight are conservative (four
-legacy, Dataset H's three UD FE points and Dataset I's FE point); the
-four that are
-not are the most severe compression wrinkle in dataset A (+30%) and the
-analytical predictions for Dataset H's severe cases (+26% UD; +56% and
-+115% on the multidirectional half, where the FE retention path is
-within −8% to −1% — the reason the docs steer multidirectional strength
-reads to the FE).
+Datasets H to K, which have no gate preset, are plotted twice —
+analytical and first-ply FE LaRC05 retention). 60 of the 80 points fall
+inside the band. Of the twenty outside it, fifteen are conservative,
+seven of them the kink-band on UD carbon (Datasets J and K). The five
+that are not are all high amplitude-to-thickness compression cases: the
+most severe wrinkle in dataset A (+30%), Dataset H's severe cases (+26%
+UD; +56% and +115% multidirectional) and Thor's severe quasi-isotropic
+wave in Dataset J (+52%). On the H and J cases the FE retention, run on
+the specimen's own geometry, is within −9% to −1%; a bending-dominated
+model for this regime is issue #439.
 
 > **FE strength is indicative, not an allowable.** The analytical
 > knockdown (the penetration gate for UD) is the validated strength path.
@@ -1208,8 +1208,9 @@ reads to the FE).
 > the four milder ones), and the progressive-damage model over-predicted
 > the most severe wrinkle by +24% (+42% on a refined mesh). On
 > multidirectional laminates in compression FE LaRC05 has erred both
-> ways: conservative (−8% to −1%) on Shi et al. 2025 (Dataset H), but
-> unsafe on Datasets A, C and D, by up to +92% (the head-to-head in
+> ways: conservative (−9% to −1%) on Shi et al. 2025 and Thor et al.
+> 2021 (Datasets H and J), but unsafe on Datasets A, C and D, by up to
+> +92% (the head-to-head in
 > `validation/strength_error_summary.py`, section 4); the progressive
 > model has no multidirectional check. The app and the NCR summary show this
 > warning beside the FE numbers; the per-case figures are in
@@ -1383,6 +1384,8 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 - Shi, J., Yang, G., Sun, N., Zheng, J., Qian, J., Wang, W. & Song, K. (2025). Materials, 18:4503. https://doi.org/10.3390/ma18194503 (Dataset H)
 - Luong, H.M., Trevarthen, J., Butler, R., Srisuriyachot, J. & Lunt, A.J.G. (2025). Composites Part B, 307:112818. https://doi.org/10.1016/j.compositesb.2025.112818 (review; knockdown context)
 - Calvo, J.V., Quiñonero-Moya, A.R., Feito, N., Miguélez, M.H. et al. (2023). Composite Structures, 323:117498. https://doi.org/10.1016/j.compstruct.2023.117498 (Dataset I)
+- Thor, M., Mandel, U., Nagler, M., Maier, F., Tauchner, J., Sause, M.G.R. & Hinterhölzl, R.M. (2021). International Journal of Material Forming, 14:19-37. https://doi.org/10.1007/s12289-020-01540-5 (Dataset J)
+- Pilato, N.R., Butler, R., Trevarthen, J. & Lunt, A.J.G. (2022). Materials & Design, 222:111055. https://doi.org/10.1016/j.matdes.2022.111055 (Dataset K)
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

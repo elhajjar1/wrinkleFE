@@ -288,7 +288,7 @@ def test_the_multidirectional_claim_still_holds():
     # conservative floor collapsing) escapes these bands.
     assert -15.0 <= min(md.values()) <= -3.0, rows
     assert -6.0 <= max(md.values()) <= 4.0, rows
-    assert "about -8% to -1% (conservative) on one CFRP" in FE_STRENGTH_CAVEAT
+    assert "about -9% to -1% (conservative) on two CFRP" in FE_STRENGTH_CAVEAT
     # The UD half stays conservative (the FE sees the steep local
     # stress concentration this short-span wrinkle produces).
     assert all(e < 0.0 for e in ud.values()), rows
@@ -318,3 +318,21 @@ def test_the_multidirectional_overprediction_claim_still_holds():
     # ... and the worst sits near the quoted ~90% (measured +92.3%).
     assert 80.0 <= max(worst.values()) <= 100.0, worst
     assert "by up to about 90%" in FE_STRENGTH_CAVEAT
+
+
+@pytest.mark.slow
+def test_the_second_conservative_multidirectional_study_still_holds():
+    """Two FE solves (Dataset J, Thor 2021, quasi-isotropic). The caveat
+    says the FE ran conservative on TWO multidirectional studies, about
+    -9% to -1%: Shi (above) and Thor. If the FE path changes, this fails
+    and the caveat is rewritten to match."""
+    sys.path.insert(0, str(_ROOT / "validation"))
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import strength_error_summary as ses
+
+    rows = ses.fe_larc05_errors_ledger("thor_2021_qi")
+    errs = [e for _kd, _m, e in rows.values()]
+    assert len(errs) == 2
+    # Measured -8.8 % and -3.6 %, with headroom for platform noise.
+    assert -15.0 <= min(errs) <= -3.0, rows
+    assert max(errs) <= 0.5, rows

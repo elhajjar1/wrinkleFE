@@ -13,3 +13,7 @@ Expected contents (not committed):
   (CC BY 4.0, may be committed explicitly if ever wanted).
 - `Calvo_2023_CompositeStructures_323_117498_distributed_waviness.pdf`
   — candidate Dataset I (tension, distributed waviness; © Elsevier).
+- `Thor_2021_IntJMaterForm_14_19_out_of_plane_waviness_IM7-8552.pdf`
+  — Dataset J (CC BY 4.0).
+- `Pilato_2022_MaterDes_222_111055_industrial_wrinkles.pdf` — Dataset K
+  (CC BY 4.0).

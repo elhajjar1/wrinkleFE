@@ -166,6 +166,7 @@ BUILTIN_NAMES = (
     "T700_2510",
     "T700_SHI2025",
     "M21E_IMA",
+    "UD_CFRP_PILATO2022",
     "AC318_S6C10",
     "T800S_M21",
     "IM10_8552",
