@@ -1183,20 +1183,22 @@ possible — their raw data are not included.
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every case (Datasets A–F plus Datasets H to K) against
+plot of every case (Datasets A–F plus Datasets H to L) against
 a ±20% band, with each dataset predicted by the model that physically
 applies to it (Budiansky–Fleck / three-mechanism for the
 multidirectional cases A–D, the penetration gate for the UD cases E/F;
-Datasets H to K, which have no gate preset, are plotted twice —
-analytical and first-ply FE LaRC05 retention). 60 of the 80 points fall
-inside the band. Of the twenty outside it, fifteen are conservative,
-seven of them the kink-band on UD carbon (Datasets J and K). The five
-that are not are all high amplitude-to-thickness compression cases: the
-most severe wrinkle in dataset A (+30%), Dataset H's severe cases (+26%
-UD; +56% and +115% multidirectional) and Thor's severe quasi-isotropic
-wave in Dataset J (+52%). On the H and J cases the FE retention, run on
-the specimen's own geometry, is within −9% to −1%; a bending-dominated
-model for this regime is issue #439.
+Datasets H to L, which have no gate preset, are plotted twice —
+analytical and first-ply FE LaRC05 retention). 68 of the 116 points fall
+inside the band. Of the 48 outside it, 35 are conservative, 22 of them the
+kink-band on UD carbon (Datasets J, K and L). The 13 that are not:
+- five analytical points, all high amplitude-to-thickness compression
+  cases: the most severe wrinkle in Dataset A (+30%), Dataset H's severe
+  cases (+26% UD; +56% and +115% multidirectional) and Thor's severe
+  quasi-isotropic wave in Dataset J (+52%). On the H and J cases the FE
+  retention, run on the specimen's own geometry, is within −9% to −1%.
+  A bending-dominated model for this regime is issue #439.
+- eight FE points on Dataset L, chiefly its embedded (WM) wrinkles, by up
+  to +100%.
 
 > **FE strength is indicative, not an allowable.** The analytical
 > knockdown (the penetration gate for UD) is the validated strength path.
@@ -1386,6 +1388,7 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 - Calvo, J.V., Quiñonero-Moya, A.R., Feito, N., Miguélez, M.H. et al. (2023). Composite Structures, 323:117498. https://doi.org/10.1016/j.compstruct.2023.117498 (Dataset I)
 - Thor, M., Mandel, U., Nagler, M., Maier, F., Tauchner, J., Sause, M.G.R. & Hinterhölzl, R.M. (2021). International Journal of Material Forming, 14:19-37. https://doi.org/10.1007/s12289-020-01540-5 (Dataset J)
 - Pilato, N.R., Butler, R., Trevarthen, J. & Lunt, A.J.G. (2022). Materials & Design, 222:111055. https://doi.org/10.1016/j.matdes.2022.111055 (Dataset K)
+- Krishnappa, S. & Gururaja, S. (2024). Composites Part B, 284:111688. https://doi.org/10.1016/j.compositesb.2024.111688 (Dataset L)
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

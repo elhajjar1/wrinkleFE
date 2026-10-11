@@ -17,3 +17,5 @@ Expected contents (not committed):
   — Dataset J (CC BY 4.0).
 - `Pilato_2022_MaterDes_222_111055_industrial_wrinkles.pdf` — Dataset K
   (CC BY 4.0).
+- `Krishnappa_2024_CompositesB_284_111688_embedded_wrinkles_UD_CFRP.pdf`
+  — Dataset L (© Elsevier).

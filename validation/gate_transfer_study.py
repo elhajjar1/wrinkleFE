@@ -2,15 +2,21 @@
 """Issue #435: does the penetration gate transfer to UD carbon?
 
 The two shipped gate presets were fitted to one S-glass prepreg (Li 2024
-moulded, Li 2025 vacuum-bag). Three UD carbon datasets in the ledger were
-fitted by neither: Shi et al. (2025), Thor et al. (2021) and Pilato et al.
-(2022), 10 cases in all. This study asks:
+moulded, Li 2025 vacuum-bag). Four UD carbon datasets in the ledger were
+fitted by neither: Shi et al. (2025), Thor et al. (2021), Pilato et al.
+(2022) and Krishnappa & Gururaja (2024), 28 cases in all. This study
+asks:
 
 1. **Blind.** Do the shipped presets, unchanged, predict them?
 2. **One-test calibration.** Keep a preset's *shape* (its penetration
    transition ``dt0`` and exponent ``p``) and re-fit only ``gamma_Y`` to a
    single wrinkled test of the new material; how well does that predict
    the material's other cases? Every case is used as the anchor in turn.
+
+On the three small carbon sets (2-5 cases each) the answer looked good;
+on Krishnappa & Gururaja's 18 configurations of one material it is no:
+``gamma_Y`` is not a material constant once the wrinkle's position and
+width vary as well as its angle and depth.
 
 The gate's ``gamma_Y`` is a fitted parameter, not the material's matrix
 yield strain: the presets carry 0.26 and 0.62 for the same glass system,
@@ -42,6 +48,7 @@ CARBON_DATASETS = (
     ("shi_2025_ud", "H Shi (2025)"),
     ("thor_2021_ud", "J Thor (2021)"),
     ("pilato_2022", "K Pilato (2022)"),
+    ("krishnappa_2024", "L Krishnappa (2024)"),
 )
 
 
@@ -143,24 +150,22 @@ def main() -> None:
         print(f"   {name:10s} {'all':16s} unsafe {sum(x > 0.5 for x in allerr)}"
               f"/{len(allerr)}, worst {max(allerr):+.1f}%")
 
-    print("\n2. One-test calibration: re-fit gamma_Y on one case, predict the "
-          "rest (every case as anchor)")
+    print("\n2. One-test calibration: re-fit gamma_Y on one case of a "
+          "material, predict its other cases (every case as anchor)")
     for name, shape in presets:
-        allerr, failed_total = [], 0
         for label, cases in data.items():
             errs, gammas, failed = anchored_errors(cases, shape)
-            allerr += errs
-            failed_total += failed
-            gtxt = ", ".join(f"{g:.3f}" for g in gammas) or "none"
-            print(f"   {name:10s} {label:16s} gamma_Y {gtxt}"
-                  + (f"  ({failed} anchor(s) unreachable)" if failed else ""))
-        if allerr:
-            print(f"   {name:10s} {'all':16s} {len(allerr)} predictions: "
-                  f"MAE {statistics.mean(abs(x) for x in allerr):.1f}%, "
-                  f"range {min(allerr):+.1f}..{max(allerr):+.1f}%, "
-                  f"> +15 %: {sum(x > 15 for x in allerr)}"
-                  + (f"; {failed_total} anchors unreachable"
-                     if failed_total else ""))
+            if not errs:
+                print(f"   {name:10s} {label:20s} no anchor reaches the data "
+                      f"({failed} of {len(cases)} unreachable)")
+                continue
+            spread = max(gammas) / min(gammas)
+            print(f"   {name:10s} {label:20s} {len(errs):3d} predictions: "
+                  f"MAE {statistics.mean(abs(x) for x in errs):5.1f}%, "
+                  f"range {min(errs):+6.1f}..{max(errs):+6.1f}%, "
+                  f"> +15 %: {sum(x > 15 for x in errs):3d}; gamma_Y "
+                  f"{min(gammas):.3f}-{max(gammas):.3f} ({spread:.1f}x)"
+                  + (f"; {failed} unreachable" if failed else ""))
 
 
 if __name__ == "__main__":

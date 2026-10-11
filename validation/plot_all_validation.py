@@ -3,7 +3,7 @@
 
 Plots every *single-wrinkle* experimental case in the WrinkleFE validation
 database (Datasets A-F of VALIDATION_DATA, plus the ledger's Datasets H
-to K; I is a distributed seven-wave tension case) on one parity axes,
+to L; I is a distributed seven-wave tension case) on one parity axes,
 with the +/-20 % pass corridor around the y = x diagonal.
 
 The point of putting them on one chart is to show, at a glance, that we do
@@ -22,10 +22,10 @@ encodes the dataset:
     AND the first-ply FE LaRC05 retention (X markers), which is the
     measured-checked path for the multidirectional half. The ledger
     recipe drives both, via scripts/validate.py case_config.
-  * Datasets J (Thor 2021, quasi-isotropic + UD IM7/8552) and K
-    (Pilato 2022, near-UD industrial wrinkles) -> shown twice the same
-    way. Both are whole-thickness waves, which the FE mesh reproduces;
-    no gate preset is calibrated for either material.
+  * Datasets J (Thor 2021, quasi-isotropic + UD IM7/8552), K (Pilato
+    2022, near-UD industrial wrinkles) and L (Krishnappa & Gururaja 2024,
+    UD carbon, 18 strip-induced wrinkles) -> shown twice the same way. No
+    gate preset is calibrated for any of their materials.
   * Unidirectional laminates (E, F)          -> the two-parameter
     penetration gate ``KD = 1 - (1 - KD_angle(theta)) * S(D/T) * P(z)``,
     which the angle-only models cannot reproduce (the Li grids vary
@@ -339,6 +339,15 @@ def dataset_K():
     return _ledger_analytical("pilato_2022")
 
 
+def dataset_L():
+    """Krishnappa & Gururaja (2024) UD carbon, 18 strip-induced wrinkles."""
+    return _ledger_analytical("krishnappa_2024")
+
+
+def dataset_L_fe():
+    return _ledger_fe("krishnappa_2024")
+
+
 def dataset_J_qi_fe():
     return _ledger_fe("thor_2021_qi")
 
@@ -387,6 +396,9 @@ DATASETS = {
     "K Pilato2022 UD comp": (dataset_K, "#e7ba52", "<", "BF kink-band"),
     "K Pilato2022 UD comp (FE)": (dataset_K_fe, "#e7ba52", "X",
                                   "FE LaRC05 retention"),
+    "L Krishnappa2024 UD comp": (dataset_L, "#843c39", ">", "BF kink-band"),
+    "L Krishnappa2024 UD comp (FE)": (dataset_L_fe, "#843c39", "X",
+                                      "FE LaRC05 retention"),
 }
 
 
@@ -424,7 +436,7 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
-    ax.set_title("WrinkleFE validation -- all cases (A-K)\n"
+    ax.set_title("WrinkleFE validation -- all cases (A-L)\n"
                  "marker = method, colour = dataset, band = +/-20 %")
     ax.grid(alpha=0.3)
     # 20 series: the legend sits outside the axes so it hides no points.

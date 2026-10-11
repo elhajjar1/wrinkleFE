@@ -1,10 +1,15 @@
 """The gate-transfer claims of issue #435, pinned.
 
-``docs/internal/VALIDATION.md`` ("Gate transfer to new materials") states
-that the shipped penetration-gate presets do not transfer blind to UD
-carbon, but that the moulded preset's shape does once ``gamma_Y`` is
-re-fitted to one wrinkled test of the new material. These tests fail if
-the gate or the ledger changes in a way that makes either claim untrue.
+``docs/internal/VALIDATION.md`` ("Gate transfer to new materials") states:
+
+* the shipped penetration-gate presets do not transfer blind to UD carbon;
+* re-fitting ``gamma_Y`` to one wrinkled test looks adequate on the small
+  carbon sets (2-5 cases per material), but fails on Krishnappa &
+  Gururaja's 18 configurations of one material, where the fitted
+  ``gamma_Y`` is not a material constant.
+
+These tests fail if the gate or the ledger changes in a way that makes
+any of those statements untrue.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import pytest
 from wrinklefe.core.penetration_gate import GATE_LI2024_MOULDED, GATE_LI2025_VACBAG
 
 _ROOT = Path(__file__).resolve().parents[2]
+_LARGE = "L Krishnappa (2024)"
 
 
 @pytest.fixture(scope="module")
@@ -32,7 +38,8 @@ def study():
 @pytest.fixture(scope="module")
 def cases(study):
     data = study.carbon_cases()
-    assert sum(len(v) for v in data.values()) == 10
+    assert sum(len(v) for v in data.values()) == 28
+    assert len(data[_LARGE]) == 18
     return data
 
 
@@ -41,36 +48,37 @@ def test_blind_presets_are_unsafe_on_new_carbon(study, cases):
                for e in study.blind_errors(c, GATE_LI2024_MOULDED)]
     vacbag = dataclasses.replace(GATE_LI2025_VACBAG, position_q=None)
     vac = [e for c in cases.values() for e in study.blind_errors(c, vacbag)]
-    assert sum(e > 0.5 for e in moulded) == 7
+    assert sum(e > 0.5 for e in moulded) == 21
     assert max(moulded) > 90.0
     assert all(e > 0.5 for e in vac)
 
 
-def test_one_test_calibration_of_the_moulded_shape_transfers(study, cases):
-    errs = []
-    for c in cases.values():
-        e, _gammas, failed = study.anchored_errors(c, GATE_LI2024_MOULDED)
+def test_one_test_calibration_looks_fine_on_the_small_sets(study, cases):
+    """Shi and Pilato (3 and 5 cases): small errors, stable gamma_Y. This
+    is the result that the large set overturns; it is pinned so the
+    contrast stays documented."""
+    for label in ("H Shi (2025)", "K Pilato (2022)"):
+        errs, gammas, failed = study.anchored_errors(
+            cases[label], GATE_LI2024_MOULDED)
         assert failed == 0
-        errs += e
-    assert len(errs) == 28
-    assert statistics.mean(abs(x) for x in errs) < 6.0
-    assert max(errs) < 15.5  # never more than ~15 % unsafe
+        assert statistics.mean(abs(x) for x in errs) < 6.0
+        assert max(gammas) / min(gammas) < 1.6
+
+
+def test_one_test_calibration_fails_on_the_large_set(study, cases):
+    """Krishnappa & Gururaja (18 configurations, one material): no single
+    test calibrates the gate."""
+    errs, gammas, failed = study.anchored_errors(
+        cases[_LARGE], GATE_LI2024_MOULDED)
+    assert failed == 0 and len(errs) == 18 * 17
+    assert statistics.mean(abs(x) for x in errs) > 12.0
+    assert sum(x > 15.0 for x in errs) / len(errs) > 0.2
+    assert max(errs) > 50.0
+    # Not a material constant: a >3x spread within one material.
+    assert max(gammas) / min(gammas) > 3.0
 
 
 def test_the_steep_vacuum_bag_shape_does_not_transfer(study, cases):
     vacbag = dataclasses.replace(GATE_LI2025_VACBAG, position_q=None)
     failed = sum(study.anchored_errors(c, vacbag)[2] for c in cases.values())
     assert failed >= 5  # its penetration term is ~0 on Pilato's wrinkles
-
-
-def test_calibrated_gamma_y_is_a_material_constant(study, cases):
-    """Within a material the re-fitted gamma_Y is stable; between
-    materials it differs several-fold, so it cannot be assumed."""
-    per_material = {
-        label: study.anchored_errors(c, GATE_LI2024_MOULDED)[1]
-        for label, c in cases.items()
-    }
-    for gammas in per_material.values():
-        assert max(gammas) / min(gammas) < 1.6
-    means = [statistics.mean(g) for g in per_material.values()]
-    assert max(means) / min(means) > 4.0
