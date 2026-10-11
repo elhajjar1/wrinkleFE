@@ -2734,6 +2734,16 @@ class AnalysisResults:
         ``analytical_knockdown``.
     analytical_strength_MPa : float
         Analytical predicted failure stress (MPa).
+    load_path_eccentricity_mm, load_path_eccentricity_ratio : float
+        How far the wrinkle moves the laminate's load path: the largest
+        offset of the section's axial-stiffness-weighted centroid from the
+        far-field load line (mm), and that offset over the laminate
+        thickness (``e / t``). See :mod:`wrinklefe.core.eccentricity`.
+    bending_dominated : bool
+        ``True`` for a compression analysis whose ``e / t`` is at or above
+        :data:`~wrinklefe.core.eccentricity.ECCENTRICITY_REGIME_THRESHOLD`:
+        outside the regime where the kink-band knockdown was validated
+        (issue #439). Prefer FE on the measured wrinkle profile there.
     field_results : FieldResults or None
         FE solution fields (displacement, stress, strain).
     failure_report : LaminateFailureReport or None
@@ -2768,6 +2778,10 @@ class AnalysisResults:
     analytical_onset_knockdown: float | None = None
     analytical_strength_MPa: float = 0.0
     gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
+    # Load-path eccentricity (issue #439): geometry, loading-independent.
+    load_path_eccentricity_mm: float = 0.0
+    load_path_eccentricity_ratio: float = 0.0
+    bending_dominated: bool = False
     # Tension mechanism decomposition (only for tension loading)
     tension_mechanisms: dict | None = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
 
@@ -2985,7 +2999,19 @@ class AnalysisResults:
             f"    Combined knockdown:     {self.analytical_knockdown:.4f}",
             f"    Modulus knockdown:      {self.analytical_modulus_knockdown:.4f}",
             f"    Predicted strength:     {self.analytical_strength_MPa:.1f} MPa",
+            f"    Load-path eccentricity: e/t = "
+            f"{self.load_path_eccentricity_ratio:.3f} "
+            f"(e = {self.load_path_eccentricity_mm:.3f} mm)",
         ]
+        if self.bending_dominated:
+            import textwrap
+
+            from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT
+
+            lines.extend(textwrap.wrap(
+                "WARNING (bending-dominated): " + BENDING_REGIME_CAVEAT,
+                width=61, initial_indent="    ", subsequent_indent="    ",
+            ))
 
         # Thermal / cure-residual load (issue #273). Emitted only
         # when a temperature change is set, so the default summary is
@@ -3606,6 +3632,11 @@ class WrinkleAnalysis:
 
         # 3. Analytical predictions
         self._compute_analytical(results, wrinkle_config)
+
+        # 3a. Load-path eccentricity and the bending-regime flag (#439).
+        # Geometry only (the ply boundaries the FE mesh is built on, not
+        # a solve), so it runs on the analytical path too.
+        self._compute_eccentricity(results, laminate, wrinkle_config)
 
         # 3b. CLT first-ply-failure under the thermal load (issue #273).
         #
@@ -5043,6 +5074,40 @@ class WrinkleAnalysis:
         }
 
         return float(kd_lam), mechanisms
+
+    def _compute_eccentricity(
+        self,
+        results: AnalysisResults,
+        laminate: Laminate,
+        wrinkle_config: WrinkleConfiguration,
+    ) -> None:
+        """Populate the load-path eccentricity and the bending flag (#439)."""
+        from wrinklefe.core.eccentricity import (
+            ECCENTRICITY_REGIME_THRESHOLD,
+            load_path_eccentricity,
+        )
+
+        cfg = self.config
+        ecc = load_path_eccentricity(
+            laminate, wrinkle_config, cfg.domain_length, cfg.domain_width,
+        )
+        results.load_path_eccentricity_mm = ecc.e_mm
+        results.load_path_eccentricity_ratio = ecc.ratio
+        compression = str(cfg.loading).lower().strip() != "tension"
+        results.bending_dominated = bool(
+            compression and ecc.ratio >= ECCENTRICITY_REGIME_THRESHOLD
+        )
+        if results.bending_dominated:
+            # INFO, not WARNING: the flag already reaches the summary, the
+            # exports and the app, and a stochastic or sweep run would
+            # otherwise log it once per sample.
+            logger.info(
+                "Load-path eccentricity e/t = %.3f is at or above %.2f: "
+                "bending-dominated, outside the regime where the kink-band "
+                "knockdown was validated (issue #439). Prefer FE on the "
+                "measured wrinkle profile.",
+                ecc.ratio, ECCENTRICITY_REGIME_THRESHOLD,
+            )
 
     def _build_flat_mesh(self, laminate: Laminate) -> MeshData:
         """Generate a pristine (zero-amplitude) mesh matching the config.

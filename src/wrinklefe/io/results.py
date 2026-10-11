@@ -71,8 +71,10 @@ if TYPE_CHECKING:
 #: disagreed for exactly the additive case, so the rule is stated once,
 #: here.
 #:
-#: History: 1.2 added the ``provenance`` block.
-SCHEMA_VERSION = "1.2"
+#: History: 1.2 added the ``provenance`` block; 1.3 added the
+#: ``analytical`` keys ``load_path_eccentricity_mm``,
+#: ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue #439).
+SCHEMA_VERSION = "1.3"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -398,6 +400,11 @@ def results_to_dict(results: AnalysisResults) -> dict:
             ),
             "analytical_strength_MPa": _f(results.analytical_strength_MPa),
             "gamma_Y_eff": _f(results.gamma_Y_eff),
+            "load_path_eccentricity_mm": _f(results.load_path_eccentricity_mm),
+            "load_path_eccentricity_ratio": _f(
+                results.load_path_eccentricity_ratio
+            ),
+            "bending_dominated": bool(results.bending_dominated),
         },
         "first_ply_failure": _first_ply_failure(results),
         "per_ply": _per_ply_rows(results),

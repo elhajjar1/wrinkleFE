@@ -115,11 +115,12 @@ all 50 cases the prototype cuts the >15% misses from 6 to 4.
 
 **Adopt, in stages:**
 
-1. **Report the regime.** Compute e/t from the wrinkle geometry in the
-   analysis and report it beside the knockdown, with a flag when
-   e/t ≥ 0.10. The flag says the kink-band knockdown is outside its
-   validated regime and names FE on the measured profile as the
-   recommended path. This changes no number, only what is reported.
+1. **Report the regime.** *Implemented:* every analysis now reports
+   `load_path_eccentricity_ratio` (e/t) and flags `bending_dominated`
+   for compression at e/t ≥ 0.10 (`wrinklefe.core.eccentricity`). The
+   flag reaches the text summary, the results JSON (schema 1.3), the NCR
+   summary and the app, and changes no number. This study now uses the
+   same measurement.
 2. **Prefer FE above the threshold in the guidance** in
    `docs/interpreting_results.md`, for the specimen's own geometry. Do
    not prefer it below the threshold, where FE is unsafe on 29 of 39

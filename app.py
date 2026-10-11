@@ -42,6 +42,10 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 
 import usage_tracking  # noqa: E402
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
+from wrinklefe.core.eccentricity import (  # noqa: E402
+    BENDING_REGIME_CAVEAT,
+    ECCENTRICITY_REGIME_THRESHOLD,
+)
 from wrinklefe.core.layup import parse_layup  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
 from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
@@ -2560,6 +2564,10 @@ def _run_analysis(
         ),
         "analytical_strength_MPa": float(result.analytical_strength_MPa),
         "damage_index": float(result.damage_index),
+        "load_path_eccentricity_ratio": float(
+            result.load_path_eccentricity_ratio
+        ),
+        "bending_dominated": bool(result.bending_dominated),
         "tension_mechanisms": (
             {k: float(v) if isinstance(v, (int, float, np.floating)) else v
              for k, v in result.tension_mechanisms.items()}
@@ -4208,6 +4216,10 @@ with tab_analyze:
             )
 
         st.subheader("Analytical predictions")
+        # Above the metrics, like the FE caveat: the knockdown next to it is
+        # outside its validated regime when this fires (issue #439).
+        if r.get("bending_dominated"):
+            st.warning(f"**Bending-dominated wrinkle:** {BENDING_REGIME_CAVEAT}")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(
             "Max fibre misalignment", f"{r['max_angle_deg']:.2f}°",
@@ -4238,6 +4250,17 @@ with tab_analyze:
                 "of load-carrying capacity. Above 0.5 is severe."
             ),
         )
+
+        if r.get("load_path_eccentricity_ratio") is not None:
+            st.caption(
+                f"Load-path eccentricity **e/t = "
+                f"{float(r['load_path_eccentricity_ratio']):.3f}**: how far "
+                "the wrinkle moves the laminate's load path, as a fraction "
+                "of its thickness. At or above "
+                f"{ECCENTRICITY_REGIME_THRESHOLD:.2f} in compression the "
+                "section bends as well as kinks, which the kink-band "
+                "knockdown does not represent."
+            )
 
         _mod_kd = float(r.get("analytical_modulus_knockdown", 1.0))
         if _mod_kd < 0.9999:
@@ -4947,6 +4970,10 @@ with tab_export:
                     "max_angle_deg": _res.get("max_angle_deg"),
                     "effective_angle_deg": _res.get("effective_angle_deg"),
                     "morphology_factor": _res.get("morphology_factor"),
+                    "load_path_eccentricity_ratio": _res.get(
+                        "load_path_eccentricity_ratio"
+                    ),
+                    "bending_dominated": _res.get("bending_dominated"),
                     "fe": (
                         {
                             "modulus_retention": _fe.get("modulus_retention"),

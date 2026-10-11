@@ -99,6 +99,25 @@ version produced a given file.
   - `docs/interpreting_results.md` guidance table updated:
     multidirectional compression above 10° now names FE on the measured
     profile; UD carbon moves from Low to Low–moderate confidence.
+- Analysis — **load-path eccentricity and a bending-regime flag** (issue
+  #439). Every analysis now reports `load_path_eccentricity_ratio` (e/t)
+  and `load_path_eccentricity_mm`: how far the wrinkle moves the
+  laminate's load path. It is the largest offset of the section's
+  axial-stiffness-weighted centroid from the far-field load line.
+  - Measured on the ply boundaries the FE mesh uses (new
+    `WrinkleMesh.deformed_nodes()`), in about a millisecond, on
+    analytical runs too.
+  - `bending_dominated` is set for compression at e/t ≥ 0.10
+    (`ECCENTRICITY_REGIME_THRESHOLD`), where the kink-band knockdown was
+    unsafe by up to +115% on measured cases.
+  - A single caveat (`BENDING_REGIME_CAVEAT`) appears in the text summary,
+    the app (above the analytical metrics), the NCR summary (JSON and
+    Markdown) and the results JSON. The results JSON schema goes to
+    **1.3**, an additive change.
+  - Reporting only: no knockdown changes. `validation/bending_mode_study.py`
+    now uses the shipped measurement. Every e/t and every statistic in the
+    write-up is unchanged; only fourth-decimal values of e and t_0 in its
+    CSV moved, from finer sampling.
 - Validation — **bending-mode investigation** (issue #439):
   `validation/bending_mode_study.py` measures each compression case's
   load-path eccentricity e/t. That is the offset of the section's

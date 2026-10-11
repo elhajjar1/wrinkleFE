@@ -25,6 +25,7 @@ import numpy as np
 import scipy
 
 from wrinklefe import __version__ as _wrinklefe_version
+from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT
 from wrinklefe.core.layup import to_contracted_layup
 
 if TYPE_CHECKING:
@@ -649,8 +650,10 @@ def build_analysis_summary(
     engineering : dict
         WrinkleFE results.  Recognised keys: ``analytical_knockdown``,
         ``analytical_strength_MPa``, ``damage_index``, ``max_angle_deg``,
-        ``effective_angle_deg``, ``morphology_factor``, an optional
-        ``fe`` sub-dict (``modulus_retention``,
+        ``effective_angle_deg``, ``morphology_factor``,
+        ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue
+        #439; a flagged result carries :data:`BENDING_REGIME_CAVEAT`), an
+        optional ``fe`` sub-dict (``modulus_retention``,
         ``modulus_retention_global``, ``retention_factors``,
         ``retention_degenerate`` (criteria whose retention is undefined
         rather than low -- see ``AnalysisResults.retention_degenerate``),
@@ -835,6 +838,15 @@ def build_analysis_summary(
                 "effective_angle_deg"
             ),
             "morphology_factor": engineering.get("morphology_factor"),
+            # Issue #439. ``None`` when the caller did not supply them.
+            "load_path_eccentricity_ratio": engineering.get(
+                "load_path_eccentricity_ratio"
+            ),
+            "bending_dominated": bool(engineering.get("bending_dominated")),
+            "bending_regime_caveat": (
+                BENDING_REGIME_CAVEAT
+                if engineering.get("bending_dominated") else None
+            ),
             "finite_element": fe_block,
             "progressive_damage": progressive_block,
         },
@@ -966,6 +978,17 @@ def render_summary_markdown(summary: dict) -> str:
     lines.append(
         f"- Morphology factor: {_fmt(ea['morphology_factor'])}"
     )
+    if ea.get("load_path_eccentricity_ratio") is not None:
+        lines.append(
+            f"- Load-path eccentricity e/t: "
+            f"{_fmt(ea['load_path_eccentricity_ratio'])}"
+        )
+    if ea.get("bending_dominated"):
+        lines.append("")
+        lines.append(
+            "> **Bending-dominated:** "
+            f"{ea.get('bending_regime_caveat') or BENDING_REGIME_CAVEAT}"
+        )
     fe_block = ea.get("finite_element")
     if fe_block:
         lines.append("")
