@@ -23,9 +23,11 @@ shipped models:
 
    and the prototype predicts ``min(KD_kink, KD_bend)``.
 
-The geometry comes from the same mesh the FE solves (generated, not
-solved): the recipe each dataset already uses, with Shi's FE recipe
-(one-sided ``tool_flat`` trough) for Dataset H.
+The geometry comes from the shipped measurement,
+:func:`wrinklefe.core.eccentricity.load_path_eccentricity` (the ply
+boundaries the FE mesh is built on, generated, not solved), on the recipe
+each dataset already uses, with Shi's FE recipe (one-sided ``tool_flat``
+trough) for Dataset H.
 
 Run::
 
@@ -36,7 +38,6 @@ from __future__ import annotations
 import csv
 import dataclasses
 import json
-import math
 import statistics
 import sys
 import warnings
@@ -47,7 +48,6 @@ sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO / "validation"))
 
-import numpy as np  # noqa: E402
 
 LEDGER = REPO / "tests" / "test_validation" / "ledger.json"
 OUT_CSV = REPO / "validation" / "bending_mode_cases.csv"
@@ -67,58 +67,32 @@ REPORTED_MODE = {
 }
 
 
-def _axial_modulus(material, angle_deg: float) -> float:
-    """In-plane axial modulus Ex of a ply at ``angle_deg`` (CLT)."""
-    c = math.cos(math.radians(angle_deg))
-    s = math.sin(math.radians(angle_deg))
-    inv = (c**4 / material.E1
-           + (1.0 / material.G12 - 2.0 * material.nu12 / material.E1)
-           * s**2 * c**2
-           + s**4 / material.E2)
-    return 1.0 / inv
-
-
 def section_geometry(cfg) -> dict:
-    """Eccentricity and thickness of the wrinkled section, from the mesh.
+    """Eccentricity and thickness of the wrinkled section.
 
-    Generates (does not solve) the FE mesh of ``cfg``. For each x column
-    on the first y row, the ply boundaries give each ply's mid-height and
-    thickness; the axial-stiffness-weighted centroid ``z_c`` follows. The
-    eccentricity ``e`` is the largest offset of ``z_c`` from its far-field
-    value (the first column), and ``t_c`` is the section thickness there.
+    A thin wrapper over the shipped measurement,
+    :func:`wrinklefe.core.eccentricity.load_path_eccentricity`, which reads
+    the ply boundaries the FE mesh is built on (generated, not solved): the
+    largest offset ``e`` of the axial-stiffness-weighted centroid from the
+    far-field load line, the section thickness ``t_c`` there, and the
+    far-field thickness ``t_0``.
     """
     from wrinklefe.analysis import WrinkleAnalysis
-    from wrinklefe.core.mesh import WrinkleMesh
+    from wrinklefe.core.eccentricity import load_path_eccentricity
 
     kw = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
     # Surface resin pockets (Shi's FE recipe) are a material zone, not
     # geometry, and they are FE-only, so they are switched off here.
-    kw.update(nx=96, ny=1, nz_per_ply=1, analytical_only=True, verbose=False,
+    kw.update(analytical_only=True, verbose=False,
               enable_surface_resin_pockets=False)
     cfg = type(cfg)(**kw)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = WrinkleAnalysis(cfg).run(analytical_only=True)
-        mesh = WrinkleMesh(
-            laminate=res.laminate, wrinkle_config=res.wrinkle_config,
-            Lx=cfg.domain_length, Ly=cfg.domain_width,
-            nx=cfg.nx, ny=cfg.ny, nz_per_ply=1,
-        ).generate()
-    nodes = np.asarray(mesh.nodes)
-    row = nodes[np.isclose(nodes[:, 1], nodes[:, 1].min())]
-    mods = np.array([_axial_modulus(cfg.material, a) for a in cfg.angles])
-    xs = np.unique(np.round(row[:, 0], 9))
-    zc, thick = [], []
-    for x in xs:
-        z = np.sort(row[np.isclose(row[:, 0], x), 2])
-        mid, t = 0.5 * (z[1:] + z[:-1]), np.diff(z)
-        zc.append(float(np.sum(mods * t * mid) / np.sum(mods * t)))
-        thick.append(float(z[-1] - z[0]))
-    zc, thick = np.asarray(zc), np.asarray(thick)
-    offset = np.abs(zc - zc[0])
-    i = int(np.argmax(offset))
-    return {"e": float(offset[i]), "t_c": float(thick[i]),
-            "t_0": float(thick[0])}
+    ecc = load_path_eccentricity(res.laminate, res.wrinkle_config,
+                                 cfg.domain_length, cfg.domain_width)
+    return {"e": ecc.e_mm, "t_c": ecc.section_thickness_mm,
+            "t_0": ecc.thickness_mm}
 
 
 def kd_bend(geom: dict) -> float:

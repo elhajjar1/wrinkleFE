@@ -843,14 +843,7 @@ class WrinkleMesh:
         MeshData
             The generated mesh.
         """
-        nodes = self._create_regular_grid()
-        node_ply_ids = self._node_to_element_ply()
-
-        # Wrinkle deformation
-        if self.wrinkle_config is not None:
-            nodes = self.wrinkle_config.apply_to_nodes(
-                nodes, node_ply_ids, self.laminate.n_plies
-            )
+        nodes, node_ply_ids = self.deformed_nodes()
 
         elements = self._create_hex_connectivity()
         ply_ids, ply_angles = self._assign_ply_ids()
@@ -886,6 +879,31 @@ class WrinkleMesh:
             logger.warning(resolution_warning)
 
         return mesh_data
+
+    def deformed_nodes(self) -> tuple[np.ndarray, np.ndarray]:
+        """Node coordinates after the wrinkle deformation, and their ply ids.
+
+        Steps 1-3 of :meth:`generate` (regular grid, ply-boundary
+        z-coordinates, wrinkle displacement) without building elements or
+        validating them, so geometry-only consumers such as
+        :func:`wrinklefe.core.eccentricity.load_path_eccentricity` read the
+        exact surface the FE mesh is built on.
+
+        Returns
+        -------
+        nodes : np.ndarray
+            Shape ``(n_nodes, 3)``, ordered k (z, slowest) -> j (y) -> i
+            (x, fastest), as in :meth:`_create_regular_grid`.
+        node_ply_ids : np.ndarray
+            Shape ``(n_nodes,)`` ply index of each node.
+        """
+        nodes = self._create_regular_grid()
+        node_ply_ids = self._node_to_element_ply()
+        if self.wrinkle_config is not None:
+            nodes = self.wrinkle_config.apply_to_nodes(
+                nodes, node_ply_ids, self.laminate.n_plies
+            )
+        return nodes, node_ply_ids
 
     def _wrinkle_resolution_warning(self) -> str | None:
         """Warn when the in-plane mesh under-samples the wrinkle wave.

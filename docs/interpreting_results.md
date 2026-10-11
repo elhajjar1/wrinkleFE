@@ -49,6 +49,40 @@ amplitude, the peak misalignment angle and the morphology factor. It is
 strength number is derived from it. It matters downstream because the
 severity banding below reads it as a second, independent metric.
 
+### `load_path_eccentricity_ratio` and `bending_dominated` — is the knockdown in its regime?
+
+`AnalysisResults.load_path_eccentricity_ratio` is e/t: how far the wrinkle
+moves the laminate's load path, as a fraction of the laminate thickness.
+- **e** is the largest offset of the section's axial-stiffness-weighted
+  centroid from the straight line joining its values at the ends of the
+  domain.
+- It is measured on the ply boundaries the FE mesh is built on, in about
+  a millisecond and without a solve, so analytical-only runs report it too.
+- `load_path_eccentricity_mm` is the same offset in millimetres.
+
+Typical values:
+
+| Wrinkle | e |
+|---|---|
+| Whole-thickness wave (both surfaces wavy) | about its amplitude |
+| One-sided surface trough over a flat tool face | about half the trough depth |
+| Embedded wrinkle with flat outer surfaces | close to zero |
+
+`bending_dominated` is `True` for a **compression** analysis with
+e/t ≥ 0.10. At that point the section bends as well as kinks, and the
+kink-band `analytical_knockdown` does not represent that.
+
+On measured cases (issue #439):
+- **Below 0.10** (39 cases), the deployed analytical model was never more
+  than 15% unsafe.
+- **Above 0.15** (8 cases), it was unsafe on 7, by up to +115%. First-ply
+  FE on the specimen's own wrinkle geometry was never unsafe there.
+
+When the flag is set, prefer FE on the measured profile. The text
+summary, the results JSON, the NCR summary and the app all carry the
+same warning. The flag changes no number. Tension analyses report the
+ratio but are not flagged, because the study covered compression only.
+
 ### Stiffness: `analytical_modulus_knockdown`, `modulus_retention`, `modulus_retention_global`
 
 Three different stiffness numbers, in increasing order of fidelity to a
@@ -189,6 +223,9 @@ interpolation of the scan curve."*
 - **Multidirectional laminates** — the angle-based analytical models are
   the intended path. Use `analytical_knockdown` for screening and the FE
   numbers to check the mechanism and the load redistribution.
+- **Any compression result with `bending_dominated` set** (e/t ≥ 0.10) —
+  the analytical knockdown is outside its validated regime. Run FE on the
+  measured wrinkle profile and carry that number, with margin.
 - **Unidirectional laminates in compression** — the angle-only knockdown
   is scale-invariant and under-predicts the penetration effect. Use the
   penetration gate. `progressive_knockdown` is the only FE number that
