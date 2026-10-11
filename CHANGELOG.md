@@ -99,6 +99,19 @@ version produced a given file.
   - `docs/interpreting_results.md` guidance table updated:
     multidirectional compression above 10° now names FE on the measured
     profile; UD carbon moves from Low to Low–moderate confidence.
+- Validation — **gate transfer study** (issue #435):
+  `validation/gate_transfer_study.py` scores the shipped penetration-gate
+  presets on the three UD carbon datasets neither was fitted to (Shi,
+  Thor, Pilato; 10 cases).
+  - **Blind**, they are unsafe on 7 of 10 (moulded preset, worst +97%)
+    and 10 of 10 (vacuum-bag, worst +179%).
+  - **With `gamma_Y` re-fitted to one wrinkled test**, the moulded
+    preset's shape predicts the material's other cases: 28 predictions,
+    MAE 5%, never more than 15% unsafe. The fitted value is stable within
+    a material and differs more than fourfold between materials.
+  - Docs: the gate is now documented as material-scoped, and the UD
+    carbon guidance row names the one-test calibration. Tests pin the
+    claims. No shipped prediction changes.
 - Analysis — **load-path eccentricity and a bending-regime flag** (issue
   #439). Every analysis now reports `load_path_eccentricity_ratio` (e/t)
   and `load_path_eccentricity_mm`: how far the wrinkle moves the

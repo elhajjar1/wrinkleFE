@@ -304,6 +304,37 @@ Two calibrated presets ship, one per material realization:
 near-surface S-A-2 case). The gate is UD-scoped, has zero FE cost, and is
 the package's best UD knockdown predictor.
 
+### Gate transfer to new materials (issue #435)
+
+**The presets do not transfer blind. The moulded preset's shape does,
+once `gamma_Y` is re-fitted to one wrinkled test of the new material.**
+`validation/gate_transfer_study.py` scores both presets on the three UD
+carbon datasets neither was fitted to: Shi (H), Thor (J) and Pilato
+(K), 10 cases.
+
+| Preset | Blind, as shipped | `gamma_Y` re-fitted to one case, predicting the rest |
+|---|---|---|
+| Moulded (dt0 = 0.094, p = 0.59) | unsafe on 7 of 10, worst +97% | **28 predictions: MAE 5.0%, −29% to +15%, never more than 15% unsafe** |
+| Vacuum-bag (dt0 = 0.122, p = 4.31) | unsafe on 10 of 10, worst +179% | 6 of 10 anchors cannot be reached; the other predictions MAE 48% |
+
+Every case serves as the anchor in turn.
+- **The fitted value is material-specific.** Within each material it is
+  stable: Shi 0.375–0.400, Thor 0.057–0.088, Pilato 0.064–0.087. Between
+  materials it differs more than fourfold, and nothing on the material
+  card predicts it (every card carries 0.02). It is a calibrated
+  material-and-process constant, not the matrix yield strain.
+- **The vacuum-bag shape is too steep to transfer.** Its penetration term
+  is about zero at Pilato's amplitude-to-thickness ratio (≈ 0.04), so no
+  `gamma_Y` reaches the measured knockdown. Pilato's wrinkles span the
+  whole thickness, yet the gate's D/T, amplitude over thickness, is small.
+  The two quantities differ, and papers rarely report penetration depth.
+- **Caveats:** 10 cases, 3 materials, only two of them Thor's.
+  Krishnappa & Gururaja (2024, *Composites Part B* 111688), UD CFRP with
+  18 wrinkle configurations, is the dataset that would test this
+  properly.
+
+`tests/test_validation/test_gate_transfer_study.py` pins these claims.
+
 ### E vs F: two material realizations, no shared normalization
 
 E and F are the **same prepreg system** (AC318 S-glass / S6C10-800) cured

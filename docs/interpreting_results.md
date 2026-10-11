@@ -38,7 +38,12 @@ It does **not** mean:
   unidirectional laminates set `AnalysisConfig.penetration_gate` (or
   `wrinklefe analyze --gate …`) so the knockdown comes from the
   (θ, D/T, z) penetration-gate model instead. The gate is **UD-scoped** —
-  do not apply it to multidirectional or blocked laminates.
+  do not apply it to multidirectional or blocked laminates. It is also
+  **material-scoped**: the shipped presets were fitted to one S-glass
+  prepreg and are unsafe on new UD carbon (7 of 10 cases, up to +97%).
+  For a new material, re-fit the preset's `gamma_Y` to one wrinkled
+  test first; see [Validation](validation.md) ("Gate transfer to new
+  materials").
 
 ### `damage_index` — a reporting-only severity scalar
 
@@ -408,7 +413,7 @@ sources behind each row, not the size of the errors.
 | Multidirectional tension, ultimate | Analytical three-mechanism. | 11 cases, 3 labs; no unsafe miss above 10° | **Moderate** |
 | Tension, damage onset | FE first ply is closer (MAE 10% vs 15%), but unsafe on 2 of 3. | 3 cases, 1 lab | **Low**: issue #436 |
 | UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | **Fit only** |
-| UD carbon compression | FE on the specimen's geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. Do not use the gate presets outside the material they were fitted to: blind, the moulded preset is unsafe on 7 of 10 cases (up to +97%). The kink-band is −57% to −79% on Thor and Pilato but +26% on Shi's deepest wrinkle. | 10 cases, 3 labs | **Low–moderate**: issue #435 |
+| UD carbon compression | With one wrinkled test of the material: the moulded gate preset with its `gamma_Y` re-fitted to that test (28 predictions over 3 materials, MAE 5%, never more than 15% unsafe). Without one: FE on the specimen's geometry (−5% to +9% on Thor and Pilato, −26% to −40% conservative on Shi). Never the presets as shipped: unsafe on 7 of 10 cases, up to +97%. The kink-band is −57% to −79% on Thor and Pilato but +26% on Shi's deepest wrinkle. | 10 cases, 3 labs | **Low–moderate**: issue #435 |
 
 Caveats on the FE column:
 - The A–E FE recipe uses the analytical inputs at the default interfaces
