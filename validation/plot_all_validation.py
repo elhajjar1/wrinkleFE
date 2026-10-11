@@ -396,8 +396,8 @@ DATASETS = {
     "K Pilato2022 UD comp": (dataset_K, "#e7ba52", "<", "BF kink-band"),
     "K Pilato2022 UD comp (FE)": (dataset_K_fe, "#e7ba52", "X",
                                   "FE LaRC05 retention"),
-    "L Krishnappa2024 UD comp": (dataset_L, "#843c39", ">", "BF kink-band"),
-    "L Krishnappa2024 UD comp (FE)": (dataset_L_fe, "#843c39", "X",
+    "L Krishnappa2024 UD comp": (dataset_L, "#000000", ">", "BF kink-band"),
+    "L Krishnappa2024 UD comp (FE)": (dataset_L_fe, "#000000", "X",
                                       "FE LaRC05 retention"),
 }
 
