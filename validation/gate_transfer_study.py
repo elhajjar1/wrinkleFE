@@ -13,10 +13,16 @@ asks:
    single wrinkled test of the new material; how well does that predict
    the material's other cases? Every case is used as the anchor in turn.
 
-On the three small carbon sets (2-5 cases each) the answer looked good;
-on Krishnappa & Gururaja's 18 configurations of one material it is no:
-``gamma_Y`` is not a material constant once the wrinkle's position and
-width vary as well as its angle and depth.
+Blind, the presets are unsafe on the carbon sets. With one test, the
+moulded shape predicted Shi's and Pilato's other cases well, and failed
+on Krishnappa & Gururaja's 18 configurations, where the fitted
+``gamma_Y`` varies more than threefold within one material. That
+dataset is **quarantined** (issue #445): a low-quality wet lay-up
+laminate whose pristine baseline fails its test standard. So it is
+reported on its own, not pooled, and the one-test question stays open
+until a good-quality dataset varies wrinkle position. Section 3 shows
+that even within one wrinkle position of that set, one test calibrates
+poorly.
 
 The gate's ``gamma_Y`` is a fitted parameter, not the material's matrix
 yield strain: the presets carry 0.26 and 0.62 for the same glass system,
@@ -50,6 +56,17 @@ CARBON_DATASETS = (
     ("pilato_2022", "K Pilato (2022)"),
     ("krishnappa_2024", "L Krishnappa (2024)"),
 )
+
+
+def quarantined_labels() -> set[str]:
+    """Labels of the carbon datasets the ledger quarantines (issue #445)."""
+    ledger = json.loads(LEDGER.read_text())
+    out = set()
+    for prefix, label in CARBON_DATASETS:
+        ds = next(d for d in ledger["datasets"] if d["name"].startswith(prefix))
+        if "quarantine" in ds:
+            out.add(label)
+    return out
 
 
 def carbon_cases() -> dict[str, list[dict]]:
@@ -133,22 +150,31 @@ def main() -> None:
     )
 
     data = carbon_cases()
+    held_out = quarantined_labels()
     # The position factor is a property of the Li 2025 specimens; these
     # are mid-plane or whole-thickness wrinkles, so it is left out.
     presets = (("moulded", GATE_LI2024_MOULDED),
                ("vacuum-bag",
                 dataclasses.replace(GATE_LI2025_VACBAG, position_q=None)))
 
+    def tag(label):
+        return label + " [Q]" if label in held_out else label
+
     print("1. Blind: shipped presets, unchanged (signed error %)")
     for name, preset in presets:
-        allerr = []
+        pooled, held = [], []
         for label, cases in data.items():
             e = blind_errors(cases, preset)
-            allerr += e
-            print(f"   {name:10s} {label:16s} "
+            (held if label in held_out else pooled).extend(e)
+            print(f"   {name:10s} {tag(label):24s} "
                   + " ".join(f"{x:+6.1f}" for x in e))
-        print(f"   {name:10s} {'all':16s} unsafe {sum(x > 0.5 for x in allerr)}"
-              f"/{len(allerr)}, worst {max(allerr):+.1f}%")
+        print(f"   {name:10s} {'pooled (excl. [Q])':24s} unsafe "
+              f"{sum(x > 0.5 for x in pooled)}/{len(pooled)}, "
+              f"worst {max(pooled):+.1f}%")
+        if held:
+            print(f"   {name:10s} {'quarantined [Q]':24s} unsafe "
+                  f"{sum(x > 0.5 for x in held)}/{len(held)}, "
+                  f"worst {max(held):+.1f}%")
 
     print("\n2. One-test calibration: re-fit gamma_Y on one case of a "
           "material, predict its other cases (every case as anchor)")
@@ -156,16 +182,42 @@ def main() -> None:
         for label, cases in data.items():
             errs, gammas, failed = anchored_errors(cases, shape)
             if not errs:
-                print(f"   {name:10s} {label:20s} no anchor reaches the data "
-                      f"({failed} of {len(cases)} unreachable)")
+                print(f"   {name:10s} {tag(label):24s} no anchor reaches the "
+                      f"data ({failed} of {len(cases)} unreachable)")
                 continue
             spread = max(gammas) / min(gammas)
-            print(f"   {name:10s} {label:20s} {len(errs):3d} predictions: "
+            print(f"   {name:10s} {tag(label):24s} {len(errs):3d} predictions: "
                   f"MAE {statistics.mean(abs(x) for x in errs):5.1f}%, "
                   f"range {min(errs):+6.1f}..{max(errs):+6.1f}%, "
                   f"> +15 %: {sum(x > 15 for x in errs):3d}; gamma_Y "
                   f"{min(gammas):.3f}-{max(gammas):.3f} ({spread:.1f}x)"
                   + (f"; {failed} unreachable" if failed else ""))
+
+    print("\n3. One-test calibration within one wrinkle position of each "
+          "position-varying set (moulded shape)")
+    for label, cases in data.items():
+        positions = position_groups(cases)
+        if len(positions) < 2:
+            continue
+        for pos, group in positions.items():
+            errs, gammas, _failed = anchored_errors(group, GATE_LI2024_MOULDED)
+            print(f"   {tag(label):24s} {pos}: {len(errs):2d} predictions, "
+                  f"MAE {statistics.mean(abs(x) for x in errs):5.1f}%, "
+                  f"gamma_Y spread {max(gammas) / min(gammas):.1f}x")
+    if held_out:
+        print("\n   [Q] = quarantined dataset (issue #445): reported on its "
+              "own, not pooled.")
+
+
+def position_groups(cases) -> dict[str, list[dict]]:
+    """Group a set's cases by wrinkle position, from case names like
+    ``L-WM-2-1`` (Dataset L's WL/WM/WR). Sets without one share a group."""
+    out: dict[str, list[dict]] = {}
+    for c in cases:
+        parts = c["case"].split("-")
+        pos = parts[1] if len(parts) == 4 and parts[1].startswith("W") else "-"
+        out.setdefault(pos, []).append(c)
+    return out
 
 
 if __name__ == "__main__":

@@ -228,7 +228,23 @@ See the table in [README.md](../../README.md). Current sources:
 - **Dataset L — Krishnappa & Gururaja (2024)**, *Composites Part B*
   284:111688, DOI 10.1016/j.compositesb.2024.111688 (© Elsevier; values
   transcribed with citation). The **≥5-severity UD carbon set** issue
-  #435 asked for.
+  #435 asked for. **Quarantined (issue #445).**
+  - **Why quarantined.** It is a low-quality wet lay-up laminate and does
+    not compare like-for-like with the other datasets:
+    - stitched UD carbon fabric, wet lay-up, room-temperature cure under a
+      vacuum bag;
+    - Vf 0.46 and 4.2% porosity, with stitching micro-wrinkles in every
+      ply;
+    - the pristine coupons bent 15% in test, over ASTM D6641's 10% limit,
+      and fail at 0.44% strain, against 0.60–0.77% on the other UD carbon
+      sets (H, J, K);
+    - the wrinkles are inserted 90° strips up to 37% of the thickness.
+  - **What quarantine means.** The ledger's `quarantine` entry keeps the
+    dataset and its pinned baselines (still a regression guard). It is
+    reported on its own: left out of the parity headline count, pooled
+    statistics, and the evidence behind the model-choice guidance. More
+    wet lay-up data, and a manufacturing-process input that warns when a
+    process is outside the validated scope, are issue #445.
   - **Material and test.** Wet-laid YC300 carbon / LY5052 epoxy, `[0]8`,
     2.8 mm, Vf 0.46, 4.2% porosity, ASTM D6641; 78 specimens. New card
     `YC300_LY5052` with the paper's measured E1 98 GPa, Xc 432.7 MPa,
@@ -354,39 +370,39 @@ the package's best UD knockdown predictor.
 
 ### Gate transfer to new materials (issue #435)
 
-**The presets do not transfer, blind or with a one-test calibration.**
-`validation/gate_transfer_study.py` scores both presets on the four UD
-carbon datasets neither was fitted to: Shi (H), Thor (J), Pilato (K) and
-Krishnappa & Gururaja (L), 28 cases.
+**The presets do not transfer blind. Whether one wrinkled test
+calibrates them is unresolved.** `validation/gate_transfer_study.py`
+scores both presets on the UD carbon datasets neither was fitted to:
+Shi (H), Thor (J) and Pilato (K), 10 cases, plus the quarantined
+Krishnappa & Gururaja set (L, 18 cases), reported on its own.
 
 | Preset | Blind, as shipped | `gamma_Y` re-fitted to one case of a material, predicting its other cases |
 |---|---|---|
-| Moulded (dt0 = 0.094, p = 0.59) | unsafe on 21 of 28, worst +97% | small sets: Shi MAE 2%, Pilato 4% (3 and 5 cases); **Dataset L (18 cases): 306 predictions, MAE 17%, −42% to +71%, 81 more than 15% unsafe** |
-| Vacuum-bag (dt0 = 0.122, p = 4.31) | unsafe on 28 of 28, worst +179% | 10 anchors cannot be reached; on L, MAE 29% |
+| Moulded (dt0 = 0.094, p = 0.59) | unsafe on 7 of 10, worst +97% (L: 14 of 18, worst +45%) | Shi MAE 2%, Pilato 4% (3 and 5 cases); Thor −29% / +15% (2 cases). *L (quarantined): 306 predictions, MAE 17%, −42% to +71%, 81 more than 15% unsafe* |
+| Vacuum-bag (dt0 = 0.122, p = 4.31) | unsafe on 10 of 10, worst +179% (L: 18 of 18) | 6 of 10 anchors cannot be reached; on L, MAE 29% |
 
 Every case serves as the anchor in turn.
-- **The small sets were misleading.** On Shi and Pilato, one wrinkled test
-  appeared to calibrate the material: the re-fitted `gamma_Y` was stable
-  within each (Shi 0.375–0.400, Pilato 0.064–0.087). Dataset L has 18
-  configurations of one material, varying position and strip width as
-  well as angle and depth. There the re-fitted value spans 0.105–0.349,
-  more than threefold.
-- **What the gate leaves out.** It takes only the angle and the
-  amplitude-to-thickness ratio, so it cannot represent the wrinkle's
-  through-thickness position or extent. Those dominate Dataset L: at
-  similar angles, root (WR) wrinkles knock down far more than middle
-  (WM) ones.
+- **Where one test worked.** On Shi and Pilato the re-fitted `gamma_Y` was
+  stable within each set (Shi 0.375–0.400, Pilato 0.064–0.087) and
+  predicted the other cases within a few percent. Thor's two cases
+  missed by −29% and +15%.
+- **Where it failed.** On the quarantined Dataset L the re-fitted value
+  spans 0.105–0.349 within one material, more than threefold. The gate
+  takes only the angle and the amplitude-to-thickness ratio, so it
+  cannot see the wrinkle's through-thickness position or extent, which
+  dominate L. Even within one position (section 3 of the study) the
+  error is 9–16% MAE, against 2–4% on Shi and Pilato. L's low quality
+  may explain part of this, so it does not settle the question.
 - **The vacuum-bag shape is too steep to transfer at all.** Its
   penetration term is about zero at Pilato's amplitude-to-thickness
   ratio (≈ 0.04), although those wrinkles span the whole thickness:
   amplitude ratio and penetration depth are different quantities.
-- **Conclusion:** the gate is scoped to the material, and to the wrinkle
-  geometry family, it was fitted to. Using it elsewhere needs a test
-  matrix of the target material spanning angle, depth and position, not
-  one test.
+- **Conclusion:** the gate is scoped to the material, process and
+  wrinkle family it was fitted to. Using it elsewhere needs tests of the
+  target material. Whether one test is enough needs a good-quality
+  dataset that varies wrinkle position (issue #445, item 5).
 
-`tests/test_validation/test_gate_transfer_study.py` pins these claims,
-including the small-set result that Dataset L overturns.
+`tests/test_validation/test_gate_transfer_study.py` pins these claims.
 
 ### E vs F: two material realizations, no shared normalization
 
@@ -445,10 +461,11 @@ the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
 MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
 MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**68 of 116** points sit inside the corridor. Dataset L lands 3 of 18
+**60 of 80** points sit inside the corridor, not counting the quarantined
+Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
 analytical and 5 of 18 FE points inside: the kink-band is far too
-conservative on its UD carbon, and the FE over-predicts its embedded
-(WM) wrinkles.
+conservative on it, and the FE over-predicts its embedded (mid-plane)
+wrinkles.
 
 ## Interlaminar (CZM) validation evidence — Phase 7
 

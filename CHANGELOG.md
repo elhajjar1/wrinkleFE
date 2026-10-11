@@ -99,12 +99,13 @@ version produced a given file.
   - `docs/interpreting_results.md` guidance table updated:
     multidirectional compression above 10° now names FE on the measured
     profile; UD carbon moves from Low to Low–moderate confidence.
-- Validation — **Dataset L: Krishnappa & Gururaja (2024), the first UD
-  carbon set spanning many severities** (*Composites Part B* 284:111688;
-  values transcribed with citation). Wet-laid YC300/LY5052 `[0]8` with a
-  90° strip (1–3 plies, 2 or 4 mm wide) inserted under the tool-side ply
-  (WR), between the middle plies (WM) or under the last ply (WL): 18
-  configurations at 7.7°–30.2°, measured strength KD 0.27–0.79.
+- Validation — **Dataset L: Krishnappa & Gururaja (2024), a UD carbon
+  set spanning many severities, added quarantined** (*Composites Part B*
+  284:111688; values transcribed with citation). Wet-laid YC300/LY5052
+  `[0]8` with a 90° strip (1–3 plies, 2 or 4 mm wide) inserted under the
+  tool-side ply (WR), between the middle plies (WM) or under the last
+  ply (WL): 18 configurations at 7.7°–30.2°, measured strength KD
+  0.27–0.79.
   - New material card `YC300_LY5052` (the paper's measured E1, Xc, G12,
     S12 and shear yield strain; other entries typical values). New
     ledger dataset `krishnappa_2024_ud_cfrp_compression` with pinned
@@ -116,30 +117,36 @@ version produced a given file.
   - A case may now carry an `fe_recipe` that the FE head-to-head applies
     on top of its ledger recipe. WL uses it for a one-sided `tool_flat`
     profile, whose surface resin pockets are FE-only.
-  - **Findings.** The kink-band is conservative on all 18 (mean −56%).
-    First-ply FE depends on position: **+22% to +100% unsafe on the
-    embedded WM wrinkles**, as on the other embedded flat-surface sets;
-    −4% to +25% on WL; −50% to +25% on WR. Parity chart now 68 of 116
-    in band; head-to-head, plot and guidance table carry L.
+  - **Quarantined (issue #445).** The laminate is low quality: wet
+    lay-up with a room-temperature cure, Vf 0.46, 4.2% porosity,
+    stitching micro-wrinkles in every ply, and a pristine baseline that
+    bent 15% in test (over ASTM D6641's 10% limit) and fails at 0.44%
+    strain (0.60–0.77% on the other UD carbon sets). A new ledger
+    `quarantine` entry keeps the dataset and its baselines but reports it
+    on its own: the parity chart draws it hollow and leaves it out of
+    the headline count (still 60 of 80), and the summary, head-to-head
+    and gate study tag it `[Q]` and leave it out of pooled figures and
+    the guidance evidence.
+  - **Findings, on its own.** The kink-band is conservative on all 18
+    (mean −56%). First-ply FE depends on position: **+22% to +100%
+    unsafe on the embedded WM wrinkles**; −4% to +25% on WL; −50% to
+    +25% on WR.
 - Validation — **gate transfer study** (issue #435):
   `validation/gate_transfer_study.py` scores the shipped penetration-gate
-  presets on the four UD carbon datasets neither was fitted to (Shi,
-  Thor, Pilato, Krishnappa & Gururaja; 28 cases).
-  - **Blind**, they are unsafe on 21 of 28 (moulded preset, worst +97%)
-    and 28 of 28 (vacuum-bag, worst +179%).
-  - **With `gamma_Y` re-fitted to one wrinkled test, they still do not
-    transfer.** On the small sets (Shi 3 cases, Pilato 5) the moulded
-    shape looked adequate (MAE 2% and 4%). On Dataset L's 18
-    configurations of one material it fails: 306 predictions, MAE 17%,
-    −42% to +71%, 81 more than 15% unsafe. The fitted `gamma_Y` spans
-    0.105–0.349 within that one material, so it is not a material
-    constant: the gate cannot see the wrinkle's through-thickness
-    position or extent.
-  - Docs: the gate is documented as scoped to its material and wrinkle
-    family; the UD carbon guidance row now says no model in the package
-    is a reliable predictor there; the kink-band is conservative on 25
-    of 28, all but Shi's one-sided troughs. Tests pin the claims, including the small-set result that
-    Dataset L overturns. No shipped prediction changes.
+  presets on the UD carbon datasets neither was fitted to: Shi, Thor and
+  Pilato (10 cases), plus the quarantined Dataset L (18) on its own.
+  - **Blind**, they are unsafe on 7 of 10 (moulded preset, worst +97%)
+    and 10 of 10 (vacuum-bag, worst +179%); on L, 14 of 18 and 18 of 18.
+  - **With `gamma_Y` re-fitted to one wrinkled test, unresolved.** The
+    moulded shape predicted Shi's and Pilato's other cases within 2–4%,
+    missed Thor's two by −29% and +15%, and failed on L (306
+    predictions, MAE 17%, −42% to +71%; `gamma_Y` spans 0.105–0.349
+    within one material, and one position alone still errs 9–16%).
+  - Docs: the gate is documented as scoped to its material, process and
+    wrinkle family. The UD carbon guidance row rests on Shi, Thor and
+    Pilato, calls the one-test calibration unproven, and puts wet lay-up
+    outside its scope. Tests pin the claims. No shipped prediction
+    changes.
 - Analysis — **load-path eccentricity and a bending-regime flag** (issue
   #439). Every analysis now reports `load_path_eccentricity_ratio` (e/t)
   and `load_path_eccentricity_mm`: how far the wrinkle moves the
@@ -187,9 +194,10 @@ version produced a given file.
   and Thor), over-predicting retained strength by up to about 90% on
   three others. The README's FE note says the same. Slow tests pin both
   claims.
-- `FE_STRENGTH_CAVEAT` adds that on unidirectional carbon with embedded
-  wrinkles the FE over-predicted retained strength by up to about 100%
-  (Dataset L, middle-ply wrinkles). A slow test pins it.
+- `FE_STRENGTH_CAVEAT` adds that on a low-quality wet lay-up
+  unidirectional carbon laminate with embedded wrinkles the FE
+  over-predicted retained strength by up to about 100% (Dataset L,
+  middle-ply wrinkles). A slow test pins it.
 
 ### Fixed
 - Docs — **the kink-band docstrings called the law concave.**

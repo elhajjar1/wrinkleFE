@@ -31,6 +31,9 @@ Three sections:
    compared rather than inferred. Per-case predictions, with the wrinkle
    severity, go to ``validation/head_to_head_cases.csv``.
 
+Quarantined ledger datasets (a ``quarantine`` entry; Dataset L, issue
+#445) are scored and tagged ``[Q]`` but left out of every pooled count.
+
 Run::
 
     python validation/strength_error_summary.py
@@ -91,16 +94,27 @@ def analytical_section() -> None:
     print("1. Analytical paths (model that applies to each dataset)")
     print(f"   {'dataset':24s} {'method':24s} {'n':>3s} {'MAE%':>6s} "
           f"{'min%':>7s} {'max%':>7s} {'non-cons.':>9s}")
-    total = outside = 0
+    held_out = pav.quarantined()
+    total = outside = q_total = q_outside = 0
     for label, (fn, _c, _m, method) in pav.DATASETS.items():
         errs = [_err(p, m) for m, p in fn()]
-        total += len(errs)
-        outside += sum(abs(e) > 20.0 for e in errs)
+        n_out = sum(abs(e) > 20.0 for e in errs)
+        if label in held_out:
+            q_total += len(errs)
+            q_outside += n_out
+        else:
+            total += len(errs)
+            outside += n_out
         nonc = sum(e > _NON_CONSERVATIVE_PCT for e in errs)
-        print(f"   {label:24s} {method:24s} {len(errs):3d} "
+        tag = " [Q]" if label in held_out else ""
+        print(f"   {label + tag:24s} {method:24s} {len(errs):3d} "
               f"{statistics.mean(abs(e) for e in errs):6.1f} "
               f"{min(errs):+7.1f} {max(errs):+7.1f} {nonc:5d}/{len(errs)}")
-    print(f"   -> {total - outside} of {total} cases within +/-20 %\n")
+    print(f"   -> {total - outside} of {total} cases within +/-20 %")
+    if q_total:
+        print(f"   -> quarantined [Q], not counted (issue #445): "
+              f"{q_total - q_outside} of {q_total} within +/-20 %")
+    print()
 
 
 #: The Li (2025) FE mesh (section 2), reused for Li (2024) in section 4.
@@ -545,9 +559,13 @@ def head_to_head_section() -> None:
           "nc = non-conservative count)")
     print(f"   {'dataset':22s} {'model':14s} {'n':>3s} {'mean%':>7s} "
           f"{'MAE%':>6s} {'worst%':>7s} {'nc':>5s}")
+    import plot_all_validation as pav
+
+    held_out = pav.quarantined()
     datasets = list(dict.fromkeys(r["dataset"] for r in rows))
     for d in datasets:
         drows = [r for r in rows if r["dataset"] == d]
+        label = d + " [Q]" if d in held_out else d
         for m in MODELS:
             if (d, m) in NOT_APPLICABLE:
                 continue
@@ -556,14 +574,18 @@ def head_to_head_section() -> None:
             if not errs:
                 continue
             nc = sum(e > _NON_CONSERVATIVE_PCT for e in errs)
-            print(f"   {d:22s} {m:14s} {len(errs):3d} "
+            print(f"   {label:22s} {m:14s} {len(errs):3d} "
                   f"{statistics.mean(errs):+7.1f} "
                   f"{statistics.mean(abs(e) for e in errs):6.1f} "
                   f"{max(errs):+7.1f} {nc:2d}/{len(errs)}")
     vac = [_err(r["gate (blind, vacuum-bag preset)"], r["measured"])
-           for r in rows if "gate (blind, vacuum-bag preset)" in r]
+           for r in rows if "gate (blind, vacuum-bag preset)" in r
+           and r["dataset"] not in held_out]
     print(f"   (gate (blind) is the moulded preset; the vacuum-bag preset on "
-          f"the same UD carbon cases: {min(vac):+.1f} % to {max(vac):+.1f} %)")
+          f"the same UD carbon cases: {min(vac):+.1f} % to {max(vac):+.1f} %,"
+          f" excluding [Q])")
+    if held_out:
+        print("   [Q] = quarantined dataset (issue #445): scored, not pooled.")
     print("   Not applicable:")
     for (d, m), why in NOT_APPLICABLE.items():
         if m != "gate (fitted)" or why != _GATE_MD:

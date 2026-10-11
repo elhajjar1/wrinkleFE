@@ -479,7 +479,11 @@
     },
     {
       "name": "krishnappa_2024_ud_cfrp_compression",
-      "status": "active - Dataset L. UD carbon compression, 18 strip-induced wrinkle configurations (7.7-30.2 deg, three through-thickness positions): the >=5-severity blind test of issue #435. No penetration-gate preset is calibrated for this material. See VALIDATION.md 'Dataset L'.",
+      "status": "quarantined - Dataset L. UD carbon compression, 18 strip-induced wrinkle configurations (7.7-30.2 deg, three through-thickness positions) in a low-quality wet lay-up laminate. Baselines stay pinned (regression guard); the dataset is reported separately, never pooled. See VALIDATION.md 'Dataset L' and issue #445.",
+      "quarantine": {
+        "issue": 445,
+        "reason": "Wet lay-up of stitched UD carbon fabric, room-temperature cure under a vacuum bag: Vf 0.46, 4.2% porosity, stitching micro-wrinkles in every ply. The pristine coupons bent 15% in test (ASTM D6641 limit 10%) and fail at 0.44% strain (0.60-0.77% on the other UD carbon sets). Wrinkles are inserted 90-deg strips up to 37% of the thickness. Not comparable like-for-like with the other datasets; excluded from pooled statistics, the parity headline count and the model-choice guidance evidence."
+      },
       "reference": "Krishnappa & Gururaja (2024), Composites Part B 284:111688, DOI 10.1016/j.compositesb.2024.111688 (Elsevier; values transcribed with citation)",
       "material": "YC300_LY5052",
       "layup": "[0]_8",

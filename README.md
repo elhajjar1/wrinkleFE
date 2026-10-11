@@ -1188,17 +1188,21 @@ a ±20% band, with each dataset predicted by the model that physically
 applies to it (Budiansky–Fleck / three-mechanism for the
 multidirectional cases A–D, the penetration gate for the UD cases E/F;
 Datasets H to L, which have no gate preset, are plotted twice —
-analytical and first-ply FE LaRC05 retention). 68 of the 116 points fall
-inside the band. Of the 48 outside it, 35 are conservative, 22 of them the
-kink-band on UD carbon (Datasets J, K and L). The 13 that are not:
-- five analytical points, all high amplitude-to-thickness compression
-  cases: the most severe wrinkle in Dataset A (+30%), Dataset H's severe
-  cases (+26% UD; +56% and +115% multidirectional) and Thor's severe
-  quasi-isotropic wave in Dataset J (+52%). On the H and J cases the FE
-  retention, run on the specimen's own geometry, is within −9% to −1%.
-  A bending-dominated model for this regime is issue #439.
-- eight FE points on Dataset L, chiefly its embedded (WM) wrinkles, by up
-  to +100%.
+analytical and first-ply FE LaRC05 retention). 60 of the 80 points fall
+inside the band. Of the twenty outside it, fifteen are conservative,
+seven of them the kink-band on UD carbon (Datasets J and K). The five
+that are not are all high amplitude-to-thickness compression cases: the
+most severe wrinkle in dataset A (+30%), Dataset H's severe cases (+26%
+UD; +56% and +115% multidirectional) and Thor's severe quasi-isotropic
+wave in Dataset J (+52%). On the H and J cases the FE retention, run on
+the specimen's own geometry, is within −9% to −1%; a bending-dominated
+model for this regime is issue #439.
+
+Dataset L, a low-quality wet lay-up laminate, is **quarantined**
+(issue #445): it is plotted with hollow markers and left out of that
+count. On its own, 8 of its 36 points fall inside the band; the
+kink-band is conservative on all 18 cases, and the FE over-predicts its
+embedded (mid-plane) wrinkles by up to +100%.
 
 > **FE strength is indicative, not an allowable.** The analytical
 > knockdown (the penetration gate for UD) is the validated strength path.

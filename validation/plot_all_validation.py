@@ -26,6 +26,9 @@ encodes the dataset:
     2022, near-UD industrial wrinkles) and L (Krishnappa & Gururaja 2024,
     UD carbon, 18 strip-induced wrinkles) -> shown twice the same way. No
     gate preset is calibrated for any of their materials.
+  * Ledger datasets carrying a ``quarantine`` entry (L: a low-quality wet
+    lay-up laminate, issue #445) are drawn with hollow markers and left
+    out of the headline count, which is printed for them separately.
   * Unidirectional laminates (E, F)          -> the two-parameter
     penetration gate ``KD = 1 - (1 - KD_angle(theta)) * S(D/T) * P(z)``,
     which the angle-only models cannot reproduce (the Li grids vary
@@ -402,6 +405,35 @@ DATASETS = {
 }
 
 
+#: Parity series backed by a ledger dataset, by ledger name prefix.
+_LEDGER_SERIES = {
+    "H Shi2025 UD comp": "shi_2025_ud",
+    "H Shi2025 MD comp": "shi_2025_md",
+    "H Shi2025 UD comp (FE)": "shi_2025_ud",
+    "H Shi2025 MD comp (FE)": "shi_2025_md",
+    "I Calvo2023 MD tens": "calvo_2023",
+    "I Calvo2023 MD tens (FE)": "calvo_2023",
+    "J Thor2021 QI comp": "thor_2021_qi",
+    "J Thor2021 QI comp (FE)": "thor_2021_qi",
+    "J Thor2021 UD comp": "thor_2021_ud",
+    "J Thor2021 UD comp (FE)": "thor_2021_ud",
+    "K Pilato2022 UD comp": "pilato_2022",
+    "K Pilato2022 UD comp (FE)": "pilato_2022",
+    "L Krishnappa2024 UD comp": "krishnappa_2024",
+    "L Krishnappa2024 UD comp (FE)": "krishnappa_2024",
+}
+
+
+def quarantined() -> set[str]:
+    """Parity series whose ledger dataset is quarantined (issue #445).
+
+    They stay in the ledger, with pinned baselines, but are not pooled:
+    the headline count and the model-choice guidance leave them out.
+    """
+    return {label for label, prefix in _LEDGER_SERIES.items()
+            if "quarantine" in _ledger_dataset(prefix)}
+
+
 def main():
     fig, ax = plt.subplots(figsize=(12.5, 8.0))
 
@@ -413,23 +445,36 @@ def main():
 
     print(f"{'Dataset':<24} {'N':>3} {'MAE':>7} {'PASS':>7}")
     print("-" * 46)
-    all_err = []
+    held_out = quarantined()
+    all_err, q_err = [], []
     for label, (fn, colour, marker, method) in DATASETS.items():
         pairs = fn()
         exp = np.array([p[0] for p in pairs])
         pred = np.array([p[1] for p in pairs])
         err = np.abs(pred - exp) / exp
-        all_err.extend(err.tolist())
         n_pass = int((err <= 0.20).sum())
-        print(f"{label:<24} {len(pairs):>3} {err.mean()*100:>6.1f}% "
+        tag = " [Q]" if label in held_out else ""
+        print(f"{label + tag:<24} {len(pairs):>3} {err.mean()*100:>6.1f}% "
               f"{n_pass:>3}/{len(pairs)}")
-        ax.scatter(exp, pred, c=colour, marker=marker, s=90,
-                   edgecolor="k", linewidth=0.5, zorder=3,
-                   label=f"{label}  [{method}]")
+        if label in held_out:
+            q_err.extend(err.tolist())
+            ax.scatter(exp, pred, facecolors="none", edgecolors=colour,
+                       marker=marker, s=90, linewidth=1.0, zorder=2,
+                       label=f"{label}  [{method}]")
+        else:
+            all_err.extend(err.tolist())
+            ax.scatter(exp, pred, c=colour, marker=marker, s=90,
+                       edgecolor="k", linewidth=0.5, zorder=3,
+                       label=f"{label}  [{method}]")
     print("-" * 46)
     print(f"{'OVERALL':<24} {len(all_err):>3} "
           f"{np.mean(all_err)*100:>6.1f}% "
           f"{int(np.sum(np.array(all_err) <= 0.20)):>3}/{len(all_err)}")
+    if q_err:
+        print(f"{'QUARANTINED [Q]':<24} {len(q_err):>3} "
+              f"{np.mean(q_err)*100:>6.1f}% "
+              f"{int(np.sum(np.array(q_err) <= 0.20)):>3}/{len(q_err)}"
+              "  (not in OVERALL; issue #445)")
 
     ax.set_xlim(0.0, 1.15)
     ax.set_ylim(0.0, 1.15)
@@ -437,7 +482,8 @@ def main():
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
     ax.set_title("WrinkleFE validation -- all cases (A-L)\n"
-                 "marker = method, colour = dataset, band = +/-20 %")
+                 "marker = method, colour = dataset, band = +/-20 %, "
+                 "hollow = quarantined")
     ax.grid(alpha=0.3)
     # 20 series: the legend sits outside the axes so it hides no points.
     ax.legend(fontsize=7.5, loc="upper left", bbox_to_anchor=(1.02, 1.0),
