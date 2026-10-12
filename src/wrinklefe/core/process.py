@@ -93,14 +93,16 @@ def parse_process(value: ManufacturingProcess | str) -> ManufacturingProcess:
 
 @dataclass(frozen=True)
 class ProcessEvidence:
-    """The manufacturing route of one validation dataset.
+    """The manufacturing route(s) of one validation dataset.
 
-    ``process`` is ``None`` when the dataset's source does not state the
-    route; ``source`` says where it is stated, or that it is not.
+    ``processes`` lists every route the dataset's laminates were made by
+    (some datasets used more than one), and is empty when the source does
+    not state the route; ``source`` says where it is stated, or that it is
+    not.
     """
 
     dataset: str
-    process: ManufacturingProcess | None
+    processes: tuple[ManufacturingProcess, ...]
     source: str
     quarantined: bool = False
 
@@ -108,47 +110,51 @@ class ProcessEvidence:
 #: The route of every validation dataset, as its source states it.
 VALIDATION_EVIDENCE: tuple[ProcessEvidence, ...] = (
     ProcessEvidence(
-        "A/B Elhajjar (2025)", None,
-        "T700/2510 prepreg; cure route not recorded in the repository",
+        "A/B Elhajjar (2025)",
+        (ManufacturingProcess.PREPREG_AUTOCLAVE,
+         ManufacturingProcess.PREPREG_PRESS),
+        "T700/2510 prepreg, autoclave or hot-press cure, with high "
+        "consolidation and fibre volume fraction (the author, R. Elhajjar, "
+        "2026)",
     ),
     ProcessEvidence(
-        "C Mukhopadhyay, Jones & Hallett (2015)", None,
+        "C Mukhopadhyay, Jones & Hallett (2015)", (),
         "IM7/8552 prepreg; cure route not recorded in the repository",
     ),
     ProcessEvidence(
-        "D Wang (2021)", None,
+        "D Wang (2021)", (),
         "T800S/M21 prepreg; cure route not recorded in the repository",
     ),
     ProcessEvidence(
-        "E Li et al. (2024)", ManufacturingProcess.PREPREG_PRESS,
+        "E Li et al. (2024)", (ManufacturingProcess.PREPREG_PRESS,),
         "AC318/S6C10 prepreg moulded at 2.9 MPa",
     ),
     ProcessEvidence(
-        "F Li, Li, Ge & Liang (2025)", ManufacturingProcess.PREPREG_VACUUM_BAG,
+        "F Li, Li, Ge & Liang (2025)", (ManufacturingProcess.PREPREG_VACUUM_BAG,),
         "the same AC318/S6C10 prepreg cured under a ~1 bar vacuum bag",
     ),
     ProcessEvidence(
-        "G Hsiao & Daniel (1996)", None,
+        "G Hsiao & Daniel (1996)", (),
         "IM6G/3501-6 prepreg; cure route not recorded in the repository",
     ),
     ProcessEvidence(
-        "H Shi et al. (2025)", None, "not stated in the paper",
+        "H Shi et al. (2025)", (), "not stated in the paper",
     ),
     ProcessEvidence(
-        "I Calvo et al. (2023)", None,
+        "I Calvo et al. (2023)", (),
         "M21E/IMA prepreg; cure route not stated in the paper",
     ),
     ProcessEvidence(
-        "J Thor et al. (2021)", ManufacturingProcess.PREPREG_AUTOCLAVE,
+        "J Thor et al. (2021)", (ManufacturingProcess.PREPREG_AUTOCLAVE,),
         "IM7/8552 prepreg, 'fabricated in an autoclave following the "
         "recommended curing cycle'",
     ),
     ProcessEvidence(
-        "K Pilato et al. (2022)", None,
+        "K Pilato et al. (2022)", (),
         "industrial part, 'standard industry practices'; route not stated",
     ),
     ProcessEvidence(
-        "L Krishnappa & Gururaja (2024)", ManufacturingProcess.WET_LAYUP,
+        "L Krishnappa & Gururaja (2024)", (ManufacturingProcess.WET_LAYUP,),
         "wet lay-up of stitched fabric, room-temperature cure under a "
         "vacuum bag (quarantined, issue #445)",
         quarantined=True,
@@ -157,8 +163,7 @@ VALIDATION_EVIDENCE: tuple[ProcessEvidence, ...] = (
 
 #: Routes at least one non-quarantined validation dataset was made by.
 VALIDATED_PROCESSES: frozenset[ManufacturingProcess] = frozenset(
-    e.process for e in VALIDATION_EVIDENCE
-    if e.process is not None and not e.quarantined
+    p for e in VALIDATION_EVIDENCE if not e.quarantined for p in e.processes
 )
 
 

@@ -415,15 +415,17 @@ entries must agree with it (`tests/test_process.py`).
 
 | Dataset | Route | Where it is stated |
 |---|---|---|
+| A/B Elhajjar (2025) | prepreg, autoclave or hot press | the author (2026): T700/2510, high consolidation and fibre volume fraction |
 | E Li (2024) | prepreg, press / closed mould | moulded at 2.9 MPa |
 | F Li (2025) | prepreg, vacuum-bag oven cure | same prepreg, ~1 bar vacuum bag |
 | J Thor (2021) | prepreg, autoclave | "fabricated in an autoclave" |
 | L Krishnappa & Gururaja (2024) | wet lay-up (quarantined) | room-temperature cure under a vacuum bag |
-| A/B, C, D, G, H, I, K | not recorded | prepreg systems (A–D, G, I) or not stated; they add nothing to the scope |
+| C, D, G, H, I, K | not recorded | prepreg systems (C, D, G, I) or not stated; they add nothing to the scope |
 
-So the scope is the three prepreg routes; RTM, infusion, wet lay-up and
-"other" get the warning. Recording the route of A–D, G, H, I and K (and
-fibre volume fraction and porosity where reported) would sharpen it.
+So the scope is the three prepreg routes: autoclave (A/B, J), press (A/B,
+E) and vacuum bag (F). RTM, infusion, wet lay-up and "other" get the
+warning. Recording the route of C, D, G, H, I and K (and fibre volume
+fraction and porosity where reported) would sharpen it.
 Penetration-gate presets also record their fit (the `AC318_S6C10` cards,
 press or vacuum-bag cure) and warn when used outside it.
 

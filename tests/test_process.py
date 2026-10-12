@@ -114,9 +114,21 @@ def test_scope_is_the_three_prepreg_routes_with_a_dataset():
 
 
 def test_a_quarantined_dataset_does_not_widen_the_scope():
-    wet = [e for e in VALIDATION_EVIDENCE if e.process is MP.WET_LAYUP]
+    wet = [e for e in VALIDATION_EVIDENCE if MP.WET_LAYUP in e.processes]
     assert wet and all(e.quarantined for e in wet)
     assert MP.WET_LAYUP not in VALIDATED_PROCESSES
+
+
+def test_each_validated_route_has_its_evidence():
+    """Autoclave and press have two datasets each (Elhajjar A/B, with
+    Thor and Li 2024 respectively); vacuum bag has Li 2025 alone."""
+    def datasets(p):
+        return sorted(e.dataset.split()[0] for e in VALIDATION_EVIDENCE
+                      if p in e.processes and not e.quarantined)
+
+    assert datasets(MP.PREPREG_AUTOCLAVE) == ["A/B", "J"]
+    assert datasets(MP.PREPREG_PRESS) == ["A/B", "E"]
+    assert datasets(MP.PREPREG_VACUUM_BAG) == ["F"]
 
 
 # The ledger's dataset prefix -> the evidence table's dataset letter.
@@ -133,7 +145,9 @@ def test_ledger_process_entries_match_the_evidence_table():
         prefix = next(k for k in _LEDGER_LETTER if ds["name"].startswith(k))
         evidence = by_letter[_LEDGER_LETTER[prefix]]
         route = ds["process"]["route"]
-        assert route == (evidence.process.value if evidence.process else None)
+        expected = [p.value for p in evidence.processes]
+        assert route == (expected[0] if len(expected) == 1 else None), (
+            ds["name"])
         assert ("quarantine" in ds) == evidence.quarantined, ds["name"]
 
 
