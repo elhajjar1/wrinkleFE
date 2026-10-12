@@ -754,6 +754,7 @@ wrinklefe analyze --morphology tool-flat --amplitude 0.25 \
 | --- | --- | --- |
 | `--wrinkle-z-position Z` | `wrinkle_z_position` | Fraction of thickness in `[0, 1]` (0.5 = midplane); graded morphology **and the penetration gate on every morphology** — see note below |
 | `--gate {li2024-moulded,li2025-vacbag}` | `penetration_gate` | Calibrated `GateParameters` preset; UD-scoped |
+| `--process {prepreg-autoclave,…,wet-layup,unspecified}` | `manufacturing_process` | How the laminate was made. A process outside the validated scope (anything but the three prepreg routes) adds a warning, as does a `--gate` preset used outside its fitted material or process; no number changes (issue #445) |
 | `--resin-pocket` | `enable_resin_pocket` | Crest resin lens (FE-only) |
 | `--surface-resin-pockets` / `--surface-pocket-side {top,bottom,both}` | `enable_surface_resin_pockets` / `surface_pocket_side` | Tool-flat surface pockets (FE-only). Auto-enabled for `--morphology tool-flat` |
 | `--surface-transition-plies N` | `surface_transition_plies` | `tool_flat` only: amplitude-ramp width (≥ 1, default 2); bounds the amplitude |

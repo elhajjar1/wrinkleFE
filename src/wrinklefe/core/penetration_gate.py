@@ -47,6 +47,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from wrinklefe.core.process import ManufacturingProcess, parse_process
+
 
 @dataclass(frozen=True)
 class GateParameters:
@@ -64,6 +66,15 @@ class GateParameters:
         be > 0.
     name : str
         Identifier (e.g. the material realization).
+    position_q : float, optional
+        Through-thickness position exponent (see :func:`position_factor`).
+    fitted_materials : tuple of str
+        Material-card names of the material system the gate was fitted
+        to. Empty for a user's own calibration. Used only to warn when
+        the gate is applied elsewhere
+        (:func:`wrinklefe.core.process.gate_scope_caveat`, issue #445).
+    fitted_process : ManufacturingProcess, optional
+        The manufacturing route of the fitted laminates; same use.
     """
 
     gamma_Y: float
@@ -71,6 +82,8 @@ class GateParameters:
     p: float
     name: str = "gate"
     position_q: float | None = None
+    fitted_materials: tuple[str, ...] = ()
+    fitted_process: ManufacturingProcess | None = None
 
     def __post_init__(self) -> None:
         for attr in ("gamma_Y", "dt0", "p"):
@@ -87,14 +100,27 @@ class GateParameters:
                 f"GateParameters.position_q must be a positive finite "
                 f"float or None, got {self.position_q}"
             )
+        object.__setattr__(
+            self, "fitted_materials", tuple(self.fitted_materials)
+        )
+        if self.fitted_process is not None:
+            object.__setattr__(
+                self, "fitted_process", parse_process(self.fitted_process)
+            )
 
 
 # Calibrated presets (least-squares fit to the VALIDATION_DATA section 2.7
 # single-wrinkle grids; S-A-2 excluded — near-surface position axis).
 #   Li 2024 moulded (Dataset E): MAE 2.8 %, 9/9 within +/-20 %.
 #   Li 2025 vacuum-bag (Dataset F): MAE 6.0 %, 5/5 within +/-20 %.
+#: The material cards of the one material system both presets were fitted
+#: to (AC318 S-glass / S6C10 epoxy prepreg, two cure routes).
+_AC318_S6C10_CARDS = ("AC318_S6C10", "AC318_S6C10_vacbag")
+
 GATE_LI2024_MOULDED = GateParameters(
     gamma_Y=0.2577, dt0=0.0938, p=0.59, name="AC318_S6C10_molded",
+    fitted_materials=_AC318_S6C10_CARDS,
+    fitted_process=ManufacturingProcess.PREPREG_PRESS,
 )
 GATE_LI2025_VACBAG = GateParameters(
     gamma_Y=0.6215, dt0=0.1220, p=4.31, name="AC318_S6C10_vacbag",
@@ -103,6 +129,8 @@ GATE_LI2025_VACBAG = GateParameters(
     # at z=10/14 reproduces the measured near-surface mildness.  Steep
     # (q~5.3) -- a single calibration point, so indicative.
     position_q=5.26,
+    fitted_materials=_AC318_S6C10_CARDS,
+    fitted_process=ManufacturingProcess.PREPREG_VACUUM_BAG,
 )
 
 

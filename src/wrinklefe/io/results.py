@@ -73,8 +73,11 @@ if TYPE_CHECKING:
 #:
 #: History: 1.2 added the ``provenance`` block; 1.3 added the
 #: ``analytical`` keys ``load_path_eccentricity_mm``,
-#: ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue #439).
-SCHEMA_VERSION = "1.3"
+#: ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue #439);
+#: 1.4 added the ``scope`` block: the manufacturing process and whether
+#: it, or a penetration-gate preset, is outside the validated scope
+#: (issue #445).
+SCHEMA_VERSION = "1.4"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -405,6 +408,15 @@ def results_to_dict(results: AnalysisResults) -> dict:
                 results.load_path_eccentricity_ratio
             ),
             "bending_dominated": bool(results.bending_dominated),
+        },
+        # Issue #445: reporting only. The caveats apply to every
+        # knockdown in this document, not only the analytical ones.
+        "scope": {
+            "manufacturing_process": results.manufacturing_process,
+            "process_out_of_scope": bool(results.process_out_of_scope),
+            "process_scope_caveat": results.process_scope_caveat,
+            "gate_out_of_scope": bool(results.gate_out_of_scope),
+            "gate_scope_caveat": results.gate_scope_caveat,
         },
         "first_ply_failure": _first_ply_failure(results),
         "per_ply": _per_ply_rows(results),

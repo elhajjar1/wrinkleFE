@@ -242,9 +242,10 @@ See the table in [README.md](../../README.md). Current sources:
   - **What quarantine means.** The ledger's `quarantine` entry keeps the
     dataset and its pinned baselines (still a regression guard). It is
     reported on its own: left out of the parity headline count, pooled
-    statistics, and the evidence behind the model-choice guidance. More
-    wet lay-up data, and a manufacturing-process input that warns when a
-    process is outside the validated scope, are issue #445.
+    statistics, and the evidence behind the model-choice guidance. An
+    analysis that states `manufacturing_process="wet_layup"` now carries
+    an out-of-scope warning citing this dataset (see "Manufacturing-process
+    scope" below). More wet lay-up data is issue #445.
   - **Material and test.** Wet-laid YC300 carbon / LY5052 epoxy, `[0]8`,
     2.8 mm, Vf 0.46, 4.2% porosity, ASTM D6641; 78 specimens. New card
     `YC300_LY5052` with the paper's measured E1 98 GPa, Xc 432.7 MPa,
@@ -403,6 +404,28 @@ Every case serves as the anchor in turn.
   dataset that varies wrinkle position (issue #445, item 5).
 
 `tests/test_validation/test_gate_transfer_study.py` pins these claims.
+
+### Manufacturing-process scope (issue #445)
+
+`AnalysisConfig.manufacturing_process` warns when a laminate's route is
+outside the validated scope. The scope is the set of routes a
+non-quarantined validation dataset documents, taken from
+`wrinklefe.core.process.VALIDATION_EVIDENCE`; the ledger's `process`
+entries must agree with it (`tests/test_process.py`).
+
+| Dataset | Route | Where it is stated |
+|---|---|---|
+| E Li (2024) | prepreg, press / closed mould | moulded at 2.9 MPa |
+| F Li (2025) | prepreg, vacuum-bag oven cure | same prepreg, ~1 bar vacuum bag |
+| J Thor (2021) | prepreg, autoclave | "fabricated in an autoclave" |
+| L Krishnappa & Gururaja (2024) | wet lay-up (quarantined) | room-temperature cure under a vacuum bag |
+| A/B, C, D, G, H, I, K | not recorded | prepreg systems (A–D, G, I) or not stated; they add nothing to the scope |
+
+So the scope is the three prepreg routes; RTM, infusion, wet lay-up and
+"other" get the warning. Recording the route of A–D, G, H, I and K (and
+fibre volume fraction and porosity where reported) would sharpen it.
+Penetration-gate presets also record their fit (the `AC318_S6C10` cards,
+press or vacuum-bag cure) and warn when used outside it.
 
 ### E vs F: two material realizations, no shared normalization
 

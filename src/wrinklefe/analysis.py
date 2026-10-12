@@ -65,6 +65,7 @@ from wrinklefe.core.penetration_gate import (
     GateParameters,
     penetration_gate_kd,
 )
+from wrinklefe.core.process import parse_process
 from wrinklefe.core.transforms import rotate_stiffness_3d
 from wrinklefe.core.wrinkle import (
     GaussianSinusoidal,
@@ -1397,6 +1398,19 @@ class AnalysisConfig:
     penetration_gate: GateParameters | None = None
 
     # ------------------------------------------------------------------
+    # Manufacturing process (issue #445).
+    # ------------------------------------------------------------------
+    # How the laminate was made: one of the
+    # ``wrinklefe.core.process.ManufacturingProcess`` values
+    # ("prepreg_autoclave", "prepreg_press", "prepreg_vacuum_bag", "rtm",
+    # "infusion", "wet_layup", "other", "unspecified"). Reporting only:
+    # a process outside the validated scope (wet lay-up today) sets
+    # ``AnalysisResults.process_out_of_scope`` and attaches a warning;
+    # no knockdown changes. Also checked against a penetration-gate
+    # preset's fitted process. Stored as the plain string value.
+    manufacturing_process: str = "unspecified"
+
+    # ------------------------------------------------------------------
     # Resin-pocket material zone (Li et al. 2024/2025 UD glass datasets).
     # ------------------------------------------------------------------
     # When ``enable_resin_pocket`` is True, the FE path tags the hex
@@ -2069,6 +2083,17 @@ class AnalysisConfig:
                 "AnalysisConfig.penetration_gate must be a GateParameters "
                 f"or None, got {type(self.penetration_gate).__name__}"
             )
+
+        # --- Manufacturing process (issue #445) -----------------------
+        # Normalised to the enum's plain string value, so the field stays
+        # JSON-native and "wet-layup" / ManufacturingProcess.WET_LAYUP
+        # both work.
+        try:
+            self.manufacturing_process = parse_process(
+                self.manufacturing_process
+            ).value
+        except ValueError as exc:
+            raise ValueError(f"AnalysisConfig.{exc}") from None
 
         # --- Resin-pocket zone ----------------------------------------
         # Fields are no-ops when ``enable_resin_pocket`` is False; still
@@ -2744,6 +2769,16 @@ class AnalysisResults:
         :data:`~wrinklefe.core.eccentricity.ECCENTRICITY_REGIME_THRESHOLD`:
         outside the regime where the kink-band knockdown was validated
         (issue #439). Prefer FE on the measured wrinkle profile there.
+    manufacturing_process : str
+        The config's ``manufacturing_process`` (issue #445).
+    process_out_of_scope, process_scope_caveat : bool, str or None
+        Whether that process is outside the validated scope
+        (:func:`wrinklefe.core.process.process_in_scope`), and the warning
+        that goes with it. Reporting only.
+    gate_out_of_scope, gate_scope_caveat : bool, str or None
+        Whether a penetration-gate preset is applied outside the material
+        system or process it was fitted to, and the warning. Reporting
+        only.
     field_results : FieldResults or None
         FE solution fields (displacement, stress, strain).
     failure_report : LaminateFailureReport or None
@@ -2782,6 +2817,12 @@ class AnalysisResults:
     load_path_eccentricity_mm: float = 0.0
     load_path_eccentricity_ratio: float = 0.0
     bending_dominated: bool = False
+    # Manufacturing-process scope (issue #445): reporting only.
+    manufacturing_process: str = "unspecified"
+    process_out_of_scope: bool = False
+    process_scope_caveat: str | None = None
+    gate_out_of_scope: bool = False
+    gate_scope_caveat: str | None = None
     # Tension mechanism decomposition (only for tension loading)
     tension_mechanisms: dict | None = None  # {kd_fiber, kd_matrix, kd_oop, mode, ...}
 
@@ -3012,6 +3053,24 @@ class AnalysisResults:
                 "WARNING (bending-dominated): " + BENDING_REGIME_CAVEAT,
                 width=61, initial_indent="    ", subsequent_indent="    ",
             ))
+        if self.manufacturing_process != "unspecified":
+            from wrinklefe.core.process import parse_process
+
+            lines.append(
+                "    Manufacturing process:  "
+                + parse_process(self.manufacturing_process).label
+            )
+        if self.process_scope_caveat or self.gate_scope_caveat:
+            from wrinklefe.core.process import wrap_warning
+
+            if self.process_scope_caveat:
+                lines.extend(wrap_warning(
+                    "process out of scope", self.process_scope_caveat,
+                ))
+            if self.gate_scope_caveat:
+                lines.extend(wrap_warning(
+                    "gate out of scope", self.gate_scope_caveat,
+                ))
 
         # Thermal / cure-residual load (issue #273). Emitted only
         # when a temperature change is set, so the default summary is
@@ -3637,6 +3696,10 @@ class WrinkleAnalysis:
         # Geometry only (the ply boundaries the FE mesh is built on, not
         # a solve), so it runs on the analytical path too.
         self._compute_eccentricity(results, laminate, wrinkle_config)
+
+        # 3a'. Manufacturing-process and gate scope (issue #445).
+        # Reporting only, like 3a.
+        self._compute_process_scope(results)
 
         # 3b. CLT first-ply-failure under the thermal load (issue #273).
         #
@@ -5107,6 +5170,38 @@ class WrinkleAnalysis:
                 "knockdown was validated (issue #439). Prefer FE on the "
                 "measured wrinkle profile.",
                 ecc.ratio, ECCENTRICITY_REGIME_THRESHOLD,
+            )
+
+    def _compute_process_scope(self, results: AnalysisResults) -> None:
+        """Populate the manufacturing-process and gate scope flags (#445)."""
+        from wrinklefe.core.process import (
+            gate_scope_caveat,
+            process_scope_caveat,
+        )
+
+        cfg = self.config
+        results.manufacturing_process = cfg.manufacturing_process
+        results.process_scope_caveat = process_scope_caveat(
+            cfg.manufacturing_process
+        )
+        results.process_out_of_scope = results.process_scope_caveat is not None
+        material_name = getattr(cfg.material, "name", None)
+        results.gate_scope_caveat = gate_scope_caveat(
+            cfg.penetration_gate, material_name, cfg.manufacturing_process,
+        )
+        results.gate_out_of_scope = results.gate_scope_caveat is not None
+        # INFO, not WARNING, for the reason _compute_eccentricity gives.
+        if results.process_out_of_scope:
+            logger.info(
+                "Manufacturing process %r is outside the validated scope "
+                "(issue #445); the knockdowns are unvalidated for it.",
+                cfg.manufacturing_process,
+            )
+        if results.gate_out_of_scope:
+            logger.info(
+                "Penetration-gate preset %r is applied outside the material "
+                "system or process it was fitted to (issue #445).",
+                cfg.penetration_gate.name if cfg.penetration_gate else None,
             )
 
     def _build_flat_mesh(self, laminate: Laminate) -> MeshData:

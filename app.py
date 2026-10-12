@@ -50,6 +50,7 @@ from wrinklefe.core.layup import parse_layup  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
 from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
 from wrinklefe.core.morphology import WrinkleConfiguration  # noqa: E402
+from wrinklefe.core.process import ManufacturingProcess  # noqa: E402
 from wrinklefe.core.wrinkle import GaussianSinusoidal  # noqa: E402
 from wrinklefe.goalseek import (  # noqa: E402
     DEFAULT_SCAN_POINTS,
@@ -149,6 +150,9 @@ CUSTOM_MAT_STRENGTH_FIELDS = (
 DEFAULT_LAYUP = "[0/45/-45/90]_3s"
 DEFAULT_EXPERT_MODE = False
 DEFAULT_MATERIAL = "IM7_8552"
+# How the laminate was made (issue #445). "unspecified" keeps the pre-#445
+# behaviour: no scope warning and an unchanged run-cache key.
+DEFAULT_MANUFACTURING_PROCESS = "unspecified"
 DEFAULT_CUSTOM_NAME = "custom"
 DEFAULT_LOADING = "compression"
 DEFAULT_STRAIN_MAG_PCT = 1.0
@@ -258,6 +262,7 @@ DEFAULTS: dict[str, object] = {
     "expert_mode": DEFAULT_EXPERT_MODE,
     "sb_material": DEFAULT_MATERIAL,
     "sb_custom_name": DEFAULT_CUSTOM_NAME,
+    "sb_manufacturing_process": DEFAULT_MANUFACTURING_PROCESS,
     "sb_ply_thickness": DEFAULT_PLY_THICKNESS,
     "sb_layup": DEFAULT_LAYUP,
     "sb_amplitude": DEFAULT_AMPLITUDE,
@@ -453,6 +458,7 @@ def _seed_state_from_config(
     ranges so an out-of-range external config seeds without crashing.
     """
     state["expert_mode"] = True
+    state["sb_manufacturing_process"] = cfg.manufacturing_process
     state["sb_amplitude"] = _clamp(cfg.amplitude, 0.0, 5.0)
     state["sb_wavelength"] = _clamp(cfg.wavelength, 1.0, 200.0)
     state["sb_width"] = _clamp(cfg.width, 1.0, 200.0)
@@ -1214,6 +1220,21 @@ with st.sidebar:
         material_dict["name"] = custom_name.strip() or "custom"
     else:
         material_dict = LIB.get(material_choice).to_dict()
+
+    _process_values = [p.value for p in ManufacturingProcess]
+    manufacturing_process = st.selectbox(
+        "Manufacturing process", _process_values,
+        index=_process_values.index(DEFAULT_MANUFACTURING_PROCESS),
+        format_func=lambda v: ManufacturingProcess(v).label,
+        key="sb_manufacturing_process",
+        help=(
+            "How the laminate was made. The knockdown models have been "
+            "validated on prepreg laminates (autoclave, press and "
+            "vacuum-bag cures); any other process, wet lay-up included, "
+            "is flagged as outside the validated scope (issue #445). "
+            "Reporting only: no number changes."
+        ),
+    )
 
     if expert_mode:
         ply_thickness = st.number_input(
@@ -2327,6 +2348,9 @@ def _config_from_payload(cfg_payload: tuple) -> AnalysisConfig:
         ny=cfg_dict.get("ny", 6),
         nz_per_ply=cfg_dict.get("nz_per_ply", 1),
         analytical_only=cfg_dict["analytical_only"],
+        manufacturing_process=cfg_dict.get(
+            "manufacturing_process", DEFAULT_MANUFACTURING_PROCESS
+        ),
         **czm_kwargs,
         **surface_pocket_kwargs,
         **transverse_kwargs,
@@ -2568,6 +2592,10 @@ def _run_analysis(
             result.load_path_eccentricity_ratio
         ),
         "bending_dominated": bool(result.bending_dominated),
+        # Issue #445: reporting only.
+        "manufacturing_process": result.manufacturing_process,
+        "process_out_of_scope": bool(result.process_out_of_scope),
+        "process_scope_caveat": result.process_scope_caveat,
         "tension_mechanisms": (
             {k: float(v) if isinstance(v, (int, float, np.floating)) else v
              for k, v in result.tension_mechanisms.items()}
@@ -2809,6 +2837,10 @@ def _assemble_cfg_payload(
         "material_tuple": tuple(sorted(material_dict.items())),
         "analytical_only": effective_analytical_only,
     }
+    # Issue #445. Only a specified process enters the payload, so the
+    # default run's cache key is unchanged.
+    if manufacturing_process != DEFAULT_MANUFACTURING_PROCESS:
+        cfg_items["manufacturing_process"] = manufacturing_process
     # Mesh keys only matter for the FE path; omitting them in
     # analytical-only mode means the cache key doesn't churn when the
     # user tweaks nx/ny/nz.
@@ -4220,6 +4252,11 @@ with tab_analyze:
         # outside its validated regime when this fires (issue #439).
         if r.get("bending_dominated"):
             st.warning(f"**Bending-dominated wrinkle:** {BENDING_REGIME_CAVEAT}")
+        if r.get("process_out_of_scope"):
+            st.warning(
+                "**Manufacturing process outside the validated scope:** "
+                f"{r.get('process_scope_caveat')}"
+            )
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(
             "Max fibre misalignment", f"{r['max_angle_deg']:.2f}°",
@@ -4960,6 +4997,9 @@ with tab_export:
                     "n_plies": len(_angles),
                     "layup": _angles,
                     "material_name": _mat.get("name"),
+                    "manufacturing_process": _cfg.get(
+                        "manufacturing_process", DEFAULT_MANUFACTURING_PROCESS
+                    ),
                 },
                 engineering={
                     "analytical_knockdown": _res.get("analytical_knockdown"),
