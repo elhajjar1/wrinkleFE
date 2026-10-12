@@ -476,6 +476,269 @@
           "expected_analytical_modulus_kd": 0.93334
         }
       ]
+    },
+    {
+      "name": "krishnappa_2024_ud_cfrp_compression",
+      "status": "quarantined - Dataset L. UD carbon compression, 18 strip-induced wrinkle configurations (7.7-30.2 deg, three through-thickness positions) in a low-quality wet lay-up laminate. Baselines stay pinned (regression guard); the dataset is reported separately, never pooled. See VALIDATION.md 'Dataset L' and issue #445.",
+      "quarantine": {
+        "issue": 445,
+        "reason": "Wet lay-up of stitched UD carbon fabric, room-temperature cure under a vacuum bag: Vf 0.46, 4.2% porosity, stitching micro-wrinkles in every ply. The pristine coupons bent 15% in test (ASTM D6641 limit 10%) and fail at 0.44% strain (0.60-0.77% on the other UD carbon sets). Wrinkles are inserted 90-deg strips up to 37% of the thickness. Not comparable like-for-like with the other datasets; excluded from pooled statistics, the parity headline count and the model-choice guidance evidence."
+      },
+      "reference": "Krishnappa & Gururaja (2024), Composites Part B 284:111688, DOI 10.1016/j.compositesb.2024.111688 (Elsevier; values transcribed with citation)",
+      "material": "YC300_LY5052",
+      "layup": "[0]_8",
+      "ply_thickness_mm": 0.35,
+      "loading": "compression",
+      "morphology": "graded",
+      "pristine_strength_MPa": 432.7,
+      "amplitude_convention": "config amplitude = the paper's A = (A_U + A_L)/2 (Fig. 8a); amplitude_p2p_mm = 2A only to fit the shared schema.",
+      "width_convention": "wavelength_mm = 2 pi A / tan(theta), so the recipe's peak angle equals the measured Table 1 angle (as for Dataset I); config width = wavelength.",
+      "data_note": "Strengths and amplitudes appear only in figures; they were read from the article's VECTOR graphics (exact plotted coordinates, not by eye). Strengths: Fig. 7 bar heights (the pristine bar reproduces the text's 432.7 MPa exactly); every wrinkled knockdown agrees with Fig. 8b within 0.22 points, and every Fig. 8b angle with Table 1 within 0.11 deg. Amplitudes: Fig. 8a, whose 2 mm series carries four colour errors (WL-2-2, WL-2-3, WM-2-3 and WR-2-1 drawn in another position's colour); each Fig. 8a point is attached to its configuration by its knockdown value, which Figs. 8a and 8b share exactly.",
+      "geometry_note": "[0]_8, 2.8 mm (0.35 mm plies), 14 mm wide, 14 mm gauge, ASTM D6641 CLC; 78 specimens. Wrinkles made by inserting a 90-deg laminate strip (1-3 plies, 2 or 4 mm wide) at three positions. Analytical recipe by position: WM 'graded' (embedded, flat surfaces); WR 'uniform' (the strip under the first ply lifts every ply); WL 'uniform', which the analytical path treats exactly as the one-sided 'tool_flat' (it reads only the profile). WL cases carry an 'fe_recipe': 'tool_flat' with the flat face at the bottom and a 7-ply ramp (the hump over the strip at the bag-side surface), applied by the FE scoring. The 90-deg strip itself and its resin pocket are not modelled.",
+      "baseline_note": "Pristine 432.7 +/- 38 MPa (text and Fig. 7). Knockdown = wrinkled / pristine strength, the paper's Eq. (2) basis.",
+      "failure_note": "The paper reports kinking with delamination in wrinkled coupons, buckle-delamination for WL, delamination-led failure at higher WR severity, and crushing plus delamination in the pristine coupons. Wet layup, 46% Vf, 4.2% porosity, and micro-wrinkles from the glass stitching yarn (pristine bending 15%, above the D6641 limit).",
+      "cases": [
+        {
+          "case": "L-WL-2-1",
+          "amplitude_p2p_mm": 0.3166,
+          "wavelength_mm": 7.3564,
+          "peak_angle_deg": 7.7,
+          "measured_strength_MPa": 343.4,
+          "measured_kd": 0.7936,
+          "note": "strip under the last (bag-side) ply: a hump at that surface over a flat tool face; strip 2 mm wide, 1 ply. Table 1: theta 7.7 deg, A/lambda 0.035. Strength 343.4 MPa +/- 38.4 (Fig. 7); A = 0.158 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "fe_recipe": {
+            "morphology": "tool_flat",
+            "surface_pocket_side": "bottom",
+            "surface_transition_plies": 7
+          },
+          "expected_analytical_kd": 0.19232,
+          "expected_analytical_modulus_kd": 0.9212
+        },
+        {
+          "case": "L-WL-2-2",
+          "amplitude_p2p_mm": 0.6514,
+          "wavelength_mm": 9.7957,
+          "peak_angle_deg": 11.8,
+          "measured_strength_MPa": 221.4,
+          "measured_kd": 0.5117,
+          "note": "strip under the last (bag-side) ply: a hump at that surface over a flat tool face; strip 2 mm wide, 2 ply. Table 1: theta 11.8 deg, A/lambda 0.067. Strength 221.4 MPa +/- 7.4 (Fig. 7); A = 0.326 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "fe_recipe": {
+            "morphology": "tool_flat",
+            "surface_pocket_side": "bottom",
+            "surface_transition_plies": 7
+          },
+          "expected_analytical_kd": 0.13448,
+          "expected_analytical_modulus_kd": 0.83291
+        },
+        {
+          "case": "L-WL-2-3",
+          "amplitude_p2p_mm": 1.0172,
+          "wavelength_mm": 11.4455,
+          "peak_angle_deg": 15.6,
+          "measured_strength_MPa": 198.0,
+          "measured_kd": 0.4576,
+          "note": "strip under the last (bag-side) ply: a hump at that surface over a flat tool face; strip 2 mm wide, 3 ply. Table 1: theta 15.6 deg, A/lambda 0.082. Strength 198.0 MPa +/- 10.4 (Fig. 7); A = 0.509 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "fe_recipe": {
+            "morphology": "tool_flat",
+            "surface_pocket_side": "bottom",
+            "surface_transition_plies": 7
+          },
+          "expected_analytical_kd": 0.10517,
+          "expected_analytical_modulus_kd": 0.74076
+        },
+        {
+          "case": "L-WM-2-1",
+          "amplitude_p2p_mm": 0.3632,
+          "wavelength_mm": 8.3297,
+          "peak_angle_deg": 7.8,
+          "measured_strength_MPa": 319.9,
+          "measured_kd": 0.7393,
+          "note": "strip between the middle plies: an embedded wrinkle; strip 2 mm wide, 1 ply. Table 1: theta 7.8 deg, A/lambda 0.039. Strength 319.9 MPa +/- 5.0 (Fig. 7); A = 0.182 mm (Fig. 8a).",
+          "expected_analytical_kd": 0.48577,
+          "expected_analytical_modulus_kd": 0.92197
+        },
+        {
+          "case": "L-WM-2-2",
+          "amplitude_p2p_mm": 0.605,
+          "wavelength_mm": 12.0003,
+          "peak_angle_deg": 9.0,
+          "measured_strength_MPa": 245.4,
+          "measured_kd": 0.5671,
+          "note": "strip between the middle plies: an embedded wrinkle; strip 2 mm wide, 2 ply. Table 1: theta 9.0 deg, A/lambda 0.045. Strength 245.4 MPa +/- 8.5 (Fig. 7); A = 0.302 mm (Fig. 8a).",
+          "expected_analytical_kd": 0.45505,
+          "expected_analytical_modulus_kd": 0.89704
+        },
+        {
+          "case": "L-WM-2-3",
+          "amplitude_p2p_mm": 0.955,
+          "wavelength_mm": 13.313,
+          "peak_angle_deg": 12.7,
+          "measured_strength_MPa": 180.1,
+          "measured_kd": 0.4162,
+          "note": "strip between the middle plies: an embedded wrinkle; strip 2 mm wide, 3 ply. Table 1: theta 12.7 deg, A/lambda 0.066. Strength 180.1 MPa +/- 5.4 (Fig. 7); A = 0.477 mm (Fig. 8a).",
+          "expected_analytical_kd": 0.38733,
+          "expected_analytical_modulus_kd": 0.81367
+        },
+        {
+          "case": "L-WR-2-1",
+          "amplitude_p2p_mm": 0.895,
+          "wavelength_mm": 16.4493,
+          "peak_angle_deg": 9.7,
+          "measured_strength_MPa": 243.6,
+          "measured_kd": 0.563,
+          "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 2 mm wide, 1 ply. Table 1: theta 9.7 deg, A/lambda 0.069. Strength 243.6 MPa +/- 19.3 (Fig. 7); A = 0.448 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "expected_analytical_kd": 0.15897,
+          "expected_analytical_modulus_kd": 0.88054
+        },
+        {
+          "case": "L-WR-2-2",
+          "amplitude_p2p_mm": 1.395,
+          "wavelength_mm": 16.7052,
+          "peak_angle_deg": 14.7,
+          "measured_strength_MPa": 151.9,
+          "measured_kd": 0.3511,
+          "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 2 mm wide, 2 ply. Table 1: theta 14.7 deg, A/lambda 0.086. Strength 151.9 MPa +/- 12.8 (Fig. 7); A = 0.698 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "expected_analytical_kd": 0.11089,
+          "expected_analytical_modulus_kd": 0.76284
+        },
+        {
+          "case": "L-WR-2-3",
+          "amplitude_p2p_mm": 1.9682,
+          "wavelength_mm": 16.3636,
+          "peak_angle_deg": 20.7,
+          "measured_strength_MPa": 135.7,
+          "measured_kd": 0.3136,
+          "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 2 mm wide, 3 ply. Table 1: theta 20.7 deg, A/lambda 0.12. Strength 135.7 MPa +/- 15.2 (Fig. 7); A = 0.984 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "expected_analytical_kd": 0.08137,
+          "expected_analytical_modulus_kd": 0.61947
+        },
+        {
+          "case": "L-WL-4-1",
+          "amplitude_p2p_mm": 0.3268,
+          "wavelength_mm": 7.1246,
+          "peak_angle_deg": 8.2,
+          "measured_strength_MPa": 298.0,
+          "measured_kd": 0.6887,
+          "note": "strip under the last (bag-side) ply: a hump at that surface over a flat tool face; strip 4 mm wide, 1 ply. Table 1: theta 8.2 deg, A/lambda 0.025. Strength 298.0 MPa +/- 16.0 (Fig. 7); A = 0.163 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "fe_recipe": {
+            "morphology": "tool_flat",
+            "surface_pocket_side": "bottom",
+            "surface_transition_plies": 7
+          },
+          "expected_analytical_kd": 0.18273,
+          "expected_analytical_modulus_kd": 0.91158
+        },
+        {
+          "case": "L-WL-4-2",
+          "amplitude_p2p_mm": 0.65,
+          "wavelength_mm": 13.9976,
+          "peak_angle_deg": 8.3,
+          "measured_strength_MPa": 289.7,
+          "measured_kd": 0.6695,
+          "note": "strip under the last (bag-side) ply: a hump at that surface over a flat tool face; strip 4 mm wide, 2 ply. Table 1: theta 8.3 deg, A/lambda 0.037. Strength 289.7 MPa +/- 33.1 (Fig. 7); A = 0.325 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "fe_recipe": {
+            "morphology": "tool_flat",
+            "surface_pocket_side": "bottom",
+            "surface_transition_plies": 7
+          },
+          "expected_analytical_kd": 0.18093,
+          "expected_analytical_modulus_kd": 0.9096
+        },
+        {
+          "case": "L-WL-4-3",
+          "amplitude_p2p_mm": 0.9668,
+          "wavelength_mm": 12.9496,
+          "peak_angle_deg": 13.2,
+          "measured_strength_MPa": 234.4,
+          "measured_kd": 0.5417,
+          "note": "strip under the last (bag-side) ply: a hump at that surface over a flat tool face; strip 4 mm wide, 3 ply. Table 1: theta 13.2 deg, A/lambda 0.06. Strength 234.4 MPa +/- 20.2 (Fig. 7); A = 0.483 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "fe_recipe": {
+            "morphology": "tool_flat",
+            "surface_pocket_side": "bottom",
+            "surface_transition_plies": 7
+          },
+          "expected_analytical_kd": 0.12196,
+          "expected_analytical_modulus_kd": 0.79944
+        },
+        {
+          "case": "L-WM-4-1",
+          "amplitude_p2p_mm": 0.3168,
+          "wavelength_mm": 6.993,
+          "peak_angle_deg": 8.1,
+          "measured_strength_MPa": 248.5,
+          "measured_kd": 0.5743,
+          "note": "strip between the middle plies: an embedded wrinkle; strip 4 mm wide, 1 ply. Table 1: theta 8.1 deg, A/lambda 0.026. Strength 248.5 MPa +/- 23.7 (Fig. 7); A = 0.158 mm (Fig. 8a).",
+          "expected_analytical_kd": 0.47969,
+          "expected_analytical_modulus_kd": 0.91752
+        },
+        {
+          "case": "L-WM-4-2",
+          "amplitude_p2p_mm": 0.64,
+          "wavelength_mm": 14.1273,
+          "peak_angle_deg": 8.1,
+          "measured_strength_MPa": 260.5,
+          "measured_kd": 0.602,
+          "note": "strip between the middle plies: an embedded wrinkle; strip 4 mm wide, 2 ply. Table 1: theta 8.1 deg, A/lambda 0.037. Strength 260.5 MPa +/- 16.8 (Fig. 7); A = 0.320 mm (Fig. 8a).",
+          "expected_analytical_kd": 0.47572,
+          "expected_analytical_modulus_kd": 0.91453
+        },
+        {
+          "case": "L-WM-4-3",
+          "amplitude_p2p_mm": 1.1568,
+          "wavelength_mm": 10.9888,
+          "peak_angle_deg": 18.3,
+          "measured_strength_MPa": 178.6,
+          "measured_kd": 0.4128,
+          "note": "strip between the middle plies: an embedded wrinkle; strip 4 mm wide, 3 ply. Table 1: theta 18.3 deg, A/lambda 0.14. Strength 178.6 MPa +/- 17.3 (Fig. 7); A = 0.578 mm (Fig. 8a).",
+          "expected_analytical_kd": 0.3205,
+          "expected_analytical_modulus_kd": 0.67977
+        },
+        {
+          "case": "L-WR-4-1",
+          "amplitude_p2p_mm": 0.6334,
+          "wavelength_mm": 7.8066,
+          "peak_angle_deg": 14.3,
+          "measured_strength_MPa": 156.1,
+          "measured_kd": 0.3608,
+          "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 4 mm wide, 1 ply. Table 1: theta 14.3 deg, A/lambda 0.049. Strength 156.1 MPa +/- 31.3 (Fig. 7); A = 0.317 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "expected_analytical_kd": 0.11364,
+          "expected_analytical_modulus_kd": 0.77263
+        },
+        {
+          "case": "L-WR-4-2",
+          "amplitude_p2p_mm": 1.8868,
+          "wavelength_mm": 15.2034,
+          "peak_angle_deg": 21.3,
+          "measured_strength_MPa": 122.1,
+          "measured_kd": 0.2822,
+          "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 4 mm wide, 2 ply. Table 1: theta 21.3 deg, A/lambda 0.11. Strength 122.1 MPa +/- 7.2 (Fig. 7); A = 0.943 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "expected_analytical_kd": 0.07926,
+          "expected_analytical_modulus_kd": 0.60601
+        },
+        {
+          "case": "L-WR-4-3",
+          "amplitude_p2p_mm": 2.4868,
+          "wavelength_mm": 13.4232,
+          "peak_angle_deg": 30.2,
+          "measured_strength_MPa": 116.2,
+          "measured_kd": 0.2685,
+          "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 4 mm wide, 3 ply. Table 1: theta 30.2 deg, A/lambda 0.13. Strength 116.2 MPa +/- 2.7 (Fig. 7); A = 1.243 mm (Fig. 8a).",
+          "morphology": "uniform",
+          "expected_analytical_kd": 0.05724,
+          "expected_analytical_modulus_kd": 0.43509
+        }
+      ]
     }
   ],
   "progressive_damage": {

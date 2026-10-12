@@ -6,7 +6,7 @@ This module provides:
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.
 - MaterialLibrary: A registry of named materials with JSON serialisation and
-  fourteen built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
+  fifteen built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
 
 Compliance and stiffness matrices follow standard Voigt notation
 (11, 22, 33, 23, 13, 12) consistent with most composite-mechanics texts.
@@ -557,7 +557,7 @@ class OrthotropicMaterial:
 class MaterialLibrary:
     """Named collection of :class:`OrthotropicMaterial` instances.
 
-    Provides fourteen built-in fibre-reinforced composite systems (carbon,
+    Provides fifteen built-in fibre-reinforced composite systems (carbon,
     S-glass, and aramid / epoxy) plus an isotropic neat-epoxy card for the
     resin-pocket zone, and supports JSON serialisation for user-defined
     materials.
@@ -572,6 +572,8 @@ class MaterialLibrary:
       18:4503 (wrinkled-laminate compression; Dataset H)
     - ``UD_CFRP_PILATO2022`` : industrial UD carbon / epoxy ply of Pilato
       et al. (2022), Materials & Design 222:111055 (Dataset K)
+    - ``YC300_LY5052`` : wet-laid YC300 carbon / LY5052 epoxy of Krishnappa &
+      Gururaja (2024), Composites Part B 284:111688 (Dataset L)
     - ``AC318_S6C10`` : AC318 / S6C10-800 S-glass / epoxy, *moulded*
       realization (Li et al. 2026)
     - ``AC318_S6C10_vacbag`` : same prepreg, *vacuum-bag* realization
@@ -598,7 +600,7 @@ class MaterialLibrary:
     ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
      'IM10_8552', 'IM6G_3501_6', 'IM7_8552', 'KEVLAR49_EPOXY',
      'M21E_IMA', 'S2_GLASS_EPOXY', 'T300_914', 'T700_2510',
-     'T700_SHI2025', 'T800S_M21', 'UD_CFRP_PILATO2022']
+     'T700_SHI2025', 'T800S_M21', 'UD_CFRP_PILATO2022', 'YC300_LY5052']
     """
 
     def __init__(self) -> None:
@@ -853,6 +855,34 @@ class MaterialLibrary:
             gamma_Y=0.02,
             GIc=0.26, GIIc=1.002, alpha_0=53.0,
             sigma_max=42.0, tau_max=73.0,
+        ))
+
+        # 4d. YC300 / LY5052 UD carbon of Krishnappa & Gururaja (2024)
+        #     (Dataset L).  Wet-laid YC300 12K carbon fabric in LY5052 /
+        #     HY5052 epoxy, Vf 0.46, 4.2% porosity: Krishnappa & Gururaja
+        #     (2024), Composites Part B 284:111688, DOI
+        #     10.1016/j.compositesb.2024.111688.  MEASURED: E1 98 GPa
+        #     (laminate compressive modulus, strain gauge), Xc 432.7 MPa
+        #     (pristine [0]_8 compression, CLC), and from the [+/-45]_4s
+        #     shear test (Appendix C) G12 3.94 GPa, shear strength 40.83 MPa
+        #     and shear yield strain 1.08% (gamma_Y).  NOT reported, so
+        #     typical values for a low-Vf wet-laid carbon/epoxy and
+        #     approximate: E2, nu, Xt, Y, Z, S23, CTEs, toughness, cohesive
+        #     strengths.  The dataset is compression-only.
+        self.add(OrthotropicMaterial(
+            name="YC300_LY5052",
+            E1=98_000.0, E2=6_500.0, E3=6_500.0,
+            G12=3_940.0, G13=3_940.0, G23=2_500.0,
+            nu12=0.30, nu13=0.30, nu23=0.40,
+            Xt=1_500.0, Xc=432.7,
+            Yt=35.0, Yc=130.0,
+            Zt=35.0, Zc=130.0,
+            S12=40.83, S13=40.83, S23=30.0,
+            alpha1=-0.3e-6, alpha2=30.0e-6, alpha3=30.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.0108,
+            GIc=0.25, GIIc=0.80, alpha_0=53.0,
+            sigma_max=35.0, tau_max=40.0,
         ))
 
         # 5. AC318 / S6C10-800  (S-glass fiber / epoxy, Li et al. 2026)

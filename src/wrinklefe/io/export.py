@@ -610,7 +610,9 @@ FE_STRENGTH_CAVEAT = (
     "one at the same angle. On multidirectional laminates in compression "
     "it has erred both ways: about -9% to -1% (conservative) on two CFRP "
     "studies, but over-predicting retained strength on three others, by "
-    "up to about 90%."
+    "up to about 90%. On a low-quality wet lay-up unidirectional carbon "
+    "laminate with embedded wrinkles it over-predicted retained strength by "
+    "up to about 100%."
 )
 
 PROGRESSIVE_DAMAGE_CAVEAT = (

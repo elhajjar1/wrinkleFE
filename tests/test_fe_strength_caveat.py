@@ -336,3 +336,24 @@ def test_the_second_conservative_multidirectional_study_still_holds():
     # Measured -8.8 % and -3.6 %, with headroom for platform noise.
     assert -15.0 <= min(errs) <= -3.0, rows
     assert max(errs) <= 0.5, rows
+
+
+@pytest.mark.slow
+def test_the_ud_carbon_embedded_overprediction_claim_still_holds():
+    """Six FE solves (Dataset L, Krishnappa & Gururaja 2024, the embedded
+    WM wrinkles). The caveat says the FE over-predicts a wet lay-up UD
+    carbon laminate with embedded wrinkles "by up to about 100%"; when
+    the FE path changes, this fails and the caveat is rewritten to match.
+    Dataset L is quarantined (issue #445), so the caveat names its
+    process."""
+    sys.path.insert(0, str(_ROOT / "validation"))
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import strength_error_summary as ses
+
+    rows = ses.fe_larc05_errors_ledger("krishnappa_2024")
+    wm = [e for case, (_kd, _m, e) in rows.items() if "-WM-" in case]
+    assert len(wm) == 6
+    assert all(e > 0.5 for e in wm), wm  # every embedded case unsafe
+    assert 85.0 <= max(wm) <= 115.0, wm  # measured +99.7 %
+    assert "up to about 100%" in FE_STRENGTH_CAVEAT
+    assert "wet lay-up" in FE_STRENGTH_CAVEAT
