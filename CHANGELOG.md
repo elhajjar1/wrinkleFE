@@ -147,6 +147,31 @@ version produced a given file.
     Pilato, calls the one-test calibration unproven, and puts wet lay-up
     outside its scope. Tests pin the claims. No shipped prediction
     changes.
+- Analysis — **manufacturing process as an input, with an out-of-scope
+  warning** (issue #445). `AnalysisConfig.manufacturing_process` (CLI
+  `--process`, app **Manufacturing process**) takes `prepreg_autoclave`,
+  `prepreg_press`, `prepreg_vacuum_bag`, `rtm`, `infusion`, `wet_layup`,
+  `other` or `unspecified` (default; unchanged behaviour).
+  - The validated scope is derived from the route each validation
+    dataset documents (`wrinklefe.core.process.VALIDATION_EVIDENCE`):
+    prepreg cured in an autoclave (Thor), a press (Li 2024) or under a
+    vacuum bag (Li 2025). Quarantined datasets and datasets whose route
+    is not stated add nothing; the ledger gains a `process` entry per
+    dataset, which a test keeps in step with the table.
+  - A route outside the scope sets `process_out_of_scope` and attaches
+    `process_scope_caveat`. **Wet lay-up gets it**, with what happened
+    on the quarantined wet lay-up dataset (kink-band about 56%
+    conservative, FE up to about 100% unsafe).
+  - Penetration-gate presets now record their fit
+    (`GateParameters.fitted_materials`, `fitted_process`). A preset used
+    on another material, or on a laminate whose stated route differs,
+    sets `gate_out_of_scope` with `gate_scope_caveat`. A user's own gate
+    is not checked.
+  - The warnings reach the text summary, the results JSON (new `scope`
+    block; schema **1.4**, additive), the NCR summary (JSON and
+    Markdown; the process warning sits ahead of the numbers) and the
+    app. Reporting only: no knockdown changes and the ledger shows no
+    drift.
 - Analysis — **load-path eccentricity and a bending-regime flag** (issue
   #439). Every analysis now reports `load_path_eccentricity_ratio` (e/t)
   and `load_path_eccentricity_mm`: how far the wrinkle moves the

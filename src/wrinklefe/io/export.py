@@ -27,6 +27,7 @@ import scipy
 from wrinklefe import __version__ as _wrinklefe_version
 from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT
 from wrinklefe.core.layup import to_contracted_layup
+from wrinklefe.core.process import parse_process, process_scope_caveat
 
 if TYPE_CHECKING:
     from wrinklefe.analysis import AnalysisResults
@@ -648,13 +649,17 @@ def build_analysis_summary(
         As-analyzed wrinkle + laminate.  Recognised keys:
         ``amplitude_mm``, ``wavelength_mm``, ``width_mm``, ``morphology``,
         ``loading``, ``ply_thickness_mm``, ``n_plies``, ``layup``,
-        ``material_name``.
+        ``material_name``, ``manufacturing_process`` (issue #445; a
+        process outside the validated scope carries
+        :func:`~wrinklefe.core.process.process_scope_caveat`).
     engineering : dict
         WrinkleFE results.  Recognised keys: ``analytical_knockdown``,
         ``analytical_strength_MPa``, ``damage_index``, ``max_angle_deg``,
         ``effective_angle_deg``, ``morphology_factor``,
         ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue
-        #439; a flagged result carries :data:`BENDING_REGIME_CAVEAT`), an
+        #439; a flagged result carries :data:`BENDING_REGIME_CAVEAT`),
+        ``gate_scope_caveat`` (issue #445; the analysis's warning for a
+        penetration-gate preset used outside its fit), an
         optional ``fe`` sub-dict (``modulus_retention``,
         ``modulus_retention_global``, ``retention_factors``,
         ``retention_degenerate`` (criteria whose retention is undefined
@@ -705,6 +710,13 @@ def build_analysis_summary(
     kd = float(engineering.get("analytical_knockdown", 1.0))
     di = float(engineering.get("damage_index", 0.0))
     loading = defect.get("loading")
+    # Issue #445. Absent means "unspecified", the behaviour from before
+    # the input existed.
+    process = parse_process(
+        defect.get("manufacturing_process") or "unspecified"
+    )
+    process_caveat = process_scope_caveat(process)
+    gate_caveat = engineering.get("gate_scope_caveat") or None
 
     disposition = recommend_disposition(kd, di, loading=loading)
 
@@ -827,6 +839,7 @@ def build_analysis_summary(
             "n_plies": defect.get("n_plies"),
             "layup_deg": defect.get("layup"),
             "layup_contracted": _contracted_or_none(defect.get("layup")),
+            "manufacturing_process": process.value,
         },
         "engineering_analysis": {
             "analytical_knockdown": kd,
@@ -849,6 +862,11 @@ def build_analysis_summary(
                 BENDING_REGIME_CAVEAT
                 if engineering.get("bending_dominated") else None
             ),
+            # Issue #445: reporting only.
+            "process_out_of_scope": process_caveat is not None,
+            "process_scope_caveat": process_caveat,
+            "gate_out_of_scope": gate_caveat is not None,
+            "gate_scope_caveat": gate_caveat,
             "finite_element": fe_block,
             "progressive_damage": progressive_block,
         },
@@ -958,9 +976,21 @@ def render_summary_markdown(summary: dict) -> str:
         lines.append(f"- Layup (deg, expanded): {_fmt(lam['layup_deg'])}")
     else:
         lines.append(f"- Layup (deg): {_fmt(lam['layup_deg'])}")
+    process_value = lam.get("manufacturing_process")
+    if process_value and process_value != "unspecified":
+        lines.append(
+            f"- Manufacturing process: {parse_process(process_value).label}"
+        )
     lines.append("")
     lines.append("## 3. Engineering analysis (WrinkleFE)")
     lines.append("")
+    # Issue #445: ahead of the numbers it qualifies.
+    if ea.get("process_out_of_scope"):
+        lines.append(
+            "> **Process outside the validated scope:** "
+            f"{ea.get('process_scope_caveat')}"
+        )
+        lines.append("")
     lines.append(
         f"- Analytical knockdown: **{_fmt(ea['analytical_knockdown'])}** "
         f"({_fmt(ea['residual_strength_pct'])}% residual strength)"
@@ -990,6 +1020,12 @@ def render_summary_markdown(summary: dict) -> str:
         lines.append(
             "> **Bending-dominated:** "
             f"{ea.get('bending_regime_caveat') or BENDING_REGIME_CAVEAT}"
+        )
+    if ea.get("gate_out_of_scope"):
+        lines.append("")
+        lines.append(
+            "> **Gate outside its fit:** "
+            f"{ea.get('gate_scope_caveat')}"
         )
     fe_block = ea.get("finite_element")
     if fe_block:

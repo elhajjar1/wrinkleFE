@@ -29,6 +29,10 @@
       "reference": "Li, Li, Ge & Liang (2025), Polymer Composites 46(16):15176-15187, DOI 10.1002/pc.30121",
       "status": "included \u2014 strength via the calibrated penetration gate (GATE_LI2025_VACBAG, issue #161 resolved; the plain Budiansky-Fleck column is retained as the angle-only floor for drift detection). See VALIDATION.md.",
       "material": "AC318_S6C10",
+      "process": {
+        "route": "prepreg_vacuum_bag",
+        "source": "AC318/S6C10 prepreg cured under a ~1 bar vacuum bag (VALIDATION.md, E vs F)"
+      },
       "layup": "[0]_14",
       "ply_thickness_mm": 0.44,
       "loading": "compression",
@@ -119,6 +123,10 @@
       "reference": "Hsiao & Daniel (1996), Composites Science and Technology 56(5):581-593",
       "status": "active \u2014 UD carbon (IM6G/3501-6); the first dataset carrying a measured stiffness knockdown (issue #326). See VALIDATION.md 'Dataset G'.",
       "material": "IM6G_3501_6",
+      "process": {
+        "route": null,
+        "source": "IM6G/3501-6 prepreg; cure route not recorded in the repository"
+      },
       "layup": "[0]_20",
       "ply_thickness_mm": 0.95,
       "loading": "compression",
@@ -160,6 +168,10 @@
       "pristine_strength_MPa": 866.2,
       "reference": "Shi, Yang, Sun, Zheng, Qian, Wang & Song (2025), Materials 18:4503, DOI 10.3390/ma18194503 (CC BY 4.0)",
       "material": "T700_SHI2025",
+      "process": {
+        "route": null,
+        "source": "not stated in the paper"
+      },
       "ply_thickness_mm": 0.19,
       "loading": "compression",
       "morphology": "graded",
@@ -211,6 +223,10 @@
       "pristine_strength_MPa": 739.0,
       "reference": "Shi, Yang, Sun, Zheng, Qian, Wang & Song (2025), Materials 18:4503, DOI 10.3390/ma18194503 (CC BY 4.0)",
       "material": "T700_SHI2025",
+      "process": {
+        "route": null,
+        "source": "not stated in the paper"
+      },
       "ply_thickness_mm": 0.19,
       "loading": "compression",
       "morphology": "graded",
@@ -260,6 +276,10 @@
       "reference": "Calvo, Quinonero-Moya, Feito, Miguelez et al. (2023), Composite Structures 323:117498, DOI 10.1016/j.compstruct.2023.117498",
       "status": "active - Dataset I. First TENSION strength set since B/C, first distributed multi-wave case, and the first experimental exercise of WrinkleFE's multi-wrinkle composition. Batch means (B5 with waves vs B4 without); effectively one strength point. See VALIDATION.md 'Dataset I'.",
       "material": "M21E_IMA",
+      "process": {
+        "route": null,
+        "source": "M21E/IMA prepreg; cure route not stated in the paper"
+      },
       "layup": "[45/0/-45/90/0/90/0/90/-45/0/45]s",
       "ply_thickness_mm": 0.186364,
       "loading": "tension",
@@ -325,6 +345,10 @@
       "pristine_strength_MPa": 686.4,
       "pristine_modulus_GPa": 62.2,
       "material": "IM7_8552",
+      "process": {
+        "route": "prepreg_autoclave",
+        "source": "IM7/8552 prepreg, 'fabricated in an autoclave following the recommended curing cycle' (Thor 2021, Sec. 2)"
+      },
       "ply_thickness_mm": 0.131,
       "loading": "compression",
       "morphology": "uniform",
@@ -368,6 +392,10 @@
       "pristine_strength_MPa": 1322.3,
       "pristine_modulus_GPa": 160.6,
       "material": "IM7_8552",
+      "process": {
+        "route": "prepreg_autoclave",
+        "source": "IM7/8552 prepreg, 'fabricated in an autoclave following the recommended curing cycle' (Thor 2021, Sec. 2)"
+      },
       "ply_thickness_mm": 0.131,
       "loading": "compression",
       "morphology": "uniform",
@@ -409,6 +437,10 @@
       "status": "active - Dataset K. Naturally occurring (industrial) wrinkles in a near-UD carbon laminate; one severity cluster (5-7 deg). No gate preset is calibrated for this material (issue #435). See VALIDATION.md 'Dataset K'.",
       "reference": "Pilato, Butler, Trevarthen & Lunt (2022), Materials & Design 222:111055, DOI 10.1016/j.matdes.2022.111055 (CC BY 4.0)",
       "material": "UD_CFRP_PILATO2022",
+      "process": {
+        "route": null,
+        "source": "industrial part, 'standard industry practices'; route not stated"
+      },
       "layup": "[0_8/0/90/0_4/0/90/0_2]",
       "ply_thickness_mm": 0.17222,
       "loading": "compression",
@@ -486,6 +518,10 @@
       },
       "reference": "Krishnappa & Gururaja (2024), Composites Part B 284:111688, DOI 10.1016/j.compositesb.2024.111688 (Elsevier; values transcribed with citation)",
       "material": "YC300_LY5052",
+      "process": {
+        "route": "wet_layup",
+        "source": "wet lay-up of stitched fabric, room-temperature cure under a vacuum bag"
+      },
       "layup": "[0]_8",
       "ply_thickness_mm": 0.35,
       "loading": "compression",

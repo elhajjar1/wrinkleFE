@@ -154,7 +154,8 @@ def test_results_json_carries_the_keys(tmp_path):
     out = tmp_path / "r.json"
     export_results_json(_run(_config()), out)
     data = json.loads(out.read_text())
-    assert data["schema_version"] == SCHEMA_VERSION == "1.3"
+    assert data["schema_version"] == SCHEMA_VERSION
+    assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 3)
     analytical = data["analytical"]
     assert analytical["bending_dominated"] is True
     assert analytical["load_path_eccentricity_ratio"] == pytest.approx(

@@ -79,6 +79,15 @@ Penetration gate
              predict_from_geometry, calibrate_gate
    :show-inheritance:
 
+Manufacturing process and validated scope
+-----------------------------------------
+
+.. automodule:: wrinklefe.core.process
+   :members: ManufacturingProcess, parse_process, ProcessEvidence,
+             VALIDATION_EVIDENCE, VALIDATED_PROCESSES, process_in_scope,
+             process_scope_caveat, gate_scope_caveat
+   :show-inheritance:
+
 Coordinate transforms
 ---------------------
 

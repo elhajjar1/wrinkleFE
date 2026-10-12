@@ -90,6 +90,40 @@ summary, the results JSON, the NCR summary and the app all carry the
 same warning. The flag changes no number. Tension analyses report the
 ratio but are not flagged, because the study covered compression only.
 
+### `manufacturing_process` — is the laminate in the validated scope?
+
+Set `AnalysisConfig.manufacturing_process` (CLI `--process`, app
+**Manufacturing process**) to how the laminate was made:
+`prepreg_autoclave`, `prepreg_press`, `prepreg_vacuum_bag`, `rtm`,
+`infusion`, `wet_layup`, `other`, or `unspecified` (the default).
+
+The knockdown models have been validated only on laminates made by the
+routes a validation dataset documents: prepreg cured in an autoclave
+(Thor), in a press or closed mould (Li 2024) and under a vacuum bag (Li
+2025). The other datasets do not state their route, so they add nothing
+to the scope. Laminate quality — fibre volume fraction, porosity, how
+straight the fibres are in the undamaged laminate — differs between
+routes, and no model represents it.
+
+- **Out of scope** (`rtm`, `infusion`, `wet_layup`, `other`):
+  `process_out_of_scope` is set and `process_scope_caveat` carries the
+  warning. For wet lay-up it adds what happened on the one wet lay-up
+  dataset (Dataset L, quarantined): the kink-band was about 56%
+  conservative on average while first-ply FE over-predicted retained
+  strength by up to about 100%.
+- **A penetration-gate preset outside its fit:** the presets record the
+  material system (`AC318_S6C10` cards) and the route they were fitted
+  to. Applied to another material, or to a laminate whose stated route
+  differs, `gate_out_of_scope` is set and `gate_scope_caveat` says so. A
+  gate you calibrated yourself is not checked.
+
+The text summary, the results JSON (`scope` block, schema 1.4), the NCR
+summary and the app carry the same warnings. **Nothing changes a
+number**: the scope is derived from
+`wrinklefe.core.process.VALIDATION_EVIDENCE`, so a wrinkle dataset made
+by a new route brings that route into scope when it is added (issue
+#445).
+
 ### Stiffness: `analytical_modulus_knockdown`, `modulus_retention`, `modulus_retention_global`
 
 Three different stiffness numbers, in increasing order of fidelity to a

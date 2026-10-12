@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
+from wrinklefe.core.process import ManufacturingProcess
 
 # Single source of truth for the morphology names the CLI accepts. Pulled
 # straight from ``core.morphology`` so the CLI can never drift from the
@@ -504,6 +505,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "Dataset E) or 'li2025-vacbag' (AC318/S6C10 vacuum-bag, Dataset "
             "F). UD-scoped -- do not use for multidirectional/blocked "
             "laminates. For a custom GateParameters, use --config."
+        ),
+    )
+    p_analyze.add_argument(
+        "--process", type=str, default="unspecified",
+        dest="manufacturing_process",
+        choices=[p.value.replace("_", "-") for p in ManufacturingProcess],
+        help=(
+            "How the laminate was made (issue #445). The knockdown models "
+            "have been validated on prepreg laminates (autoclave, press and "
+            "vacuum-bag cures); any other process, wet-layup included, adds "
+            "an out-of-scope warning to the summary and the exports. Also "
+            "checked against --gate's fitted process. Reporting only: no "
+            "number changes. Default: unspecified."
         ),
     )
     p_analyze.add_argument(
@@ -1444,6 +1458,8 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
             "li2025-vacbag": GATE_LI2025_VACBAG,
         }
         overrides["penetration_gate"] = gate_map[args.gate]
+    if given("manufacturing_process"):
+        overrides["manufacturing_process"] = args.manufacturing_process
     if given("resin_pocket"):
         overrides["enable_resin_pocket"] = True
     if given("surface_resin_pockets"):
