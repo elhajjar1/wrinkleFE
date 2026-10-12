@@ -99,9 +99,9 @@ Set `AnalysisConfig.manufacturing_process` (CLI `--process`, app
 
 The knockdown models have been validated only on laminates made by the
 routes a validation dataset documents: prepreg cured in an autoclave
-(Thor), in a press or closed mould (Li 2024) and under a vacuum bag (Li
-2025). The other datasets do not state their route, so they add nothing
-to the scope. Laminate quality — fibre volume fraction, porosity, how
+(Elhajjar, Thor), in a hot press or closed mould (Elhajjar, Li 2024) and
+under a vacuum bag (Li 2025). The other datasets do not state their
+route, so they add nothing to the scope. Laminate quality — fibre volume fraction, porosity, how
 straight the fibres are in the undamaged laminate — differs between
 routes, and no model represents it.
 

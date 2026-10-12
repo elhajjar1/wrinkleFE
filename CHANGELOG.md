@@ -154,10 +154,13 @@ version produced a given file.
   `other` or `unspecified` (default; unchanged behaviour).
   - The validated scope is derived from the route each validation
     dataset documents (`wrinklefe.core.process.VALIDATION_EVIDENCE`):
-    prepreg cured in an autoclave (Thor), a press (Li 2024) or under a
-    vacuum bag (Li 2025). Quarantined datasets and datasets whose route
-    is not stated add nothing; the ledger gains a `process` entry per
-    dataset, which a test keeps in step with the table.
+    prepreg cured in an autoclave (Elhajjar, Thor), a hot press
+    (Elhajjar, Li 2024) or under a vacuum bag (Li 2025). An entry may
+    list more than one route (Elhajjar's T700/2510 laminates were
+    autoclaved or hot-pressed, per the author). Quarantined datasets and
+    datasets whose route is not stated add nothing; the ledger gains a
+    `process` entry per dataset, which a test keeps in step with the
+    table.
   - A route outside the scope sets `process_out_of_scope` and attaches
     `process_scope_caveat`. **Wet lay-up gets it**, with what happened
     on the quarantined wet lay-up dataset (kink-band about 56%
