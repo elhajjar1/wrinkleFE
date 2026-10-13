@@ -6,7 +6,7 @@ This module provides:
   elastic constants, strength allowables, hygrothermal coefficients, and
   kink-band parameters for a single composite ply material.
 - MaterialLibrary: A registry of named materials with JSON serialisation and
-  fifteen built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
+  sixteen built-in fibre-reinforced systems plus an isotropic neat-epoxy card.
 
 Compliance and stiffness matrices follow standard Voigt notation
 (11, 22, 33, 23, 13, 12) consistent with most composite-mechanics texts.
@@ -557,7 +557,7 @@ class OrthotropicMaterial:
 class MaterialLibrary:
     """Named collection of :class:`OrthotropicMaterial` instances.
 
-    Provides fifteen built-in fibre-reinforced composite systems (carbon,
+    Provides sixteen built-in fibre-reinforced composite systems (carbon,
     S-glass, and aramid / epoxy) plus an isotropic neat-epoxy card for the
     resin-pocket zone, and supports JSON serialisation for user-defined
     materials.
@@ -568,6 +568,9 @@ class MaterialLibrary:
     - ``IM7_8552`` : Hexcel IM7 / 8552 (toughened epoxy, widely characterised)
     - ``T300_914`` : Toray T300 / Hexcel 914 (legacy European aerospace)
     - ``T700_2510`` : Toray T700SC / Cytec 2510 (OOA VBO system)
+    - ``T700GC_2510_AGATE`` : Toray T700GC-12K-31E / #2510 unidirectional
+      tape, AGATE allowables (Tomblin et al. 2002) as used by El-Hajjar &
+      Petersen (2011) and Elhajjar & Shams (2016) (Dataset M)
     - ``T700_SHI2025`` : T700-class CFRP of Shi et al. (2025), Materials
       18:4503 (wrinkled-laminate compression; Dataset H)
     - ``UD_CFRP_PILATO2022`` : industrial UD carbon / epoxy ply of Pilato
@@ -599,8 +602,9 @@ class MaterialLibrary:
     >>> sorted(lib.list_names())  # doctest: +NORMALIZE_WHITESPACE
     ['AC318_S6C10', 'AC318_S6C10_vacbag', 'AS4_3501_6', 'EPOXY_S6C10',
      'IM10_8552', 'IM6G_3501_6', 'IM7_8552', 'KEVLAR49_EPOXY',
-     'M21E_IMA', 'S2_GLASS_EPOXY', 'T300_914', 'T700_2510',
-     'T700_SHI2025', 'T800S_M21', 'UD_CFRP_PILATO2022', 'YC300_LY5052']
+     'M21E_IMA', 'S2_GLASS_EPOXY', 'T300_914', 'T700GC_2510_AGATE',
+     'T700_2510', 'T700_SHI2025', 'T800S_M21', 'UD_CFRP_PILATO2022',
+     'YC300_LY5052']
     """
 
     def __init__(self) -> None:
@@ -883,6 +887,34 @@ class MaterialLibrary:
             gamma_Y=0.0108,
             GIc=0.25, GIIc=0.80, alpha_0=53.0,
             sigma_max=35.0, tau_max=40.0,
+        ))
+
+        # 4e. T700GC-12K-31E / #2510 UD tape, AGATE allowables
+        #     (Dataset M).  Tomblin, Sherraden, Seneviratne & Raju (2002),
+        #     AGATE report AGATE-WP3.3-033051-132 (NIAR), as tabulated by
+        #     El-Hajjar & Petersen (2011), Compos. Struct. 93:2400, Table 1
+        #     (E1 124.82, E2 8.405, nu12 0.309, G12 4.22 GPa) and Shams &
+        #     Elhajjar (2015), CEAS Aeronaut. J. 6:541, Table 1 (strengths
+        #     F1t 314.4, F2t 7.09, F1c 209.1, F2c 28.8, F12 22.4 ksi; GIc
+        #     217, GII = GIII 586 J/m^2; cohesive tractions 0.049 GPa).
+        #     The press-claved coupons of Dataset M were cut from this
+        #     prepreg.  Typical, not reported: E3 = E2, G13 = G12, G23
+        #     (from nu23 0.40), S23, Z = Y, CTEs, gamma_Y.  Kept separate
+        #     from the generic T700_2510 card so Datasets A/B do not move.
+        self.add(OrthotropicMaterial(
+            name="T700GC_2510_AGATE",
+            E1=124_820.0, E2=8_405.0, E3=8_405.0,
+            G12=4_220.0, G13=4_220.0, G23=3_000.0,
+            nu12=0.309, nu13=0.309, nu23=0.40,
+            Xt=2_168.0, Xc=1_442.0,
+            Yt=48.9, Yc=198.6,
+            Zt=48.9, Zc=198.6,
+            S12=154.4, S13=154.4, S23=65.0,
+            alpha1=-0.3e-6, alpha2=30.0e-6, alpha3=30.0e-6,
+            beta1=0.0, beta2=0.4, beta3=0.4,
+            gamma_Y=0.02,
+            GIc=0.217, GIIc=0.586, alpha_0=53.0,
+            sigma_max=49.0, tau_max=49.0,
         ))
 
         # 5. AC318 / S6C10-800  (S-glass fiber / epoxy, Li et al. 2026)

@@ -613,7 +613,9 @@ FE_STRENGTH_CAVEAT = (
     "studies, but over-predicting retained strength on three others, by "
     "up to about 90%. On a low-quality wet lay-up unidirectional carbon "
     "laminate with embedded wrinkles it over-predicted retained strength by "
-    "up to about 100%."
+    "up to about 100%. In tension it is a first-ply (damage-onset) "
+    "estimate: against the measured damage onset of one study's coupons "
+    "it was unsafe on 9 of 12, by up to about 150%."
 )
 
 PROGRESSIVE_DAMAGE_CAVEAT = (

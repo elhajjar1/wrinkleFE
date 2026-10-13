@@ -147,9 +147,11 @@ See the table in [README.md](../../README.md). Current sources:
     shipped analytical path lands closer to their test than their model
     does. Closed-form modulus KD 0.945 vs 0.992 initial (−4.7%).
   - **First-ply FE retention: 0.624, −25.7%** (nx = 200; 0.640 at
-    nx = 300) — conservative by construction: first-ply in tension is
-    off-axis matrix cracking, while the measured ultimate is fibre-
-    governed after those plies crack. Sensitive to the unmeasured
+    nx = 300) — conservative against the ultimate by construction:
+    first-ply in tension is off-axis matrix cracking, while the measured
+    ultimate is fibre-governed after those plies crack. Against a
+    measured damage *onset* it is not conservative: on Dataset M it was
+    unsafe on 9 of 12 coupons (−22% to +154%, issue #436). Sensitive to the unmeasured
     decay floor (0.45–0.62 over floors 0.25–0.75 at the literal
     geometry).
   - **Caveats:** effectively one strength point (a batch mean of
@@ -290,6 +292,71 @@ See the table in [README.md](../../README.md). Current sources:
       from the glass stitching yarn.
     - The wrinkle is an inserted 90° strip with a resin pocket.
     - Scatter is up to ±38 MPa.
+- **Dataset M — Elhajjar & Shams (2016)**, *Composites Science and
+  Technology* 122:140, DOI 10.1016/j.compscitech.2015.11.026, with the
+  control strengths of El-Hajjar & Petersen (2011), *Composite
+  Structures* 93:2400. The first tension set with a **measured damage
+  onset and ultimate for every wrinkled coupon** (issue #436). The same
+  specimens are in Shams (2016), PhD thesis, UW-Milwaukee (Tables
+  5.1–5.2).
+  - **Material and test.** Toray T700GC-12K-31E / #2510 prepreg,
+    press-claved; 16 plies, about 2.4 mm. Nine multidirectional
+    `[0/45/90/-45/0/45/-45/0]s` and four UD `[0]16` coupons, ASTM D3039,
+    the wrinkled ones untabbed. New card `T700GC_2510_AGATE` from the
+    AGATE allowables (Tomblin et al. 2002) as both papers tabulate them;
+    the generic `T700_2510` card, which Datasets A/B use, is unchanged.
+  - **Wrinkles.** Close-tolerance steel rods under a Teflon sheet, removed
+    after cure: a one-sided dip, sharpest under the first ply where resin
+    pools and fading to the flat back face. Heights A = 0.3–0.8 mm
+    (multidirectional, four sizes) and 0.28–0.35 mm (UD, two sizes),
+    lengths L = 1.3–4.6 mm.
+  - **Recipe.**
+    - Peak angle: measured for specimens 1–5 (30° and 23°, Fig. 2) and
+      matched. For the rest, wavelength = 2L (Dataset H's convention),
+      which gives 22–36°, in line with the 34° slope of El-Hajjar &
+      Petersen's Gaussian fit for the same rod method.
+    - Analytical: graded at the mid interfaces (it reads only the
+      profile). FE: `tool_flat` with the flat face at the bottom and a
+      ramp over 15 of the 16 plies, as the dip fades through the whole
+      thickness.
+  - **Baselines.** Control ultimates 765 MPa (multidirectional) and
+    1785 MPa (UD): the values the 2016 paper normalised by. Its ratio
+    column (limit point / control ultimate, two decimals) bounds them to
+    763–768 and 1783–1786 MPa. El-Hajjar & Petersen (2011) plot the
+    multidirectional controls at 731–765 MPa with CoV < 1%.
+  - **Onset.** The DIC limit point is the first jump in the surface's
+    out-of-plane displacement; microscopy ties it to interlaminar damage,
+    with no load drop. No pristine onset is reported, so the onset
+    knockdown is the limit point over the pristine ultimate (the paper's
+    own normalisation), and first-ply FE is compared in absolute stress:
+    the wrinkled coupon's nominal stress at first ply failure. Specimen
+    12 was preloaded to 600 MPa before its DIC test and is left out of
+    the onset score.
+  - **Analytical (three-mechanism) against the ultimate:** unsafe on 8 of
+    9 multidirectional coupons (−7.6% to +29.6%) and on 2 of 4 UD (−1.0%
+    to +39.2%). These wrinkles are steep (22–36°), steeper than any other
+    tension dataset here.
+  - **First-ply FE against the onset:** unsafe on 9 of 12 scored
+    coupons, from −21.7% to +154.0%, median +28.6%.
+    - Within −22% to +46% on the smaller wrinkles (multidirectional
+      A ≤ 0.6 mm, UD A = 0.28 mm).
+    - +74% and +134% on the 30° multidirectional pair (A = 0.8 mm), and
+      +154% on the larger UD wrinkle.
+    - The limit point marks interlaminar damage, which an intralaminar
+      first-ply criterion does not represent; the misses are largest
+      where the dip is deepest.
+  - **First-ply FE retention against the ultimate:** conservative on all
+    13 (−27% to −58%), as on Dataset I.
+  - **Sensitivity.** A ramp over 8 plies instead of 15 lowers every FE
+    onset by 14–21%; nx = 64 instead of 48 moves it by about 1%.
+  - **Caveats:**
+    - Peak angles are estimated for 8 of the 13 coupons, including both
+      UD groups. The larger UD wrinkles knock down more (0.40 against
+      0.54) at a lower estimated angle (22° against 27°), so that
+      estimate is the weakest input.
+    - Delamination onset from the cohesive-zone path would be the closer
+      comparison, but the solver does not yet record damage per load
+      increment.
 
 ### Stiffness / modulus validation
 
@@ -417,13 +484,14 @@ entries must agree with it (`tests/test_process.py`).
 |---|---|---|
 | A/B Elhajjar (2025) | prepreg, autoclave or hot press | the author (2026): T700/2510, high consolidation and fibre volume fraction |
 | E Li (2024) | prepreg, press / closed mould | moulded at 2.9 MPa |
+| M Elhajjar & Shams (2016) | prepreg, press ("press-claved") | El-Hajjar & Petersen (2011), Sec. 3.1 |
 | F Li (2025) | prepreg, vacuum-bag oven cure | same prepreg, ~1 bar vacuum bag |
 | J Thor (2021) | prepreg, autoclave | "fabricated in an autoclave" |
 | L Krishnappa & Gururaja (2024) | wet lay-up (quarantined) | room-temperature cure under a vacuum bag |
 | C, D, G, H, I, K | not recorded | prepreg systems (C, D, G, I) or not stated; they add nothing to the scope |
 
 So the scope is the three prepreg routes: autoclave (A/B, J), press (A/B,
-E) and vacuum bag (F). RTM, infusion, wet lay-up and "other" get the
+E, M) and vacuum bag (F). RTM, infusion, wet lay-up and "other" get the
 warning. Recording the route of C, D, G, H, I and K would sharpen it.
 
 **Laminate quality.** Each ledger dataset also carries a `quality` entry:
@@ -439,6 +507,7 @@ it, so the gaps are recorded as well. Few sources report quality:
 | I Calvo (2023) | — | — | ASTM D3039 | — | — |
 | K Pilato (2022) | — | — | ASTM D3410 | — | — |
 | L Krishnappa & Gururaja (2024) | 0.46 | 4.2% | ASTM D6641 | **no** (15% bending, limit 10%) | 0.44% |
+| M Elhajjar & Shams (2016) | — | — | ASTM D3039 (wrinkled coupons untabbed) | — | — |
 | G, J | — | — | — | — | — |
 
 Only the quarantined dataset reports porosity or a failed validity check.
@@ -509,7 +578,7 @@ gate test) and #436 (tension onset plus ultimate).
 ### Consolidated parity chart
 
 `validation/plot_all_validation.py` renders every single-wrinkle case
-(Datasets A–F plus Datasets H to L) on one predicted-vs-experimental parity
+(Datasets A–F plus Datasets H to M) on one predicted-vs-experimental parity
 plot with a ±20 % corridor, writing
 `validation/fig_all_validation_parity.png`. Each dataset is predicted
 by the model that physically applies to it: multidirectional A–D via
@@ -517,17 +586,21 @@ the analytical Budiansky–Fleck / three-mechanism models run through
 `WrinkleAnalysis`, UD E/F via the penetration gate; Datasets H to L
 (no gate preset for their carbon materials) are plotted twice,
 analytical AND first-ply FE LaRC05 retention, both recipe-exact from
-the ledger. This
+the ledger. Dataset M (tension) is plotted as the three-mechanism model
+against each coupon's ultimate and first-ply FE onset against its
+measured damage onset. This
 is the single cross-dataset predicted-vs-experimental view. Running
 the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
 MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
 MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**60 of 80** points sit inside the corridor, not counting the quarantined
+**70 of 105** points sit inside the corridor, not counting the quarantined
 Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
 analytical and 5 of 18 FE points inside: the kink-band is far too
 conservative on it, and the FE over-predicts its embedded (mid-plane)
-wrinkles.
+wrinkles. Dataset M lands 7 of 13 analytical points inside (the rest
+unsafe, +20% to +39%) and 3 of 12 FE onset points (8 of the other 9
+unsafe).
 
 ## Interlaminar (CZM) validation evidence — Phase 7
 

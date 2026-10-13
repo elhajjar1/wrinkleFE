@@ -68,12 +68,15 @@ def _err(pred: float, meas: float) -> float:
     return (pred - meas) / meas * 100.0
 
 
-def _fe_retention_kd(cfg, **overrides) -> float:
-    """First-ply FE LaRC05 strength retention, wrinkled over pristine.
+def _fe_first_ply(cfg, **overrides) -> tuple[float, float]:
+    """First-ply FE LaRC05 retention and onset stress for one coupon.
 
-    ``(E_eff,w / E_eff,p) * (FI_p / FI_w)``, capped at 1 (stress at
-    failure ~ E_eff * eps / FI). *overrides* replace config fields (the
-    mesh, an FE-only morphology) before the solve.
+    The retention is ``(E_eff,w / E_eff,p) * (FI_p / FI_w)``, capped at 1:
+    stress at first ply failure ~ E_eff * eps / FI. The onset stress
+    (MPa) is that retention times the pristine coupon's first-ply stress
+    ``E_x * eps / FI_p``, with ``E_x`` the pristine laminate's CLT modulus
+    (which the flat FE coupon reproduces). *overrides* replace config
+    fields (the mesh, an FE-only morphology) before the solve.
     """
     from wrinklefe.analysis import WrinkleAnalysis
 
@@ -85,7 +88,15 @@ def _fe_retention_kd(cfg, **overrides) -> float:
     fi = np.asarray(r.failure_indices["larc05"]).mean(axis=-1)
     fi_w = float(fi[np.isfinite(fi)].max())
     fi_p = float(r.baseline_fi["larc05"])
-    return min(float(r.modulus_retention_global) * fi_p / fi_w, 1.0)
+    kd = min(float(r.modulus_retention_global) * fi_p / fi_w, 1.0)
+    onset = kd * float(r.laminate.Ex) * abs(float(r.config.applied_strain)) / fi_p
+    return kd, onset
+
+
+def _fe_retention_kd(cfg, **overrides) -> float:
+    """First-ply FE LaRC05 strength retention, wrinkled over pristine
+    (see :func:`_fe_first_ply`)."""
+    return _fe_first_ply(cfg, **overrides)[0]
 
 
 def analytical_section() -> None:
@@ -271,6 +282,65 @@ def fe_larc05_calvo_section() -> None:
           "(conservative by construction)\n")
 
 
+#: Dataset M's FE recipe (issue #436): the rods' one-sided dip, sharpest
+#: under the first ply and gone at the back face, as ``tool_flat`` with
+#: the flat face at the bottom and a ramp over 15 of the 16 plies.
+_M_FE_RECIPE = dict(nx=48, ny=4, nz_per_ply=1, morphology="tool_flat",
+                    surface_pocket_side="bottom", surface_transition_plies=15,
+                    enable_surface_resin_pockets=True)
+
+
+@functools.cache
+def fe_onset_elhajjar_shams() -> dict[str, tuple[float, float, float]]:
+    """``{case: (FE onset MPa, measured onset MPa, FE retention)}``, Dataset M.
+
+    Elhajjar & Shams (2016) measured each wrinkled tension coupon's
+    damage onset, the DIC limit point (interlaminar damage), in MPa, and
+    no pristine onset. First-ply FE gives an onset stress directly
+    (:func:`_fe_first_ply`), so the two are compared in absolute stress.
+    Every case is solved; specimen M-UD-12's measured onset is not a
+    first-loading value (``onset_excluded`` in the ledger) and the
+    scoring leaves it out.
+    """
+    from validate import case_config
+
+    ledger = json.loads(LEDGER.read_text())
+    out = {}
+    for ds in ledger["datasets"]:
+        if not ds["name"].startswith("elhajjar_shams_2016"):
+            continue
+        for case in ds["cases"]:
+            kd, onset = _fe_first_ply(case_config(ds, case), **_M_FE_RECIPE)
+            out[case["case"]] = (onset, float(case["measured_onset_MPa"]), kd)
+    return out
+
+
+def _m_onset_scored() -> set[str]:
+    """Dataset M cases whose measured onset is scored."""
+    ledger = json.loads(LEDGER.read_text())
+    return {c["case"] for d in ledger["datasets"]
+            if d["name"].startswith("elhajjar_shams_2016")
+            for c in d["cases"] if not c.get("onset_excluded")}
+
+
+def fe_onset_elhajjar_shams_section() -> None:
+    rows = fe_onset_elhajjar_shams()
+    scored = _m_onset_scored()
+    print("2d. FE LaRC05 first-ply ONSET vs the measured DIC limit point, "
+          "Elhajjar & Shams (2016) tension, Dataset M (MPa)")
+    print(f"   {'case':8s} {'FE MPa':>7s} {'meas.':>7s} {'error%':>8s}")
+    errs = []
+    for name, (fe, meas, _kd) in rows.items():
+        e = _err(fe, meas)
+        if name in scored:
+            errs.append(e)
+        tag = "" if name in scored else "  (not scored: preloaded)"
+        print(f"   {name:8s} {fe:7.1f} {meas:7.1f} {e:+8.1f}{tag}")
+    print(f"   -> {len(errs)} scored: mean {statistics.mean(errs):+.1f} %, "
+          f"range {min(errs):+.1f} to {max(errs):+.1f} %, "
+          f"{sum(e > _NON_CONSERVATIVE_PCT for e in errs)} unsafe\n")
+
+
 def progressive_section() -> None:
     pd = json.loads(LEDGER.read_text())["progressive_damage"]
     print("3. Progressive damage (crack band), pinned ledger values")
@@ -297,6 +367,9 @@ MODELS = ("analytical", "gate (fitted)", "gate (blind)", "FE LaRC05")
 
 #: Cells left empty on purpose, with the physical reason.
 _GATE_MD = "the gate is UD-scoped (no multidirectional form)"
+_GATE_TENSION = "the gate is a compression model"
+_NO_PRISTINE_ONSET = ("the analytical onset model is relative to the "
+                      "pristine onset, which the paper does not report")
 NOT_APPLICABLE = {
     ("A Elhajjar comp", "gate (fitted)"): _GATE_MD,
     ("B Elhajjar tens", "gate (fitted)"): _GATE_MD,
@@ -319,6 +392,12 @@ NOT_APPLICABLE = {
         "no preset is calibrated for this material (see gate (blind))",
     ("L Krishnappa2024 UD comp", "gate (fitted)"):
         "no preset is calibrated for this material (see gate (blind))",
+    ("M ElhajjarShams2016 MD tens", "gate (fitted)"): _GATE_MD,
+    ("M ElhajjarShams2016 MD onset", "gate (fitted)"): _GATE_MD,
+    ("M ElhajjarShams2016 UD tens", "gate (fitted)"): _GATE_TENSION,
+    ("M ElhajjarShams2016 UD onset", "gate (fitted)"): _GATE_TENSION,
+    ("M ElhajjarShams2016 MD onset", "analytical"): _NO_PRISTINE_ONSET,
+    ("M ElhajjarShams2016 UD onset", "analytical"): _NO_PRISTINE_ONSET,
 }
 
 
@@ -420,7 +499,9 @@ def head_to_head() -> list[dict]:
       A-E use the analytical recipe's own inputs; F, H, I reuse sections
       2, 2b and 2c; J, K and L run their ledger recipes
       (:func:`fe_larc05_errors_ledger`). In tension it is a first-ply quantity scored against
-      the measured ultimate (B, C-tens, I), except the onset series.
+      the measured ultimate (B, C-tens, I, M-tens), except the onset
+      series (C-onset, and M-onset in absolute stress, over the pristine
+      ultimate: :func:`fe_onset_elhajjar_shams`).
     """
     import plot_all_validation as pav
     from validate import case_config
@@ -537,6 +618,32 @@ def head_to_head() -> list[dict]:
                     theta, dt, GATE_LI2025_VACBAG)
             rows.append(r)
 
+    # Dataset M (issue #436): tension coupons with a measured ultimate AND
+    # a measured damage onset. The ultimate rows score the analytical
+    # model (and the first-ply retention, conservative by construction);
+    # the onset rows score first-ply FE against the DIC limit point, both
+    # over the pristine ultimate, the paper's own normalisation.
+    fe_on = fe_onset_elhajjar_shams()
+    scored = _m_onset_scored()
+    for half, tag in (("md", "MD"), ("ud", "UD")):
+        ds = ledger_ds(f"elhajjar_shams_2016_{half}")
+        pristine = float(ds["pristine_strength_MPa"])
+        for case in ds["cases"]:
+            an = WrinkleAnalysis(case_config(ds, case)).run(
+                analytical_only=True)
+            theta = float(case["peak_angle_deg"])
+            onset_mpa, _meas, kd_fe = fe_on[case["case"]]
+            rows.append(row(
+                f"M ElhajjarShams2016 {tag} tens", case["case"], theta,
+                float(case["measured_kd"]),
+                analytical=float(an.analytical_knockdown),
+                **{"FE LaRC05": kd_fe}))
+            if case["case"] in scored:
+                rows.append(row(
+                    f"M ElhajjarShams2016 {tag} onset", case["case"], theta,
+                    float(case["measured_onset_kd"]),
+                    **{"FE LaRC05": onset_mpa / pristine}))
+
     return rows
 
 
@@ -602,6 +709,7 @@ def main() -> None:
     fe_larc05_section()
     fe_larc05_shi_section()
     fe_larc05_calvo_section()
+    fe_onset_elhajjar_shams_section()
     progressive_section()
     print()
     head_to_head_section()

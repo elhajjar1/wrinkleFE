@@ -19,3 +19,7 @@ Expected contents (not committed):
   (CC BY 4.0).
 - `Krishnappa_2024_CompositesB_284_111688_embedded_wrinkles_UD_CFRP.pdf`
   — Dataset L (© Elsevier).
+- `ElhajjarShams_2016_CompSciTech_122_140_limit_point_DIC.pdf` — Dataset M
+  (tension onset and ultimate; © Elsevier).
+- `ElHajjarPetersen_2011_CompStruct_93_2400_Gaussian_waviness_tension.pdf`
+  — Dataset M control strengths (© Elsevier).
