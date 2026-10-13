@@ -37,32 +37,40 @@ Public link, no account needed.
 - **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
 - **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue does not capture the *fibre-scale* wrinkle knockdown (it gets the sign wrong: the bifurcation load *rises* with the wrinkle), so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
-- **11 built-in laminate materials** (AS4/3501-6, IM7/8552, T300/914, T700/2510, AC318/S6C10 S-glass/epoxy, T800S/M21, IM10/8552, IM6G/3501-6 carbon/epoxy — the Hsiao & Daniel 1996 wavy-UD study, S-2 glass/epoxy, Kevlar-49/epoxy, plus `AC318_S6C10_vacbag` — the Li 2025 vacuum-bag realization, measured Xc=335.5 MPa, E1=50.8 GPa) plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone
+- **16 built-in laminate materials:**
+  - carbon/epoxy: AS4/3501-6, IM7/8552, T300/914, T700/2510, T700GC/2510 (AGATE allowables), T800S/M21, M21E/IMA, IM10/8552 and IM6G/3501-6 (the Hsiao & Daniel 1996 wavy-UD study);
+  - three dataset-specific carbon cards: `T700_SHI2025`, `UD_CFRP_PILATO2022` and `YC300_LY5052`;
+  - glass and aramid: AC318/S6C10 S-glass/epoxy (moulded, plus `AC318_S6C10_vacbag`, the Li 2025 vacuum-bag realization with measured Xc = 335.5 MPa and E1 = 50.8 GPa), S-2 glass/epoxy and Kevlar-49/epoxy;
+  - plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone.
+- **Applicability warnings:** every analysis reports how far the wrinkle moves the laminate's load path (e/t) and flags a bending-dominated wrinkle. `manufacturing_process` flags a laminate made outside the validated processes (wet lay-up, infusion, RTM), and a penetration-gate preset used outside its fitted material or process is flagged too. The warnings reach the summary, the exports and the app; they change no number.
+- **Validation ledger:** 13 published datasets (A–M) from 10 research groups, with every prediction pinned so a model change shows up as test drift; see [Validation](docs/validation.md)
 - **Inverse goal-seek (acceptance limits):** `wrinklefe.goalseek.find_critical_value` / `wrinklefe critical` answer the disposition question directly — the largest wrinkle amplitude (or any float config field) that still meets a target knockdown or allowable strength. The answer is backed off to the safe side and verified by a real forward run, and the search refuses with an actionable message when the curve admits no unique root
 - **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
 ## Developer / library install
 
-If you want to script against the package or contribute to development:
+If you want to script against the package or contribute to development,
+install it from GitHub (WrinkleFE is not on PyPI yet):
 
 ```bash
-pip install wrinklefe
+pip install "git+https://github.com/elhajjar1/wrinkleFE.git"
 ```
 
-Or install the latest source:
+Or clone the source:
 
 ```bash
 git clone https://github.com/elhajjar1/wrinkleFE.git
-cd wrinklefe
+cd wrinkleFE
 pip install -e ".[all]"
 ```
 
 The 3D cohesive-zone renders (`plot_interface_damage_3d` /
 `plot_crack_front_3d`) use PyVista, which pulls in VTK (~150 MB). It is an
-optional dependency, so plain `pip install wrinklefe` stays lean and
-headless-safe; install `pip install "wrinklefe[vtk]"` when you need those
-plots (it is already included in `[all]`).
+optional dependency, so the plain install stays lean and headless-safe;
+add the `vtk` extra when you need those plots
+(`pip install "wrinklefe[vtk] @ git+https://github.com/elhajjar1/wrinkleFE.git"`; it is already included in
+`[all]`).
 
 Verify the install:
 

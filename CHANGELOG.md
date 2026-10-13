@@ -268,6 +268,16 @@ version produced a given file.
   middle-ply wrinkles). A slow test pins it.
 
 ### Fixed
+- Docs — **the install instructions pointed at PyPI, where WrinkleFE is
+  not published.** `pip install wrinklefe` failed, and the clone
+  instructions changed into `wrinklefe`, which does not exist on a
+  case-sensitive file system (the folder is `wrinkleFE`). The README,
+  getting-started guide, tutorial, CONTRIBUTING and the PyVista
+  ImportError now install from GitHub (`pip install
+  "git+https://github.com/elhajjar1/wrinkleFE.git"`). The README's
+  feature list also gains the applicability warnings and the validation
+  ledger, and its material list now names all 16 built-in cards (it
+  said 11).
 - Docs — **the kink-band docstrings called the law concave.**
   `BudianskyFleckKinkBand` said `1 / (1 + theta / gamma_Y)` is concave
   in the angle, so evaluating at the mean angle overestimates the mean
