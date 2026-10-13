@@ -1,5 +1,9 @@
 _parked/
 
+# Unpublished paper drafts (JOSS, preprints): never commit before
+# submission. Back them up outside this repository.
+drafts/
+
 # Python
 __pycache__/
 *.py[cod]

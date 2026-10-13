@@ -151,6 +151,29 @@ def test_ledger_process_entries_match_the_evidence_table():
         assert ("quarantine" in ds) == evidence.quarantined, ds["name"]
 
 
+_QUALITY_KEYS = {"fibre_volume_fraction", "porosity_pct", "test_standard",
+                 "baseline_meets_standard", "pristine_failure_strain_pct",
+                 "source"}
+
+
+def test_every_ledger_dataset_carries_quality_metadata():
+    """Issue #445: what each source reports about laminate quality, with
+    null where it reports nothing, so the gaps are recorded too."""
+    for ds in _LEDGER["datasets"]:
+        q = ds["quality"]
+        assert set(q) == _QUALITY_KEYS, ds["name"]
+        assert q["source"], ds["name"]
+        vf = q["fibre_volume_fraction"]
+        assert vf is None or 0.3 < vf < 0.75, ds["name"]
+    wet = next(d for d in _LEDGER["datasets"]
+               if d["name"].startswith("krishnappa_2024"))["quality"]
+    assert wet["baseline_meets_standard"] is False
+    assert wet["porosity_pct"] == 4.2
+    # The pristine strength over the measured modulus (98.1 GPa).
+    assert wet["pristine_failure_strain_pct"] == pytest.approx(
+        432.7 / 98100 * 100, abs=0.005)
+
+
 def test_the_wet_layup_warning_numbers_are_the_ledger_numbers():
     """The analytical half of the wet lay-up note: the kink-band was
     conservative by about 56% on average on Dataset L (the FE half is
