@@ -424,10 +424,47 @@ entries must agree with it (`tests/test_process.py`).
 
 So the scope is the three prepreg routes: autoclave (A/B, J), press (A/B,
 E) and vacuum bag (F). RTM, infusion, wet lay-up and "other" get the
-warning. Recording the route of C, D, G, H, I and K (and fibre volume
-fraction and porosity where reported) would sharpen it.
+warning. Recording the route of C, D, G, H, I and K would sharpen it.
+
+**Laminate quality.** Each ledger dataset also carries a `quality` entry:
+fibre volume fraction, porosity, test standard, whether the pristine
+baseline met it, and the pristine failure strain where both strength and
+modulus were measured. A field is `null` when the source does not report
+it, so the gaps are recorded as well. Few sources report quality:
+
+| Dataset | Vf | Porosity | Test standard | Baseline valid | Pristine failure strain |
+|---|---|---|---|---|---|
+| F Li (2025) | — | — | — | — | 0.66% (measured Xc and E1) |
+| H Shi (2025) | 0.52 (nominal model input) | — | ASTM D6641 | — | — |
+| I Calvo (2023) | — | — | ASTM D3039 | — | — |
+| K Pilato (2022) | — | — | ASTM D3410 | — | — |
+| L Krishnappa & Gururaja (2024) | 0.46 | 4.2% | ASTM D6641 | **no** (15% bending, limit 10%) | 0.44% |
+| G, J | — | — | — | — | — |
+
+Only the quarantined dataset reports porosity or a failed validity check.
+The others are not known to be better, only less documented: quarantine
+rests on what a source reports, so a dataset that reports nothing about
+its quality cannot be quarantined on quality grounds.
 Penetration-gate presets also record their fit (the `AC318_S6C10` cards,
 press or vacuum-bag cure) and warn when used outside it.
+
+#### Decision: wet lay-up, infusion and RTM stay out of scope
+
+A literature search (October 2026) for wrinkle strength data on
+non-prepreg laminates found too little to validate any of them:
+
+| Process | Usable datasets found | Leads that are not yet usable |
+|---|---|---|
+| Infusion / VARTM | 1, tension only: Nelson, Riddle & Cairns (2017), *Wind Energ. Sci.* 2:641, CC BY (MSU; E-glass/epoxy, 2 usable severities, in-standard D3039 baseline). Its compression data are not usable (the authors report bending and buckling) | Chen et al. (2012), DOE report DE-EE0001374 (UMass Lowell/TPI, compression; coupon data in an appendix that is not online); Barros et al. (2010), SAMPE (unverified, paywalled) |
+| Wet / hand lay-up | none besides the quarantined Dataset L | — |
+| RTM | none with more than one severity (Khan, Potter & Wisnom 2006, FPCM8: a single fold) | — |
+
+So these processes stay outside the validated scope, and an analysis that
+states one carries the out-of-scope warning. **A process enters the scope
+when at least two wrinkle datasets from at least two labs, each with a
+stated route and an in-standard pristine baseline, are in the ledger**
+(issue #445). Adding Nelson (2017) as a flagged out-of-scope tension case
+would be a first step for infusion.
 
 ### E vs F: two material realizations, no shared normalization
 

@@ -117,6 +117,12 @@ routes, and no model represents it.
   differs, `gate_out_of_scope` is set and `gate_scope_caveat` says so. A
   gate you calibrated yourself is not checked.
 
+Wet lay-up, infusion and RTM stay out of scope by decision: a literature
+search found one usable infusion dataset (tension only) and none for the
+other two. A process comes into scope once two wrinkle datasets from two
+labs, each with an in-standard pristine baseline, are in the validation
+ledger (see [Validation](validation.md), "Manufacturing-process scope").
+
 The text summary, the results JSON (`scope` block, schema 1.4), the NCR
 summary and the app carry the same warnings. **Nothing changes a
 number**: the scope is derived from
@@ -446,15 +452,17 @@ Split by severity, multidirectional compression (A, C, D, H, J) reads:
 **Provisional guidance.** Confidence reflects the number of independent
 sources behind each row, not the size of the errors.
 
-| Case | Use | Evidence | Confidence |
-|---|---|---|---|
-| Multidirectional compression, peak angle < 10° | Analytical kink-band. FE is unsafe here (9 of 12). | 12 cases, 4 labs | **Moderate** |
-| Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness (Shi up to +115%, Thor +52%). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | **Low**: issues #434, #439 |
-| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. Below e/t = 0.10 the reverse holds. See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | **Low–moderate**: issue #439 |
-| Multidirectional tension, ultimate | Analytical three-mechanism. | 11 cases, 3 labs; no unsafe miss above 10° | **Moderate** |
-| Tension, damage onset | FE first ply is closer (MAE 10% vs 15%), but unsafe on 2 of 3. | 3 cases, 1 lab | **Low**: issue #436 |
-| UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | **Fit only** |
-| UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band is conservative except on Shi's one-sided troughs (+0.2% to +26%). Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | **Low**: issues #435, #445 |
+Every row rests on prepreg laminates. No row covers wet lay-up, infusion or RTM: an analysis that states one of those processes carries the out-of-scope warning (issue #445; see "`manufacturing_process`" above).
+
+| Case | Use | Evidence | Process route (as stated) | Confidence |
+|---|---|---|---|---|
+| Multidirectional compression, peak angle < 10° | Analytical kink-band. FE is unsafe here (9 of 12). | 12 cases, 4 labs | Prepreg: autoclave or hot press (A, J); C, D not stated | **Moderate**  |
+| Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness (Shi up to +115%, Thor +52%). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | Prepreg: autoclave or hot press (A, J); C, D, H not stated | **Low**: issues #434, #439  |
+| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. Below e/t = 0.10 the reverse holds. See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | Prepreg: autoclave or hot press (A, J); H not stated | **Low–moderate**: issue #439  |
+| Multidirectional tension, ultimate | Analytical three-mechanism. | 11 cases, 3 labs; no unsafe miss above 10° | Prepreg: autoclave or hot press (B); C, I not stated | **Moderate**  |
+| Tension, damage onset | FE first ply is closer (MAE 10% vs 15%), but unsafe on 2 of 3. | 3 cases, 1 lab | Prepreg, route not stated (C) | **Low**: issue #436  |
+| UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | Prepreg: hot press (E), vacuum bag (F) | **Fit only**  |
+| UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band is conservative except on Shi's one-sided troughs (+0.2% to +26%). Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | Prepreg: autoclave (J); H, K not stated | **Low**: issues #435, #445  |
 
 Caveats on the FE column:
 - The A–E FE recipe uses the analytical inputs at the default interfaces

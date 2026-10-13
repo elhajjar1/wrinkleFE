@@ -33,6 +33,14 @@
         "route": "prepreg_vacuum_bag",
         "source": "AC318/S6C10 prepreg cured under a ~1 bar vacuum bag (VALIDATION.md, E vs F)"
       },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": 0.66,
+        "source": "measured pristine Xc 335.5 MPa and E1 50.8 GPa (VALIDATION.md, E vs F); Vf, porosity and test validity not recorded in the repository"
+      },
       "layup": "[0]_14",
       "ply_thickness_mm": 0.44,
       "loading": "compression",
@@ -127,6 +135,14 @@
         "route": null,
         "source": "IM6G/3501-6 prepreg; cure route not recorded in the repository"
       },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "not recorded in the repository"
+      },
       "layup": "[0]_20",
       "ply_thickness_mm": 0.95,
       "loading": "compression",
@@ -171,6 +187,14 @@
       "process": {
         "route": null,
         "source": "not stated in the paper"
+      },
+      "quality": {
+        "fibre_volume_fraction": 0.52,
+        "porosity_pct": null,
+        "test_standard": "ASTM D6641",
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "Vf is the constituent-model input of Table 4 (nominal, not a measurement); test method Sec. 3; porosity and test validity not reported in the paper"
       },
       "ply_thickness_mm": 0.19,
       "loading": "compression",
@@ -227,6 +251,14 @@
         "route": null,
         "source": "not stated in the paper"
       },
+      "quality": {
+        "fibre_volume_fraction": 0.52,
+        "porosity_pct": null,
+        "test_standard": "ASTM D6641",
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "Vf is the constituent-model input of Table 4 (nominal, not a measurement); test method Sec. 3; porosity and test validity not reported in the paper"
+      },
       "ply_thickness_mm": 0.19,
       "loading": "compression",
       "morphology": "graded",
@@ -279,6 +311,14 @@
       "process": {
         "route": null,
         "source": "M21E/IMA prepreg; cure route not stated in the paper"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": "ASTM D3039",
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "prepreg M21E/34%/UD194 (34% is resin content by weight, not Vf); Vf, porosity and test validity not reported in the paper"
       },
       "layup": "[45/0/-45/90/0/90/0/90/-45/0/45]s",
       "ply_thickness_mm": 0.186364,
@@ -349,6 +389,14 @@
         "route": "prepreg_autoclave",
         "source": "IM7/8552 prepreg, 'fabricated in an autoclave following the recommended curing cycle' (Thor 2021, Sec. 2)"
       },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "Vf, porosity, test standard and validity not reported in the paper"
+      },
       "ply_thickness_mm": 0.131,
       "loading": "compression",
       "morphology": "uniform",
@@ -396,6 +444,14 @@
         "route": "prepreg_autoclave",
         "source": "IM7/8552 prepreg, 'fabricated in an autoclave following the recommended curing cycle' (Thor 2021, Sec. 2)"
       },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "Vf, porosity, test standard and validity not reported in the paper"
+      },
       "ply_thickness_mm": 0.131,
       "loading": "compression",
       "morphology": "uniform",
@@ -440,6 +496,14 @@
       "process": {
         "route": null,
         "source": "industrial part, 'standard industry practices'; route not stated"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": "ASTM D3410",
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "Sec. 2; all wrinkled coupons failed in the gauge length as D3410 requires; Vf, porosity and the baseline's validity not reported in the paper"
       },
       "layup": "[0_8/0/90/0_4/0/90/0_2]",
       "ply_thickness_mm": 0.17222,
@@ -521,6 +585,14 @@
       "process": {
         "route": "wet_layup",
         "source": "wet lay-up of stitched fabric, room-temperature cure under a vacuum bag"
+      },
+      "quality": {
+        "fibre_volume_fraction": 0.46,
+        "porosity_pct": 4.2,
+        "test_standard": "ASTM D6641",
+        "baseline_meets_standard": false,
+        "pristine_failure_strain_pct": 0.44,
+        "source": "micro-CT Vf and porosity; pristine bending 15% against the D6641 limit of 10%; failure strain = 432.7 MPa / 98.1 GPa measured"
       },
       "layup": "[0]_8",
       "ply_thickness_mm": 0.35,
