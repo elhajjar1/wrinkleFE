@@ -147,6 +147,21 @@ version produced a given file.
     Pilato, calls the one-test calibration unproven, and puts wet lay-up
     outside its scope. Tests pin the claims. No shipped prediction
     changes.
+- Validation — **laminate-quality metadata, process routes in the
+  guidance, and a scope decision** (issue #445).
+  - Every ledger dataset gains a `quality` entry: fibre volume fraction,
+    porosity, test standard, whether the pristine baseline met it, and the
+    pristine failure strain where strength and modulus were both measured.
+    Fields are `null` where the source reports nothing; only the
+    quarantined wet lay-up set reports porosity or a failed validity
+    check.
+  - The model-choice table in `interpreting_results` gains a "Process
+    route (as stated)" column: every row rests on prepreg laminates.
+  - Decision: wet lay-up, infusion and RTM stay out of the validated
+    scope. A literature search found one usable infusion dataset (Nelson
+    et al. 2017, tension only) and none for the other two. A process
+    enters the scope once two wrinkle datasets from two labs, each with an
+    in-standard pristine baseline, are in the ledger.
 - Analysis — **manufacturing process as an input, with an out-of-scope
   warning** (issue #445). `AnalysisConfig.manufacturing_process` (CLI
   `--process`, app **Manufacturing process**) takes `prepreg_autoclave`,

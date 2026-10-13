@@ -117,6 +117,12 @@ routes, and no model represents it.
   differs, `gate_out_of_scope` is set and `gate_scope_caveat` says so. A
   gate you calibrated yourself is not checked.
 
+Wet lay-up, infusion and RTM stay out of scope by decision: a literature
+search found one usable infusion dataset (tension only) and none for the
+other two. A process comes into scope once two wrinkle datasets from two
+labs, each with an in-standard pristine baseline, are in the validation
+ledger (see [Validation](validation.md), "Manufacturing-process scope").
+
 The text summary, the results JSON (`scope` block, schema 1.4), the NCR
 summary and the app carry the same warnings. **Nothing changes a
 number**: the scope is derived from

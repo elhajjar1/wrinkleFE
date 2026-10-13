@@ -448,6 +448,24 @@ its quality cannot be quarantined on quality grounds.
 Penetration-gate presets also record their fit (the `AC318_S6C10` cards,
 press or vacuum-bag cure) and warn when used outside it.
 
+#### Decision: wet lay-up, infusion and RTM stay out of scope
+
+A literature search (October 2026) for wrinkle strength data on
+non-prepreg laminates found too little to validate any of them:
+
+| Process | Usable datasets found | Leads that are not yet usable |
+|---|---|---|
+| Infusion / VARTM | 1, tension only: Nelson, Riddle & Cairns (2017), *Wind Energ. Sci.* 2:641, CC BY (MSU; E-glass/epoxy, 2 usable severities, in-standard D3039 baseline). Its compression data are not usable (the authors report bending and buckling) | Chen et al. (2012), DOE report DE-EE0001374 (UMass Lowell/TPI, compression; coupon data in an appendix that is not online); Barros et al. (2010), SAMPE (unverified, paywalled) |
+| Wet / hand lay-up | none besides the quarantined Dataset L | — |
+| RTM | none with more than one severity (Khan, Potter & Wisnom 2006, FPCM8: a single fold) | — |
+
+So these processes stay outside the validated scope, and an analysis that
+states one carries the out-of-scope warning. **A process enters the scope
+when at least two wrinkle datasets from at least two labs, each with a
+stated route and an in-standard pristine baseline, are in the ledger**
+(issue #445). Adding Nelson (2017) as a flagged out-of-scope tension case
+would be a first step for infusion.
+
 ### E vs F: two material realizations, no shared normalization
 
 E and F are the **same prepreg system** (AC318 S-glass / S6C10-800) cured
