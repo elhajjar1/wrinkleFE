@@ -256,6 +256,8 @@ version produced a given file.
     row.
 
 ### Changed
+- Packaging — the PyPI author is now Rani F. Elhajjar, matching
+  `CITATION.cff` (it was "Elhajjar Research Group").
 - `FE_STRENGTH_CAVEAT` (app warning and NCR summary) no longer says the
   FE "ran conservative" on multidirectional laminates. It now says the
   FE has erred both ways there: about −9% to −1% on two studies (Shi
@@ -268,6 +270,14 @@ version produced a given file.
   middle-ply wrinkles). A slow test pins it.
 
 ### Fixed
+- Packaging — **a local build could ship the copyrighted validation
+  papers to PyPI.** `MANIFEST.in` grafts `validation/`, which picks up
+  the gitignored PDFs in `validation/papers/` on any machine that has
+  them (a local sdist was 59 MB, almost all papers). PDFs are now
+  globally excluded, `drafts/` is pruned, and the sdist guard
+  (`scripts/check_sdist_contents.sh`, run by CI and the release
+  workflow) fails the build on any `.pdf` or `drafts/` member. CI builds
+  were never affected: the papers are not in the repository.
 - Docs — **the install instructions pointed at PyPI, where WrinkleFE is
   not published.** `pip install wrinklefe` failed, and the clone
   instructions changed into `wrinklefe`, which does not exist on a

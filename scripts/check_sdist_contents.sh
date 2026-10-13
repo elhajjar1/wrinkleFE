@@ -44,7 +44,10 @@ SDIST="${sdists[0]}"
 #   docs/_build/        built HTML docs
 #   .github/ .claude/   repo-only tooling, useless to a downstream user
 #   __pycache__/        build-host byte-code
-FORBIDDEN_RE='^(figures/|docs/_build/|\.github/|\.claude/|.*__pycache__/|validation/[^/]*\.(png|csv)$)'
+#   *.pdf               the validation papers (publisher-copyrighted,
+#                       gitignored, but present in a local clone)
+#   drafts/             unpublished paper drafts (gitignored)
+FORBIDDEN_RE='^(figures/|docs/_build/|drafts/|\.github/|\.claude/|.*__pycache__/|validation/[^/]*\.(png|csv)$|.*\.pdf$)'
 
 members="$(tar -tzf "${SDIST}" | sed -E 's|^[^/]*/||')"
 offenders="$(printf '%s\n' "${members}" | grep -E "${FORBIDDEN_RE}" || true)"
@@ -57,7 +60,7 @@ if [ -n "${offenders}" ]; then
     echo "ERROR: the sdist contains paths that must never be published:" >&2
     printf '  %s\n' ${offenders} >&2
     echo "" >&2
-    echo "These are rendered outputs or repo-only tooling. Fix MANIFEST.in" >&2
+    echo "These are rendered outputs, repo-only tooling or copyrighted papers. Fix MANIFEST.in" >&2
     echo "(prune/recursive-exclude the path) rather than relaxing this guard;" >&2
     echo "shipping figures/ alone inflated the sdist by ~17.6 MB." >&2
     exit 1

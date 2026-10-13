@@ -35,6 +35,11 @@ graft validation
 # --- Rendered outputs and repo-only tooling: never in the sdist ---
 prune figures
 prune docs/_build
+prune drafts
+# The papers behind the validation datasets are publisher-copyrighted and
+# gitignored, but a local build would still sweep them in through
+# `graft validation`: never ship a PDF.
+global-exclude *.pdf
 prune .github
 prune .claude
 prune .streamlit
