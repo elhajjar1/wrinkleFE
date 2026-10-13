@@ -1184,20 +1184,26 @@ possible — their raw data are not included.
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every case (Datasets A–F plus Datasets H to L) against
+plot of every case (Datasets A–F plus Datasets H to M) against
 a ±20% band, with each dataset predicted by the model that physically
 applies to it (Budiansky–Fleck / three-mechanism for the
 multidirectional cases A–D, the penetration gate for the UD cases E/F;
 Datasets H to L, which have no gate preset, are plotted twice —
-analytical and first-ply FE LaRC05 retention). 60 of the 80 points fall
-inside the band. Of the twenty outside it, fifteen are conservative,
-seven of them the kink-band on UD carbon (Datasets J and K). The five
-that are not are all high amplitude-to-thickness compression cases: the
-most severe wrinkle in dataset A (+30%), Dataset H's severe cases (+26%
-UD; +56% and +115% multidirectional) and Thor's severe quasi-isotropic
-wave in Dataset J (+52%). On the H and J cases the FE retention, run on
-the specimen's own geometry, is within −9% to −1%; a bending-dominated
-model for this regime is issue #439.
+analytical and first-ply FE LaRC05 retention; Dataset M's tension
+coupons are plotted against both their ultimate and their measured
+damage onset). 70 of the 105 points fall inside the band. Of the 35
+outside it, 16 are conservative, seven of them the kink-band on UD carbon
+(Datasets J and K). The 19 that are not:
+- five high amplitude-to-thickness compression cases: the most severe
+  wrinkle in dataset A (+30%), Dataset H's severe cases (+26% UD; +56%
+  and +115% multidirectional) and Thor's severe quasi-isotropic wave in
+  Dataset J (+52%). On the H and J cases the FE retention, run on the
+  specimen's own geometry, is within −9% to −1%; a bending-dominated
+  model for this regime is issue #439;
+- six of Dataset M's steep (22–36°) tension wrinkles under the
+  three-mechanism model, +20% to +39%;
+- eight first-ply FE onset estimates on Dataset M, +23% to +154%
+  against the measured damage onset.
 
 Dataset L, a low-quality wet lay-up laminate, is **quarantined**
 (issue #445): it is plotted with hollow markers and left out of that
@@ -1394,6 +1400,8 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 - Thor, M., Mandel, U., Nagler, M., Maier, F., Tauchner, J., Sause, M.G.R. & Hinterhölzl, R.M. (2021). International Journal of Material Forming, 14:19-37. https://doi.org/10.1007/s12289-020-01540-5 (Dataset J)
 - Pilato, N.R., Butler, R., Trevarthen, J. & Lunt, A.J.G. (2022). Materials & Design, 222:111055. https://doi.org/10.1016/j.matdes.2022.111055 (Dataset K)
 - Krishnappa, S. & Gururaja, S. (2024). Composites Part B, 284:111688. https://doi.org/10.1016/j.compositesb.2024.111688 (Dataset L)
+- Elhajjar, R.F. & Shams, S.S. (2016). Composites Science and Technology, 122:140-148. https://doi.org/10.1016/j.compscitech.2015.11.026 (Dataset M)
+- El-Hajjar, R.F. & Petersen, D.R. (2011). Composite Structures, 93(9):2400-2408. https://doi.org/10.1016/j.compstruct.2011.03.029 (Dataset M control strengths)
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids, 41(1), 183-211.
 - Pinho, S.T. et al. (2005). NASA-TM-2005-213530.
 - Camanho, P.P. et al. (2006). Composites Part A, 37(2), 165-176.

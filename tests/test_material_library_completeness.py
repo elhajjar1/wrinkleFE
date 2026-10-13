@@ -46,6 +46,7 @@ EXPECTED_BUILTIN_NAMES = frozenset({
     "M21E_IMA",
     "UD_CFRP_PILATO2022",
     "YC300_LY5052",
+    "T700GC_2510_AGATE",
     "T800S_M21",
     "IM6G_3501_6",
     "EPOXY_S6C10",

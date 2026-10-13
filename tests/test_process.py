@@ -120,14 +120,14 @@ def test_a_quarantined_dataset_does_not_widen_the_scope():
 
 
 def test_each_validated_route_has_its_evidence():
-    """Autoclave and press have two datasets each (Elhajjar A/B, with
-    Thor and Li 2024 respectively); vacuum bag has Li 2025 alone."""
+    """Autoclave rests on Elhajjar A/B and Thor; press on Elhajjar A/B,
+    Li 2024 and Elhajjar & Shams (M); vacuum bag on Li 2025 alone."""
     def datasets(p):
         return sorted(e.dataset.split()[0] for e in VALIDATION_EVIDENCE
                       if p in e.processes and not e.quarantined)
 
     assert datasets(MP.PREPREG_AUTOCLAVE) == ["A/B", "J"]
-    assert datasets(MP.PREPREG_PRESS) == ["A/B", "E"]
+    assert datasets(MP.PREPREG_PRESS) == ["A/B", "E", "M"]
     assert datasets(MP.PREPREG_VACUUM_BAG) == ["F"]
 
 
@@ -136,6 +136,7 @@ _LEDGER_LETTER = {
     "li_2025": "F", "hsiao_daniel_1996": "G", "shi_2025_ud": "H",
     "shi_2025_md": "H", "calvo_2023": "I", "thor_2021_qi": "J",
     "thor_2021_ud": "J", "pilato_2022": "K", "krishnappa_2024": "L",
+    "elhajjar_shams_2016": "M",
 }
 
 

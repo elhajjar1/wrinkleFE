@@ -147,6 +147,31 @@ version produced a given file.
     Pilato, calls the one-test calibration unproven, and puts wet lay-up
     outside its scope. Tests pin the claims. No shipped prediction
     changes.
+- Validation — **Dataset M: Elhajjar & Shams (2016), tension onset and
+  ultimate** (issue #436; *Composites Science and Technology* 122:140,
+  with the control strengths of El-Hajjar & Petersen 2011, *Composite
+  Structures* 93:2400). Thirteen press-claved T700GC/2510 coupons, nine
+  multidirectional and four UD, each with a rod-made one-sided wrinkle,
+  a measured damage onset (the DIC limit point, interlaminar damage) and
+  a measured ultimate.
+  - New material card `T700GC_2510_AGATE` (AGATE allowables, Tomblin et
+    al. 2002); ledger datasets `elhajjar_shams_2016_md_cfrp_tension` and
+    `elhajjar_shams_2016_ud_cfrp_tension` with pinned baselines, process
+    and quality metadata. Existing datasets untouched.
+  - **FE onset, measured:** first-ply FE compared in absolute stress
+    with the limit point (no pristine onset is reported) is unsafe on 9
+    of 12 scored coupons, −22% to +154%, worst on the deepest wrinkles.
+    This replaces the "conservative by construction in tension" reading,
+    which holds only against the ultimate (−27% to −58% here).
+    `FE_STRENGTH_CAVEAT` now says so, and a slow test pins it.
+  - **Analytical against the ultimate:** the three-mechanism model is
+    unsafe on 8 of 9 multidirectional coupons, by up to +30%, and on the
+    larger UD wrinkles by +37% to +39%. These wrinkles are 22–36°,
+    steeper than any other tension data here. The tension guidance rows
+    in `interpreting_results` are updated.
+  - Strength summary section 2d, head-to-head rows for ultimate and
+    onset, and the parity chart carry the dataset (now 70 of 105 points
+    in band).
 - Validation — **laminate-quality metadata, process routes in the
   guidance, and a scope decision** (issue #445).
   - Every ledger dataset gains a `quality` entry: fibre volume fraction,

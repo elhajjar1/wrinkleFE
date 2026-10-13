@@ -26,6 +26,10 @@ encodes the dataset:
     2022, near-UD industrial wrinkles) and L (Krishnappa & Gururaja 2024,
     UD carbon, 18 strip-induced wrinkles) -> shown twice the same way. No
     gate preset is calibrated for any of their materials.
+  * Dataset M (Elhajjar & Shams 2016, tension) -> the three-mechanism
+    prediction against each coupon's ultimate, and first-ply FE onset
+    against its measured damage onset (the DIC limit point), both over
+    the pristine ultimate.
   * Ledger datasets carrying a ``quarantine`` entry (L: a low-quality wet
     lay-up laminate, issue #445) are drawn with hollow markers and left
     out of the headline count, which is printed for them separately.
@@ -351,6 +355,36 @@ def dataset_L_fe():
     return _ledger_fe("krishnappa_2024")
 
 
+def dataset_M_md():
+    """Elhajjar & Shams (2016) multidirectional tension -- three-mechanism
+    against the measured ultimate."""
+    return _ledger_analytical("elhajjar_shams_2016_md")
+
+
+def dataset_M_ud():
+    """Elhajjar & Shams (2016) UD tension -- three-mechanism."""
+    return _ledger_analytical("elhajjar_shams_2016_ud")
+
+
+def dataset_M_onset_fe():
+    """Dataset M: first-ply FE onset against the measured DIC limit point,
+    both over the pristine ultimate (the paper's own normalisation)."""
+    sys.path.insert(0, str(REPO / "validation"))
+    from strength_error_summary import _m_onset_scored, fe_onset_elhajjar_shams
+
+    fe = fe_onset_elhajjar_shams()
+    scored = _m_onset_scored()
+    out = []
+    for half in ("md", "ud"):
+        ds = _ledger_dataset(f"elhajjar_shams_2016_{half}")
+        pristine = float(ds["pristine_strength_MPa"])
+        for case in ds["cases"]:
+            if case["case"] in scored:
+                out.append((float(case["measured_onset_kd"]),
+                            fe[case["case"]][0] / pristine))
+    return out
+
+
 def dataset_J_qi_fe():
     return _ledger_fe("thor_2021_qi")
 
@@ -402,6 +436,12 @@ DATASETS = {
     "L Krishnappa2024 UD comp": (dataset_L, "#000000", ">", "BF kink-band"),
     "L Krishnappa2024 UD comp (FE)": (dataset_L_fe, "#000000", "X",
                                       "FE LaRC05 retention"),
+    "M ElhajjarShams2016 MD tens": (dataset_M_md, "#006d77", "s",
+                                    "3-mechanism"),
+    "M ElhajjarShams2016 UD tens": (dataset_M_ud, "#83c5be", "d",
+                                    "3-mechanism"),
+    "M ElhajjarShams2016 onset (FE)": (dataset_M_onset_fe, "#006d77", "X",
+                                       "FE LaRC05 first-ply onset"),
 }
 
 
@@ -421,6 +461,9 @@ _LEDGER_SERIES = {
     "K Pilato2022 UD comp (FE)": "pilato_2022",
     "L Krishnappa2024 UD comp": "krishnappa_2024",
     "L Krishnappa2024 UD comp (FE)": "krishnappa_2024",
+    "M ElhajjarShams2016 MD tens": "elhajjar_shams_2016_md",
+    "M ElhajjarShams2016 UD tens": "elhajjar_shams_2016_ud",
+    "M ElhajjarShams2016 onset (FE)": "elhajjar_shams_2016_md",
 }
 
 
@@ -481,7 +524,7 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
-    ax.set_title("WrinkleFE validation -- all cases (A-L)\n"
+    ax.set_title("WrinkleFE validation -- all cases (A-M)\n"
                  "marker = method, colour = dataset, band = +/-20 %, "
                  "hollow = quarantined")
     ax.grid(alpha=0.3)

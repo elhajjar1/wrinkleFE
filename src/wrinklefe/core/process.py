@@ -154,6 +154,11 @@ VALIDATION_EVIDENCE: tuple[ProcessEvidence, ...] = (
         "industrial part, 'standard industry practices'; route not stated",
     ),
     ProcessEvidence(
+        "M Elhajjar & Shams (2016)", (ManufacturingProcess.PREPREG_PRESS,),
+        "T700GC/2510 prepreg, 'press-claved' (El-Hajjar & Petersen 2011, "
+        "Sec. 3.1; Elhajjar & Shams 2016, Sec. 2.1)",
+    ),
+    ProcessEvidence(
         "L Krishnappa & Gururaja (2024)", (ManufacturingProcess.WET_LAYUP,),
         "wet lay-up of stitched fabric, room-temperature cure under a "
         "vacuum bag (quarantined, issue #445)",
