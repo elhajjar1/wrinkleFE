@@ -231,9 +231,12 @@ def test_toolflat_rejects_unverified_combinations():
             wrinkles=[WrinkleSpec(amplitude=0.2, wavelength=16.0, width=12.0,
                                   ply_interface=11)],
         ))
-    with pytest.raises(NotImplementedError, match="enable_czm"):
-        AnalysisConfig(**_common(morphology="tool_flat", amplitude=0.2,
-                                 enable_czm=True))
+    # CZM is verified with tool_flat since issue #453 (the cohesive mesh
+    # carries the surface-pocket tags; see
+    # tests/test_czm_damage_history_analysis.py), so it constructs.
+    cfg = AnalysisConfig(**_common(morphology="tool_flat", amplitude=0.2,
+                                   enable_czm=True))
+    assert cfg.enable_czm and cfg.enable_surface_resin_pockets
     with pytest.raises(NotImplementedError, match="transverse_mode"):
         AnalysisConfig(**_common(morphology="tool_flat", amplitude=0.2,
                                  transverse_mode="gaussian_decay"))

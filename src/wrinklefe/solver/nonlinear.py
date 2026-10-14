@@ -28,6 +28,7 @@ definiteness once damage starts accumulating.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -78,6 +79,13 @@ class NewtonRaphsonSolver:
         constrained DOFs.  Default 1e-6.
     line_search : bool, optional
         Enable backtracking line search on the Newton step.  Default True.
+    increment_callback : callable, optional
+        Called as ``increment_callback(increment, load_fraction, u)`` after
+        every converged increment, once the assembler's history state has
+        been committed (issue #453: the per-increment CZM damage record).
+        Observational: it must not modify ``u``.  A truthy return value
+        stops the ramp after that increment (``stopped_early`` in the
+        result).  Default ``None`` (no callback; the solve is unchanged).
     """
 
     def __init__(
@@ -91,6 +99,9 @@ class NewtonRaphsonSolver:
         tol_absolute: float = 1e-10,
         tol_displacement: float = 1e-6,
         line_search: bool = True,
+        increment_callback: (
+            Callable[[int, float, np.ndarray], bool | None] | None
+        ) = None,
     ) -> None:
         self.assembler = assembler
         self.bc_handler = bc_handler
@@ -101,6 +112,7 @@ class NewtonRaphsonSolver:
         self.tol_absolute = float(tol_absolute)
         self.tol_displacement = float(tol_displacement)
         self.line_search = bool(line_search)
+        self.increment_callback = increment_callback
 
         # Convergence-failure diagnostics (issue #262).  ``_increment_diag``
         # holds a small record for the most recently *failed* increment
@@ -140,6 +152,9 @@ class NewtonRaphsonSolver:
             the field layout.
             ``failure_hint`` : a single actionable tuning hint derived
             from ``failure_diagnostics`` (``None`` when converged).
+            ``stopped_early`` : ``True`` when ``increment_callback``
+            ended the ramp before the last increment (every increment
+            attempted still converged).
         """
         n_dof = self._n_dof()
         u = np.zeros(n_dof)
@@ -148,6 +163,7 @@ class NewtonRaphsonSolver:
         converged_all = True
         completed = 0
         failure_diag: dict | None = None
+        stopped_early = False
 
         constrained_full = self.bc_handler.get_constrained_dofs(
             self.boundary_conditions
@@ -192,6 +208,16 @@ class NewtonRaphsonSolver:
 
             self._commit_state()
 
+            if self.increment_callback is not None and self.increment_callback(
+                inc, lam, u
+            ):
+                stopped_early = inc < self.n_increments
+                if stopped_early:
+                    logger.info(
+                        "Increment %d: callback stopped the ramp.", inc
+                    )
+                    break
+
         logger.info(
             "Newton-Raphson solve: %d/%d increments completed, converged=%s",
             completed, self.n_increments, converged_all,
@@ -209,6 +235,7 @@ class NewtonRaphsonSolver:
             "iteration_counts": iteration_counts,
             "failure_diagnostics": failure_diag,
             "failure_hint": failure_hint,
+            "stopped_early": stopped_early,
         }
 
     # ------------------------------------------------------------------

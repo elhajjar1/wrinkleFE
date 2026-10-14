@@ -81,6 +81,7 @@ from wrinklefe.failure.delamination import build_delamination_report
 from wrinklefe.failure.evaluator import FailureEvaluator, LaminateFailureReport
 from wrinklefe.solver.assembler import GlobalAssembler
 from wrinklefe.solver.boundary import BoundaryHandler
+from wrinklefe.solver.czm_history import CzmDamageHistory, CzmDamageRecorder
 from wrinklefe.solver.nonlinear import NewtonRaphsonSolver
 from wrinklefe.solver.results import FieldResults
 from wrinklefe.solver.static import StaticSolver
@@ -2214,8 +2215,8 @@ class AnalysisConfig:
                     "ply_thickness / nz_per_ply)."
                 )
             # tool_flat is a single-wrinkle FE morphology whose pockets and
-            # decay are not verified in combination with the multi-wrinkle,
-            # CZM, or through-width paths — reject rather than silently drop
+            # decay are not verified in combination with the multi-wrinkle
+            # or through-width paths — reject rather than silently drop
             # the tool-flat decay (which would revert to the old linear taper).
             if self.wrinkles is not None:
                 raise NotImplementedError(
@@ -2224,12 +2225,9 @@ class AnalysisConfig:
                     "'wrinkles' override (which would ignore the tool-flat "
                     "decay). Use a single wrinkle or a different morphology."
                 )
-            if self.enable_czm:
-                raise NotImplementedError(
-                    "AnalysisConfig: tool_flat morphology is not yet "
-                    "combinable with enable_czm (the surface-pocket resin "
-                    "zone and cohesive elements are unverified together)."
-                )
+            # tool_flat + enable_czm is allowed since issue #453: the CZM
+            # path carries the surface-pocket tags onto its cohesive mesh
+            # (``WrinkleAnalysis._carry_material_zones``).
             if self.transverse_mode != "uniform":
                 raise NotImplementedError(
                     "AnalysisConfig: tool_flat morphology is not yet "
@@ -3005,6 +3003,14 @@ class AnalysisResults:
     plane without needing access to the assembler / cohesive-element list.
     Same row order as ``czm_damage``."""
 
+    czm_damage_history: CzmDamageHistory | None = None
+    """Per-load-increment record of the interface damage (issue #453): the
+    carried nominal stress, maximum / mean damage, damaged and fully
+    separated interface area and the initiation index after every converged
+    increment. Its :meth:`~wrinklefe.solver.czm_history.CzmDamageHistory.initiation`
+    and :meth:`~wrinklefe.solver.czm_history.CzmDamageHistory.separation`
+    give the load at delamination onset. ``None`` unless the CZM path ran."""
+
     def summary(self) -> str:
         """Generate a comprehensive text summary.
 
@@ -3156,6 +3162,14 @@ class AnalysisResults:
                 f"    Energy dissipated: {energy:.4e} N*mm",
                 f"    Converged:         {self.czm_converged}",
             ])
+            hist = self.czm_damage_history
+            onset = hist.initiation() if hist is not None else None
+            if onset is not None:
+                tag = " (extrapolated past the ramp)" if onset.extrapolated else ""
+                lines.append(
+                    f"    Damage onset:      {onset.nominal_stress:.1f} MPa "
+                    f"at strain {onset.applied_strain:+.5f}{tag}"
+                )
             # When the solve did not converge, surface the actionable
             # tuning hint right below the convergence flag so a CLI /
             # summary reader learns which knob to turn.
@@ -4235,6 +4249,38 @@ class WrinkleAnalysis:
         ids = np.clip(ids, 0, laminate.n_plies - 1)
         return ids.astype(np.intp)
 
+    @staticmethod
+    def _carry_material_zones(src: MeshData, dst: MeshData) -> None:
+        """Copy the per-element resin-zone tags of *src* onto *dst*.
+
+        *dst* is the cohesive-enriched rebuild of *src* (same structured
+        hex grid, same element numbering, extra duplicated interface
+        nodes), so the crest-lens and tool-flat surface-pocket tags --
+        ``resin_mask`` / ``resin_blend`` / ``resin_blend_materials`` and
+        their ``resin_material`` -- apply index for index. Raises when the
+        element counts or ply ids disagree, which would mean the two
+        meshes are not the same grid.
+        """
+        if src.n_elements != dst.n_elements or not np.array_equal(
+            src.ply_ids, dst.ply_ids
+        ):
+            raise ValueError(
+                "Cannot carry resin-zone tags onto the cohesive mesh: the "
+                "hex element grids differ "
+                f"({src.n_elements} vs {dst.n_elements} elements)."
+            )
+        dst.resin_material = src.resin_material
+        dst.resin_mask = (
+            None if src.resin_mask is None else np.array(src.resin_mask)
+        )
+        dst.resin_blend = (
+            None if src.resin_blend is None else np.array(src.resin_blend)
+        )
+        dst.resin_blend_materials = (
+            None if src.resin_blend_materials is None
+            else dict(src.resin_blend_materials)
+        )
+
     def _run_czm_path(
         self,
         results: AnalysisResults,
@@ -4266,6 +4312,14 @@ class WrinkleAnalysis:
                 laminate, wrinkle_config, iface_indices, cohesive_props,
             )
         )
+        # The cohesive mesh is rebuilt from scratch, so the material zones
+        # the linear path tagged on ``flat_mesh`` (crest resin lens,
+        # tool-flat surface pockets) must be carried over or the CZM solve
+        # would silently run without them (issue #453). Both meshes are the
+        # same structured hex grid -- inserting cohesive layers duplicates
+        # nodes but never renumbers hex elements -- so the per-element tags
+        # transfer index for index.
+        self._carry_material_zones(flat_mesh, mesh)
         results.mesh = mesh
         if mesh.fiber_angles.size > 0:
             results.mesh_max_angle_rad = float(np.max(np.abs(mesh.fiber_angles)))
@@ -4283,14 +4337,29 @@ class WrinkleAnalysis:
             delta_T=cfg.delta_T,
         )
 
+        # Per-increment damage record (issue #453): cheap next to a Newton
+        # iteration, observational only, so it is always taken.
+        _lx, ly, lz = mesh.domain_size
+        recorder = CzmDamageRecorder(
+            assembler,
+            applied_strain=float(cfg.applied_strain),
+            reaction_dofs=3 * mesh.nodes_on_face("x_max"),
+            area=ly * lz,
+            n_increments=int(cfg.czm_n_load_increments),
+        )
         solver = NewtonRaphsonSolver(
             assembler=assembler,
             bc_handler=bc_handler,
             boundary_conditions=bcs,
             n_increments=int(cfg.czm_n_load_increments),
             tol_residual=float(cfg.czm_newton_tol),
+            increment_callback=recorder,
         )
         outcome = solver.solve(verbose=cfg.verbose)
+        results.czm_damage_history = recorder.finish(
+            completed=bool(outcome.get("converged", False))
+            and not outcome.get("stopped_early", False)
+        )
 
         results.czm_converged = bool(outcome.get("converged", False))
         results.czm_failure_diagnostics = outcome.get("failure_diagnostics")

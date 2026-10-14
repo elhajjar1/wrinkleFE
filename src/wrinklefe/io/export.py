@@ -615,7 +615,16 @@ FE_STRENGTH_CAVEAT = (
     "laminate with embedded wrinkles it over-predicted retained strength by "
     "up to about 100%. In tension it is a first-ply (damage-onset) "
     "estimate: against the measured damage onset of one study's coupons "
-    "it was unsafe on 9 of 12, by up to about 150%."
+    "it was unsafe on 9 of 12, by up to about 150%. For an embedded "
+    "wrinkle under flat surfaces no FE strength path is offered at all: "
+    "the two size-aware candidates, the progressive-damage peak load and "
+    "the load at cohesive-zone delamination onset, were scored on the same "
+    "cases and stayed unsafe, by up to about 110% and 140% on two "
+    "multidirectional compression studies, about 65% and 75% on the wet "
+    "lay-up laminate, and about 200% and 50% against the measured tension "
+    "damage onset; only on the UD glass series did the peak load stay "
+    "within 15% (worst +6%), by a conservative offset rather than by "
+    "responding to the wrinkle's depth. Use the analytical knockdown there."
 )
 
 PROGRESSIVE_DAMAGE_CAVEAT = (

@@ -462,6 +462,11 @@ INTENTIONALLY_UNEXPORTED = {
     "czm_interfaces_used": "CZM result; surfaced via the app CZM payload",
     "czm_delamination_report": "CZM result; surfaced via the app CZM payload",
     "czm_element_centroids": "CZM result; surfaced via the app CZM payload",
+    "czm_damage_history": (
+        "per-increment CZM damage record (#453); a CZM result like the "
+        "others above, read through CzmDamageHistory.initiation()/"
+        "separation(), and archived losslessly by wrinklefe.io.archive"
+    ),
 }
 
 
