@@ -15,8 +15,8 @@ chooser offers four:
 - **Validation / physics discrepancy** — when a predicted knockdown or
   strength disagrees with experiment or another model (material, layup,
   wrinkle geometry, measured vs. predicted, data source).
-- **Contribute a validation dataset** — to share measured strengths of
-  wrinkled laminates; see the next section.
+- **Contribute a validation dataset** — to share published measured
+  strengths of wrinkled laminates; see the next section.
 
 Blank issues stay enabled for anything that doesn't fit a form. A
 results JSON's `provenance` block carries the version and environment
@@ -48,8 +48,10 @@ What happens next:
   two labs, each with a stated route and an in-standard pristine
   baseline, are in the ledger.
 
-Share values, not papers: never attach or commit a copyrighted PDF.
-Cite it by DOI instead.
+Only published data is accepted: the values must come from a paper,
+thesis or report that can be cited. Measured values are facts and are
+transcribed with a citation, as for every dataset already in the ledger;
+the paper itself, its text and its figures never enter the repository.
 
 ## Development Setup
 

@@ -1460,7 +1460,7 @@ flagged under a **Numerical results** heading — are recorded in
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Measured strengths of wrinkled
-laminates are especially welcome: the
+laminates from published work are especially welcome: the
 [**Contribute a validation dataset**](https://github.com/elhajjar1/wrinkleFE/issues/new?template=validation_dataset.yml)
 form asks for what a validation-ledger entry needs, and every
 contributed dataset is cited by name in the validation record.

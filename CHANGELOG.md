@@ -17,8 +17,9 @@ version produced a given file.
 ### Added
 - Community — **a "Contribute a validation dataset" issue form**
   (`.github/ISSUE_TEMPLATE/validation_dataset.yml`). It asks for what a
-  validation-ledger entry needs: source and DOI, permission to publish
-  the values, material and layup, manufacturing route, laminate quality,
+  validation-ledger entry needs: a published source and its DOI, a
+  confirmation that every value comes from it, material and layup,
+  manufacturing route, laminate quality,
   wrinkle geometry and how it was made, and the measured and pristine
   strengths. CONTRIBUTING.md gains a section on how a dataset enters the
   ledger, when it is quarantined and when a new manufacturing route

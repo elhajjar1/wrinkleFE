@@ -1,5 +1,5 @@
 name: Contribute a validation dataset
-description: Share measured strengths of wrinkled laminates so every WrinkleFE model can be scored against them.
+description: Share published measured strengths of wrinkled laminates so every WrinkleFE model can be scored against them.
 title: "data: <first author, year> — <material>, <compression or tension>"
 labels: ["validation"]
 body:
@@ -10,33 +10,23 @@ body:
 
         Most wanted right now: one-sided surface troughs, multidirectional laminates in compression, and laminates made by resin transfer moulding, infusion or wet lay-up.
 
-        **Share numbers, not papers.** Please do not attach a copyrighted PDF. Give the citation or DOI and the values. A CSV or spreadsheet attached to this issue is ideal.
+        **Published data only.** The values must come from a paper, thesis or report that can be cited. Measured values are facts and are transcribed with a citation; the paper itself, its text and its figures stay out of the repository, so please do not attach a PDF. Give the citation or DOI and the values. A CSV or spreadsheet attached to this issue is ideal.
   - type: input
     id: source
     attributes:
-      label: Source
-      description: Paper, thesis, report or dataset, with its DOI if it has one.
+      label: Published source
+      description: The paper, thesis or report the values come from, with its DOI if it has one.
       placeholder: "Thor et al. (2021), Int. J. Material Forming 14:19-37, DOI 10.1007/s12289-020-01540-5"
     validations:
       required: true
-  - type: dropdown
-    id: relationship
-    attributes:
-      label: Your relationship to the data
-      options:
-        - I generated it or co-authored the work
-        - It is published; I am reporting values from the publication
-        - Other (explain under "Anything else")
-    validations:
-      required: true
   - type: checkboxes
-    id: permission
+    id: confirm
     attributes:
-      label: Sharing
+      label: Confirm
       options:
-        - label: These values may be published in the WrinkleFE repository and documentation, with credit to the source.
+        - label: Every value below comes from the published source cited above.
           required: true
-        - label: I am not attaching a copyrighted paper.
+        - label: I am not attaching the paper or reproducing its figures.
           required: true
   - type: input
     id: material
