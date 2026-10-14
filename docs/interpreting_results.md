@@ -68,9 +68,10 @@ morphology selects (issue #451):
   a budget, which errs conservative.
 - **Pick the morphology that matches the wrinkle.** `uniform` for a wave
   through the whole thickness; `graded` for an embedded wrinkle with
-  flat surfaces. The two use different budgets and different angle
-  measures (peak against profile-averaged), so on UD they can differ
-  substantially.
+  flat surfaces; `tool_flat` for a one-sided surface trough (see
+  "One-sided surface troughs" below). `graded` uses a different budget
+  and a different angle measure (profile-averaged against peak), so on
+  UD it can differ substantially from the other two.
 - `AnalysisResults.gamma_Y_eff` reports the budget the run used.
   Multidirectional laminates (at most 40% 0° plies in the validation
   set) keep the layup confinement model on every path.
@@ -100,8 +101,12 @@ Typical values:
 | Wrinkle | e |
 |---|---|
 | Whole-thickness wave (both surfaces wavy) | about its amplitude |
-| One-sided surface trough over a flat tool face | about half the trough depth |
-| Embedded wrinkle with flat outer surfaces | close to zero |
+| One-sided surface trough over a flat tool face (`tool_flat`) | about half the trough depth |
+| Embedded wrinkle with flat outer surfaces | close to zero (exactly zero on UD) |
+
+The offset is measured on the modelled geometry, so a one-sided trough
+shows up only if it is modelled with one surface free: as `tool_flat`,
+not `graded` (see "One-sided surface troughs" below).
 
 `bending_dominated` is `True` for a **compression** analysis with
 e/t ≥ 0.10. At that point the section bends as well as kinks, and the
@@ -126,7 +131,7 @@ morphology, decay setting and multi-wrinkle layout:
 |---|---|---|
 | `uniform`, or `graded` with a `decay_floor` that keeps the surfaces wavy | both move by about e | `True` |
 | `tool_flat` (a face pinned flat by the tool: a one-sided trough) | one moves about 2e, the pinned one 0 | `False` |
-| `graded` (floor 0), `stack`, `convex`, `concave`, multi-wrinkle specs | both flat | `False` |
+| `graded` (floor 0), `stack`, `convex`, `concave`, `tool_flat` pinned on both faces, multi-wrinkle specs | both flat | `False` |
 
 **A bending-dominated whole-thickness wave** (`bending_bound_applied`)
 is treated as an eccentric column (issue #452). The far-field load runs
@@ -161,7 +166,8 @@ one-sided trough, like Shi's Dataset H on its FE recipe) gets no bound:
 the eccentric-column formula did not explain its measured knockdown,
 which points to a local effect under the trough. The kink-band knockdown
 stands, `governing_bound` is `"kink_band"`, and the advice is to prefer
-FE on the measured profile.
+FE on the measured profile. The trough has to be modelled with its free
+surface for any of this to happen: see the next section.
 
 Nothing changes below e/t = 0.10: the bound is not consulted there. It
 switches on at the threshold, so a whole-thickness wave whose kink-band
@@ -179,6 +185,85 @@ the app carry the same information. The warning text differs by case:
 `BENDING_BOUND_CAVEAT` when the bound was applied,
 `BENDING_REGIME_CAVEAT` (prefer FE) when it was not
 (`wrinklefe.core.eccentricity`).
+
+### One-sided surface troughs: model them as `tool_flat`
+
+`bending_dominated` is measured on the geometry you modelled, not on the
+part (issue #461). Choose the morphology by what the outer surfaces do:
+
+| Wrinkle | Outer surfaces | Morphology |
+|---|---|---|
+| Embedded | both flat | `graded` (decay floor 0), or `stack` / `convex` / `concave` |
+| A wave through the whole thickness | both wavy | `uniform` |
+| A one-sided surface trough (or hump) over a flat tool face | one follows the wrinkle, the tool face stays flat | `tool_flat`, `surface_pocket_side` set to the tool face |
+
+**Do not model a one-sided trough as `graded`.** `graded` with
+`decay_floor=0` keeps both outer surfaces flat, which is what an
+embedded wrinkle is. On a UD laminate the centroid of a section with
+flat surfaces sits exactly midway between them, so e/t is 0 at any
+amplitude. On a multidirectional laminate only the shift of stiff plies
+against compliant ones moves it. Shi's troughs (Dataset H) show the gap.
+Errors are against the measured knockdown; positive is unsafe:
+
+| Shi case (depth / thickness) | `graded` (the ledger recipe) | `tool_flat` (flat bottom, 10-ply ramp) |
+|---|---|---|
+| H-UD-10 (0.10) | e/t 0.000, not flagged, +0.2% | e/t 0.050, not flagged, −58.9% |
+| H-UD-20 (0.20) | e/t 0.000, not flagged, +11.8% | e/t 0.100, **flagged**, −68.4% |
+| H-UD-30 (0.30) | e/t 0.000, not flagged, +25.9% | e/t 0.150, **flagged**, −71.0% |
+| H-MD-10 (0.10) | e/t 0.012, not flagged, +5.8% | e/t 0.058, not flagged, −42.1% |
+| H-MD-20 (0.20) | e/t 0.022, not flagged, +55.6% | e/t 0.117, **flagged**, −22.4% |
+| H-MD-30 (0.30) | e/t 0.030, not flagged, +115.2% | e/t 0.175, **flagged**, +5.0% |
+
+The 10% troughs are not flagged on either morphology. The analytical
+model was within +6% on them, inside the regime it was validated in.
+
+Other choices for the same troughs:
+- `uniform` flags all six (e/t 0.10 to 0.30), but as whole-thickness
+  waves, so it applies the eccentric-column bound, which was not
+  validated on troughs. The kink-band governs there, with the same
+  errors as `tool_flat`.
+- `graded` with `wrinkle_z_position` at exactly 1.0 (or 0.0) centres the
+  decay on a surface and leaves that surface wavy. That flags the 20% and
+  30% troughs (e/t 0.10 to 0.16), but the knockdown stays the `graded`
+  one (+13% to +117%). Any position strictly between 0 and 1 keeps both
+  surfaces flat and flags nothing.
+- `tool_flat` with `surface_pocket_side="both"` pins both faces flat, so
+  it reads like `graded`. So do `stack`, `convex` and `concave`.
+
+**Why the trough is not detected on `graded`.** A trough entered as
+`graded` has the inputs of an embedded wrinkle, and measured embedded
+wrinkles cover the same ranges:
+- amplitude / thickness: Krishnappa's mid-plane L-WM-4-3, 0.207; Shi's
+  20% trough, 0.200;
+- amplitude / wavelength and peak angle: Li's S-M-3, 0.093 and 30°;
+  Shi's 20% trough, 0.069 and 23.5°.
+
+Any threshold that warned on Shi's 20% troughs would also warn on
+embedded wrinkles, which are not bending-dominated. The one thing that
+separates the two is whether an outer surface follows the wrinkle, and
+the morphology is where you state that. The app's **Morphology** help
+and the CLI's `--morphology` help say so
+(`wrinklefe.core.eccentricity.ONE_SIDED_TROUGH_ADVICE`).
+
+**Setting up `tool_flat` for a trough:**
+- `amplitude` is the trough depth.
+- `surface_pocket_side` is the face that stays flat on the tool.
+- `surface_transition_plies` is about the number of plies the trough
+  fades out over (10 of 20 for Shi). It also bounds the amplitude:
+  `amplitude ≤ 0.8 · surface_transition_plies · ply_thickness / nz_per_ply`.
+  The default of 2 rejects a trough deeper than 1.6 plies, and the error
+  message names the ply count needed.
+- On a UD laminate e/t is depth / (2 · thickness), so the flag comes on
+  at a depth of 20% of the thickness. Shi's 20% UD trough sits on that
+  line (e/t 0.10001), so a slightly shallower one is not flagged. On
+  Shi's multidirectional layup the flag comes on a little earlier.
+
+What you then get is the `BENDING_REGIME_CAVEAT` warning (no bound,
+prefer FE) and the peak-angle kink-band knockdown, which `tool_flat`
+shares with `uniform`. On Shi's troughs that knockdown is conservative
+on five of six cases (−22% to −71%) but +5.0% on H-MD-30. First-ply FE
+on this geometry was −40% to −1%. Follow the warning and run FE on the
+measured profile.
 
 ### `manufacturing_process` — is the laminate in the validated scope?
 
@@ -507,7 +592,9 @@ interpolation of the scan curve."*
   eccentric-column bending bound (`governing_bound`), which brought the
   measured cases to within about +15%; treat it as a screening number.
   On a one-sided trough there is no bound. Either way, run FE on the
-  measured wrinkle profile and carry the lower number, with margin.
+  measured wrinkle profile and carry the lower number, with margin. A
+  one-sided trough is flagged only when it is modelled as `tool_flat`;
+  as `graded` it reads e/t ≈ 0 (see "One-sided surface troughs" above).
 - **Unidirectional laminates in compression** — the angle-only knockdown
   is scale-invariant and under-predicts the penetration effect. Use the
   penetration gate. `progressive_knockdown` is the only FE number that
@@ -792,13 +879,13 @@ Every row rests on prepreg laminates. No row covers wet lay-up, infusion or RTM:
 | Case | Use | Evidence | Process route (as stated) | Confidence |
 |---|---|---|---|---|
 | Multidirectional compression, peak angle < 10° | Analytical kink-band. FE is unsafe here (9 of 12). | 12 cases, 4 labs | Prepreg: autoclave or hot press (A, J); C, D not stated | **Moderate**  |
-| Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness: Shi's one-sided troughs up to +115%; on whole-thickness waves the bending bound (issue #452) holds Thor to +15% and Elhajjar to +13% (+52% and +30% without it). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | Prepreg: autoclave or hot press (A, J); C, D, H not stated | **Low**: issues #434, #439  |
-| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. With the eccentric-column bending bound on the whole-thickness waves (issue #452), 3 of the 8 stay more than 15% unsafe (5 without it): Thor's wave 1 at +15.1% and Shi's two one-sided troughs, which the bound does not cover. Below e/t = 0.10 the analytical model is the better choice. See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | Prepreg: autoclave or hot press (A, J); H not stated | **Low–moderate**: issues #439, #452  |
+| Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness: Shi's one-sided troughs up to +115%, with no bending warning unless the trough is modelled as `tool_flat` (issue #461); on whole-thickness waves the bending bound (issue #452) holds Thor to +15% and Elhajjar to +13% (+52% and +30% without it). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | Prepreg: autoclave or hot press (A, J); C, D, H not stated | **Low**: issues #434, #439  |
+| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. With the eccentric-column bending bound on the whole-thickness waves (issue #452), 3 of the 8 stay more than 15% unsafe (5 without it): Thor's wave 1 at +15.1% and Shi's two one-sided troughs, which the bound does not cover. Below e/t = 0.10 the analytical model is the better choice. e/t is measured on the modelled geometry: enter a one-sided trough as `tool_flat`, with the tool face pinned. As `graded`, the recipe Shi's knockdowns are scored on, it reads e/t ≈ 0 and gets no warning (issue #461; see "One-sided surface troughs" above). See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | Prepreg: autoclave or hot press (A, J); H not stated | **Low–moderate**: issues #439, #452, #461  |
 | Multidirectional tension, ultimate | Analytical three-mechanism. On steep wrinkles (23–36°, Dataset M) it is −22% to +14% (mean −4.9%, unsafe on 3 of 9); before issue #454 the compression floor set those predictions and was unsafe on 8 of 9, by up to +30%. The #454 corrections carry no fitted constant but were diagnosed on these coupons, so above 20° the agreement is in-sample: keep a margin there. | 20 cases, 3 labs; 9 above 20°, from one lab | Prepreg: autoclave or hot press (B, M); C, I not stated | **Moderate** below 20°, **Low** above |
 | UD tension, ultimate | Analytical three-mechanism, with margin: −23% (conservative) on the smaller wrinkles, +16% to +18% unsafe on the larger. The angles are estimated, and the larger wrinkles knock down more at the lower estimated angle, which no angle-driven model follows. | 4 cases, 1 lab, in-sample (issue #454) | Prepreg: hot press (M) | **Low** |
 | Tension, damage onset | No reliable predictor. First-ply FE is an onset estimate only: unsafe on 9 of 12 Dataset M coupons (−22% to +154%, worst on the deepest wrinkles) and 2 of 3 Mukhopadhyay. | 15 cases, 2 labs | Prepreg: hot press (M); C not stated | **Low** |
 | UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | Prepreg: hot press (E), vacuum bag (F) | **Fit only**  |
-| UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band, with its UD strain budget read from the material card (S12/Xc, issue #451), is a conservative screen on Thor's and Pilato's whole-thickness waves (−10% to −23%, never unsafe). On Shi's one-sided troughs, scored on the `graded` path that keeps the layup budget, it over-predicts by +0.2% to +26%. Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F), and the two size-aware FE candidates of issue #453 did not change that (see [above](#size-aware-fe-candidates-embedded-flat-surface-wrinkles-issue-453)). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | Prepreg: autoclave (J); H, K not stated | **Low**: issues #435, #445  |
+| UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band, with its UD strain budget read from the material card (S12/Xc, issue #451), is a conservative screen on Thor's and Pilato's whole-thickness waves (−10% to −23%, never unsafe). On Shi's one-sided troughs, scored on the `graded` path that keeps the layup budget, it over-predicts by +0.2% to +26% with no bending warning; modelled as `tool_flat` they are flagged at 20% and 30% depth (issue #461). Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F), and the two size-aware FE candidates of issue #453 did not change that (see [above](#size-aware-fe-candidates-embedded-flat-surface-wrinkles-issue-453)). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | Prepreg: autoclave (J); H, K not stated | **Low**: issues #435, #445  |
 
 Caveats on the FE column:
 - The A–E FE recipe uses the analytical inputs at the default interfaces

@@ -31,6 +31,7 @@ import numpy as np
 if TYPE_CHECKING:
     from wrinklefe.analysis import AnalysisConfig, AnalysisResults
 
+from wrinklefe.core.eccentricity import ONE_SIDED_TROUGH_ADVICE
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
 from wrinklefe.core.process import ManufacturingProcess
@@ -223,7 +224,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "(``tool-flat`` is accepted as an alias for ``tool_flat``). "
             "For ``tool_flat`` the surface resin pockets auto-enable on the "
             "FE path and the amplitude is bounded by "
-            "0.8 * surface_transition_plies * ply_thickness / nz_per_ply."
+            "0.8 * surface_transition_plies * ply_thickness / nz_per_ply. "
+            + ONE_SIDED_TROUGH_ADVICE
         ),
     )
     p_analyze.add_argument(
