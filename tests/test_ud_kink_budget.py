@@ -212,9 +212,10 @@ def test_multidirectional_layups_keep_the_confinement_model(name):
 @pytest.mark.parametrize("loading", ["compression", "tension"])
 def test_graded_path_keeps_the_confinement_model(loading):
     """The graded profile-proportional path keeps gamma_Y_eff: its budget
-    is calibrated jointly with the profile average, and g there would
-    push Dataset H (Shi, UD) and Dataset M's UD tension floor further
-    unsafe."""
+    is calibrated jointly with the profile average, and when the budget
+    changed g there would have pushed Dataset H (Shi, UD, then scored as
+    graded; tool_flat since issue #461) and Dataset M's UD tension floor
+    further unsafe."""
     res = _run(_config([0.0] * 40, morphology="graded", loading=loading))
     assert res.gamma_Y_eff == _GAMMA_Y_UD
 

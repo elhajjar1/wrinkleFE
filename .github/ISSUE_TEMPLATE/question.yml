@@ -1,0 +1,23 @@
+name: Usage question
+description: Ask a "how do I…" question about the science, the models or the API.
+title: "question: <short summary>"
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [documentation](https://wrinklefe.readthedocs.io) first, in particular "Interpreting the results", which says which model to trust for each kind of wrinkle. If WrinkleFE gives a wrong answer or crashes, use the **Bug report** form instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you are trying to do, and what you want to know.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: What you have tried
+      description: The configuration, command or code you used, and what it returned. A results JSON's `provenance` block gives the version.
+    validations:
+      required: false

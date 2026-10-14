@@ -31,6 +31,7 @@ import numpy as np
 if TYPE_CHECKING:
     from wrinklefe.analysis import AnalysisConfig, AnalysisResults
 
+from wrinklefe.core.eccentricity import ONE_SIDED_TROUGH_ADVICE
 from wrinklefe.core.layup import parse_layup
 from wrinklefe.core.morphology import MORPHOLOGY_PHASES, SINGLE_WRINKLE_MODES
 from wrinklefe.core.process import ManufacturingProcess
@@ -223,7 +224,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "(``tool-flat`` is accepted as an alias for ``tool_flat``). "
             "For ``tool_flat`` the surface resin pockets auto-enable on the "
             "FE path and the amplitude is bounded by "
-            "0.8 * surface_transition_plies * ply_thickness / nz_per_ply."
+            "0.8 * surface_transition_plies * ply_thickness / nz_per_ply. "
+            + ONE_SIDED_TROUGH_ADVICE
         ),
     )
     p_analyze.add_argument(
@@ -1224,7 +1226,8 @@ def _build_parser() -> argparse.ArgumentParser:
                  "onset_knockdown", "modulus_retention_global"],
         help=(
             "Quantity the target applies to (default: knockdown). "
-            "'onset_knockdown' is tension-only; "
+            "'onset_knockdown' is tension-only and unvalidated: "
+            "do not use it to set an acceptance limit (issue #463); "
             "'modulus_retention_global' requires the FE path."
         ),
     )
@@ -2339,6 +2342,8 @@ def _print_critical_banner(result, config) -> None:
         f"  Objective: {result.objective_name} >= {result.target:.4f}"
         f"{unit}   (direction: {result.direction})"
     )
+    if getattr(result, "caveat", None):
+        print("  CAVEAT: " + str(result.caveat))
     print(
         f"  Range:     [{result.bounds[0]:.6f}, {result.bounds[1]:.6f}]  "
         f"(lower: {result.bounds_source[0]}, "
@@ -2425,6 +2430,7 @@ def _write_critical_outputs(
             "direction": result.direction,
             "status": result.status,
             "message": result.message,
+            "caveat": getattr(result, "caveat", None),
             "critical_value": (
                 None if result.critical_value is None
                 else float(result.critical_value)

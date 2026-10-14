@@ -26,7 +26,7 @@ Public link, no account needed.
 - **Compression model:** CLT-weighted Budiansky-Fleck kink-band with layup-dependent confinement
 - **Tension model:** Three-mechanism (fiber cos^2 theta, Hashin matrix, curved-beam sigma_33 delamination) with thick-ply in-situ correction
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
-- **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) — compared side by side in one click from the app (**Compare morphologies**) or the CLI (`wrinklefe compare`)
+- **Six morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) and tool_flat (one surface flat on the tool, for one-sided surface troughs) — compared side by side in one click from the app (**Compare morphologies**) or the CLI (`wrinklefe compare`)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **Movable wrinkle position:** Configurable through-thickness placement (`wrinkle_z_position`, 0.5 = mid-plane)
 - **Multi-wrinkle configurations:** Arbitrary N-wrinkle layouts via `AnalysisConfig.wrinkles` — a list of `WrinkleSpec(amplitude, wavelength, width, ply_interface, phase_offset)` — through the analytical, FE, penetration-gate (per-spec, weakest-link) and CZM paths
@@ -1206,22 +1206,30 @@ multidirectional cases A–D, the penetration gate for the UD cases E/F;
 Datasets H to L, which have no gate preset, are plotted twice —
 analytical and first-ply FE LaRC05 retention; Dataset M's tension
 coupons are plotted against both their ultimate and their measured
-damage onset). 79 of the 105 points fall inside the band. Of the 26
-outside it, 15 are conservative: four of them the kink-band on UD carbon
+damage onset). 77 of the 105 points fall inside the band. Of the 28
+outside it, 20 are conservative: four of them the kink-band on UD carbon
 (Datasets J and K, −22% to −23% since the UD strain budget was anchored
-to the material card, issue #451) and three of them Dataset M tension
-coupons (−22% to −23%). The 11 that are not:
-- three high amplitude-to-thickness compression cases, Dataset H's
-  one-sided troughs (+26% UD; +56% and +115% multidirectional). On them
-  the FE retention, run on the specimen's own geometry, is within −8% to
-  −1% on the multidirectional half. The whole-thickness waves that used
-  to join them (the most severe wrinkle in dataset A, +30%, and Thor's
-  severe quasi-isotropic wave in Dataset J, +52%) now carry an
-  eccentric-column bending bound and sit at +10% and +15% (issue #452);
-  six of Dataset M's steep tension wrinkles (+20% to +39%) left the list
-  when issue #454 stopped the compression floor setting them;
-- eight first-ply FE onset estimates on Dataset M, +23% to +154%
-  against the measured damage onset.
+to the material card, issue #451), three of them Dataset M tension
+coupons (−22% to −23%) and five of them the analytical path on
+Dataset H's one-sided troughs (−22% to −71%). The 8 that are not are
+all first-ply FE onset estimates on Dataset M, +23% to +154% against
+the measured damage onset.
+
+No analytical point now falls outside the band on the unsafe side.
+- Dataset H's troughs were three such points (+26% UD; +56% and +115%
+  multidirectional) while the ledger modelled them as an embedded
+  `graded` wrinkle. Issue #461 corrected the recipe to the specimens'
+  one-sided `tool_flat` geometry, after those errors were known. On it
+  the analytical path is conservative except +5% on the deepest
+  multidirectional trough, which it flags as bending-dominated (run FE:
+  on that half the FE retention, on the specimen's own geometry, is
+  within −8% to −1%).
+- The whole-thickness waves that used to join them (the most severe
+  wrinkle in dataset A, +30%, and Thor's severe quasi-isotropic wave in
+  Dataset J, +52%) now carry an eccentric-column bending bound and sit
+  at +10% and +15% (issue #452).
+- Six of Dataset M's steep tension wrinkles (+20% to +39%) left the list
+  when issue #454 stopped the compression floor setting them.
 
 Dataset L, a low-quality wet lay-up laminate, is **quarantined**
 (issue #445): it is plotted with hollow markers and left out of that
@@ -1275,7 +1283,7 @@ three datasets.
 
 ## Supported morphologies
 
-WrinkleFE ships five wrinkle morphologies (defined in
+WrinkleFE ships six wrinkle morphologies (defined in
 `src/wrinklefe/core/morphology.py`). They differ along *two* independent
 axes: **how many wrinkles** are placed in the laminate and **how the
 amplitude varies through the thickness**. The first three names below

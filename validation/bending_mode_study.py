@@ -32,8 +32,10 @@ the pre-#452 ones.
 The geometry comes from the shipped measurement,
 :func:`wrinklefe.core.eccentricity.load_path_eccentricity` (the ply
 boundaries the FE mesh is built on, generated, not solved), on the recipe
-each dataset already uses, with Shi's FE recipe (one-sided ``tool_flat``
-trough) for Dataset H.
+each dataset already uses. For Dataset H that is the one-sided
+``tool_flat`` trough, which since issue #461 is also the ledger's
+analytical recipe, so the "deployed" column scores Shi on it too (a
+plain ``graded`` profile before; the write-up's numbers predate that).
 
 Run::
 
@@ -87,8 +89,8 @@ def section_geometry(cfg) -> dict:
     from wrinklefe.core.eccentricity import load_path_eccentricity
 
     kw = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
-    # Surface resin pockets (Shi's FE recipe) are a material zone, not
-    # geometry, and they are FE-only, so they are switched off here.
+    # Surface resin pockets are a material zone, not geometry, and they
+    # are FE-only, so they are switched off here.
     kw.update(analytical_only=True, verbose=False,
               enable_surface_resin_pockets=False)
     cfg = type(cfg)(**kw)
@@ -141,25 +143,18 @@ def compression_cases() -> list[dict]:
             len(cfg.angles) * cfg.ply_thickness, cfg.amplitude, cfg.wavelength)
 
     ledger = json.loads(LEDGER.read_text())
-    shi_fe = dict(morphology="tool_flat", surface_pocket_side="bottom",
-                  surface_transition_plies=10, enable_surface_resin_pockets=True)
-    for prefix, label, overrides in (
-        ("li_2025", "F Li2025 UD comp", {}),
-        ("shi_2025_ud", "H Shi2025 UD comp", shi_fe),
-        ("shi_2025_md", "H Shi2025 MD comp", shi_fe),
-        ("thor_2021_qi", "J Thor2021 QI comp", {}),
-        ("thor_2021_ud", "J Thor2021 UD comp", {}),
-        ("pilato_2022", "K Pilato2022 UD comp", {}),
+    for prefix, label in (
+        ("li_2025", "F Li2025 UD comp"),
+        ("shi_2025_ud", "H Shi2025 UD comp"),
+        ("shi_2025_md", "H Shi2025 MD comp"),
+        ("thor_2021_qi", "J Thor2021 QI comp"),
+        ("thor_2021_ud", "J Thor2021 UD comp"),
+        ("pilato_2022", "K Pilato2022 UD comp"),
     ):
         ds = next(d for d in ledger["datasets"] if d["name"].startswith(prefix))
         t = len(parse_layup(ds["layup"])) * float(ds["ply_thickness_mm"])
         for case in ds["cases"]:
             cfg = case_config(ds, case)
-            if overrides:
-                kw = {f.name: getattr(cfg, f.name)
-                      for f in dataclasses.fields(cfg)}
-                kw.update(overrides)
-                cfg = type(cfg)(**kw)
             add(label, case["case"], cfg, t, cfg.amplitude, cfg.wavelength)
     return out
 

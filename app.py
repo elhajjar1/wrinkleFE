@@ -44,6 +44,7 @@ import usage_tracking  # noqa: E402
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
 from wrinklefe.core.eccentricity import (  # noqa: E402
     ECCENTRICITY_REGIME_THRESHOLD,
+    ONE_SIDED_TROUGH_ADVICE,
     bending_caveat,
 )
 from wrinklefe.core.layup import parse_layup  # noqa: E402
@@ -1362,7 +1363,18 @@ with st.sidebar:
                 "Note: *stack* and *uniform* both report M_f = 1.0 but produce "
                 "different deformed meshes — *stack* is two wrinkles with the "
                 "envelope fading at the outer surfaces; *uniform* is one wrinkle "
-                "applied to every ply."
+                "applied to every ply.\n\n"
+                "**Which to pick** — match what the outer surfaces do:\n"
+                "- both surfaces flat (an embedded wrinkle): *graded*, or "
+                "*stack* / *convex* / *concave*;\n"
+                "- both surfaces wavy (a wave through the whole thickness): "
+                "*uniform*;\n"
+                "- one surface follows the wrinkle and the other is flat on "
+                "the tool (a one-sided surface trough): *tool_flat*.\n\n"
+                + ONE_SIDED_TROUGH_ADVICE
+                + " On Shi et al.'s measured troughs modelled as *graded*, "
+                "the analytical knockdown was up to 115% unsafe with no "
+                "warning."
             ),
         )
         decay_floor = DEFAULT_DECAY_FLOOR
@@ -1378,6 +1390,12 @@ with st.sidebar:
                     "surfaces (pure graded); 1 = no decay (equivalent "
                     "to uniform)."
                 ),
+            )
+            st.caption(
+                "*graded* models an embedded wrinkle under flat surfaces. "
+                "For a one-sided surface trough over a flat tool face "
+                "choose **tool_flat**: as *graded* it gets no bending "
+                "warning (see the **Morphology** help)."
             )
 
         # Thread the live Amplitude/Wavelength/Envelope-width/Decay-floor
@@ -2239,7 +2257,9 @@ with st.sidebar:
             "that gives the laminate its directional stiffness.\n\n"
             "**Morphology** — how the wrinkle is shaped through the "
             "thickness: aligned (stack), bulging (convex), pinched "
-            "(concave), uniform, or fading (graded).\n\n"
+            "(concave), uniform, fading to flat surfaces (graded), or "
+            "flat on the tool side only (tool_flat, a one-sided surface "
+            "trough).\n\n"
             "**FE solve** — a 3-D finite-element calculation of the actual "
             "stresses inside the wrinkled region. Slower than the analytical "
             "estimate but gives stress fields and per-ply failure.\n\n"

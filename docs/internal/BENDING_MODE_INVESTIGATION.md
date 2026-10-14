@@ -12,6 +12,35 @@ FE run on the specimen's own geometry is never unsafe (−40% to −1%).
 Regenerate everything here with `python validation/bending_mode_study.py`
 (per-case table: `validation/bending_mode_cases.csv`).
 
+**Update (issue #461).** The figures below scored Shi's knockdowns
+(Dataset H) on an embedded `graded` recipe, which is not the specimens'
+shape; their eccentricity was already measured on the one-sided
+`tool_flat` trough. Since issue #461 the knockdowns are scored on
+`tool_flat` too. Only Shi's six cases move, to −71% … +5%, and a re-run
+gives, with the kink-band alone as in the tables below:
+
+| e/t | Cases | Kink-band: unsafe (> +15%) | FE LaRC05: unsafe (> +15%) |
+|---|---|---|---|
+| < 0.05 | 31 | 6 (0) | 24 (17) |
+| 0.05–0.10 | 8 | 0 (0) | 5 (2) |
+| 0.10–0.15 | 3 | 1 (0) | 1 (1) |
+| ≥ 0.15 | 8 | 6 (3) | 0 (0) |
+
+- More than 15% unsafe: 3 of 50 with the kink-band alone (Elhajjar
+  A = 0.61 and 0.73 mm, Thor's wave 1), all whole-thickness waves above
+  e/t = 0.25. With the bending bound of issue #452, the model as
+  deployed, it is 1 of 50 (Thor's wave 1, +15.1%; MAE 13.4%).
+- None of Shi's troughs is more than 15% unsafe; the 30%
+  multidirectional one is +5.0%, the 20% and 30% UD ones −68% and −71%.
+- The regime selector below (deployed model under e/t = 0.10, FE
+  above) no longer improves on the deployed model: it is also more than
+  15% unsafe on one case (Elhajjar A = 0.24 mm, FE +20.2% at
+  e/t = 0.102), its worst miss is +20% against +15%, and its MAE is
+  12.3% against 13.4%. Above e/t = 0.15 FE is still never unsafe (−40%
+  to −1%), while the deployed model is unsafe on 6 of 8, by up to +15%.
+- With one case left more than 15% unsafe, the transition-metric
+  splits the script prints have little to separate.
+
 ## Method
 
 Every compression strength case in the validation set (50 cases,
@@ -25,8 +54,9 @@ recipe was generated, not solved, and measured:
   weighted by its CLT axial modulus);
 - **t_c**: the section thickness at that point.
 
-Shi (Dataset H) uses its FE recipe (one-sided `tool_flat` trough); the
-others use their ledger or head-to-head recipes.
+Shi (Dataset H) uses its FE recipe (one-sided `tool_flat` trough), which
+is also its ledger recipe since issue #461; the others use their ledger
+or head-to-head recipes.
 
 Eccentricity separates geometries that amplitude alone does not:
 
@@ -78,7 +108,8 @@ above:
 These figures treat "deployed" as the kink-band alone, before issue #452
 shipped the bending bound. With the bound, the deployed model itself is
 more than 15% unsafe on 4 of the 50 cases (MAE 12.3%): Thor's wave 1 at
-+15.1% and Shi's three one-sided troughs.
++15.1% and Shi's three one-sided troughs (scored as `graded`; on
+`tool_flat` since issue #461 it is 1 of 50, see the update above).
 
 ## Reported failure modes
 
@@ -155,7 +186,8 @@ all 50 cases the prototype cuts the >15% misses from 6 to 4.
 
 - Eccentricity is only as good as the recipe's geometry.
   - **J and K** have measured whole-thickness waves.
-  - **H** uses the one-sided FE recipe.
+  - **H** uses the one-sided `tool_flat` recipe (its knockdown recipe
+    too since issue #461).
   - **A** assumes `uniform`.
   - **C and D** use the head-to-head recipes, which are not
     specimen-tuned.
