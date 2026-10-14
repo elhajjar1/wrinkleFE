@@ -88,6 +88,18 @@ Manufacturing process and validated scope
              process_scope_caveat, gate_scope_caveat
    :show-inheritance:
 
+Validation margins
+------------------
+
+.. automodule:: wrinklefe.core.margins
+   :members: COVERAGE, MIN_CASES, SIGMA_FLOOR, N_COMPONENTS,
+             UD_DOMINATED_FRACTION, MODEL_PATHS, MARGIN_DEFINITION,
+             MarginRegime, ValidationMargin, MixtureFit, MarginResidual,
+             zero_ply_fraction, laminate_class, analytical_path, regime_for,
+             fit_gaussian_mixture, fit_margin, build_margin_table,
+             load_margin_table, lookup_margin, margin_for_results
+   :show-inheritance:
+
 Coordinate transforms
 ---------------------
 
