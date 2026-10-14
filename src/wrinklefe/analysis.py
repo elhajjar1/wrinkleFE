@@ -4832,9 +4832,18 @@ class WrinkleAnalysis:
         )
         gamma_Y_eff = _effective_gamma_Y(angles)
 
-        # Compression KD (CLT-weighted Budiansky-Fleck) — computed for
-        # both loading modes: used directly for compression, and as a
-        # physical floor for tension (tension cannot be worse than compression).
+        # Compression KD (CLT-weighted Budiansky-Fleck) for compression;
+        # the three-mechanism model for tension. The compression value
+        # used to floor the tension KD ("tension cannot be worse than
+        # compression"); issue #454 removed that floor. It had no
+        # tension mechanism behind it: it was propping up a tension model
+        # that collapsed on steep wrinkles, and on Dataset M it set the
+        # answer on all 13 coupons and was unsafe on 10 (up to +39 %). It
+        # also tied the tension prediction to the compression strain
+        # budget, so a kink-band recalibration moved tension results.
+        # With the collapse fixed at its source (per-ply curvature,
+        # strength-bounded interlaminar tractions, the in-situ shear
+        # bound) the tension model stands on its own.
         mat = cfg.material
         assert mat is not None  # filled in __post_init__
         E11 = mat.E1
@@ -4883,28 +4892,10 @@ class WrinkleAnalysis:
         c_AF = float(cfg.kink_band_quadratic_coeff)
 
         if is_graded and n_0 > 0 and n_plies > 1:
-            # Profile-proportional compression knockdown (graded/embedded).
             # ``wrinkle_z_position`` shifts the through-thickness decay
             # centre off the midplane to model wrinkles closer to the
             # surface (Li et al. 2025 Dataset F: Above/Below positions).
             z_pos = float(cfg.wrinkle_z_position)
-            kd_profile = _profile_proportional_kd(
-                amplitude=cfg.amplitude,
-                wavelength=cfg.wavelength,
-                width=cfg.width,
-                domain_length=cfg.domain_length,
-                ply_thickness=cfg.ply_thickness,
-                n_plies=n_plies,
-                gamma_Y=gamma_Y_eff,
-                theta_max=theta_max,
-                morphology_factor=1.0,
-                through_thickness_decay=True,
-                z_position_fraction=z_pos,
-                decay_scale=decay_scale_eff,
-                decay_floor=cfg.decay_floor,
-                kink_band_quadratic_coeff=c_AF,
-            )
-            kd_compression = f_0 * kd_profile + (1.0 - f_0)
 
             if cfg.loading == "tension":
                 # Average tension knockdown over 0-deg plies at local angles
@@ -4932,8 +4923,12 @@ class WrinkleAnalysis:
                     raw = max(0.0, 1.0 - abs(p - p_mid) / p_norm)
                     B_p = decay_floor + (1.0 - decay_floor) * raw
                     theta_p = theta_max * B_p
+                    # The ply's amplitude decays with the same B_p as its
+                    # angle, so its curvature-driven interlaminar stress
+                    # does too (issue #454).
                     kd_p, _ = self._tension_knockdown_analytical(
                         theta_p, cfg, _return_kd0_only=True,
+                        amplitude_scale=B_p,
                     )
                     kd_0_sum += kd_p
                 kd_0_avg = kd_0_sum / len(zero_positions)
@@ -4941,15 +4936,35 @@ class WrinkleAnalysis:
                 # Get mechanisms at peak angle for reporting
                 _, mechanisms = self._tension_knockdown_analytical(theta_max, cfg)
                 mechanisms["mode"] = mechanisms["mode"] + " (graded avg)"
-                if kd < kd_compression:
-                    kd = kd_compression
-                    mechanisms["mode"] = mechanisms["mode"] + " (capped)"
                 ref_strength = mat.Xt
                 results.tension_mechanisms = mechanisms
             else:
-                kd = kd_compression
+                # Profile-proportional compression knockdown
+                # (graded/embedded).
+                kd_profile = _profile_proportional_kd(
+                    amplitude=cfg.amplitude,
+                    wavelength=cfg.wavelength,
+                    width=cfg.width,
+                    domain_length=cfg.domain_length,
+                    ply_thickness=cfg.ply_thickness,
+                    n_plies=n_plies,
+                    gamma_Y=gamma_Y_eff,
+                    theta_max=theta_max,
+                    morphology_factor=1.0,
+                    through_thickness_decay=True,
+                    z_position_fraction=z_pos,
+                    decay_scale=decay_scale_eff,
+                    decay_floor=cfg.decay_floor,
+                    kink_band_quadratic_coeff=c_AF,
+                )
+                kd = f_0 * kd_profile + (1.0 - f_0)
                 ref_strength = mat.Xc
                 results.tension_mechanisms = None
+        elif cfg.loading == "tension":
+            # Non-graded: the three mechanisms at the peak angle.
+            kd, mechanisms = self._tension_knockdown_analytical(theta_max, cfg)
+            ref_strength = mat.Xt
+            results.tension_mechanisms = mechanisms
         else:
             # Non-graded: peak-angle BF at the critical cross-section,
             # with the Argon-Fleck quadratic extension.
@@ -4966,25 +4981,16 @@ class WrinkleAnalysis:
             # budget is calibrated jointly with the profile average, and
             # it is not biased conservative on UD carbon (Hsiao-Daniel
             # -22 %, Krishnappa WM -7 % to -34 %, Shi +0.2 % to +26 %),
-            # so g there would push Shi and Dataset M's UD tension floor
-            # further unsafe.
+            # so g there would push Shi further unsafe (and, until issue
+            # #454 removed the compression floor from tension, Dataset M's
+            # UD tension floor too).
             if _is_ud_dominated(angles):
                 gamma_Y_eff = _ud_kink_strain_budget(mat)
             r_bf = theta_eff / gamma_Y_eff
             kd_bf = 1.0 / (1.0 + r_bf + c_AF * r_bf * r_bf)
-            kd_compression = f_0 * kd_bf + (1.0 - f_0)
-
-            if cfg.loading == "tension":
-                kd, mechanisms = self._tension_knockdown_analytical(theta_max, cfg)
-                if kd < kd_compression:
-                    kd = kd_compression
-                    mechanisms["mode"] = mechanisms["mode"] + " (capped)"
-                ref_strength = mat.Xt
-                results.tension_mechanisms = mechanisms
-            else:
-                kd = kd_compression
-                ref_strength = mat.Xc
-                results.tension_mechanisms = None
+            kd = f_0 * kd_bf + (1.0 - f_0)
+            ref_strength = mat.Xc
+            results.tension_mechanisms = None
         results.gamma_Y_eff = gamma_Y_eff
 
         # Damage index (for reporting; not used in knockdown computation)
@@ -5025,6 +5031,7 @@ class WrinkleAnalysis:
     def _tension_knockdown_analytical(
         theta: float, cfg: AnalysisConfig,
         _return_kd0_only: bool = False,
+        amplitude_scale: float = 1.0,
     ) -> tuple[float, dict]:
         """Three-mechanism tension knockdown (LaRC04 + curved-beam OOP).
 
@@ -5036,18 +5043,42 @@ class WrinkleAnalysis:
         2. **Matrix tension** (LaRC04 #1, Pinho Eq. 40): Hashin σ₂₂/τ₁₂
            interaction with in-situ strengths (Yt_is, S12_is)
         3. **Out-of-plane delamination** (Timoshenko curved-beam):
-           Combined σ₃₃ (mode I at crest) and τ₁₃ (mode II at inflection)
+           Combined σ₃₃ (mode I at crest) and τ₁₃ (mode II at inflection),
+           with each interlaminar traction bounded by the interface
+           strength it is compared with (issue #454, below)
 
         The 0-degree ply knockdown is min(KD_fiber, KD_matrix, KD_oop).
         Off-axis plies (±45, 90) are assumed unaffected by the waviness
         for tension loading. The laminate knockdown is the CLT-weighted
         average: KD_lam = f_0 × KD_0 + (1 − f_0) × 1.0.
 
+        Parameters
+        ----------
+        theta : float
+            Local fibre misalignment angle of the 0-degree ply (rad).
+        cfg : AnalysisConfig
+            The analysis configuration (material, layup, wrinkle shape).
+        _return_kd0_only : bool
+            Return only the 0-degree ply knockdown (no CLT weighting, no
+            mechanisms dict); used by the graded per-ply average.
+        amplitude_scale : float
+            Fraction of ``cfg.amplitude`` the ply actually carries. The
+            graded per-ply average attenuates each ply's angle by its
+            through-thickness factor ``B_p`` and passes the same ``B_p``
+            here, so the ply's curvature (and the interlaminar stresses
+            it drives) is attenuated consistently with its angle (issue
+            #454). ``1.0`` (the peak ply, every non-graded path) leaves
+            the result unchanged.
+
         References
         ----------
         - Pinho et al. (2005) NASA-TM-2005-213530, Eq. 40, 47, 57, 82
+        - Camanho et al. (2006) Compos. Part A 37:165 (in-situ strengths)
         - Timoshenko & Gere (1961), Theory of Elastic Stability (curved beam)
         - Elhajjar (2025) Scientific Reports 15:25977 (experimental data)
+        - Elhajjar & Shams (2016) Compos. Sci. Technol. 122:140 (Dataset
+          M: delamination onset at 11-30 % of the pristine ultimate,
+          ultimate at 40-78 %)
         """
         # Filled in __post_init__.  (The previous ``if mat is None:
         # return 1.0`` guard returned a bare float from a function whose
@@ -5077,6 +5108,15 @@ class WrinkleAnalysis:
         #   For typical carbon/epoxy (GIIc ≈ 1.0 N/mm), this gives
         #   S12_is ≈ 2.3·S12 for n_adj=2 adjacent 0-deg plies.
         #   Falls back to sqrt(2)·S12 for single-ply (thin) case.
+        #   Bounded below by the lamina strength S12 (issue #454): the
+        #   thin-ply formula falls as 1/sqrt(t_eff) and, past the
+        #   thin/thick transition, drops below the strength measured on
+        #   thick UD coupons, which an in-situ strength cannot do (the
+        #   constraint of neighbouring plies only raises it; Camanho et
+        #   al. 2006 hold thick plies at a constant in-situ value). Only
+        #   very thick 0-blocks reach the bound (a [0]16 block of
+        #   T700GC/2510: 66.5 MPa against S12 = 154.4 MPa); every other
+        #   validated layup sits above it and is unchanged.
         n_adj = _max_consecutive_zero_plies(angles)
         t_eff = n_adj * cfg.ply_thickness
         Yt_is = 1.12 * np.sqrt(2.0) * Yt
@@ -5084,7 +5124,12 @@ class WrinkleAnalysis:
         _GIIc_typical = 1.0  # N/mm
         _Lambda22 = 2.0 * (1.0 / E22 - (mat.nu12 ** 2) / E11)
         if _Lambda22 > 0 and t_eff > 0:
-            S12_is = np.sqrt(8.0 * _GIIc_typical / (np.pi * t_eff * _Lambda22))
+            S12_is = max(
+                float(np.sqrt(
+                    8.0 * _GIIc_typical / (np.pi * t_eff * _Lambda22)
+                )),
+                S12,
+            )
         else:
             S12_is = np.sqrt(2.0) * S12
 
@@ -5099,7 +5144,12 @@ class WrinkleAnalysis:
             kd_matrix = 1.0
 
         # --- Mechanism 3: Out-of-plane delamination (curved-beam) ---
-        amplitude = cfg.amplitude
+        # The ply's own amplitude: the graded per-ply average passes the
+        # through-thickness factor that already attenuates its angle, so
+        # a ply near a flat face is not charged the crest curvature
+        # (issue #454; before, every ply carried the peak σ₃₃ and a flat
+        # surface ply of Dataset M kept KD_oop = 0.01-0.24).
+        amplitude = cfg.amplitude * amplitude_scale
         wavelength = cfg.wavelength
 
         # Effective thickness: max consecutive 0-degree plies. With no
@@ -5129,9 +5179,27 @@ class WrinkleAnalysis:
             sigma33 = Xt * h_eff_oop * kappa_max
             tau13 = Xt * h_eff_oop * dkappa_dx_max
 
-            # Failure indices (peak at different spatial locations)
-            FI_s33 = (sigma33 / Yt) ** 2
-            FI_t13 = (tau13 / S13) ** 2
+            # Failure indices (peak at different spatial locations).
+            #
+            # Each interlaminar traction is bounded by the interface
+            # strength it is compared with (issue #454). The quadratic
+            # interaction 1/sqrt(1 + FI) reads the interlaminar stress as
+            # a load the bonded interface keeps carrying, which holds only
+            # up to its strength: past it the interface delaminates and
+            # softens (the cohesive-zone picture), shedding σ₃₃ / τ₁₃
+            # rather than transmitting more. Read unbounded, the curved-
+            # beam stress drove KD_oop to 0.01-0.24 on the steep wrinkles
+            # of Dataset M, as if the delamination ended the ply's load
+            # path; those coupons delaminated at 11-30 % of the pristine
+            # ultimate (the DIC limit point) and went on to fail, by fibre
+            # fracture, at 40-78 %. Bounded, KD_oop >= 1/sqrt(2): once the
+            # interface has failed the misaligned ply's own fibre / matrix
+            # mechanisms set its ultimate. Below the interface strength
+            # (FI <= 1, e.g. every OOP-governed Dataset B case) nothing
+            # changes. The unbounded σ₃₃ / τ₁₃ still drive the onset
+            # criterion below.
+            FI_s33 = min(sigma33 / Yt, 1.0) ** 2
+            FI_t13 = min(tau13 / S13, 1.0) ** 2
             FI_max = max(FI_s33, FI_t13)
 
             kd_oop = 1.0 / np.sqrt(1.0 + FI_max)
