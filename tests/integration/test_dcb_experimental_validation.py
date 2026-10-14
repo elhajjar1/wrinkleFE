@@ -237,8 +237,8 @@ A0_PRECRACK = 63.5         # mm (2.5 in effective; FEP=3in minus 0.5in offset)
 # crack-front advance.  This means **about half** of the see-saw comes
 # from element advance and **about half** from the bilinear law's
 # d=1 corner (which doesn't scale with mesh and would need an
-# exponential / PPR cohesive law to round out — flagged as Known
-# Limitation #6.3 in CZM_PLAN.md).  At NX=300 the integrated work
+# exponential / PPR cohesive law to round out — a documented limit of
+# the bilinear law, see docs/theory.md, cohesive zone).  At NX=300 the integrated work
 # closes to 6.6 % of experimental (was 19.7 %), end-load to 1.9 %
 # (was 28 %), peak load to 16 % over wide tolerance (was 35 %) — but
 # the bilinear-corner contribution to see-saw remains.  NX=150 kept
@@ -744,7 +744,7 @@ def _run_sweep_if_requested() -> None:
         "(~20 % of see-saw, would shrink with mesh refinement) and the "
         "bilinear law's d=1 corner (~45 %, does NOT scale with mesh — "
         "needs an exponential / PPR cohesive law to round the corner; "
-        "v1 ships bilinear only, Known Limitation #6.3 in CZM_PLAN.md). "
+        "v1 ships bilinear only; see docs/theory.md, cohesive zone). "
         "See the module docstring 'Parameter rationale' / 'Validation' "
         "sections for the full diagnosis."
     ),

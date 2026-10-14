@@ -6,7 +6,7 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 
 Open a new issue and pick the form that fits — the
 [**New issue**](https://github.com/elhajjar1/wrinkleFE/issues/new/choose)
-chooser offers three:
+chooser offers four:
 
 - **Bug report** — for incorrect behavior or crashes (asks for version
   and a reproduction).
@@ -15,10 +15,43 @@ chooser offers three:
 - **Validation / physics discrepancy** — when a predicted knockdown or
   strength disagrees with experiment or another model (material, layup,
   wrinkle geometry, measured vs. predicted, data source).
+- **Contribute a validation dataset** — to share published measured
+  strengths of wrinkled laminates; see the next section.
 
 Blank issues stay enabled for anything that doesn't fit a form. A
 results JSON's `provenance` block carries the version and environment
 fields a bug report needs.
+
+## Contributing a validation dataset
+
+Measured strengths of wrinkled laminates are the most valuable
+contribution to this project: every model is judged against them, and
+the guidance on which model to trust comes from them. To share a
+dataset, open a
+[**Contribute a validation dataset**](https://github.com/elhajjar1/wrinkleFE/issues/new?template=validation_dataset.yml)
+issue; the form asks for what an entry needs.
+
+What happens next:
+
+- The values are transcribed into the validation ledger
+  (`tests/test_validation/ledger.json`) with their source, manufacturing
+  route and laminate quality, and the current prediction is pinned, so
+  any later model change that moves it shows up in the tests.
+- Every applicable model is scored against the new cases in the
+  head-to-head comparison and the parity figure, and the dataset is
+  cited by name in the validation record.
+- A dataset of doubtful quality, such as an undamaged baseline outside
+  its test standard, is quarantined: kept as a regression guard and
+  reported on its own, but left out of the pooled statistics.
+- A manufacturing route outside today's validated scope (RTM, infusion,
+  wet lay-up) comes into scope once at least two datasets from at least
+  two labs, each with a stated route and an in-standard pristine
+  baseline, are in the ledger.
+
+Only published data is accepted: the values must come from a paper,
+thesis or report that can be cited. Measured values are facts and are
+transcribed with a citation, as for every dataset already in the ledger;
+the paper itself, its text and its figures never enter the repository.
 
 ## Development Setup
 

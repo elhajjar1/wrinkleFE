@@ -969,16 +969,6 @@ Produced by `tests/integration/test_mmb_mixity_synthesis.py`.
 
 ![Mixity synthesis — predicted vs experimental](../../figures/phase7_mmb_mixity_synthesis.png)
 
-### Legacy knockdown snapshots
-
-No script in the current tree regenerates these two, so treat them as
-archival rather than reproducible evidence — the reproducible
-cross-dataset view is the consolidated parity chart above.
-
-![Compression knockdown, predicted vs experimental](../../figures/validation_compression.png)
-
-![Tension knockdown, predicted vs experimental](../../figures/validation_tension.png)
-
 ## Evaluated — not included
 
 ### Varkonyi, Belnoue, Kratz & Hallett (2020)
@@ -1117,8 +1107,8 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   `crack_band=True`) does develop a genuine amplitude trend at constant
   angle — at Gf = 3.0, nx = 16 the trio predicts 0.781 / 0.878 / 0.965
   (measured 0.629 / 0.943 / 1.000), MAE 11.5 %, monotonic in amplitude
-  like the measurement (see `validation/validate_li_progressive.py` and
-  the `li_progressive_*.csv` runs, now pinned in the ledger).
+  like the measurement (see `validation/validate_li_progressive.py`,
+  whose runs are pinned in the ledger).
 
   **Caveat — not mesh-objective (re-measured 2026-09-29).** The crack
   band does *not* make the predicted strength mesh-independent here.

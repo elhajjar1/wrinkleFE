@@ -100,15 +100,14 @@ print summarises the run before any assertion fires:
       compression collapse mode where the entire interface stays at
       d = 0 and the test is no longer a CZ validation.
   (4) Post-peak stability (soft check): no upward spikes greater than
-      10 % of P_peak after the peak.  Likely to fail due to known
-      limitation #6.1 in CZM_PLAN.md -- mode-II damage growth is
-      suppressed in normal compression so the post-peak branch can be
+      10 % of P_peak after the peak.  The post-peak branch can be
       noisy.
 
-The CZM_PLAN.md known limitation #6.1 (mode-II-under-compression
-suppression) means the post-peak behaviour, energy dissipated, and
-crack-tip advance are likely *not* meaningful for ENF.  Compliance
-and peak load are.  We therefore validate only those two
+Mode-II damage under normal compression used to be suppressed, which
+collapsed the cohesive zone; that suppression has been removed (see
+docs/theory.md, cohesive zone).  The post-peak behaviour, energy
+dissipated and crack-tip advance are still not validated for ENF.
+Compliance and peak load are.  We therefore validate only those two
 quantitatively + assert that *some* damage occurs, and mark
 post-peak stability as a soft check.
 
@@ -727,9 +726,8 @@ def test_enf_experimental_validation_nasa_tm():
     Validates mode-II behaviour against the same NASA TM panel used by
     the DCB validation test.  Compliance and peak load are the
     quantitative checks; damage existence + post-peak stability are
-    structural sanity checks (the latter likely fails due to the
-    known mode-II-under-compression suppression -- limitation #6.1
-    in CZM_PLAN.md).
+    structural sanity checks (the latter a soft check: the post-peak
+    branch can be noisy).
     """
     coh_props = _build_cohesive_properties()
     mesh, cohesive_elements, is_bonded = _build_mesh(coh_props)
@@ -860,9 +858,9 @@ def test_enf_experimental_validation_nasa_tm():
     # (3) At least one cohesive element reached d > 0.5
     assert damage_exists, (
         f"No cohesive element reached d > 0.5 during the ramp "
-        f"(max d = {d_max_final:.3f}).  Likely the mode-II-under-"
-        f"compression suppression (CZM_PLAN.md known limitation #6.1) "
-        f"collapsed the cohesive zone."
+        f"(max d = {d_max_final:.3f}).  The cohesive zone collapsed, "
+        f"as it did under the former mode-II-under-compression "
+        f"suppression (docs/theory.md, cohesive zone)."
     )
 
     # (4) Post-peak stability -- soft check, likely to fail due to
