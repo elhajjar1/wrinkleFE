@@ -67,3 +67,10 @@ Nonlinear solvers
 .. automodule:: wrinklefe.solver.arclength
    :members: ArcLengthSolver
    :show-inheritance:
+
+CZM damage history
+------------------
+
+.. automodule:: wrinklefe.solver.czm_history
+   :members: CzmDamageHistory, CzmOnset, CzmDamageRecorder
+   :show-inheritance:
