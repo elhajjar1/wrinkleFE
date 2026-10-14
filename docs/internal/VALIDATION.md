@@ -770,6 +770,86 @@ table, with confidence levels, is in `docs/interpreting_results.md`
 #434 (severe multidirectional compression), #435 (UD carbon, blind
 gate test) and #436 (tension onset plus ultimate).
 
+### Size-aware FE study: embedded flat-surface wrinkles (issue #453)
+
+`validation/size_aware_fe_study.py` scores two candidate FE strength
+measures that respond to a wrinkle's size against the first-ply FE on
+the datasets where the first-ply path is unsafe on embedded wrinkles
+under flat surfaces: C and D (multidirectional compression), E (UD
+glass), L-WM (quarantined wet lay-up, the embedded wrinkle-middle
+cases) and M (tension damage onset, in MPa). Same configs and FE meshes
+as the head-to-head; results cached per case (`_parked/`, git-ignored)
+and pinned as the `size_aware_fe` section of `ledger.json`
+(`--ledger` prints it). `tests/test_validation/test_size_aware_fe.py`
+keeps the caveat's numbers equal to the pins (fast) and re-solves one
+CZM-onset case per dataset plus one progressive UD coupon (slow).
+
+- **(a) progressive peak**: the ply-discount
+  `ProgressiveDamageSolver` as `enable_progressive_damage` runs it
+  (1.8 × `Xc / E1`, 15 increments, residual 0.1, no crack band), over
+  the same solver's flat coupon.
+- **(b) CZM delamination onset**: `czm_damage_history.initiation()`
+  with cohesive layers at every interface, from one elastic increment
+  (exact, increment-independent); over the pristine progressive peak,
+  capped at 1. The bilinear law's own initiation condition is the
+  threshold: no free parameter, `d` exactly zero below it. A later
+  threshold (first fully separated point, `separation()`) was tried on
+  L-WM-2-3, L-WM-4-3, E-3 and E-7: the Newton ramp stops converging
+  one to three increments past initiation (max damage 0–0.36, nothing
+  separated), so it is unreachable at these meshes and not scored.
+
+| Dataset | n | First-ply FE | (a) progressive peak | (b) CZM onset |
+|---|---|---|---|---|
+| C | 3 | +38.7% mean, +48.2% worst, 3 unsafe | +38.8%, +49.0%, 3 | +39.4%, +49.3%, 3 |
+| D | 4 | +46.4%, +92.3%, 4 | +57.9%, +109.3%, 4 | +70.3%, +138.7%, 4 |
+| E | 9 | +30.4%, +61.2%, 9 | −12.9%, +6.3%, 2 | +4.9%, +25.3%, 6 |
+| L-WM [Q] | 6 | +61.1%, +99.7%, 6 | +42.0%, +64.2%, 6 | +53.6%, +74.1%, 6 |
+| M onset | 12 | +41.0%, +154.0%, 9 | +79.1%, +201.6%, 12 | −23.3%, +52.2%, 2 |
+
+Findings:
+- Neither measure meets the issue's bar (worst case ≤ +15% on every
+  set). Decision: **scope exclusion**. `FE_STRENGTH_CAVEAT`,
+  `docs/interpreting_results.md` and the README say that no FE strength
+  path is offered for an embedded wrinkle under flat surfaces.
+- Size tracking: none. Spearman rank correlation of each prediction
+  with size (D/T on E, amplitude elsewhere) against the measurement's:
+  (a) E −0.03 (measured −0.98), C +0.50 (−1.00), D −0.89 (−0.45),
+  L-WM −0.94 (−0.71), M −0.58 (−0.77); (b) undefined on C and D (all
+  1.0), E −0.19, L-WM −0.93, M +0.20. On E's six fixed-angle cases
+  (15.8–16.7°, D/T 0.026–0.083; measured 0.758 → 0.523) first-ply
+  spreads 0.014, (a) and (b) 0.038, and (a) rises with depth (rho
+  +0.94). (a)'s within-bar E score is a conservative offset (E-3, the
+  mildest 16° case: 0.465 against 0.758).
+- Why (b) fails on multidirectional coupons: interlaminar stress is
+  singular where dissimilar plies meet a free edge or the clamped ends,
+  so a near-flat coupon (A = 1 µm) initiates at 459 MPa (C) and
+  1486 MPa (D), above the pristine progressive peak (348 / 688 MPa);
+  the wrinkled coupons initiate at 410–454 (C) and 755–1452 MPa (D),
+  so every knockdown caps at 1. On the UD sets the flat coupon never
+  initiates (236 GPa on E, 88 GPa on L-WM); on M (one-sided `tool_flat`
+  dip) it initiates at 312 MPa, above every wrinkled value (103–208),
+  so the wrinkle governs: (b) is the first measure conservative on
+  average against the DIC limit point (−23%), but +52% on the deepest
+  30° dip (M-MD-1, 125 vs 82 MPa).
+- Mesh: (b) moves by at most 4% when `nx` or `nz_per_ply` is doubled
+  on D, L-WM and M; on C it drops −11% at 2× `nx` and to 323 MPa at
+  `nx = 144` (knockdown 0.93, still +38%); E's head-to-head `nx = 16`
+  is not converged for it (E-7: 656/549/526/521/517 MPa at `nx`
+  16/32/48/64/96; E-3: 591/484/478/475 at 16/48/64/96), so E is scored
+  at `nx = 48` (`INIT_MESH_OVERRIDE`).
+- Runtime (one core): (b) 2–25 s per case; (a) 20–40 s on the
+  768-element UD coupons, 2.5–3.5 min on E (1,792 elements), 8–15 min
+  on the 1,920–2,880-element multidirectional coupons. The progressive
+  result reports `converged = False` on C, D, E, M, L-WM-2-3 and the C
+  and D pristine coupons (the equilibrium loop hit its 10-iteration cap
+  on post-peak increments); E, L-WM pristine and the other L-WM cases
+  converged.
+- What the study did not do: no recalibration of either measure (no
+  crack band, no fitted `Gf`, the default ply-discount ramp), no
+  resin pocket on the progressive runs, and no multidirectional
+  pristine measurement to normalise by (both measures use the
+  solver's own pristine peak, as `enable_progressive_damage` does).
+
 ### Consolidated parity chart
 
 `validation/plot_all_validation.py` renders every single-wrinkle case

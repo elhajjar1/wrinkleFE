@@ -1157,5 +1157,519 @@
         ]
       }
     ]
+  },
+  "size_aware_fe": {
+    "_comment": [
+      "Size-aware FE study for embedded flat-surface wrinkles (issue #453),",
+      "pinned so the scope exclusion in FE_STRENGTH_CAVEAT and the docs",
+      "cannot drift from what the code produces. Two candidate FE strength",
+      "measures were scored against the first-ply FE on the same cases and",
+      "head-to-head meshes: progressive_peak = the ply-discount",
+      "ProgressiveDamageSolver as enable_progressive_damage runs it (ramp to",
+      "1.8 x Xc/E1, 15 increments, residual 0.1, no crack band, no resin",
+      "pocket) over the same solver's flat coupon (pristine_progressive_MPa);",
+      "czm_initiation = the load at which the first point of any ply",
+      "interface reaches its mixed-mode interlaminar strength",
+      "(CzmDamageHistory.initiation(), cohesive layers at every interface,",
+      "one elastic increment: exact and increment-independent), over the",
+      "pristine progressive peak and capped at 1. Dataset M rows are",
+      "absolute onset stresses (MPa) against the measured DIC limit point.",
+      "near_flat_czm_initiation_MPa is the same CZM onset on an A = 1 um",
+      "coupon of the dataset: on multidirectional coupons (C, D) the",
+      "interface initiates at the free edges above the pristine peak, so",
+      "the wrinkle is invisible to that measure. progressive_converged",
+      "False means the equilibrium loop hit its iteration cap on some",
+      "(post-peak) increment. Neither measure reaches a worst case of +15 %",
+      "on every set, and neither tracks wrinkle depth: no FE strength path",
+      "is offered for these wrinkles. Regenerate with",
+      "python validation/size_aware_fe_study.py --ledger (minutes per",
+      "multidirectional progressive case; the CZM onset is seconds)."
+    ],
+    "issue": 453,
+    "rel_tolerance": 0.02,
+    "_tolerance_comment": "As for progressive_damage: Newton / load-stepping peaks are not bit-reproducible across BLAS versions. The CZM initiation load is a linear solve and reproduces far tighter than this.",
+    "bar_worst_error_pct": 15.0,
+    "datasets": {
+      "C": {
+        "absolute_MPa": false,
+        "fe_mesh": {
+          "nx": 48,
+          "ny": 2,
+          "nz_per_ply": 1
+        },
+        "czm_initiation_mesh_override": {},
+        "pristine_progressive_MPa": 348.0305,
+        "pristine_progressive_converged": false,
+        "near_flat_czm_initiation_MPa": 459.1149,
+        "cases": [
+          {
+            "case": "A=0.168",
+            "size": 0.168,
+            "theta_deg": 6.03,
+            "measured": 0.82,
+            "first_ply": 0.998,
+            "progressive_peak": 0.9978,
+            "progressive_peak_MPa": 347.2537,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 454.3406
+          },
+          {
+            "case": "A=0.372",
+            "size": 0.372,
+            "theta_deg": 13.16,
+            "measured": 0.68,
+            "first_ply": 0.9939,
+            "progressive_peak": 0.9904,
+            "progressive_peak_MPa": 344.7053,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 445.8862
+          },
+          {
+            "case": "A=0.492",
+            "size": 0.492,
+            "theta_deg": 15.94,
+            "measured": 0.67,
+            "first_ply": 0.9932,
+            "progressive_peak": 0.9985,
+            "progressive_peak_MPa": 347.5057,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 410.5275
+          }
+        ]
+      },
+      "D": {
+        "absolute_MPa": false,
+        "fe_mesh": {
+          "nx": 48,
+          "ny": 2,
+          "nz_per_ply": 1
+        },
+        "czm_initiation_mesh_override": {},
+        "pristine_progressive_MPa": 688.4209,
+        "pristine_progressive_converged": false,
+        "near_flat_czm_initiation_MPa": 1486.0385,
+        "cases": [
+          {
+            "case": "convex A=0.38",
+            "size": 0.38,
+            "theta_deg": 5.68,
+            "measured": 0.729,
+            "first_ply": 0.9305,
+            "progressive_peak": 0.9927,
+            "progressive_peak_MPa": 683.3801,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 1452.2233
+          },
+          {
+            "case": "convex A=0.76",
+            "size": 0.76,
+            "theta_deg": 11.25,
+            "measured": 0.677,
+            "first_ply": 0.8063,
+            "progressive_peak": 0.8761,
+            "progressive_peak_MPa": 603.1076,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 754.9919
+          },
+          {
+            "case": "concave A=0.38",
+            "size": 0.38,
+            "theta_deg": 5.68,
+            "measured": 0.635,
+            "first_ply": 0.9316,
+            "progressive_peak": 0.9944,
+            "progressive_peak_MPa": 684.5434,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 1431.4908
+          },
+          {
+            "case": "concave A=0.76",
+            "size": 0.76,
+            "theta_deg": 11.25,
+            "measured": 0.419,
+            "first_ply": 0.8057,
+            "progressive_peak": 0.8768,
+            "progressive_peak_MPa": 603.5821,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 758.3809
+          }
+        ]
+      },
+      "E": {
+        "absolute_MPa": false,
+        "fe_mesh": {
+          "nx": 16,
+          "ny": 4,
+          "nz_per_ply": 2
+        },
+        "czm_initiation_mesh_override": {
+          "nx": 48
+        },
+        "pristine_progressive_MPa": 829.9415,
+        "pristine_progressive_converged": true,
+        "near_flat_czm_initiation_MPa": 236010.611,
+        "cases": [
+          {
+            "case": "E-1",
+            "size": 0.025,
+            "theta_deg": 4.9,
+            "measured": 0.907,
+            "first_ply": 0.9169,
+            "progressive_peak": 0.9267,
+            "progressive_peak_MPa": 769.1262,
+            "progressive_converged": false,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 1543.2436
+          },
+          {
+            "case": "E-2",
+            "size": 0.026,
+            "theta_deg": 10.6,
+            "measured": 0.823,
+            "first_ply": 0.8629,
+            "progressive_peak": 0.722,
+            "progressive_peak_MPa": 599.2494,
+            "progressive_converged": false,
+            "czm_initiation": 0.8908,
+            "czm_initiation_MPa": 739.28
+          },
+          {
+            "case": "E-3",
+            "size": 0.026,
+            "theta_deg": 16.0,
+            "measured": 0.758,
+            "first_ply": 0.799,
+            "progressive_peak": 0.465,
+            "progressive_peak_MPa": 385.9077,
+            "progressive_converged": false,
+            "czm_initiation": 0.5829,
+            "czm_initiation_MPa": 483.8142
+          },
+          {
+            "case": "E-4",
+            "size": 0.056,
+            "theta_deg": 16.7,
+            "measured": 0.612,
+            "first_ply": 0.8049,
+            "progressive_peak": 0.4784,
+            "progressive_peak_MPa": 397.0443,
+            "progressive_converged": false,
+            "czm_initiation": 0.5957,
+            "czm_initiation_MPa": 494.4034
+          },
+          {
+            "case": "E-5",
+            "size": 0.079,
+            "theta_deg": 15.8,
+            "measured": 0.523,
+            "first_ply": 0.8094,
+            "progressive_peak": 0.4908,
+            "progressive_peak_MPa": 407.3694,
+            "progressive_converged": false,
+            "czm_initiation": 0.6107,
+            "czm_initiation_MPa": 506.8705
+          },
+          {
+            "case": "E-6",
+            "size": 0.083,
+            "theta_deg": 16.5,
+            "measured": 0.545,
+            "first_ply": 0.8017,
+            "progressive_peak": 0.5029,
+            "progressive_peak_MPa": 417.373,
+            "progressive_converged": false,
+            "czm_initiation": 0.5877,
+            "czm_initiation_MPa": 487.7673
+          },
+          {
+            "case": "E-7",
+            "size": 0.105,
+            "theta_deg": 14.2,
+            "measured": 0.506,
+            "first_ply": 0.8158,
+            "progressive_peak": 0.5377,
+            "progressive_peak_MPa": 446.2812,
+            "progressive_converged": false,
+            "czm_initiation": 0.634,
+            "czm_initiation_MPa": 526.1709
+          },
+          {
+            "case": "E-8",
+            "size": 0.042,
+            "theta_deg": 16.6,
+            "measured": 0.657,
+            "first_ply": 0.8035,
+            "progressive_peak": 0.4742,
+            "progressive_peak_MPa": 393.5982,
+            "progressive_converged": false,
+            "czm_initiation": 0.5917,
+            "czm_initiation_MPa": 491.0365
+          },
+          {
+            "case": "E-9",
+            "size": 0.059,
+            "theta_deg": 15.9,
+            "measured": 0.558,
+            "first_ply": 0.8129,
+            "progressive_peak": 0.5,
+            "progressive_peak_MPa": 414.9453,
+            "progressive_converged": false,
+            "czm_initiation": 0.621,
+            "czm_initiation_MPa": 515.4215
+          }
+        ]
+      },
+      "L-WM": {
+        "absolute_MPa": false,
+        "fe_mesh": {
+          "nx": 48,
+          "ny": 2,
+          "nz_per_ply": 1
+        },
+        "czm_initiation_mesh_override": {},
+        "pristine_progressive_MPa": 432.7,
+        "pristine_progressive_converged": true,
+        "near_flat_czm_initiation_MPa": 88107.271,
+        "cases": [
+          {
+            "case": "L-WM-2-1",
+            "size": 0.1816,
+            "theta_deg": 7.8,
+            "measured": 0.7393,
+            "first_ply": 0.9002,
+            "progressive_peak": 0.8591,
+            "progressive_peak_MPa": 371.7254,
+            "progressive_converged": true,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 497.0811
+          },
+          {
+            "case": "L-WM-2-2",
+            "size": 0.3025,
+            "theta_deg": 9.0,
+            "measured": 0.5671,
+            "first_ply": 0.8793,
+            "progressive_peak": 0.8381,
+            "progressive_peak_MPa": 362.6565,
+            "progressive_converged": true,
+            "czm_initiation": 0.9305,
+            "czm_initiation_MPa": 402.6352
+          },
+          {
+            "case": "L-WM-2-3",
+            "size": 0.4775,
+            "theta_deg": 12.7,
+            "measured": 0.4162,
+            "first_ply": 0.8313,
+            "progressive_peak": 0.6834,
+            "progressive_peak_MPa": 295.7257,
+            "progressive_converged": false,
+            "czm_initiation": 0.6649,
+            "czm_initiation_MPa": 287.7186
+          },
+          {
+            "case": "L-WM-4-1",
+            "size": 0.1584,
+            "theta_deg": 8.1,
+            "measured": 0.5743,
+            "first_ply": 0.9022,
+            "progressive_peak": 0.8596,
+            "progressive_peak_MPa": 371.9357,
+            "progressive_converged": true,
+            "czm_initiation": 1.0,
+            "czm_initiation_MPa": 494.2932
+          },
+          {
+            "case": "L-WM-4-2",
+            "size": 0.32,
+            "theta_deg": 8.1,
+            "measured": 0.602,
+            "first_ply": 0.8934,
+            "progressive_peak": 0.8576,
+            "progressive_peak_MPa": 371.0953,
+            "progressive_converged": true,
+            "czm_initiation": 0.9935,
+            "czm_initiation_MPa": 429.905
+          },
+          {
+            "case": "L-WM-4-3",
+            "size": 0.5784,
+            "theta_deg": 18.3,
+            "measured": 0.4128,
+            "first_ply": 0.7609,
+            "progressive_peak": 0.5425,
+            "progressive_peak_MPa": 234.7606,
+            "progressive_converged": true,
+            "czm_initiation": 0.5099,
+            "czm_initiation_MPa": 220.6293
+          }
+        ]
+      },
+      "M": {
+        "absolute_MPa": true,
+        "fe_mesh": {
+          "nx": 48,
+          "ny": 4,
+          "nz_per_ply": 1
+        },
+        "czm_initiation_mesh_override": {},
+        "pristine_progressive_MPa": null,
+        "pristine_progressive_converged": null,
+        "near_flat_czm_initiation_MPa": 312.4771,
+        "cases": [
+          {
+            "case": "M-MD-1",
+            "size": 0.8,
+            "theta_deg": 30.0,
+            "measured": 81.9,
+            "first_ply": 191.9512,
+            "progressive_peak": 247.0366,
+            "progressive_peak_MPa": 247.0366,
+            "progressive_converged": false,
+            "czm_initiation": 124.6861,
+            "czm_initiation_MPa": 124.6861
+          },
+          {
+            "case": "M-MD-2",
+            "size": 0.8,
+            "theta_deg": 30.0,
+            "measured": 110.6,
+            "first_ply": 191.9512,
+            "progressive_peak": 247.0366,
+            "progressive_peak_MPa": 247.0366,
+            "progressive_converged": false,
+            "czm_initiation": 124.6861,
+            "czm_initiation_MPa": 124.6861
+          },
+          {
+            "case": "M-MD-3",
+            "size": 0.6,
+            "theta_deg": 23.0,
+            "measured": 213.5,
+            "first_ply": 276.6855,
+            "progressive_peak": 307.4678,
+            "progressive_peak_MPa": 307.4678,
+            "progressive_converged": false,
+            "czm_initiation": 180.9597,
+            "czm_initiation_MPa": 180.9597
+          },
+          {
+            "case": "M-MD-4",
+            "size": 0.6,
+            "theta_deg": 23.0,
+            "measured": 189.7,
+            "first_ply": 276.6855,
+            "progressive_peak": 307.4678,
+            "progressive_peak_MPa": 307.4678,
+            "progressive_converged": false,
+            "czm_initiation": 180.9597,
+            "czm_initiation_MPa": 180.9597
+          },
+          {
+            "case": "M-MD-5",
+            "size": 0.6,
+            "theta_deg": 23.0,
+            "measured": 203.5,
+            "first_ply": 276.6855,
+            "progressive_peak": 307.4678,
+            "progressive_peak_MPa": 307.4678,
+            "progressive_converged": false,
+            "czm_initiation": 180.9597,
+            "czm_initiation_MPa": 180.9597
+          },
+          {
+            "case": "M-MD-6",
+            "size": 0.3,
+            "theta_deg": 35.9,
+            "measured": 180.5,
+            "first_ply": 179.7664,
+            "progressive_peak": 305.3307,
+            "progressive_peak_MPa": 305.3307,
+            "progressive_converged": false,
+            "czm_initiation": 102.8568,
+            "czm_initiation_MPa": 102.8568
+          },
+          {
+            "case": "M-MD-7",
+            "size": 0.3,
+            "theta_deg": 35.9,
+            "measured": 229.7,
+            "first_ply": 179.7664,
+            "progressive_peak": 305.3307,
+            "progressive_peak_MPa": 305.3307,
+            "progressive_converged": false,
+            "czm_initiation": 102.8568,
+            "czm_initiation_MPa": 102.8568
+          },
+          {
+            "case": "M-MD-8",
+            "size": 0.5,
+            "theta_deg": 34.3,
+            "measured": 221.8,
+            "first_ply": 183.5038,
+            "progressive_peak": 249.4869,
+            "progressive_peak_MPa": 249.4869,
+            "progressive_converged": false,
+            "czm_initiation": 119.6728,
+            "czm_initiation_MPa": 119.6728
+          },
+          {
+            "case": "M-MD-9",
+            "size": 0.5,
+            "theta_deg": 34.3,
+            "measured": 169.8,
+            "first_ply": 183.5038,
+            "progressive_peak": 249.4869,
+            "progressive_peak_MPa": 249.4869,
+            "progressive_converged": false,
+            "czm_initiation": 119.6728,
+            "czm_initiation_MPa": 119.6728
+          },
+          {
+            "case": "M-UD-10",
+            "size": 0.28,
+            "theta_deg": 27.4,
+            "measured": 434.8,
+            "first_ply": 534.3241,
+            "progressive_peak": 687.3135,
+            "progressive_peak_MPa": 687.3135,
+            "progressive_converged": true,
+            "czm_initiation": 165.9938,
+            "czm_initiation_MPa": 165.9938
+          },
+          {
+            "case": "M-UD-11",
+            "size": 0.28,
+            "theta_deg": 27.4,
+            "measured": 419.0,
+            "first_ply": 534.3241,
+            "progressive_peak": 687.3135,
+            "progressive_peak_MPa": 687.3135,
+            "progressive_converged": true,
+            "czm_initiation": 165.9938,
+            "czm_initiation_MPa": 165.9938
+          },
+          {
+            "case": "M-UD-13",
+            "size": 0.35,
+            "theta_deg": 22.2,
+            "measured": 251.5,
+            "first_ply": 638.7124,
+            "progressive_peak": 712.649,
+            "progressive_peak_MPa": 712.649,
+            "progressive_converged": false,
+            "czm_initiation": 208.1385,
+            "czm_initiation_MPa": 208.1385
+          }
+        ]
+      }
+    }
   }
 }

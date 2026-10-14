@@ -322,7 +322,31 @@ factor. It produces a delamination picture:
   `damage > 0.99` divided by the mesh width;
 - `czm_energy_dissipated` / `czm_energy_per_interface` — dissipated
   cohesive energy (N·mm);
-- `czm_load_displacement` — the `(λ, ‖u‖)` increment samples.
+- `czm_load_displacement` — the `(λ, ‖u‖)` increment samples;
+- `czm_damage_history` — one record per converged load increment
+  (issue #453): the carried nominal stress (reaction over the loaded
+  face's section, the progressive-damage solver's measure), maximum and
+  mean damage, the damaged (`d > 0`) and fully separated (`d = 1`)
+  interface area, and the *initiation index* (largest
+  `delta_eff / delta_0` over the interface, ≥ 1 once a point has reached
+  its mixed-mode interlaminar strength). Two onset readings:
+  `czm_damage_history.initiation()` is the load at which the first
+  interface point reaches that strength — exact and independent of the
+  increment size without a thermal load, because the model is linear
+  until then (one elastic increment is enough; a ramp that never reaches
+  it is extrapolated and flagged `extrapolated`);
+  `czm_damage_history.separation()` is the first increment with a
+  traction-free point, a crack, resolved to one increment and dependent
+  on how finely the mesh resolves the cohesive zone.
+
+The CZM path rebuilds the mesh with duplicated interface nodes. It
+carries over the resin-zone tags the linear path computed (the crest
+resin lens, a `tool_flat` laminate's surface pockets), so those zones
+are in the cohesive solve and `tool_flat` combines with `enable_czm`.
+
+The delamination-onset load is **not a strength prediction** for an
+embedded wrinkle: see the scope note under
+[How far to trust each number](#how-far-to-trust-each-number).
 
 **Always check `czm_converged` first.** When it is `False`, the damage
 and energy fields are the state of a solve that did not complete and
@@ -375,6 +399,10 @@ interpolation of the scan curve."*
   reaches past first-ply failure here, but it is mesh-calibrated and
   over-predicts severe wrinkles, so use it to study the mechanism, not
   to set a knockdown. `retention_factors` will not help here.
+- **Embedded wrinkles under flat surfaces** — no FE strength number
+  governs, in either loading: the first-ply FE and both size-aware
+  candidates (progressive peak, CZM delamination onset) were unsafe on
+  every such dataset (issue #453). Carry the analytical knockdown.
 - **Tension with a delamination concern** — `analytical_knockdown` is
   the ultimate; `analytical_onset_knockdown` is the first load drop. If
   the drawing requirement is written against onset, the onset number
@@ -538,6 +566,65 @@ analytical knockdown (the penetration gate for UD) is the validated
 strength path; carry the usual design margin on it, and more for severe
 wrinkles.
 
+### Size-aware FE candidates, embedded flat-surface wrinkles (issue #453)
+
+The first-ply FE reads a wrinkle's angle but not its size, and ignores
+the delamination that starts at the wrinkle; that is why it over-predicts
+retained strength on embedded wrinkles under flat surfaces. Two
+candidates that do see size were scored on the same cases and meshes as
+the head-to-head (`validation/size_aware_fe_study.py`; the numbers are
+pinned as `size_aware_fe` in the validation ledger):
+
+- **(a) progressive peak** — the peak carried stress of the ply-discount
+  progressive-damage solve exactly as `enable_progressive_damage` runs it
+  (ramp to 1.8 × `Xc / E1`, 15 increments, residual stiffness 0.1), over
+  the same solver's pristine coupon;
+- **(b) CZM delamination onset** — the load at which the first point of
+  any ply interface reaches its mixed-mode interlaminar strength
+  (`czm_damage_history.initiation()`, cohesive layers at every
+  interface), over the pristine progressive peak and capped at 1.
+  Threshold: the bilinear law's own initiation condition, which adds no
+  free parameter and is exact and increment-independent because the
+  model is linear until then. A later threshold (a fully separated
+  point) could not be reached: the Newton solve stops converging one to
+  three increments past initiation on these meshes.
+
+Signed error against the measurement; "unsafe" = above +0.5%:
+
+| Dataset (n) | First-ply FE | (a) progressive peak | (b) CZM onset |
+|---|---|---|---|
+| C Mukhopadhyay, MD compression (3) | +38.7% mean, worst +48.2%, 3 unsafe | +38.8%, worst **+49.0%**, 3 unsafe | +39.4%, worst **+49.3%**, 3 unsafe |
+| D Wang, MD compression (4) | +46.4%, worst +92.3%, 4 unsafe | +57.9%, worst **+109.3%**, 4 unsafe | +70.3%, worst **+138.7%**, 4 unsafe |
+| E Li 2024, UD glass (9) | +30.4%, worst +61.2%, 9 unsafe | −12.9%, worst **+6.3%**, 2 unsafe | +4.9%, worst **+25.3%**, 6 unsafe |
+| *L-WM Krishnappa, wet lay-up UD, embedded (6), quarantined* | +61.1%, worst +99.7%, 6 unsafe | +42.0%, worst **+64.2%**, 6 unsafe | +53.6%, worst **+74.1%**, 6 unsafe |
+| M Elhajjar & Shams, tension damage onset, MPa (12) | +41.0%, worst +154%, 9 unsafe | +79.1%, worst **+201.6%**, 12 unsafe | −23.3%, worst **+52.2%**, 2 unsafe |
+
+Neither measure reaches a worst case of +15% on these sets, and
+neither tracks wrinkle size: on Dataset E's six fixed-angle cases
+(15.8–16.7°, depth ratio 0.026–0.083) the measured knockdown falls from
+0.76 to 0.52 while every FE measure moves by less than 0.04 — the peak
+load slightly *rises* with depth. Its one within-bar score (E) comes from
+a conservative offset (−39% on the mildest 16° case), not from a size
+response. On the multidirectional coupons (C, D) the CZM onset sees the
+coupon, not the wrinkle: the interface reaches its strength at the free
+edges of a near-flat coupon at 459 MPa (C) and 1486 MPa (D), above the
+pristine coupon's own peak, so every knockdown caps at 1. On Dataset M
+the wrinkle does govern (a near-flat coupon initiates at 312 MPa, above
+every wrinkled value) and the onset is conservative on average, but
+still +52% on the deepest 30° dip, and a peak load is not an onset at
+all (+202%). Mesh: the CZM onset moves by at most 4% when `nx` or
+`nz_per_ply` is doubled on C, D, L-WM and M; E was scored at `nx = 48`
+(E-7: 656/549/526/521/517 MPa at `nx` 16/32/48/64/96). The
+multidirectional progressive runs (C, D, M and their pristine coupons)
+report `converged = False`: the equilibrium loop hit its iteration cap
+on post-peak increments.
+
+**Scope exclusion.** For an embedded wrinkle under flat surfaces
+WrinkleFE offers no FE strength path: the analytical knockdown is the
+only strength number to carry, with margin. `FE_STRENGTH_CAVEAT` says
+so. The per-increment CZM damage record (`czm_damage_history`) stays
+available as a delamination diagnostic, not as a strength prediction.
+
 ### Head-to-head: which model, when (provisional)
 
 The tables above mostly score each dataset with the one model that
@@ -596,7 +683,7 @@ Every row rests on prepreg laminates. No row covers wet lay-up, infusion or RTM:
 | UD tension, ultimate | Analytical three-mechanism, with margin: −23% (conservative) on the smaller wrinkles, +16% to +18% unsafe on the larger. The angles are estimated, and the larger wrinkles knock down more at the lower estimated angle, which no angle-driven model follows. | 4 cases, 1 lab, in-sample (issue #454) | Prepreg: hot press (M) | **Low** |
 | Tension, damage onset | No reliable predictor. First-ply FE is an onset estimate only: unsafe on 9 of 12 Dataset M coupons (−22% to +154%, worst on the deepest wrinkles) and 2 of 3 Mukhopadhyay. | 15 cases, 2 labs | Prepreg: hot press (M); C not stated | **Low** |
 | UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | Prepreg: hot press (E), vacuum bag (F) | **Fit only**  |
-| UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band, with its UD strain budget read from the material card (S12/Xc, issue #451), is a conservative screen on Thor's and Pilato's whole-thickness waves (−10% to −23%, never unsafe). On Shi's one-sided troughs, scored on the `graded` path that keeps the layup budget, it over-predicts by +0.2% to +26%. Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | Prepreg: autoclave (J); H, K not stated | **Low**: issues #435, #445  |
+| UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band, with its UD strain budget read from the material card (S12/Xc, issue #451), is a conservative screen on Thor's and Pilato's whole-thickness waves (−10% to −23%, never unsafe). On Shi's one-sided troughs, scored on the `graded` path that keeps the layup budget, it over-predicts by +0.2% to +26%. Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F), and the two size-aware FE candidates of issue #453 did not change that (see [above](#size-aware-fe-candidates-embedded-flat-surface-wrinkles-issue-453)). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | Prepreg: autoclave (J); H, K not stated | **Low**: issues #435, #445  |
 
 Caveats on the FE column:
 - The A–E FE recipe uses the analytical inputs at the default interfaces

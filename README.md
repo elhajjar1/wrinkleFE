@@ -1236,7 +1236,11 @@ embedded (mid-plane) wrinkles by up to +100%.
 > 2021 (Datasets H and J), but unsafe on Datasets A, C and D, by up to
 > +92% (the head-to-head in
 > `validation/strength_error_summary.py`, section 4); the progressive
-> model has no multidirectional check. The app and the NCR summary show this
+> model has no multidirectional check. For an embedded wrinkle under flat
+> surfaces no FE strength path is offered at all: the two size-aware
+> candidates (progressive peak load, cohesive-zone delamination onset)
+> stayed unsafe on every such dataset, by up to +109% and +139%
+> (issue #453). The app and the NCR summary show this
 > warning beside the FE numbers; the per-case figures are in
 > [Interpreting results](docs/interpreting_results.md#how-far-to-trust-each-number)
 > and `python validation/strength_error_summary.py` regenerates them.
