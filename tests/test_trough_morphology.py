@@ -145,6 +145,12 @@ def test_the_regime_caveat_quotes_the_flagged_troughs():
     assert max(errs) == pytest.approx(5.0, abs=0.05)
     caveat = " ".join(BENDING_REGIME_CAVEAT.split())
     assert "about 70% conservative to 5% unsafe" in caveat
+    # The two reasons the kink-band errs conservative on these troughs,
+    # and the honest exception.
+    assert "peak misalignment angle to the whole cross-section" in caveat
+    assert "straighter plies near that face" in caveat
+    assert "not always conservative" in caveat
+    assert "Prefer FE" in caveat
 
 
 @pytest.mark.parametrize("case", ["H-UD-10", "H-UD-20", "H-UD-30"])

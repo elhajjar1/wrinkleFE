@@ -230,6 +230,21 @@ The 10% troughs are not flagged on either morphology. On `graded` the
 analytical model was within +6% on them; on `tool_flat` it is 42% to
 59% conservative.
 
+**Why the kink-band errs so far on the conservative side here.** On
+one-sided troughs it is usually excessively conservative, for two
+reasons:
+- It applies the trough's peak misalignment angle to the whole cross-section
+  (on the 20% UD trough the effective angle equals the 23.5° peak),
+  although the misalignment fades to nothing toward the flat tool face.
+- It does not credit the straighter plies near that face with the load
+  the wavy plies shed: on a UD section every ply is knocked down alike.
+
+First-ply FE on the measured profile resolves both effects and is
+closer: −8% to −1% on the multidirectional half, −26% to −40% on the UD
+half. The kink-band is not always conservative here: the deepest
+multidirectional trough is 5% unsafe. The warning a flagged trough
+gets says all of this, and still advises FE on the measured profile.
+
 Other choices for the same troughs:
 - `uniform` flags all six (e/t 0.10 to 0.30), but as whole-thickness
   waves, so it applies the eccentric-column bound, which was not

@@ -82,12 +82,17 @@ BENDING_REGIME_CAVEAT = (
     f"e/t at or above {ECCENTRICITY_REGIME_THRESHOLD:.2f}), so the section "
     "bends as well as kinks, but it is not a whole-thickness wave (one "
     "outer surface does not follow the load path, as over a flat tool "
-    "face), so the eccentric-column bending bound is not applied. The "
-    "kink-band knockdown does not represent the bending: on the measured "
-    "one-sided troughs of this kind it ranged from about 70% conservative "
-    "to 5% unsafe, while first-ply FE on their geometry was conservative "
-    "by 1% to 40%. Prefer FE on the measured wrinkle profile (issues "
-    "#439, #452, #461)."
+    "face), so the eccentric-column bending bound is not applied. On the "
+    "measured one-sided troughs of this kind the kink-band knockdown "
+    "ranged from about 70% conservative to 5% unsafe, so it is usually "
+    "excessively conservative here, for two reasons. It applies the "
+    "trough's peak misalignment angle to the whole cross-section, although "
+    "the misalignment fades to nothing toward the flat face. And it does "
+    "not credit the straighter plies near that face with the load the "
+    "wavy plies shed. It is not always conservative: on the deepest "
+    "multidirectional trough it was 5% unsafe. First-ply FE on the measured "
+    "geometry resolves both effects and was conservative by 1% to 40%. "
+    "Prefer FE on the measured wrinkle profile (issues #439, #452, #461)."
 )
 
 #: Warning for a bending-dominated whole-thickness wave, where the

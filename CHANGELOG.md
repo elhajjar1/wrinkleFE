@@ -407,6 +407,15 @@ version produced a given file.
   that no script regenerates; the parity chart supersedes them.
 
 ### Changed
+- Warnings — **the one-sided-trough warning explains why the kink-band
+  errs conservative there** (`BENDING_REGIME_CAVEAT`, issue #461). On
+  Shi's measured troughs it ranged from about 70% conservative to 5%
+  unsafe, because it applies the peak misalignment angle to the whole
+  section, although the misalignment fades toward the flat tool face,
+  and it does not credit the straighter plies near that face with the
+  load the wavy plies shed. The warning still says it is not always
+  conservative and still advises FE on the measured profile;
+  `docs/interpreting_results.md` gives the same two reasons.
 - Analysis — **the analytical delamination-onset estimate is flagged as
   unvalidated** (issue #463). Against Dataset M's measured onset it is
   above the measurement on all nine multidirectional coupons, by up to
