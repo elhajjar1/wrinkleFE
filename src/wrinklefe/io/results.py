@@ -26,7 +26,7 @@ break consumers; see :data:`SCHEMA_VERSION` for when to bump it.
 Both this module and :mod:`wrinklefe.io.export` define a function named
 ``export_results_json``, and the two documents are almost entirely
 disjoint.  On an FE run the legacy document emits 33 leaf paths and
-this one 169, and all they share are ``provenance`` and the three
+this one 166, and all they share are ``provenance`` and the three
 ``mesh`` counts; on an analytical-only run (no ``mesh`` block) the
 overlap outside ``provenance`` is empty.  Not one result, prediction or
 configuration value is reachable by the same path in both, partly
@@ -86,8 +86,10 @@ if TYPE_CHECKING:
 #: when the bending bound applies.
 #: 1.6 added the ``validation_margin`` block: the regime-conditional
 #: margin on the analytical knockdown, its regime and the number of
-#: validation cases behind it (issue #455).
-SCHEMA_VERSION = "1.6"
+#: validation cases behind it (issue #455). 1.7 added the ``analytical``
+#: keys ``analytical_onset_validated`` and ``analytical_onset_caveat``:
+#: the onset estimate is unvalidated (issue #463).
+SCHEMA_VERSION = "1.7"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -419,6 +421,13 @@ def results_to_dict(results: AnalysisResults) -> dict:
                 if results.analytical_onset_knockdown is not None
                 else None
             ),
+            # Issue #463: the onset estimate is unvalidated.
+            "analytical_onset_validated": (
+                False
+                if results.analytical_onset_knockdown is not None
+                else None
+            ),
+            "analytical_onset_caveat": results.analytical_onset_caveat,
             "analytical_modulus_knockdown": _f(
                 results.analytical_modulus_knockdown
             ),

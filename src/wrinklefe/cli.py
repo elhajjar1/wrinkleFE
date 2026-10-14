@@ -1226,7 +1226,8 @@ def _build_parser() -> argparse.ArgumentParser:
                  "onset_knockdown", "modulus_retention_global"],
         help=(
             "Quantity the target applies to (default: knockdown). "
-            "'onset_knockdown' is tension-only; "
+            "'onset_knockdown' is tension-only and unvalidated: "
+            "do not use it to set an acceptance limit (issue #463); "
             "'modulus_retention_global' requires the FE path."
         ),
     )
@@ -2341,6 +2342,8 @@ def _print_critical_banner(result, config) -> None:
         f"  Objective: {result.objective_name} >= {result.target:.4f}"
         f"{unit}   (direction: {result.direction})"
     )
+    if getattr(result, "caveat", None):
+        print("  CAVEAT: " + str(result.caveat))
     print(
         f"  Range:     [{result.bounds[0]:.6f}, {result.bounds[1]:.6f}]  "
         f"(lower: {result.bounds_source[0]}, "
@@ -2427,6 +2430,7 @@ def _write_critical_outputs(
             "direction": result.direction,
             "status": result.status,
             "message": result.message,
+            "caveat": getattr(result, "caveat", None),
             "critical_value": (
                 None if result.critical_value is None
                 else float(result.critical_value)

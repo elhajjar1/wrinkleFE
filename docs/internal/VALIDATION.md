@@ -484,10 +484,26 @@ See the table in [README.md](../../README.md). Current sources:
     - Peak angles are estimated for 8 of the 13 coupons, including both
       UD groups. The larger UD wrinkles knock down more (0.40 against
       0.54) at a lower estimated angle (22° against 27°), so that
-      estimate is the weakest input.
-    - Delamination onset from the cohesive-zone path would be the closer
-      comparison, but the solver does not yet record damage per load
-      increment.
+      estimate is the weakest input. The estimates are permanent: the
+      dataset's author confirmed (October 2026) that the specimens and
+      their records for specimens 6–13 no longer exist.
+    - No independent tension dataset with steep wrinkles and a measured
+      onset is known, so the tension corrections of issue #454, worked
+      out on these coupons, stay in-sample and the guidance keeps
+      **Low** confidence above 20°.
+    - The analytical onset estimate (`analytical_onset_knockdown`) is
+      above the measured onset on all nine multidirectional coupons
+      (+1% to +244%) and 95–99% below it on the UD ones (0.0024–0.0066
+      against 0.13–0.24). The UD collapse comes from its notional
+      interface flaw, which spans the whole block of adjacent 0° plies:
+      2.43 mm, the full 16-ply thickness, against 0.30 mm on the
+      multidirectional coupons. It is flagged as unvalidated in the
+      results JSON and the critical-value search (issue #463,
+      `tests/test_onset_caveat.py`).
+    - The cohesive-zone onset of issue #453 is the closest comparison:
+      conservative on average (−23%) but up to +52% unsafe on the
+      deepest wrinkle. Developing it into an onset model needs an
+      independent onset dataset (issue #465).
 
 ### Stiffness / modulus validation
 

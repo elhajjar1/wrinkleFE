@@ -88,6 +88,19 @@ from wrinklefe.solver.static import StaticSolver
 
 logger = logging.getLogger(__name__)
 
+#: Why ``analytical_onset_knockdown`` must not be relied on (issue #463).
+#: Reported with the value in the results JSON, on the critical-value
+#: search when it targets ``onset_knockdown``, and in the CLI.
+ONSET_ESTIMATE_CAVEAT = (
+    "The analytical delamination-onset estimate is unvalidated. Against "
+    "the measured damage onset of one study's tension coupons it was "
+    "above the measurement on all nine multidirectional coupons, by up "
+    "to about 240%, and 95% to 99% below it on the unidirectional ones: "
+    "its notional interface flaw spans the whole block of adjacent 0-deg "
+    "plies, which on a unidirectional laminate is the full thickness. Do "
+    "not use it to set an acceptance limit (issue #463)."
+)
+
 # Analytical damage model constants (Section 6 of CLAUDE.md)
 _D0 = 0.15       # Base damage coefficient
 _BETA_ANGLE = 3.0  # Angle sensitivity
@@ -2842,7 +2855,11 @@ class AnalysisResults:
         ``material.GIc`` and ``material.GIIc``.  ``None`` when the
         material does not provide both fracture toughnesses or when the
         loading is compression.  Always strictly below
-        ``analytical_knockdown``.
+        ``analytical_knockdown``.  **Unvalidated** (issue #463): see
+        ``analytical_onset_caveat``.
+    analytical_onset_caveat : str or None
+        :data:`ONSET_ESTIMATE_CAVEAT` whenever
+        ``analytical_onset_knockdown`` is set, else ``None``.
     analytical_strength_MPa : float
         Analytical predicted failure stress (MPa).
     load_path_eccentricity_mm, load_path_eccentricity_ratio : float
@@ -2922,6 +2939,8 @@ class AnalysisResults:
     wrinkle. Loading-independent; the closed-form companion to the FE
     :attr:`modulus_retention`."""
     analytical_onset_knockdown: float | None = None
+    # Issue #463: the onset estimate is unvalidated; this travels with it.
+    analytical_onset_caveat: str | None = None
     analytical_strength_MPa: float = 0.0
     # Kink-band strain budget the analytical path used: the layup
     # confinement model, ``S12 / Xc`` for a UD-dominated laminate on the
@@ -5103,6 +5122,11 @@ class WrinkleAnalysis:
             )
         else:
             results.analytical_onset_knockdown = None
+        results.analytical_onset_caveat = (
+            ONSET_ESTIMATE_CAVEAT
+            if results.analytical_onset_knockdown is not None
+            else None
+        )
 
         results.analytical_strength_MPa = ref_strength * kd
 

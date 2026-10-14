@@ -404,6 +404,25 @@ version produced a given file.
   that no script regenerates; the parity chart supersedes them.
 
 ### Changed
+- Analysis — **the analytical delamination-onset estimate is flagged as
+  unvalidated** (issue #463). Against Dataset M's measured onset it is
+  above the measurement on all nine multidirectional coupons, by up to
+  244%, and 95–99% below it on the UD ones, whose notional interface
+  flaw spans the full 16-ply thickness.
+  - New `wrinklefe.analysis.ONSET_ESTIMATE_CAVEAT` and
+    `AnalysisResults.analytical_onset_caveat`, set whenever
+    `analytical_onset_knockdown` is.
+  - The results JSON gains `analytical_onset_validated` (`false` when an
+    onset is reported) and `analytical_onset_caveat` in its `analytical`
+    block; schema **1.7**, additive.
+  - The critical-value search logs the caveat and returns it
+    (`CriticalValueResult.caveat`) when the objective is
+    `onset_knockdown`; the `critical` CLI prints it, writes it to
+    `--output-json`, and its `--objective` help says the objective is
+    unvalidated.
+  - The guidance no longer says the onset number governs a requirement
+    written against onset. The value itself is unchanged; a real onset
+    model is issue #465.
 - Analysis — **the UD kink-band strain budget now comes from the
   material card (issue #451).** On the peak-angle compression path
   (every morphology except `graded`), a UD-dominated laminate (at least

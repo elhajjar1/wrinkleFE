@@ -35,7 +35,12 @@ It does **not** mean:
 - the delamination-onset load in tension — that is
   `analytical_onset_knockdown`, which is always strictly below
   `analytical_knockdown` and is `None` for compression or when the
-  material card lacks both `GIc` and `GIIc`;
+  material card lacks both `GIc` and `GIIc`. It is **unvalidated**
+  (issue #463): against Dataset M's measured onset it was above the
+  measurement on all nine multidirectional coupons, by up to about
+  240%, and 95% to 99% below it on the UD ones. The results JSON
+  flags it (`analytical_onset_validated: false` and
+  `analytical_onset_caveat`, schema 1.7);
 - a UD compression prediction that is scale-aware. The angle-based
   models are scale-invariant: at a fixed misalignment angle they cannot
   reproduce the dependence on through-thickness penetration. For
@@ -606,9 +611,14 @@ interpolation of the scan curve."*
   candidates (progressive peak, CZM delamination onset) were unsafe on
   every such dataset (issue #453). Carry the analytical knockdown.
 - **Tension with a delamination concern** — `analytical_knockdown` is
-  the ultimate; `analytical_onset_knockdown` is the first load drop. If
-  the drawing requirement is written against onset, the onset number
-  governs.
+  the ultimate. No model predicts the first load drop reliably, so a
+  requirement written against onset has no validated number to carry.
+  Do not use `analytical_onset_knockdown` (or the critical-value
+  search's `onset_knockdown` objective) to set it: it is unvalidated,
+  and unsafe or wildly low on Dataset M (issue #463). The closest
+  estimate is the FE cohesive-zone onset of issue #453, conservative
+  on average on Dataset M (−23%) but up to +52% unsafe on the
+  deepest wrinkle; a real onset model is issue #465.
 - **Stiffness-critical checks** — `modulus_retention_global`, not
   `modulus_retention`.
 - **When the analytical and FE numbers disagree** — they are answering
@@ -883,7 +893,7 @@ Every row rests on prepreg laminates. No row covers wet lay-up, infusion or RTM:
 | Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. With the eccentric-column bending bound on the whole-thickness waves (issue #452), 3 of the 8 stay more than 15% unsafe (5 without it): Thor's wave 1 at +15.1% and Shi's two one-sided troughs, which the bound does not cover. Below e/t = 0.10 the analytical model is the better choice. e/t is measured on the modelled geometry: enter a one-sided trough as `tool_flat`, with the tool face pinned. As `graded`, the recipe Shi's knockdowns are scored on, it reads e/t ≈ 0 and gets no warning (issue #461; see "One-sided surface troughs" above). See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | Prepreg: autoclave or hot press (A, J); H not stated | **Low–moderate**: issues #439, #452, #461  |
 | Multidirectional tension, ultimate | Analytical three-mechanism. On steep wrinkles (23–36°, Dataset M) it is −22% to +14% (mean −4.9%, unsafe on 3 of 9); before issue #454 the compression floor set those predictions and was unsafe on 8 of 9, by up to +30%. The #454 corrections carry no fitted constant but were diagnosed on these coupons, so above 20° the agreement is in-sample: keep a margin there. | 20 cases, 3 labs; 9 above 20°, from one lab | Prepreg: autoclave or hot press (B, M); C, I not stated | **Moderate** below 20°, **Low** above |
 | UD tension, ultimate | Analytical three-mechanism, with margin: −23% (conservative) on the smaller wrinkles, +16% to +18% unsafe on the larger. The angles are estimated, and the larger wrinkles knock down more at the lower estimated angle, which no angle-driven model follows. | 4 cases, 1 lab, in-sample (issue #454) | Prepreg: hot press (M) | **Low** |
-| Tension, damage onset | No reliable predictor. First-ply FE is an onset estimate only: unsafe on 9 of 12 Dataset M coupons (−22% to +154%, worst on the deepest wrinkles) and 2 of 3 Mukhopadhyay. | 15 cases, 2 labs | Prepreg: hot press (M); C not stated | **Low** |
+| Tension, damage onset | No reliable predictor. First-ply FE is an onset estimate only: unsafe on 9 of 12 Dataset M coupons (−22% to +154%, worst on the deepest wrinkles) and 2 of 3 Mukhopadhyay. The analytical onset estimate is unvalidated and flagged in the output: on Dataset M it is above the measurement on all nine multidirectional coupons (up to about +240%) and 95–99% below it on the UD ones (issue #463). | 15 cases, 2 labs | Prepreg: hot press (M); C not stated | **Low** |
 | UD glass compression | Penetration gate, on the material it was fitted to. Kink-band is far too conservative (−37% to −58%); FE ignores wrinkle depth. | 15 cases, 1 group, in-sample | Prepreg: hot press (E), vacuum bag (F) | **Fit only**  |
 | UD carbon compression (not wet lay-up) | FE on the specimen's measured geometry: −5% to +9% on Thor and Pilato, −26% to −40% (conservative) on Shi. The kink-band, with its UD strain budget read from the material card (S12/Xc, issue #451), is a conservative screen on Thor's and Pilato's whole-thickness waves (−10% to −23%, never unsafe). On Shi's one-sided troughs, scored on the `graded` path that keeps the layup budget, it over-predicts by +0.2% to +26% with no bending warning; modelled as `tool_flat` they are flagged at 20% and 30% depth (issue #461). Never the gate presets as shipped: unsafe on 7 of 10, up to +97%. Re-fitting the moulded preset's `gamma_Y` to one wrinkled test is unproven: within 2–4% on Shi and Pilato, −29% / +15% on Thor's two cases. For an embedded wrinkle with flat surfaces, FE has had unsafe misses on every dataset with one (C, D, E, F), and the two size-aware FE candidates of issue #453 did not change that (see [above](#size-aware-fe-candidates-embedded-flat-surface-wrinkles-issue-453)). Wet lay-up is outside this row (issue #445): on the quarantined Dataset L, FE was up to +100% unsafe and the one-test gate up to +71%. | 10 cases, 3 labs | Prepreg: autoclave (J); H, K not stated | **Low**: issues #435, #445  |
 
