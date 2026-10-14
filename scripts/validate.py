@@ -19,6 +19,12 @@ knockdown: cases that also pin ``expected_analytical_modulus_kd`` have
 their ``analytical_modulus_knockdown`` recomputed and compared the same
 way, so the closed-form CLT modulus estimate (added in #324) can no
 longer drift silently. ``--update`` re-pins both baselines.
+
+Issue #455: the regime-conditional validation margins shipped in
+``src/wrinklefe/core/validation_margins.json`` are fitted from the pinned
+values (``scripts/fit_margins.py``). A plain run also fails when that
+table is stale, and ``--update`` regenerates it after re-pinning, so a
+deliberate model change needs one command.
 """
 
 from __future__ import annotations
@@ -164,11 +170,25 @@ def run_case_gate(dataset: dict, case: dict) -> float:
     )
 
 
+def _margins_module():
+    """``scripts/fit_margins.py``, loaded by path (issue #455)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "fit_margins", REPO / "scripts" / "fit_margins.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--update", action="store_true",
-        help="re-pin expected_analytical_kd to the current code's output",
+        help="re-pin expected_analytical_kd to the current code's output "
+             "and regenerate the validation margins from the re-pinned "
+             "ledger",
     )
     args = parser.parse_args(argv)
 
@@ -297,16 +317,32 @@ def main(argv=None) -> int:
                 f"({len(gate_errors)} cases)"
             )
 
+    margins = _margins_module()
     if args.update:
         LEDGER.write_text(json.dumps(ledger, indent=2) + "\n")
         print(f"\nBaselines re-pinned in {LEDGER.relative_to(REPO)}")
+        table = margins.build_table(ledger)
+        out = margins.write(table)
+        print(f"Validation margins regenerated in {out.relative_to(REPO)}")
+        print(margins.format_table(table))
         return 0
+    stale = margins.check()
+    if stale:
+        print("\nThe validation margins (issue #455) are stale:")
+        for diff in stale:
+            print(f"  {diff}")
+        print("Regenerate them with 'python scripts/fit_margins.py --write' "
+              "(or 'python scripts/validate.py --update').")
+    else:
+        print("\nThe validation margins match the pinned ledger.")
     if failures:
         print(
             f"\n{failures} case(s) drifted beyond rel_tolerance={tol}. "
             "If the change is intentional, re-pin with --update and "
             "explain the move in the commit message."
         )
+        return 1
+    if stale:
         return 1
     print("\nAll cases match the pinned baselines.")
     return 0
