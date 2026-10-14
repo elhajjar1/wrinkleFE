@@ -63,6 +63,7 @@ from wrinklefe.core.mesh import MeshData
 from wrinklefe.core.morphology import WrinkleConfiguration, WrinklePlacement
 from wrinklefe.failure.evaluator import LaminateFailureReport
 from wrinklefe.io.export import build_provenance
+from wrinklefe.solver.czm_history import CzmDamageHistory
 from wrinklefe.solver.results import FieldResults
 
 __all__ = [
@@ -77,7 +78,7 @@ __all__ = [
 #: change a reader of this version can still load (a new optional field);
 #: bump the **major** part when it cannot, because :func:`load_results`
 #: refuses a major it does not know.
-ARCHIVE_FORMAT_VERSION = "1.0"
+ARCHIVE_FORMAT_VERSION = "1.1"  # 1.1: optional czm_damage_history (#453)
 
 #: Conventional suffix — "WrinkleFE result". Nothing enforces it; the file is
 #: a ``.npz`` whatever it is called.
@@ -109,6 +110,7 @@ _WALKED_DATACLASSES: dict[str, type] = {
     "MeshData": MeshData,
     "FieldResults": FieldResults,
     "LaminateFailureReport": LaminateFailureReport,
+    "CzmDamageHistory": CzmDamageHistory,
 }
 
 

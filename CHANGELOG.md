@@ -15,6 +15,37 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CZM — **a per-load-increment damage record** (issue #453).
+  `AnalysisResults.czm_damage_history`
+  (`wrinklefe.solver.czm_history.CzmDamageHistory`) holds, after every
+  converged increment, the carried nominal stress, maximum and mean
+  interface damage, the damaged (`d > 0`) and fully separated
+  (`d = 1`) interface area and the initiation index. Its
+  `initiation()` gives the delamination-onset load exactly (the model
+  is linear until the first interface point reaches its mixed-mode
+  strength, so one elastic increment is enough and the answer does not
+  depend on the increment size); `separation()` the first increment
+  with a traction-free point. Always recorded (one sparse product per
+  increment, numerically inert); the result summary prints the onset;
+  the lossless archive carries it. `NewtonRaphsonSolver` gains an
+  `increment_callback` hook (observational, may stop the ramp;
+  `stopped_early` in its result) that feeds the record.
+  - The CZM path now carries the resin-zone tags the linear path
+    computed (crest lens, `tool_flat` surface pockets) onto its rebuilt
+    cohesive mesh, so `tool_flat` is combinable with `enable_czm`; it
+    used to be rejected.
+- Validation — **the size-aware FE study of issue #453**
+  (`validation/size_aware_fe_study.py`; pinned as `size_aware_fe` in
+  the ledger, with fast and slow tests). Two candidate FE strength
+  measures for embedded wrinkles under flat surfaces, the
+  progressive-damage peak load and the CZM delamination-onset load,
+  scored against the first-ply FE on Datasets C, D, E, L-WM and M.
+  Neither reaches a worst case of +15% (peak load: +109% on D, +202%
+  on M's onset; CZM onset: +139% on D, +74% on L-WM, +52% on M) and
+  neither tracks wrinkle depth, so **no FE strength path is offered
+  for an embedded wrinkle under flat surfaces**: an explicit scope
+  exclusion in `FE_STRENGTH_CAVEAT`, `docs/interpreting_results.md`,
+  `VALIDATION.md` and the README, with the measured numbers.
 - Validation — **Dataset H: Shi et al. (2025), the first in-repo
   multidirectional measured-strength set** (Materials 18:4503, CC BY;
   every value transcribed from the paper's text). Two 20-ply CFRP

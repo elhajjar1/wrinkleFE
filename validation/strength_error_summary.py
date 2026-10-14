@@ -78,13 +78,22 @@ def _fe_first_ply(cfg, **overrides) -> tuple[float, float]:
     (which the flat FE coupon reproduces). *overrides* replace config
     fields (the mesh, an FE-only morphology) before the solve.
     """
+    return _first_ply_from_results(_fe_run(cfg, **overrides))
+
+
+def _fe_run(cfg, **overrides):
+    """One linear FE run of *cfg* with *overrides* (mesh, FE-only recipe)."""
     from wrinklefe.analysis import WrinkleAnalysis
 
     kw = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
     kw.update(analytical_only=False, verbose=False, **overrides)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        r = WrinkleAnalysis(type(cfg)(**kw)).run()
+        return WrinkleAnalysis(type(cfg)(**kw)).run()
+
+
+def _first_ply_from_results(r) -> tuple[float, float]:
+    """:func:`_fe_first_ply`'s retention and onset from a finished run."""
     fi = np.asarray(r.failure_indices["larc05"]).mean(axis=-1)
     fi_w = float(fi[np.isfinite(fi)].max())
     fi_p = float(r.baseline_fi["larc05"])
