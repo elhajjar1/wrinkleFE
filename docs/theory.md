@@ -155,7 +155,8 @@ The `graded` path (§2.4) keeps $\gamma_{Y,\text{eff}}$ even for UD. Its
 budget was calibrated together with the profile average, which already
 raises the knockdown: it is not biased conservative on UD carbon (Shi
 +0.2% to +26%, Hsiao & Daniel −22%), and $g$ there would push Shi's UD
-cases and Dataset M's UD tension floor up to +53% and +78% unsafe. The
+cases up to +53% unsafe (and, until issue #454 removed the compression
+floor from tension, Dataset M's UD tension floor up to +78%). The
 reported `gamma_Y_eff` is the budget the path actually used.
 
 ### 2.3 Morphology factor $M_f$
@@ -270,10 +271,20 @@ $$
 $$
 
 The transverse in-situ strength is $Y_t^\text{is} = 1.12\sqrt{2}\,Y_t$;
-the shear in-situ strength uses the Camanho thick-ply correction
-$S_{12}^\text{is} = \sqrt{8\,G_{IIc}/(\pi\, t_\text{eff}\, \Lambda_{22})}$
-over the effective 0° block thickness $t_\text{eff}$, with
-$\Lambda_{22}=2(1/E_{22}-\nu_{12}^2/E_{11})$.
+the shear in-situ strength uses the Camanho thin-ply formula over the
+effective 0° block thickness $t_\text{eff}$, bounded below by the
+lamina strength:
+
+$$
+S_{12}^\text{is} = \max\!\left(\sqrt{\frac{8\,G_{IIc}}{\pi\, t_\text{eff}\, \Lambda_{22}}},\; S_{12}\right),
+\qquad \Lambda_{22}=2(1/E_{22}-\nu_{12}^2/E_{11})
+$$
+
+The thin-ply formula falls as $1/\sqrt{t_\text{eff}}$; past the
+thin/thick transition it would drop below the strength measured on thick
+UD coupons, which an in-situ strength cannot do (neighbouring plies only
+raise it). Only very thick 0° blocks reach the bound: a $[0]_{16}$ block
+of T700GC/2510 gives 66.5 MPa against $S_{12}$ = 154.4 MPa (issue #454).
 
 **3. Curved-beam out-of-plane delamination** — the wrinkle curvature
 generates interlaminar stresses: a mode-I $\sigma_{33}$ at the crest
@@ -286,13 +297,44 @@ $$
 \kappa_{\max} = \left(\tfrac{2\pi}{\lambda}\right)^2 A
 $$
 
-with $\mathrm{KD}_\text{oop} = 1/\sqrt{1 + \max\big((\sigma_{33}/Y_t)^2,\,(\tau_{13}/S_{13})^2\big)}$.
-A separate Benzeggagh–Kenane mixed-mode delamination-*onset* knockdown is
-reported alongside the ultimate value.
+with each traction bounded by the interface strength it is compared
+with:
 
-Finally the tension knockdown is **floored by the compression value** for
-the same defect — tension is never predicted to be worse than
-compression.
+$$
+\mathrm{KD}_\text{oop} = \left[1 + \max\!\Big(\min(\sigma_{33}/Y_t,\,1)^2,\;
+\min(\tau_{13}/S_{13},\,1)^2\Big)\right]^{-1/2} \;\ge\; 1/\sqrt{2}
+$$
+
+The quadratic interaction treats the interlaminar stress as a load the
+bonded interface keeps carrying, which holds only up to its strength.
+Past it the interface delaminates and softens (the cohesive-zone
+picture), shedding the traction instead of transmitting more, and the
+misaligned ply's own fibre and matrix mechanisms set its ultimate.
+Dataset M measured both events on every coupon: delamination at 11–30%
+of the pristine ultimate (the DIC limit point), fibre failure at
+40–78%. Read unbounded, the curved-beam stress made the delamination
+terminal and drove $\mathrm{KD}_\text{oop}$ to 0.01–0.24 on those
+coupons. Below the interface strength nothing changes. A separate
+Benzeggagh–Kenane mixed-mode delamination-*onset* knockdown, driven by
+the unbounded stresses, is reported alongside the ultimate value.
+
+For the `graded` morphology the 0° plies are averaged at their local
+angle $\theta_p = B_p\,\theta_{\max}$, and each ply's amplitude, and so
+its curvature and interlaminar stress, decays with the same factor
+$B_p$. (Before issue #454 every ply was charged the crest curvature, so
+a ply the grading leaves flat still carried the peak
+$\mathrm{KD}_\text{oop}$.)
+
+The tension knockdown is **not** bounded by the compression value.
+Earlier versions floored it there ("tension is never worse than
+compression"). A kink band is a compressive micro-buckling failure with
+no counterpart in tension, so its knockdown cannot bound a tension
+failure. In practice the floor was propping up a tension model that
+collapsed on steep wrinkles. On Dataset M it set all 13 predictions and
+was unsafe on 10 of them, by up to +39%. It also tied tension results
+to the kink-band strain budget, so a compression recalibration moved
+tension predictions. Issue #454 removed it, with the collapse corrected
+at its source above.
 
 ## 4. The unidirectional scale effect
 
