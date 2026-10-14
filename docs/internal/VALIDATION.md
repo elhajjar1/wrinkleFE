@@ -362,10 +362,56 @@ See the table in [README.md](../../README.md). Current sources:
     the wrinkled coupon's nominal stress at first ply failure. Specimen
     12 was preloaded to 600 MPa before its DIC test and is left out of
     the onset score.
-  - **Analytical (three-mechanism) against the ultimate:** unsafe on 8 of
-    9 multidirectional coupons (−7.6% to +29.6%) and on 2 of 4 UD (−1.0%
-    to +39.2%). These wrinkles are steep (22–36°), steeper than any other
-    tension dataset here.
+  - **Analytical (three-mechanism) against the ultimate (after issue
+    #454):** multidirectional signed mean −4.9%, −21.9% to +14.2%,
+    unsafe on 3 of 9; UD −2.8%, −22.7% to +17.6%, unsafe on 2 of 4.
+    These wrinkles are steep (22–36°), steeper than any other tension
+    dataset here.
+  - **Re-pin for issue #454 (all 13 cases drift; nothing else in the
+    ledger moves).**
+
+    | Cases | Pinned before | Pinned after | Error before → after |
+    |---|---|---|---|
+    | M-MD-1, -2 (30°) | 0.7021 | 0.6185 | +24.0 / +29.6% → +9.2 / +14.2% |
+    | M-MD-3 to -5 (23°) | 0.7908 | 0.6559 | +1.4 / +14.4 / +20.0% → −15.9 / −5.2 / −0.4% |
+    | M-MD-6, -7 (~36°) | 0.7082 | 0.5986 | +2.1 / −7.6% → −13.7 / −21.9% |
+    | M-MD-8, -9 (~34°) | 0.7044 | 0.6033 | +0.7 / +20.5% → −13.7 / +3.2% |
+    | M-UD-10, -11 (~27°) | 0.5388 | 0.4205 | −1.0 / −0.5% → −22.7 / −22.3% |
+    | M-UD-12, -13 (~22°) | 0.5617 | 0.4747 | +37.4 / +39.2% → +16.1 / +17.6% |
+
+    - *Why every value moved.* Before #454 each of the 13 was the
+      compression (kink-band, graded profile-proportional) knockdown
+      that floored the tension result. The three-mechanism value under
+      it had collapsed: 0.32–0.44 multidirectional and 0.010–0.020 UD.
+    - *Three causes of the collapse.*
+      - The graded per-ply average charged every 0° ply the crest
+        curvature, so a ply the grading leaves flat still carried
+        `KD_oop` 0.04–0.24 (UD 0.010).
+      - The interlaminar tractions had no bound, so delamination was
+        treated as the end of the ply's load path. These coupons
+        delaminated at 11–30% of the pristine ultimate and failed at
+        40–78%.
+      - On the `[0]16` block the thin-ply in-situ shear formula gave
+        66.5 MPa, below the lamina's own 154.4 MPa.
+    - *The fix* attenuates each ply's curvature with its angle, bounds
+      each traction by its interface strength, bounds the in-situ shear
+      by `S12`, and drops the floor. None of the four adds a fitted
+      constant. They were diagnosed on these coupons, though, so the
+      agreement above is in-sample.
+    - *Contributions.* The per-ply curvature alone takes the
+      multidirectional half to −7.1% without the floor. The traction
+      bound takes it to −4.9%. The UD half needs all three: −65% with
+      the curvature fix alone, −35% with the bound added.
+    - *Elsewhere.* Elhajjar B (uniform, below the interface strength
+      where `KD_oop` governs), Calvo I and the Mukhopadhyay onset are
+      bit-for-bit unchanged. Mukhopadhyay tension rises from −19.9% to
+      −12.2%: its outer plies were also charged the crest curvature, and
+      the floor had held two of its three cases. Every compression case
+      is bit-for-bit unchanged.
+    - *Issue #451.* That issue changes the kink-band strain budget, but
+      only on the non-graded UD path, so it never moved Dataset M's
+      floor. Tension no longer reads the kink-band value at all, so no
+      compression recalibration can move a tension result.
   - **First-ply FE against the onset:** unsafe on 9 of 12 scored
     coupons, from −21.7% to +154.0%, median +28.6%.
     - Within −22% to +46% on the smaller wrinkles (multidirectional
@@ -514,7 +560,9 @@ unsafe count and worst case:
 - **g on the `graded` path too fails the acceptance bar:**
   - H-UD-10 goes from +0.2% to +17.6% unsafe;
   - L-WM-2-3 goes from −6.9% to +44.6%;
-  - Dataset M's UD tension floor goes from −1.0% / −0.5% to +27% / +28%.
+  - Dataset M's UD tension floor went from −1.0% / −0.5% to +27% / +28%
+    (issue #454 has since removed that floor, so tension no longer reads
+    the budget at all).
 - **Peak-angle-only everywhere over-corrects the other way** on the
   graded data (Shi −66%, M UD −56%).
 - **The Argon–Fleck quadratic stays.** g replaces `gamma_Y_eff` inside
@@ -821,15 +869,17 @@ the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
 MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
 MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**75 of 105** points sit inside the corridor (70 before the UD strain
-budget of issue #451 brought three UD carbon cases inside and the
+**79 of 105** points sit inside the corridor (70 before the UD strain
+budget of issue #451 brought three UD carbon cases inside, the
 bending bound of issue #452 brought Elhajjar A = 0.73 mm and Thor's
-wave 1 inside), not counting the quarantined
+wave 1 inside, and the tension corrections of issue #454 brought
+four tension cases inside), not counting the quarantined
 Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
 analytical and 5 of 18 FE points inside: the kink-band is conservative
 on all 18 (mean −32%), and the FE over-predicts its embedded (mid-plane)
-wrinkles. Dataset M lands 7 of 13 analytical points inside (the rest
-unsafe, +20% to +39%) and 3 of 12 FE onset points (8 of the other 9
+wrinkles. Dataset M lands 10 of 13 analytical points inside (the other
+three conservative, −22% to −23%; 7 of 13 before issue #454, the rest
+unsafe at +20% to +39%) and 3 of 12 FE onset points (8 of the other 9
 unsafe).
 
 ## Interlaminar (CZM) validation evidence — Phase 7

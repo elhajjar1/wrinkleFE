@@ -53,21 +53,24 @@ def test_quarantined_krishnappa_stays_conservative():
 
 
 def test_graded_ud_sets_keep_their_errors():
-    """Shi (H) and Dataset M's UD tension half are UD-dominated but take
-    the graded path, which keeps the layup budget: their errors are the
-    ones quoted before the change."""
+    """Shi (H) is UD-dominated but takes the graded path, which keeps the
+    layup budget: its errors are the ones quoted before the change.
+    Dataset M's UD half is tension, which no longer reads the kink-band
+    at all (issue #454 removed the compression floor): its errors are
+    those of #454, and the UD budget cannot reach them."""
     shi = _errors("shi_2025_ud")
     assert [round(e, 1) for e in shi] == [0.2, 11.8, 25.9]
     m_ud = _errors("elhajjar_shams_2016_ud")
-    assert statistics.mean(m_ud) == pytest.approx(18.8, abs=0.05)
+    assert statistics.mean(m_ud) == pytest.approx(-2.8, abs=0.05)
     assert sum(e > 0.5 for e in m_ud) == 2
-    assert max(m_ud) == pytest.approx(39.2, abs=0.05)
+    assert max(m_ud) == pytest.approx(17.6, abs=0.05)
 
 
 def test_analytical_parity_count():
-    """60 of the 77 analytical cases (quarantined L excluded) are within
+    """64 of the 77 analytical cases (quarantined L excluded) are within
     +/-20 %, as docs/interpreting_results.md says (55 before #451, 58
-    after it, 60 once the bending bound of #452 is also applied)."""
+    after it, 60 with the bending bound of #452, 64 with the tension
+    corrections of #454)."""
     sys.path.insert(0, str(_ROOT / "validation"))
     import plot_all_validation as pav
 
@@ -79,9 +82,9 @@ def test_analytical_parity_count():
         errs = [abs(p - m) / m for m, p in fn()]
         total += len(errs)
         inside += sum(e <= 0.20 for e in errs)
-    assert (inside, total) == (60, 77)
+    assert (inside, total) == (64, 77)
     text = (_ROOT / "docs" / "interpreting_results.md").read_text()
-    assert "60 of the 77 analytical cases fall within ±20%" in text
+    assert "64 of the 77 analytical cases fall within ±20%" in text
 
 
 def test_docs_quote_the_moves():

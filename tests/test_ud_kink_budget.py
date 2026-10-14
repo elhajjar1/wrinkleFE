@@ -185,13 +185,17 @@ def test_ud_budget_is_less_conservative_than_the_layup_model():
     assert res.analytical_knockdown > 1.0 / (1.0 + theta / _GAMMA_Y_UD)
 
 
-def test_tension_floor_uses_the_same_compression_knockdown():
-    """Tension is floored at the compression knockdown; for a UD laminate
-    on the peak-angle path that floor now uses g as well."""
-    comp = _run(_config([0.0] * 40))
-    tens = _run(_config([0.0] * 40, loading="tension"))
-    assert tens.gamma_Y_eff == comp.gamma_Y_eff
-    assert tens.analytical_knockdown >= comp.analytical_knockdown
+def test_tension_does_not_take_the_ud_budget():
+    """Tension no longer floors at the compression knockdown (issue #454),
+    so the UD budget reaches only the compression result. The tension run
+    reports the layup model's value and its knockdown is free to sit
+    below the compression one; tests/test_tension_knockdown.py checks
+    that the budget cannot move a tension result."""
+    angles = [0.0] * 40
+    comp = _run(_config(angles))
+    tens = _run(_config(angles, loading="tension"))
+    assert comp.gamma_Y_eff == _ud_kink_strain_budget(comp.config.material)
+    assert tens.gamma_Y_eff == _effective_gamma_Y(angles)
 
 
 # ----------------------------------------------------------------------

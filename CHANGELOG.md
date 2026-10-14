@@ -389,6 +389,30 @@ version produced a given file.
   - On the CLI, `--loading` given over a `--config` file without
     `--strain` keeps the file's strain magnitude and gives it the new
     loading's sign.
+- Analysis — **the tension knockdown on steep wrinkles was the
+  compression floor, not the tension model** (issue #454). On all 13
+  Dataset M coupons (Elhajjar & Shams 2016, 22–36°), the reported value
+  was the kink-band knockdown that floors the tension result. It was
+  unsafe on 10 of the 13, by up to +39%. Underneath, the three-mechanism
+  model had collapsed: 0.32–0.44 on the multidirectional coupons and
+  0.01–0.02 on the UD coupons, against a measured 0.40–0.78. Three
+  defects caused the collapse, and all are fixed:
+  - The graded per-ply average charged every ply the crest curvature,
+    even a ply the grading leaves flat. Each ply's amplitude, and so its
+    interlaminar stress, now decays with the same factor as its angle.
+  - The curved-beam `σ33` / `τ13` were compared with the interface
+    strength without bound, as if delamination ended the ply's load path.
+    Dataset M delaminated at 11–30% of the pristine ultimate and failed
+    at 40–78%. Each traction is now bounded by its interface strength
+    (`KD_oop >= 1/sqrt(2)`): past it the interface sheds the traction.
+    The delamination-onset criterion still uses the unbounded stresses.
+  - The in-situ shear strength fell below the lamina `S12` on thick 0°
+    blocks (66.5 against 154.4 MPa on a `[0]16` coupon). It is now
+    bounded below by `S12`.
+  - The compression floor ("tension is never worse than compression")
+    is removed. A kink band is a compressive micro-buckling mode with no
+    tension counterpart. The floor tied tension results to the kink-band
+    strain budget (issue #451), and the tension model no longer needs it.
 
 ### Numerical results
 - **UD-dominated analytical compression knockdowns rise on the
@@ -398,9 +422,9 @@ version produced a given file.
   embedded WM cases are `graded` and unchanged). No case becomes
   unsafe. 20 ledger baselines are re-pinned (J-UD, K, L-WL/WR and the
   Hsiao & Daniel uniform coupon, which has no measured strength); every
-  other ledger, A–D and E prediction is bit-for-bit unchanged. The
-  tension floor on that path rises with it (`tension` is never below
-  `compression`); no tension dataset takes that path. The wet lay-up
+  other ledger, A–D and E prediction is bit-for-bit unchanged. No
+  tension result moves: issue #454 (below) removed the compression
+  floor from tension, so the budget reaches compression only. The wet lay-up
   out-of-scope caveat now says the kink-band was about 32% conservative
   on Dataset L (it said 56%).
 - **Bending-dominated whole-thickness waves in compression get a lower
@@ -414,6 +438,17 @@ version produced a given file.
   bound, but their kink-band value, even with the UD strain budget of
   issue #451, is lower and stays. Analytical cases within ±20%: 58 → 60
   of 77 (parity chart 73 → 75 of 105), on top of issue #451.
+- **Analytical tension knockdowns move (issue #454); compression is
+  bit-for-bit unchanged.** Dataset M, multidirectional: signed mean
+  +11.7% → −4.9%, 8 → 3 of 9 unsafe, worst +29.6% → +14.2%. Dataset M,
+  UD: +18.8% → −2.8%, 2 → 2 of 4 unsafe, worst +39.2% → +17.6%.
+  Mukhopadhyay (C) tension: −19.9% → −12.2%. Elhajjar (B), Calvo (I) and
+  the Mukhopadhyay onset are unchanged. The 13 Dataset M ledger
+  baselines are re-pinned. Outside the validated set, tension results
+  that the floor was holding up now come out lower (mostly `graded` with
+  a non-zero `decay_floor`, and `convex`). Thick UD blocks that had
+  collapsed onto the floor come out higher. Analytical cases within
+  ±20%: 60 → 64 of 77 (parity chart 75 → 79 of 105).
 - **Tension configs that left `applied_strain` unset now run the FE in
   tension instead of compression.** This changes the FE failure
   indices, retention factors, modulus, and the CZM and progressive
