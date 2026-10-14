@@ -254,6 +254,35 @@ version produced a given file.
     the measured profile above the threshold. No shipped prediction
     changes. The `interpreting_results` guidance gains an eccentricity
     row.
+- Analysis — **an eccentric-column bending bound for whole-thickness
+  waves** (issue #452). A compression analysis that is
+  `bending_dominated` (e/t ≥ 0.10) AND whose two outer surfaces both
+  follow the load path now predicts
+  `min(kink-band, (t_c/t_0) / (1 + 6 e/t_c))`.
+  - "Both surfaces wavy" is measured, not looked up from the morphology
+    name: `LoadPathEccentricity` gains `top_surface_offset_mm` and
+    `bottom_surface_offset_mm` (each surface's own offset at the section
+    of largest e) and `whole_thickness` (each moves the same way by at
+    least half of e, `WHOLE_THICKNESS_SURFACE_FRACTION`). `uniform` waves
+    pass; a `tool_flat` one-sided trough, and the flat-surface `graded`,
+    `stack`, `convex` and `concave` morphologies, do not.
+  - New `wrinklefe.core.eccentricity.bending_knockdown()`, and
+    `AnalysisResults` fields `whole_thickness_wave`,
+    `bending_bound_applied`, `bending_knockdown`, `kink_band_knockdown`
+    and `governing_bound` (`"kink_band"` or `"bending"`; `None` in
+    tension). The bound also caps a penetration-gate value.
+  - The governing bound reaches the text summary (a `Governing bound:`
+    line), the results JSON (`analytical` block; schema **1.5**,
+    additive), the NCR summary (JSON, Markdown and the cited criteria)
+    and the app.
+  - The bending warning now says when the bound was applied
+    (`BENDING_BOUND_CAVEAT`). A bending-dominated wrinkle that is not a
+    whole-thickness wave, such as Shi's one-sided trough (Dataset H),
+    gets no bound and keeps `BENDING_REGIME_CAVEAT`, now worded for that
+    case, with its advice to run FE. `bending_caveat()` picks between
+    them.
+  - Tension is untouched: an axial pull straightens the wave, and the
+    evidence is compression only.
 
 ### Changed
 - Analysis — **the UD kink-band strain budget now comes from the
@@ -343,6 +372,17 @@ version produced a given file.
   `compression`); no tension dataset takes that path. The wet lay-up
   out-of-scope caveat now says the kink-band was about 32% conservative
   on Dataset L (it said 56%).
+- **Bending-dominated whole-thickness waves in compression get a lower
+  analytical knockdown where the bending bound governs** (issue #452).
+  Nothing changes below e/t = 0.10, in tension, or on a one-sided
+  trough. One ledger case moved: Thor's quasi-isotropic wave 1 (J-QI-1),
+  0.5271 → 0.3990 (+52.1% → +15.1% against the measurement). In the
+  head-to-head, Elhajjar compression A = 0.61 mm goes 0.415 → 0.396
+  (+18.5% → +13.1%) and A = 0.73 mm 0.415 → 0.353 (+29.6% → +10.4%).
+  Thor's UD wave 1 and ten Krishnappa (quarantined) cases also get the
+  bound, but their kink-band value, even with the UD strain budget of
+  issue #451, is lower and stays. Analytical cases within ±20%: 58 → 60
+  of 77 (parity chart 73 → 75 of 105), on top of issue #451.
 - **Tension configs that left `applied_strain` unset now run the FE in
   tension instead of compression.** This changes the FE failure
   indices, retention factors, modulus, and the CZM and progressive

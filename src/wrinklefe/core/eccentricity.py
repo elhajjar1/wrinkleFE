@@ -1,4 +1,4 @@
-"""Load-path eccentricity of a wrinkled laminate (issue #439).
+"""Load-path eccentricity of a wrinkled laminate (issues #439, #452).
 
 A wrinkle that moves the laminate's outer surfaces moves its load path:
 the axial-stiffness-weighted centroid of the section at the wrinkle sits
@@ -17,8 +17,17 @@ angle-based analytical knockdown was never more than 15 % unsafe. Above
 it the analytical model missed on the unsafe side by up to +115 %, while
 first-ply FE on the specimen's own geometry did not. The ratio is
 therefore reported with every analysis, and compression analyses above
-the threshold are flagged as outside the kink-band model's validated
-regime.
+the threshold are flagged as bending-dominated.
+
+Issue #452 acts on the flag for whole-thickness waves, where both outer
+surfaces follow the load path (:attr:`LoadPathEccentricity.whole_thickness`).
+The wrinkled section is treated as an eccentric column: the outer fibres
+carry ``sigma * (t_0 / t_c) * (1 + 6 e / t_c)``, so they reach the
+pristine strength at :func:`bending_knockdown`, and the analytical
+compression knockdown becomes the lower of the kink-band value and that
+bound. A one-sided trough (one surface pinned flat by the tool) is not
+covered: the bound did not explain its measured knockdown, so it keeps
+the warning and the advice to run FE.
 """
 
 from __future__ import annotations
@@ -40,16 +49,56 @@ if TYPE_CHECKING:
 #: the evidence is mixed (3 cases), and above 0.15 it was unsafe on 7 of 8.
 ECCENTRICITY_REGIME_THRESHOLD = 0.10
 
-#: The one-paragraph warning shown wherever a bending-dominated result is
-#: reported (text summary, app, NCR summary), so they cannot disagree.
+#: Fraction of the load-path offset ``e`` that EACH outer surface must
+#: itself move, in the same direction and at the same section, for the
+#: wave to count as whole-thickness (issue #452). A whole-thickness wave
+#: moves both surfaces by about ``e`` (ratio ~1); a one-sided trough pins
+#: one surface flat (ratio 0 on that side). The midpoint separates them.
+WHOLE_THICKNESS_SURFACE_FRACTION = 0.5
+
+#: Warning for a bending-dominated result the eccentric-column bound does
+#: NOT cover (a one-sided trough, or any wave whose outer surfaces do not
+#: both follow the load path). Shown wherever such a result is reported
+#: (text summary, app, NCR summary), so they cannot disagree.
 BENDING_REGIME_CAVEAT = (
     "This wrinkle moves the laminate's load path (load-path eccentricity "
     f"e/t at or above {ECCENTRICITY_REGIME_THRESHOLD:.2f}), so the section "
-    "bends as well as kinks. The kink-band knockdown does not represent "
-    "that: on measured compression cases in this regime it over-predicted "
-    "retained strength by up to about 115%. Prefer FE on the measured "
-    "wrinkle profile (issue #439)."
+    "bends as well as kinks, but it is not a whole-thickness wave (one "
+    "outer surface does not follow the load path, as over a flat tool "
+    "face), so the eccentric-column bending bound is not applied. The "
+    "kink-band knockdown does not represent the bending: on measured "
+    "compression cases of this kind it over-predicted retained strength "
+    "by up to about 115%. Prefer FE on the measured wrinkle profile "
+    "(issues #439, #452)."
 )
+
+#: Warning for a bending-dominated whole-thickness wave, where the
+#: analytical knockdown is the lower of the kink-band value and the
+#: eccentric-column bound (issue #452).
+BENDING_BOUND_CAVEAT = (
+    "This wrinkle moves the laminate's load path through its whole "
+    "thickness (load-path eccentricity e/t at or above "
+    f"{ECCENTRICITY_REGIME_THRESHOLD:.2f}), so the section bends as well "
+    "as kinks. The analytical knockdown is therefore the lower of the "
+    "kink-band knockdown and an eccentric-column bending bound, "
+    "(t_c/t_0) / (1 + 6 e/t_c). On the measured whole-thickness waves in "
+    "this regime the bound brought the worst unsafe miss from +52% to "
+    "+15%, so it is a screening bound, not a validated allowable: check "
+    "it against FE on the measured wrinkle profile (issue #452)."
+)
+
+
+def bending_caveat(bending_dominated: bool, bound_applied: bool) -> str | None:
+    """The bending warning that goes with a result, or ``None``.
+
+    :data:`BENDING_BOUND_CAVEAT` when the eccentric-column bound was
+    applied, :data:`BENDING_REGIME_CAVEAT` when the result is
+    bending-dominated but the bound does not cover it, ``None`` otherwise.
+    """
+    if not bending_dominated:
+        return None
+    return BENDING_BOUND_CAVEAT if bound_applied else BENDING_REGIME_CAVEAT
+
 
 #: x samples per shortest wavelength when measuring the offset.
 _SAMPLES_PER_WAVELENGTH = 16
@@ -80,6 +129,13 @@ class LoadPathEccentricity:
     section_thickness_mm : float
         Laminate thickness at that position (mm); below ``thickness_mm``
         where the wrinkle thins the section (a one-sided trough).
+    top_surface_offset_mm, bottom_surface_offset_mm : float
+        How far each outer surface is itself displaced at that position
+        (mm), from the straight line joining its own values at the two
+        ends of the domain, signed positive in the direction of the
+        load-path offset (issue #452). A whole-thickness wave moves both
+        by about ``e_mm``; a surface pinned flat by the tool gives ~0;
+        a negative value means the surface moved the other way.
     """
 
     e_mm: float
@@ -87,6 +143,51 @@ class LoadPathEccentricity:
     thickness_mm: float
     x_mm: float
     section_thickness_mm: float
+    top_surface_offset_mm: float = 0.0
+    bottom_surface_offset_mm: float = 0.0
+
+    @property
+    def whole_thickness(self) -> bool:
+        """Whether both outer surfaces follow the load path (issue #452).
+
+        ``True`` when the load path is offset at all and each outer
+        surface moves, in the same direction at the same section, by at
+        least :data:`WHOLE_THICKNESS_SURFACE_FRACTION` of that offset:
+        the section is displaced bodily, as an eccentric column, rather
+        than thinned or thickened on one side (a one-sided trough) or
+        only misaligned inside flat surfaces (an embedded wrinkle).
+        Measured on the generated ply boundaries, so it holds for every
+        morphology, decay setting and multi-wrinkle layout alike.
+        """
+        if self.e_mm <= 0.0:
+            return False
+        least = min(self.top_surface_offset_mm, self.bottom_surface_offset_mm)
+        return bool(least >= WHOLE_THICKNESS_SURFACE_FRACTION * self.e_mm)
+
+
+def bending_knockdown(ecc: LoadPathEccentricity) -> float:
+    """Eccentric-column bending knockdown of a wrinkled section (#452).
+
+    The far-field load ``P = sigma * t_0`` acts along the load line, a
+    distance ``e`` from the centroid of the section at the wrinkle, whose
+    thickness is ``t_c``. The outer fibres there carry::
+
+        P / t_c * (1 + 6 e / t_c)
+
+    (axial plus ``M / Z`` with ``M = P e`` and ``Z = t_c**2 / 6`` per unit
+    width), so they reach the pristine strength at::
+
+        KD_bend = (t_c / t_0) / (1 + 6 e / t_c)
+
+    Homogeneous-section beam theory, with no ``P``-delta amplification:
+    it is meant as a screening bound alongside the kink-band knockdown,
+    not as a column-stability check. ``1.0`` for a zero offset.
+    """
+    t_0 = float(ecc.thickness_mm)
+    t_c = float(ecc.section_thickness_mm)
+    if t_0 <= 0.0 or t_c <= 0.0:
+        return 1.0
+    return (t_c / t_0) / (1.0 + 6.0 * float(ecc.e_mm) / t_c)
 
 
 def _axial_modulus(material, angle_deg: float) -> float:
@@ -126,7 +227,10 @@ def load_path_eccentricity(
     For each (x, y) column the plies' mid-heights are weighted by their
     thickness and their CLT axial modulus to give the centroid; the result
     is the largest offset of that centroid from the straight line between
-    its values at the two ends of the domain.
+    its values at the two ends of the domain. The two outer surfaces are
+    measured the same way, at that section, so the caller can tell a
+    whole-thickness wave from a one-sided trough
+    (:attr:`LoadPathEccentricity.whole_thickness`).
 
     Parameters
     ----------
@@ -174,14 +278,26 @@ def load_path_eccentricity(
 
     # Straight load line through the end centroids, per y line.
     frac = (x - x[0]) / (x[-1] - x[0])
-    line = centroid[:, :1] + (centroid[:, -1:] - centroid[:, :1]) * frac
-    offset = np.abs(centroid - line)
+
+    def _from_end_line(surface: np.ndarray) -> np.ndarray:
+        line = surface[:, :1] + (surface[:, -1:] - surface[:, :1]) * frac
+        return np.asarray(surface - line)
+
+    signed = _from_end_line(centroid)
+    offset = np.abs(signed)
     j, i = np.unravel_index(int(np.argmax(offset)), offset.shape)
     e = float(offset[j, i])
+    # Each outer surface at the same section, positive in the direction
+    # the load path moved (issue #452).
+    direction = float(np.sign(signed[j, i]))
+    top = direction * float(_from_end_line(z[-1])[j, i])
+    bottom = direction * float(_from_end_line(z[0])[j, i])
     return LoadPathEccentricity(
         e_mm=e,
         ratio=e / thickness if thickness > 0.0 else 0.0,
         thickness_mm=thickness,
         x_mm=float(x[i]),
         section_thickness_mm=float(z[-1, j, i] - z[0, j, i]),
+        top_surface_offset_mm=top,
+        bottom_surface_offset_mm=bottom,
     )

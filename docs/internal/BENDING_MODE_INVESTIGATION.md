@@ -96,7 +96,8 @@ reach the pristine strength at
 
     KD_bend = (t_c / t_0) / (1 + 6 e / t_c)
 
-and the prototype predicts min(deployed, KD_bend). Results:
+and the prototype predicts min(deployed, KD_bend). Results (before
+issue #452 shipped the bound, so "deployed" is the kink-band alone):
 
 | Case | e/t | Measured | Deployed | Prototype |
 |---|---|---|---|---|
@@ -121,16 +122,23 @@ all 50 cases the prototype cuts the >15% misses from 6 to 4.
    `load_path_eccentricity_ratio` (e/t) and flags `bending_dominated`
    for compression at e/t ≥ 0.10 (`wrinklefe.core.eccentricity`). The
    flag reaches the text summary, the results JSON (schema 1.3), the NCR
-   summary and the app, and changes no number. This study now uses the
-   same measurement.
+   summary and the app. On its own it changes no number (stage 3 below
+   does). This study now uses the same measurement.
 2. **Prefer FE above the threshold in the guidance** in
    `docs/interpreting_results.md`, for the specimen's own geometry. Do
    not prefer it below the threshold, where FE is unsafe on 29 of 39
    cases.
-3. **Do not ship KD_bend as a knockdown yet.** It helps whole-thickness
-   waves but misses the one-sided trough. It could serve as a
-   conservative screening bound for whole-thickness waves, after more
-   data.
+3. **Ship KD_bend for whole-thickness waves only.** *Implemented
+   (issue #452):* a compression analysis that is bending-dominated AND
+   whose two outer surfaces both follow the load path
+   (`whole_thickness_wave`: each moves, the same way, by at least half
+   of e at the section of largest offset) predicts
+   min(kink-band, KD_bend), and reports which governed
+   (`governing_bound`, results JSON schema 1.5). It moves exactly the
+   three cases in the table above (Thor wave 1, Elhajjar A = 0.61 and
+   0.73 mm) and nothing below e/t = 0.10. The one-sided trough is not
+   covered: it keeps the warning and the advice to run FE. Tension is
+   untouched.
 
 **Needs data:**
 - **Threshold.** The 0.10–0.15 transition holds 3 cases from 2 studies.

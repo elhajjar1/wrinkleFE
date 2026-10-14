@@ -26,7 +26,7 @@ break consumers; see :data:`SCHEMA_VERSION` for when to bump it.
 Both this module and :mod:`wrinklefe.io.export` define a function named
 ``export_results_json``, and the two documents are almost entirely
 disjoint.  On an FE run the legacy document emits 33 leaf paths and
-this one 138, and all they share are ``provenance`` and the three
+this one 152, and all they share are ``provenance`` and the three
 ``mesh`` counts; on an analytical-only run (no ``mesh`` block) the
 overlap outside ``provenance`` is empty.  Not one result, prediction or
 configuration value is reachable by the same path in both, partly
@@ -76,8 +76,14 @@ if TYPE_CHECKING:
 #: ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue #439);
 #: 1.4 added the ``scope`` block: the manufacturing process and whether
 #: it, or a penetration-gate preset, is outside the validated scope
-#: (issue #445).
-SCHEMA_VERSION = "1.4"
+#: (issue #445); 1.5 added the ``analytical`` keys
+#: ``whole_thickness_wave``, ``bending_bound_applied``,
+#: ``bending_knockdown``, ``kink_band_knockdown`` and ``governing_bound``:
+#: the eccentric-column bending bound on a bending-dominated
+#: whole-thickness wave (issue #452). ``analytical_knockdown`` keeps its
+#: meaning (the analytical prediction) and is the lower of the two bounds
+#: when the bending bound applies.
+SCHEMA_VERSION = "1.5"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -408,6 +414,20 @@ def results_to_dict(results: AnalysisResults) -> dict:
                 results.load_path_eccentricity_ratio
             ),
             "bending_dominated": bool(results.bending_dominated),
+            # Issue #452. ``governing_bound`` is "kink_band" or "bending"
+            # in compression and null in tension; the two knockdowns are
+            # null where they do not apply.
+            "whole_thickness_wave": bool(results.whole_thickness_wave),
+            "bending_bound_applied": bool(results.bending_bound_applied),
+            "bending_knockdown": (
+                _f(results.bending_knockdown)
+                if results.bending_knockdown is not None else None
+            ),
+            "kink_band_knockdown": (
+                _f(results.kink_band_knockdown)
+                if results.kink_band_knockdown is not None else None
+            ),
+            "governing_bound": results.governing_bound,
         },
         # Issue #445: reporting only. The caveats apply to every
         # knockdown in this document, not only the analytical ones.

@@ -65,8 +65,9 @@ def test_graded_ud_sets_keep_their_errors():
 
 
 def test_analytical_parity_count():
-    """58 of the 77 analytical cases (quarantined L excluded) are within
-    +/-20 %, as docs/interpreting_results.md says (55 before #451)."""
+    """60 of the 77 analytical cases (quarantined L excluded) are within
+    +/-20 %, as docs/interpreting_results.md says (55 before #451, 58
+    after it, 60 once the bending bound of #452 is also applied)."""
     sys.path.insert(0, str(_ROOT / "validation"))
     import plot_all_validation as pav
 
@@ -78,9 +79,9 @@ def test_analytical_parity_count():
         errs = [abs(p - m) / m for m, p in fn()]
         total += len(errs)
         inside += sum(e <= 0.20 for e in errs)
-    assert (inside, total) == (58, 77)
+    assert (inside, total) == (60, 77)
     text = (_ROOT / "docs" / "interpreting_results.md").read_text()
-    assert "58 of the 77 analytical cases fall within ±20%" in text
+    assert "60 of the 77 analytical cases fall within ±20%" in text
 
 
 def test_docs_quote_the_moves():
