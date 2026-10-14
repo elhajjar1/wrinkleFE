@@ -74,6 +74,30 @@ overrides used only for this measurement. Today that is Dataset H's
 one-sided trough, `tool_flat` with a 10-ply ramp, as in
 `validation/bending_mode_study.py`.
 
+A user who models such a trough the way the knockdown recipe does gets
+no bending warning (issue #461). `graded` with decay floor 0 keeps both
+outer surfaces flat. On Shi's recipes it measures e/t = 0 on the UD half
+(the centroid of a section with flat surfaces is midway between them)
+and 0.012 to 0.030 on the multidirectional half. The `eccentricity_recipe`
+gives 0.05 to 0.18 and flags the 20% and 30% troughs. No detector was
+added, because nothing in a `graded` trough's inputs separates it from
+an embedded wrinkle. Over the 31 `graded` compression cases (the ledger
+plus Datasets C and E), Krishnappa's embedded L-WM-4-3 has a higher
+amplitude-to-thickness ratio (0.207) than Shi's 20% troughs (0.200). Li's
+embedded S-M-3 has a higher amplitude-to-wavelength ratio (0.093 against
+0.069) and peak angle (30° against 23.5°). Every single-metric threshold
+that warns on Shi's 20% troughs therefore also warns on an embedded
+wrinkle. The product of the two ratios does split them, at 0.0138
+against 0.0113 for the nearest embedded case. That boundary is fitted
+to Shi's two trough geometries (the UD and multidirectional halves
+share them) and has no mechanism behind it, so it was not adopted.
+Users are steered to `tool_flat` instead:
+`docs/interpreting_results.md` ("One-sided surface troughs"), the app's
+**Morphology** help and the CLI's `--morphology` help
+(`wrinklefe.core.eccentricity.ONE_SIDED_TROUGH_ADVICE`).
+`tests/test_trough_morphology.py` pins these numbers and checks that
+no embedded case is flagged.
+
 ## Included datasets
 
 See the table in [README.md](../../README.md). Current sources:

@@ -24,6 +24,31 @@ version produced a given file.
   strengths. CONTRIBUTING.md gains a section on how a dataset enters the
   ledger, when it is quarantined and when a new manufacturing route
   comes into scope; the README points to the form.
+- Docs and app — **one-sided surface troughs are steered to `tool_flat`**
+  (issue #461, part 1). The bending-dominated flag (issue #439) is
+  measured on the modelled geometry, and `graded` with decay floor 0
+  keeps both outer surfaces flat. A trough modelled that way therefore
+  read as an embedded wrinkle and got no warning: e/t 0 on Shi's UD
+  troughs and at most 0.03 on the multidirectional ones, where the
+  analytical knockdown is up to 115% unsafe. As `tool_flat` with the
+  tool face pinned, the 20% and 30% troughs are flagged (e/t 0.10 to
+  0.18).
+  - No detector was added on `graded`. Its inputs overlap the measured
+    embedded wrinkles' (amplitude/thickness up to 0.207, peak angle up to
+    30°, against 0.200 and 23.5° for Shi's 20% trough), so any threshold
+    would also warn on embedded wrinkles.
+  - New `wrinklefe.core.eccentricity.ONE_SIDED_TROUGH_ADVICE`, shown in
+    the app's **Morphology** help and the CLI's `--morphology` help. The
+    app also adds a caption under the `graded` decay floor. The
+    `AnalysisConfig.morphology` docstring now lists `tool_flat` and says
+    which morphology fits which wrinkle.
+  - `docs/interpreting_results.md` gains "One-sided surface troughs:
+    model them as `tool_flat`", with what each morphology reports for
+    Shi's troughs. The guidance table and `VALIDATION.md` carry the
+    evidence. `tests/test_trough_morphology.py` pins it, including that
+    no embedded case (ledger, Datasets C, D and E) is flagged.
+  - Reporting and guidance only: no knockdown, flag or margin changes,
+    and `scripts/validate.py` shows zero drift.
 - CZM — **a per-load-increment damage record** (issue #453).
   `AnalysisResults.czm_damage_history`
   (`wrinklefe.solver.czm_history.CzmDamageHistory`) holds, after every

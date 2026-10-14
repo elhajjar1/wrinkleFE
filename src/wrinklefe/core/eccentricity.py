@@ -28,6 +28,19 @@ compression knockdown becomes the lower of the kink-band value and that
 bound. A one-sided trough (one surface pinned flat by the tool) is not
 covered: the bound did not explain its measured knockdown, so it keeps
 the warning and the advice to run FE.
+
+The measurement reads the geometry the user modelled, not the specimen
+(issue #461). ``graded`` with ``decay_floor=0`` keeps both outer surfaces
+flat, which is what an embedded wrinkle is. On a UD laminate the centroid
+of such a section is exactly midway between its flat surfaces, so ``e``
+is zero at any amplitude. On a multidirectional one only the stiffness
+redistribution moves it (``e / t`` at most 0.03 on Shi's troughs). A
+one-sided surface trough modelled as ``graded`` therefore gets no
+warning. Its inputs are those of an embedded wrinkle: measured embedded
+wrinkles reach the same amplitude-to-thickness ratio, peak angle and
+amplitude-to-wavelength ratio as Shi's troughs. So nothing detects it,
+and :data:`ONE_SIDED_TROUGH_ADVICE` steers users to ``tool_flat``
+instead.
 """
 
 from __future__ import annotations
@@ -85,6 +98,24 @@ BENDING_BOUND_CAVEAT = (
     "this regime the bound brought the worst unsafe miss from +52% to "
     "+15%, so it is a screening bound, not a validated allowable: check "
     "it against FE on the measured wrinkle profile (issue #452)."
+)
+
+
+#: Which morphology to pick for a one-sided surface trough (issue #461).
+#: The load-path eccentricity measures the modelled geometry, and
+#: ``graded`` (decay floor 0) models flat outer surfaces, so it cannot
+#: see a trough. Shown where the morphology is chosen (the app's
+#: morphology selector and the CLI's ``--morphology`` help), so they
+#: cannot disagree. Plain text with no ``%``, because argparse
+#: %-formats help strings.
+ONE_SIDED_TROUGH_ADVICE = (
+    "Model a one-sided surface trough (one outer surface follows the "
+    "wrinkle, the other is flat on the tool) as 'tool_flat', pinning only "
+    "the tool face (surface_pocket_side 'top' or 'bottom', not 'both'). "
+    "Do not model it as 'graded'. 'graded' with decay floor 0 keeps both "
+    "outer surfaces flat, which is an embedded wrinkle. The load-path "
+    "eccentricity check then sees no offset, so a trough deep enough to "
+    "bend the section gets no bending-dominated warning (issue #461)."
 )
 
 

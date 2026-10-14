@@ -1061,8 +1061,8 @@ class AnalysisConfig:
         extent of the wrinkle in the 3-D dual-wrinkle / graded mesh
         deformation.  Default 12.0.  Must be > 0.
     morphology : str
-        Morphology name. Five values are accepted; the first three are
-        *dual-wrinkle* modes distinguished by phase, the last two are
+        Morphology name. Six values are accepted; the first three are
+        *dual-wrinkle* modes distinguished by phase, the last three are
         *single-wrinkle* modes distinguished by their through-thickness
         amplitude profile:
 
@@ -1083,6 +1083,20 @@ class AnalysisConfig:
         - ``'graded'`` — one wrinkle, linear decay from mid-ply to the
           surfaces with the ``decay_floor`` knob (0 = full decay to
           zero, 1 = same as ``'uniform'``).
+        - ``'tool_flat'`` — one wrinkle, full amplitude in the core and
+          a linear ramp over ``surface_transition_plies`` plies to an
+          exactly flat face on ``surface_pocket_side`` (cured against
+          the tool).
+
+        Pick by what the outer surfaces do. Use ``'graded'`` (or a
+        dual-wrinkle mode) when both stay flat, as over an embedded
+        wrinkle, and ``'uniform'`` when both are wavy. Use
+        ``'tool_flat'``, with ``surface_pocket_side`` set to the tool
+        face, when one is flat on the tool and the other follows the
+        wrinkle (a one-sided surface trough). A trough modelled as
+        ``'graded'`` gets no bending-dominated warning: ``'graded'``
+        keeps both surfaces flat, and the load-path eccentricity
+        measures the modelled geometry (issue #461).
     phase : float or None
         Explicit dual-wrinkle phase offset phi [radians] between the two
         wrinkle centrelines.  When ``None`` (default), the phase is

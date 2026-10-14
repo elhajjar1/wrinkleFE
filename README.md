@@ -26,7 +26,7 @@ Public link, no account needed.
 - **Compression model:** CLT-weighted Budiansky-Fleck kink-band with layup-dependent confinement
 - **Tension model:** Three-mechanism (fiber cos^2 theta, Hashin matrix, curved-beam sigma_33 delamination) with thick-ply in-situ correction
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
-- **Five morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) — compared side by side in one click from the app (**Compare morphologies**) or the CLI (`wrinklefe compare`)
+- **Six morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) and tool_flat (one surface flat on the tool, for one-sided surface troughs) — compared side by side in one click from the app (**Compare morphologies**) or the CLI (`wrinklefe compare`)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **Movable wrinkle position:** Configurable through-thickness placement (`wrinkle_z_position`, 0.5 = mid-plane)
 - **Multi-wrinkle configurations:** Arbitrary N-wrinkle layouts via `AnalysisConfig.wrinkles` — a list of `WrinkleSpec(amplitude, wavelength, width, ply_interface, phase_offset)` — through the analytical, FE, penetration-gate (per-spec, weakest-link) and CZM paths
@@ -1275,7 +1275,7 @@ three datasets.
 
 ## Supported morphologies
 
-WrinkleFE ships five wrinkle morphologies (defined in
+WrinkleFE ships six wrinkle morphologies (defined in
 `src/wrinklefe/core/morphology.py`). They differ along *two* independent
 axes: **how many wrinkles** are placed in the laminate and **how the
 amplitude varies through the thickness**. The first three names below
