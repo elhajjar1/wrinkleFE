@@ -15,6 +15,14 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Community — **a "Contribute a validation dataset" issue form**
+  (`.github/ISSUE_TEMPLATE/validation_dataset.yml`). It asks for what a
+  validation-ledger entry needs: source and DOI, permission to publish
+  the values, material and layup, manufacturing route, laminate quality,
+  wrinkle geometry and how it was made, and the measured and pristine
+  strengths. CONTRIBUTING.md gains a section on how a dataset enters the
+  ledger, when it is quarantined and when a new manufacturing route
+  comes into scope; the README points to the form.
 - CZM — **a per-load-increment damage record** (issue #453).
   `AnalysisResults.czm_damage_history`
   (`wrinklefe.solver.czm_history.CzmDamageHistory`) holds, after every

@@ -1,0 +1,134 @@
+name: Contribute a validation dataset
+description: Share measured strengths of wrinkled laminates so every WrinkleFE model can be scored against them.
+title: "data: <first author, year> — <material>, <compression or tension>"
+labels: ["validation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Every dataset that enters the validation ledger is scored against every applicable model, cited by name in the validation record, and kept as a permanent regression test. CONTRIBUTING.md ("Contributing a validation dataset") explains what happens next.
+
+        Most wanted right now: one-sided surface troughs, multidirectional laminates in compression, and laminates made by resin transfer moulding, infusion or wet lay-up.
+
+        **Share numbers, not papers.** Please do not attach a copyrighted PDF. Give the citation or DOI and the values. A CSV or spreadsheet attached to this issue is ideal.
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: Paper, thesis, report or dataset, with its DOI if it has one.
+      placeholder: "Thor et al. (2021), Int. J. Material Forming 14:19-37, DOI 10.1007/s12289-020-01540-5"
+    validations:
+      required: true
+  - type: dropdown
+    id: relationship
+    attributes:
+      label: Your relationship to the data
+      options:
+        - I generated it or co-authored the work
+        - It is published; I am reporting values from the publication
+        - Other (explain under "Anything else")
+    validations:
+      required: true
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Sharing
+      options:
+        - label: These values may be published in the WrinkleFE repository and documentation, with credit to the source.
+          required: true
+        - label: I am not attaching a copyrighted paper.
+          required: true
+  - type: input
+    id: material
+    attributes:
+      label: Material system
+      description: Fibre and resin, and the `MaterialLibrary` name if it is a built-in material.
+      placeholder: "IM7/8552 carbon/epoxy prepreg (IM7_8552)"
+    validations:
+      required: true
+  - type: textarea
+    id: lamina
+    attributes:
+      label: Lamina properties (if not a built-in material)
+      description: E1, E2, G12 and ν12, and the strengths Xt, Xc, Yt, Yc and S12, with their source. The compression models need S12 and Xc in particular.
+    validations:
+      required: false
+  - type: input
+    id: layup
+    attributes:
+      label: Layup and ply thickness
+      description: Stacking sequence (contracted notation accepted) and the cured ply thickness.
+      placeholder: "[0/45/90/-45]_2s, ply 0.131 mm"
+    validations:
+      required: true
+  - type: dropdown
+    id: process
+    attributes:
+      label: Manufacturing route
+      options:
+        - Prepreg, autoclave cure
+        - Prepreg, press or closed-mould cure
+        - Prepreg, vacuum-bag oven cure (out of autoclave)
+        - Resin transfer moulding (RTM)
+        - Vacuum infusion (VARTM)
+        - Wet lay-up
+        - Another process (describe under "Anything else")
+        - Not reported
+    validations:
+      required: true
+  - type: textarea
+    id: quality
+    attributes:
+      label: Laminate quality
+      description: Fibre volume fraction, porosity or void content, the test standard used, and whether the undamaged baseline met it. These decide whether the dataset joins the pooled statistics or is kept apart.
+      placeholder: "Vf = 58%, porosity 1.2% (CT), ASTM D6641, baseline within the standard's scatter"
+    validations:
+      required: false
+  - type: textarea
+    id: geometry
+    attributes:
+      label: Wrinkle geometry and how it was made
+      description: Amplitude (say whether peak-to-peak or half), wavelength, and where the wrinkle sits through the thickness — a wave through the whole thickness, a one-sided surface trough, or embedded under flat surfaces. Say how it was induced (rod, strip, tool shape, naturally occurring) and how it was measured (sectioning, CT, profilometry).
+    validations:
+      required: true
+  - type: dropdown
+    id: loading
+    attributes:
+      label: Loading
+      options:
+        - Compression
+        - Tension
+        - Other (describe under "Anything else")
+    validations:
+      required: true
+  - type: textarea
+    id: test
+    attributes:
+      label: Test method and specimens
+      description: Test standard or fixture, specimen dimensions, and the number of specimens per case.
+    validations:
+      required: false
+  - type: textarea
+    id: results
+    attributes:
+      label: Measured strengths
+      description: One row per case — the wrinkle geometry, the measured failure strength and the matching undamaged (pristine) strength, with scatter if you have it. Modulus and damage-onset values are welcome too.
+      placeholder: |
+        | case | amplitude (mm) | wavelength (mm) | strength (MPa) | pristine (MPa) | specimens |
+        |------|----------------|-----------------|----------------|----------------|-----------|
+        | W1   | 1.19 (half)    | 27.9            | 333.5 ± 12     | 1322.3         | 5         |
+    validations:
+      required: true
+  - type: textarea
+    id: failure
+    attributes:
+      label: Observed failure modes
+      description: Kinking, delamination, bending of the coupon, fibre breakage, and where failure started.
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+    validations:
+      required: false
