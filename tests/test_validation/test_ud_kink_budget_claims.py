@@ -76,25 +76,41 @@ def test_ud_tension_keeps_its_errors():
 
 
 def test_analytical_parity_count():
-    """62 of the 77 analytical cases (quarantined L excluded) are within
-    +/-20 %, as docs/interpreting_results.md says (55 before #451, 58
-    after it, 60 with the bending bound of #452, 64 with the tension
-    corrections of #454, 62 once Shi's recipe became the one-sided
-    ``tool_flat`` trough of #461)."""
+    """61 of the 74 analytical strength cases (quarantined L excluded)
+    are within +/-20 %: the headline parity figure, which leaves out the
+    first-ply FE and onset series. docs/interpreting_results.md quotes
+    it."""
     sys.path.insert(0, str(_ROOT / "validation"))
     import plot_all_validation as pav
 
     held_out = pav.quarantined()
     total = inside = 0
     for label, (fn, _c, _m, _method) in pav.DATASETS.items():
-        if "(FE)" in label or label in held_out:
+        if not pav.is_headline(label) or label in held_out:
             continue
         errs = [abs(p - m) / m for m, p in fn()]
         total += len(errs)
         inside += sum(e <= 0.20 for e in errs)
-    assert (inside, total) == (62, 77)
+    assert (inside, total) == (61, 74)
     text = (_ROOT / "docs" / "interpreting_results.md").read_text()
-    assert "62 of the 77 analytical cases fall within ±20%" in text
+    assert "61 of the 74 analytical strength cases fall within ±20%" in text
+
+
+def test_headline_figure_holds_only_analytical_strength_series():
+    """Every series lands in exactly one figure: first-ply FE and onset
+    series in the second, everything else in the headline."""
+    sys.path.insert(0, str(_ROOT / "validation"))
+    import plot_all_validation as pav
+
+    headline = [lab for lab in pav.DATASETS if pav.is_headline(lab)]
+    second = [lab for lab in pav.DATASETS if not pav.is_headline(lab)]
+    assert len(headline) + len(second) == len(pav.DATASETS)
+    assert all("(FE)" not in lab and "onset" not in lab.lower()
+               for lab in headline)
+    assert "M ElhajjarShams2016 onset (FE)" in second
+    assert "C Mukhopadhyay onset" in second
+    for method in ("FE LaRC05 retention", "FE LaRC05 first-ply onset"):
+        assert all(pav.DATASETS[lab][3] != method for lab in headline)
 
 
 def test_docs_quote_the_moves():

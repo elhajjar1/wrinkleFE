@@ -1198,22 +1198,28 @@ possible — their raw data are not included.
 
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
-regenerates `validation/fig_all_validation_parity.png`: a single parity
-plot of every case (Datasets A–F plus Datasets H to M) against
-a ±20% band, with each dataset predicted by the model that physically
-applies to it (Budiansky–Fleck / three-mechanism for the
-multidirectional cases A–D, the penetration gate for the UD cases E/F;
-Datasets H to L, which have no gate preset, are plotted twice —
-analytical and first-ply FE LaRC05 retention; Dataset M's tension
-coupons are plotted against both their ultimate and their measured
-damage onset). 77 of the 105 points fall inside the band. Of the 28
-outside it, 20 are conservative: four of them the kink-band on UD carbon
-(Datasets J and K, −22% to −23% since the UD strain budget was anchored
-to the material card, issue #451), three of them Dataset M tension
-coupons (−22% to −23%) and five of them the analytical path on
-Dataset H's one-sided troughs (−22% to −71%). The 8 that are not are
-all first-ply FE onset estimates on Dataset M, +23% to +154% against
-the measured damage onset.
+regenerates two parity figures against a ±20% band. The headline,
+`validation/fig_all_validation_parity.png`, plots the analytical
+prediction the package reports by default against each case's
+ultimate strength, one point per case (Datasets A–F plus H to M), with
+each dataset predicted by the model that physically applies to it
+(Budiansky–Fleck / three-mechanism for the multidirectional cases,
+the penetration gate for the UD glass cases E/F). 61 of its 74 cases
+fall inside the band and none is more than 20% unsafe. The 13 outside
+it are all conservative: five of Dataset H's one-sided troughs (−22%
+to −71%), four of the kink-band on UD carbon (Datasets J and K, −22% to
+−23% since the UD strain budget was anchored to the material card,
+issue #451), three Dataset M tension coupons (−22% to −23%) and one of
+Wang's wrinkles (−27%).
+
+The second figure, `validation/fig_fe_onset_parity.png`, holds the
+estimates that are not the default prediction or not of the ultimate
+strength: first-ply FE retention on Datasets H to L, Dataset M's
+first-ply FE onset against its measured damage onset, and
+Mukhopadhyay's analytical onset estimate. 16 of its 31 points fall
+inside the band. The 8 more than 20% unsafe are all first-ply FE onset
+estimates on Dataset M, +23% to +154% against the measured damage
+onset, which the FE warning and the guidance already say.
 
 No analytical point now falls outside the band on the unsafe side.
 - Dataset H's troughs were three such points (+26% UD; +56% and +115%

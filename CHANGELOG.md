@@ -407,6 +407,17 @@ version produced a given file.
   that no script regenerates; the parity chart supersedes them.
 
 ### Changed
+- Validation — **the parity chart is split in two.**
+  `validation/fig_all_validation_parity.png` now plots only the
+  analytical prediction the package reports by default against each
+  case's ultimate strength, one point per case: 61 of 74 inside ±20%,
+  none more than 20% unsafe. The first-ply FE retention, Dataset M's
+  first-ply FE onset and Mukhopadhyay's analytical onset move to a new
+  `validation/fig_fe_onset_parity.png` (16 of 31 inside; the 8 more than
+  20% unsafe are Dataset M's FE onset estimates). The combined chart
+  counted Datasets H to L twice and mixed onset with ultimate strength
+  (77 of 105). `plot_all_validation.is_headline` decides which figure a
+  series belongs to; `strength_error_summary.py` prints both counts.
 - Warnings — **the one-sided-trough warning explains why the kink-band
   errs conservative there** (`BENDING_REGIME_CAVEAT`, issue #461). On
   Shi's measured troughs it ranged from about 70% conservative to 5%

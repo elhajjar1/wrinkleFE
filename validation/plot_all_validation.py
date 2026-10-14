@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""Single combined validation chart: predicted vs experimental knockdown.
+"""Validation parity charts: predicted vs experimental knockdown.
+
+Two figures, split so the headline compares one quantity measured one
+way:
+
+  * ``fig_all_validation_parity.png`` (the headline): the analytical
+    prediction the package reports by default against each case's
+    ultimate strength, one point per case. Its pooled count is the one
+    the README, the docs and the JOSS paper quote.
+  * ``fig_fe_onset_parity.png``: the first-ply FE retention (Datasets H
+    to L) and the damage-onset estimates (Dataset M's first-ply FE
+    onset, Mukhopadhyay's analytical onset). FE strength is indicative,
+    not the default prediction, and onset is a different measured
+    quantity, so these are scored on their own. :func:`is_headline`
+    decides which figure a series belongs to.
+
+The rest of this docstring describes the series themselves.
 
 Plots every *single-wrinkle* experimental case in the WrinkleFE validation
 database (Datasets A-F of VALIDATION_DATA, plus the ledger's Datasets H
@@ -467,6 +483,16 @@ _LEDGER_SERIES = {
 }
 
 
+def is_headline(label: str) -> bool:
+    """True for a series in the headline figure.
+
+    The headline plots the analytical prediction against the ultimate
+    strength. First-ply FE series (``(FE)`` in the label) and onset
+    series go to the second figure.
+    """
+    return "(FE)" not in label and "onset" not in label.lower()
+
+
 def quarantined() -> set[str]:
     """Parity series whose ledger dataset is quarantined (issue #445).
 
@@ -477,7 +503,9 @@ def quarantined() -> set[str]:
             if "quarantine" in _ledger_dataset(prefix)}
 
 
-def main():
+def _render(labels, title: str, out: Path) -> tuple[list, list]:
+    """Draw one parity figure for *labels*; return pooled and quarantined
+    relative errors."""
     fig, ax = plt.subplots(figsize=(12.5, 8.0))
 
     # +/-20 % corridor around the parity diagonal.
@@ -490,7 +518,8 @@ def main():
     print("-" * 46)
     held_out = quarantined()
     all_err, q_err = [], []
-    for label, (fn, colour, marker, method) in DATASETS.items():
+    for label in labels:
+        fn, colour, marker, method = DATASETS[label]
         pairs = fn()
         exp = np.array([p[0] for p in pairs])
         pred = np.array([p[1] for p in pairs])
@@ -524,17 +553,37 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Experimental knockdown  $KD_{exp}$")
     ax.set_ylabel("Predicted knockdown  $KD_{pred}$")
-    ax.set_title("WrinkleFE validation -- all cases (A-M)\n"
-                 "marker = method, colour = dataset, band = +/-20 %, "
-                 "hollow = quarantined")
+    ax.set_title(title)
     ax.grid(alpha=0.3)
-    # 20 series: the legend sits outside the axes so it hides no points.
+    # The legend sits outside the axes so it hides no points.
     ax.legend(fontsize=7.5, loc="upper left", bbox_to_anchor=(1.02, 1.0),
               framealpha=0.95)
     fig.tight_layout()
-    out = REPO / "validation" / "fig_all_validation_parity.png"
     fig.savefig(out, dpi=300)
-    print(f"\nSaved {out}")
+    plt.close(fig)
+    print(f"\nSaved {out}\n")
+    return all_err, q_err
+
+
+def main():
+    headline = [label for label in DATASETS if is_headline(label)]
+    secondary = [label for label in DATASETS if not is_headline(label)]
+    print("Headline: the analytical prediction against the ultimate strength")
+    _render(
+        headline,
+        "WrinkleFE validation -- analytical prediction vs ultimate strength "
+        "(A-M)\nmarker = method, colour = dataset, band = +/-20 %, "
+        "hollow = quarantined",
+        REPO / "validation" / "fig_all_validation_parity.png",
+    )
+    print("Second figure: first-ply FE retention and damage-onset estimates")
+    _render(
+        secondary,
+        "First-ply FE retention and damage-onset estimates "
+        "(not in the headline count)\nmarker = method, colour = dataset, "
+        "band = +/-20 %, hollow = quarantined",
+        REPO / "validation" / "fig_fe_onset_parity.png",
+    )
 
 
 if __name__ == "__main__":

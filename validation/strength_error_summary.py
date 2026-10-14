@@ -116,21 +116,28 @@ def analytical_section() -> None:
           f"{'min%':>7s} {'max%':>7s} {'non-cons.':>9s}")
     held_out = pav.quarantined()
     total = outside = q_total = q_outside = 0
+    s_total = s_outside = 0
     for label, (fn, _c, _m, method) in pav.DATASETS.items():
         errs = [_err(p, m) for m, p in fn()]
         n_out = sum(abs(e) > 20.0 for e in errs)
         if label in held_out:
             q_total += len(errs)
             q_outside += n_out
-        else:
+        elif pav.is_headline(label):
             total += len(errs)
             outside += n_out
+        else:
+            s_total += len(errs)
+            s_outside += n_out
         nonc = sum(e > _NON_CONSERVATIVE_PCT for e in errs)
         tag = " [Q]" if label in held_out else ""
         print(f"   {label + tag:24s} {method:24s} {len(errs):3d} "
               f"{statistics.mean(abs(e) for e in errs):6.1f} "
               f"{min(errs):+7.1f} {max(errs):+7.1f} {nonc:5d}/{len(errs)}")
-    print(f"   -> {total - outside} of {total} cases within +/-20 %")
+    print(f"   -> headline (analytical vs ultimate strength): "
+          f"{total - outside} of {total} cases within +/-20 %")
+    print(f"   -> second figure (first-ply FE and onset estimates): "
+          f"{s_total - s_outside} of {s_total} within +/-20 %")
     if q_total:
         print(f"   -> quarantined [Q], not counted (issue #445): "
               f"{q_total - q_outside} of {q_total} within +/-20 %")

@@ -990,31 +990,36 @@ Findings:
 
 ### Consolidated parity chart
 
-`validation/plot_all_validation.py` renders every single-wrinkle case
-(Datasets A–F plus Datasets H to M) on one predicted-vs-experimental parity
-plot with a ±20 % corridor, writing
-`validation/fig_all_validation_parity.png`. Each dataset is predicted
-by the model that physically applies to it: multidirectional A–D via
-the analytical Budiansky–Fleck / three-mechanism models run through
-`WrinkleAnalysis`, UD E/F via the penetration gate; Datasets H to L
-(no gate preset for their carbon materials) are plotted twice,
-analytical AND first-ply FE LaRC05 retention, both recipe-exact from
-the ledger. Dataset M (tension) is plotted as the three-mechanism model
-against each coupon's ultimate and first-ply FE onset against its
-measured damage onset. This
-is the single cross-dataset predicted-vs-experimental view. Running
-the script prints the per-dataset scorecard; headline entries are
-**E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
-MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
-MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**77 of 105** points sit inside the corridor (70 before the UD strain
-budget of issue #451 brought three UD carbon cases inside, the
-bending bound of issue #452 brought Elhajjar A = 0.73 mm and Thor's
-wave 1 inside, and the tension corrections of issue #454 brought
-four tension cases inside; 79 until issue #461 corrected Dataset H's
-analytical recipe to its one-sided `tool_flat` trough, which moved
-H-UD-10, H-UD-20 and H-MD-10 out on the conservative side and H-MD-30
-in), not counting the quarantined
+`validation/plot_all_validation.py` renders two predicted-vs-experimental
+parity figures with a ±20 % corridor. The **headline**,
+`validation/fig_all_validation_parity.png`, plots the analytical
+prediction the package reports by default against each case's ultimate
+strength, one point per single-wrinkle case (Datasets A–F plus H to M).
+Each dataset is predicted by the model that physically applies to it:
+multidirectional A–D via the analytical Budiansky–Fleck /
+three-mechanism models run through `WrinkleAnalysis`, UD E/F via the
+penetration gate, and H to M via the ledger recipes. The **second
+figure**, `validation/fig_fe_onset_parity.png`, holds the first-ply FE
+LaRC05 retention of Datasets H to L, Dataset M's first-ply FE onset
+against its measured damage onset, and Mukhopadhyay's analytical onset
+estimate. They were on one chart until October 2026; they are split
+because the FE strength is indicative rather than the default
+prediction, and onset is a different measured quantity, so mixing them
+counted some cases twice and two quantities as one.
+
+Running the script prints both scorecards; headline entries are **E:
+2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **I (analytical): 8.4 %,
+1/1** (within ±20 %), and in the second figure **H-MD (FE): 5.3 % MAE,
+3/3**, **J (FE): 6.2 % / 3.6 % MAE, 4/4** and **K (FE): 4.7 % MAE,
+5/5**. Overall, **61 of the 74** headline cases sit inside the corridor
+and none is more than 20 % unsafe; the 13 outside are all conservative.
+The second figure has **16 of 31** inside; its 8 points more than 20 %
+unsafe are all Dataset M's first-ply FE onset estimates. On the combined
+chart the count was 77 of 105 (70 before the UD strain budget of issue
+#451, the bending bound of issue #452 and the tension corrections of
+issue #454; 79 until issue #461 corrected Dataset H's analytical recipe
+to its one-sided `tool_flat` trough). Neither count includes the
+quarantined
 Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
 analytical and 5 of 18 FE points inside: the kink-band is conservative
 on all 18 (mean −32%), and the FE over-predicts its embedded (mid-plane)
