@@ -1199,10 +1199,11 @@ multidirectional cases A–D, the penetration gate for the UD cases E/F;
 Datasets H to L, which have no gate preset, are plotted twice —
 analytical and first-ply FE LaRC05 retention; Dataset M's tension
 coupons are plotted against both their ultimate and their measured
-damage onset). 75 of the 105 points fall inside the band. Of the 30
-outside it, 13 are conservative, four of them the kink-band on UD carbon
+damage onset). 79 of the 105 points fall inside the band. Of the 26
+outside it, 15 are conservative: four of them the kink-band on UD carbon
 (Datasets J and K, −22% to −23% since the UD strain budget was anchored
-to the material card, issue #451). The 17 that are not:
+to the material card, issue #451) and three of them Dataset M tension
+coupons (−22% to −23%). The 11 that are not:
 - three high amplitude-to-thickness compression cases, Dataset H's
   one-sided troughs (+26% UD; +56% and +115% multidirectional). On them
   the FE retention, run on the specimen's own geometry, is within −8% to
@@ -1210,8 +1211,8 @@ to the material card, issue #451). The 17 that are not:
   to join them (the most severe wrinkle in dataset A, +30%, and Thor's
   severe quasi-isotropic wave in Dataset J, +52%) now carry an
   eccentric-column bending bound and sit at +10% and +15% (issue #452);
-- six of Dataset M's steep (22–36°) tension wrinkles under the
-  three-mechanism model, +20% to +39%;
+  six of Dataset M's steep tension wrinkles (+20% to +39%) left the list
+  when issue #454 stopped the compression floor setting them;
 - eight first-ply FE onset estimates on Dataset M, +23% to +154%
   against the measured damage onset.
 
@@ -1395,13 +1396,16 @@ KD_lam = f_0 * min(cos^2(theta), KD_matrix, KD_oop) + (1 - f_0)
 
 The 0° ply knockdown is the *most severe* of three competing mechanisms:
 fibre load-rotation (`cos^2(theta)`), in-situ matrix cracking (a
-Hashin/LaRC `σ22`–`τ12` interaction with a thick-ply in-situ strength
-correction, `KD_matrix`), and a curved-beam out-of-plane delamination
-check (`KD_oop`: the wrinkle curvature drives an interlaminar `σ33` at the
-crest and `τ13` at the flanks). A Benzeggagh–Kenane mixed-mode
-delamination-*onset* knockdown is reported alongside, and the tension
-knockdown is floored by the compression value for the same defect
-("tension is never worse than compression").
+Hashin/LaRC `σ22`–`τ12` interaction with an in-situ shear strength that
+is never below the lamina `S12`, `KD_matrix`), and a curved-beam
+out-of-plane delamination check (`KD_oop`: the wrinkle curvature drives
+an interlaminar `σ33` at the crest and `τ13` at the flanks, each bounded
+by the interface strength, so `KD_oop >= 1/sqrt(2)`: past that strength
+the interface delaminates and sheds the traction, and the ply fails later
+by fibre or matrix). A Benzeggagh–Kenane mixed-mode delamination-*onset*
+knockdown is reported alongside. The tension knockdown is not floored by
+the compression (kink-band) value. That floor was removed in issue #454:
+it set every steep-wrinkle prediction of Dataset M, unsafely.
 
 ### Graded morphology
 
@@ -1409,7 +1413,9 @@ For the `graded` morphology the knockdown is averaged over the wrinkle
 profile in both the longitudinal (`x`) and through-thickness (`z`)
 directions. The **compression** path weights each ply by a Gaussian
 through-thickness envelope centred at `wrinkle_z_position` (decay scale
-`max(λ/2, A)`); the **tension** path uses an analogous linear taper. In
+`max(λ/2, A)`); the **tension** path uses an analogous linear taper,
+applied to each ply's angle and to its amplitude (so its curvature and
+interlaminar stress) alike. In
 both, `decay_floor` sets the surface-ply amplitude: `0` is a fully
 embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 `uniform`.

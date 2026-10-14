@@ -887,7 +887,7 @@
           "measured_kd": 0.5664,
           "measured_onset_MPa": 81.9,
           "measured_onset_kd": 0.1071,
-          "expected_analytical_kd": 0.70212,
+          "expected_analytical_kd": 0.618548,
           "note": "Specimen 1: wrinkle height A = 0.8 mm, length L = 4.6 mm (Table 1); measured peak angle 30 deg (paper Fig. 2). DIC limit point 81.9 MPa, ultimate 433.3 MPa (Table 2); DIC on the back face."
         },
         {
@@ -900,7 +900,7 @@
           "measured_kd": 0.5417,
           "measured_onset_MPa": 110.6,
           "measured_onset_kd": 0.1446,
-          "expected_analytical_kd": 0.70212,
+          "expected_analytical_kd": 0.618548,
           "note": "Specimen 2: wrinkle height A = 0.8 mm, length L = 4.6 mm (Table 1); measured peak angle 30 deg (paper Fig. 2). DIC limit point 110.6 MPa, ultimate 414.4 MPa (Table 2); DIC on the back face."
         },
         {
@@ -913,7 +913,7 @@
           "measured_kd": 0.78,
           "measured_onset_MPa": 213.5,
           "measured_onset_kd": 0.2791,
-          "expected_analytical_kd": 0.790846,
+          "expected_analytical_kd": 0.655915,
           "note": "Specimen 3: wrinkle height A = 0.6 mm, length L = 3.5 mm (Table 1); measured peak angle 23 deg (paper Fig. 2). DIC limit point 213.5 MPa, ultimate 596.7 MPa (Table 2); DIC on the front face (resin-pocket side)."
         },
         {
@@ -926,7 +926,7 @@
           "measured_kd": 0.6916,
           "measured_onset_MPa": 189.7,
           "measured_onset_kd": 0.248,
-          "expected_analytical_kd": 0.790846,
+          "expected_analytical_kd": 0.655915,
           "note": "Specimen 4: wrinkle height A = 0.6 mm, length L = 3.5 mm (Table 1); measured peak angle 23 deg (paper Fig. 2). DIC limit point 189.7 MPa, ultimate 529.1 MPa (Table 2); DIC on the front face (resin-pocket side)."
         },
         {
@@ -939,7 +939,7 @@
           "measured_kd": 0.6588,
           "measured_onset_MPa": 203.5,
           "measured_onset_kd": 0.266,
-          "expected_analytical_kd": 0.790846,
+          "expected_analytical_kd": 0.655915,
           "note": "Specimen 5: wrinkle height A = 0.6 mm, length L = 3.5 mm (Table 1); measured peak angle 23 deg (paper Fig. 2). DIC limit point 203.5 MPa, ultimate 504.0 MPa (Table 2); DIC on the back face."
         },
         {
@@ -952,7 +952,7 @@
           "measured_kd": 0.6935,
           "measured_onset_MPa": 180.5,
           "measured_onset_kd": 0.2359,
-          "expected_analytical_kd": 0.708219,
+          "expected_analytical_kd": 0.598612,
           "note": "Specimen 6: wrinkle height A = 0.3 mm, length L = 1.3 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 180.5 MPa, ultimate 530.5 MPa (Table 2); DIC on the back face."
         },
         {
@@ -965,7 +965,7 @@
           "measured_kd": 0.7661,
           "measured_onset_MPa": 229.7,
           "measured_onset_kd": 0.3003,
-          "expected_analytical_kd": 0.708219,
+          "expected_analytical_kd": 0.598612,
           "note": "Specimen 7: wrinkle height A = 0.3 mm, length L = 1.3 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 229.7 MPa, ultimate 586.1 MPa (Table 2); DIC on the front face (resin-pocket side)."
         },
         {
@@ -978,7 +978,7 @@
           "measured_kd": 0.6993,
           "measured_onset_MPa": 221.8,
           "measured_onset_kd": 0.2899,
-          "expected_analytical_kd": 0.704438,
+          "expected_analytical_kd": 0.603288,
           "note": "Specimen 8: wrinkle height A = 0.5 mm, length L = 2.3 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 221.8 MPa, ultimate 535.0 MPa (Table 2); DIC on the back face."
         },
         {
@@ -991,7 +991,7 @@
           "measured_kd": 0.5847,
           "measured_onset_MPa": 169.8,
           "measured_onset_kd": 0.222,
-          "expected_analytical_kd": 0.704438,
+          "expected_analytical_kd": 0.603288,
           "note": "Specimen 9: wrinkle height A = 0.5 mm, length L = 2.3 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 169.8 MPa, ultimate 447.3 MPa (Table 2); DIC on the front face (resin-pocket side)."
         }
       ]
@@ -1035,7 +1035,7 @@
           "measured_kd": 0.5442,
           "measured_onset_MPa": 434.8,
           "measured_onset_kd": 0.2436,
-          "expected_analytical_kd": 0.538805,
+          "expected_analytical_kd": 0.420536,
           "expected_analytical_modulus_kd": 0.630229,
           "note": "Specimen 10: wrinkle height A = 0.28 mm, length L = 1.7 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 434.8 MPa, ultimate 971.4 MPa (Table 2); DIC on the front face (resin-pocket side)."
         },
@@ -1049,7 +1049,7 @@
           "measured_kd": 0.5415,
           "measured_onset_MPa": 419.0,
           "measured_onset_kd": 0.2347,
-          "expected_analytical_kd": 0.538805,
+          "expected_analytical_kd": 0.420536,
           "expected_analytical_modulus_kd": 0.630229,
           "note": "Specimen 11: wrinkle height A = 0.28 mm, length L = 1.7 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 419.0 MPa, ultimate 966.6 MPa (Table 2); DIC on the back face."
         },
@@ -1063,7 +1063,7 @@
           "measured_kd": 0.4089,
           "measured_onset_MPa": 241.1,
           "measured_onset_kd": 0.1351,
-          "expected_analytical_kd": 0.561703,
+          "expected_analytical_kd": 0.474733,
           "expected_analytical_modulus_kd": 0.700763,
           "note": "Specimen 12: wrinkle height A = 0.35 mm, length L = 2.7 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 241.1 MPa, ultimate 729.9 MPa (Table 2); DIC on the back face. Excluded from onset scoring: preloaded to 600 MPa and re-tested with DIC, after which the paper reports no z-displacement jumps, so its tabulated limit point is not a first-loading onset.",
           "onset_excluded": true
@@ -1078,7 +1078,7 @@
           "measured_kd": 0.4036,
           "measured_onset_MPa": 251.5,
           "measured_onset_kd": 0.1409,
-          "expected_analytical_kd": 0.561703,
+          "expected_analytical_kd": 0.474733,
           "expected_analytical_modulus_kd": 0.700763,
           "note": "Specimen 13: wrinkle height A = 0.35 mm, length L = 2.7 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 251.5 MPa, ultimate 720.4 MPa (Table 2); DIC on the front face (resin-pocket side)."
         }
