@@ -127,6 +127,37 @@ $$
 Net effect: a dispersed `[0/45/90/-45]s` is far more wrinkle-tolerant
 than a blocked `[0_4/90_4]s`.
 
+**UD-dominated laminates: a material-anchored budget (issue #451).** The
+confinement model was calibrated on multidirectional laminates and does
+not read the material. On the peak-angle path (every morphology except
+`graded`) a laminate with at least 75% 0° plies (`_is_ud_dominated`)
+takes its strain budget from the material card instead
+(`_ud_kink_strain_budget`):
+
+$$
+\gamma_{Y,\text{eff}} = g = \frac{S_{12}}{X_c},
+\qquad
+\mathrm{KD}_\text{BF} = \frac{g}{g + \theta_\text{eff}} \;\;(c_\text{AF}=0)
+$$
+
+This is Budiansky–Fleck with an intrinsic misalignment $\phi_0$:
+$\sigma_c = \tau_Y/(\gamma_Y + \phi_0 + \theta)$, and at $\theta = 0$ it
+must give the pristine $X_c$, so $\gamma_Y + \phi_0 = \tau_Y/X_c \approx
+S_{12}/X_c$. LaRC05 anchors its intrinsic misalignment to $X_c$ and
+$S_{12}$ the same way. The validation cards give $g$ = 0.043–0.107,
+against the confinement model's 0.032 for pure UD and its 0.016 floor
+(where a near-UD laminate with a few 90° plies lands). The confinement
+model left whole-thickness UD carbon waves 58–78% conservative (Thor,
+Pilato); with $g$ they are −10% to −23%. Every multidirectional
+validation layup has at most 40% 0° plies, so its result is unchanged.
+
+The `graded` path (§2.4) keeps $\gamma_{Y,\text{eff}}$ even for UD. Its
+budget was calibrated together with the profile average, which already
+raises the knockdown: it is not biased conservative on UD carbon (Shi
++0.2% to +26%, Hsiao & Daniel −22%), and $g$ there would push Shi's UD
+cases and Dataset M's UD tension floor up to +53% and +78% unsafe. The
+reported `gamma_Y_eff` is the budget the path actually used.
+
 ### 2.3 Morphology factor $M_f$
 
 Real wrinkles come in pairs at adjacent interfaces. The morphology factor
@@ -497,7 +528,11 @@ extremum.
 - **Compressive kinking strength is calibrated, not first-principles.**
   The physical matrix-shear-yield strain over-predicts the kink knockdown
   ~10×; the fitted $\gamma_Y$ absorbs fibre-bending physics the
-  homogenised continuum cannot resolve (findings D.2/D.4).
+  homogenised continuum cannot resolve (findings D.2/D.4). The one
+  exception is a UD-dominated laminate on the peak-angle path, whose
+  budget $S_{12}/X_c$ is read from the material card (§2.2, issue #451);
+  the graded path and every multidirectional layup keep the fitted
+  confinement model.
 - **The in-repo integration tests assert physical-sanity properties**
   (monotonicity, morphology ordering, mode bookkeeping), not absolute
   experimental agreement; the quantitative comparison lives in the
@@ -524,7 +559,8 @@ every model, see the [API reference](api/index.md).
 | $D/T$ | through-thickness penetration $A/T$ |
 | $f_0$ | axial-stiffness fraction of the 0° plies |
 | $f_\text{conf}$, $n_\text{block}$ | confinement fraction, longest 0° block |
-| $\gamma_{Y,\text{eff}}$ | effective matrix shear-yield strain |
+| $\gamma_{Y,\text{eff}}$ | effective matrix shear-yield strain (kink-band strain budget) |
+| $g = S_{12}/X_c$ | material-anchored budget for UD-dominated laminates (issue #451) |
 | $M_f$ | morphology factor (phase-dependent) |
 | $\mathrm{KD}$ | knockdown = wrinkled strength / pristine strength |
 | $d$, $G_c$ | cohesive damage variable, fracture toughness |

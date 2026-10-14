@@ -4328,7 +4328,9 @@ with tab_analyze:
             "Yield strain γ_Y eff", f"{r['gamma_Y_eff']:.4f}",
             help=(
                 "Matrix shear-yield strain used by the Budiansky-Fleck "
-                "kink-band model. Internal parameter — useful for "
+                "kink-band model. For a UD-dominated laminate (at least "
+                "75% 0° plies) on any morphology except graded it is the "
+                "material's S12 / Xc. Internal parameter — useful for "
                 "advanced calibration, less so for first-time interpretation."
             ),
         )

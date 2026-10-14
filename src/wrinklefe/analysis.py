@@ -130,6 +130,18 @@ _BETA_BLOCK = 0.010   # per-extra-ply block penalty on gamma_Y_eff
 # Budiansky-Fleck knockdown).
 _GAMMA_Y_FLOOR = _GAMMA_Y_UD / 2.0  # = 0.016 (UD half-strain floor)
 
+#: Issue #451: a laminate whose 0-deg plies make up at least this fraction
+#: of the plies is *UD-dominated*, and its peak-angle kink-band knockdown
+#: takes the material-anchored strain budget ``S12 / Xc``
+#: (:func:`_ud_kink_strain_budget`) instead of the layup confinement model.
+#: Every multidirectional validation layup sits at or below 40 % 0-deg
+#: plies (A, B, M-MD 37.5 %; C and J-QI 25 %; D, H-MD 40 %; I 36 %) and
+#: Pilato's near-UD laminate (Dataset K, 0/90 woven sub-plies) at 89 %,
+#: so any cut in (0.40, 0.89] separates them. At 0.75 most 0-deg plies
+#: sit next to another 0-deg ply, where the confinement model's
+#: off-axis-neighbour argument no longer applies.
+_UD_DOMINATED_FRACTION = 0.75
+
 
 def _confined_fraction(angles: list[float], tol: float = 5.0) -> float:
     """Weighted confinement fraction for 0-degree plies.
@@ -220,6 +232,11 @@ def _effective_gamma_Y(angles: list[float]) -> float:
     Elhajjar ``[0/45/90/-45/0/45/-45/0]_s`` ~0.83    2 (only at the   ~0.064
                                                      symmetry plane)
     ======================================  =======  ===============  ==========
+
+    A UD-dominated laminate on the peak-angle (non-graded) compression
+    path does not use this model: it takes ``S12 / Xc`` from its material
+    card instead (issue #451, :func:`_ud_kink_strain_budget`). The graded
+    path uses this model for every layup.
     """
     fc = _confined_fraction(angles)
     # Guard: pure UD has no off-axis plies; the block penalty would
@@ -231,6 +248,61 @@ def _effective_gamma_Y(angles: list[float]) -> float:
     block_penalty = _BETA_BLOCK * max(n_block_max - 1, 0)
     gamma_Y = _GAMMA_Y_UD + _ALPHA_CONF * fc - block_penalty
     return max(gamma_Y, _GAMMA_Y_FLOOR)
+
+
+def _zero_ply_fraction(angles: Sequence[float], tol: float = 5.0) -> float:
+    """Fraction of plies that are 0-degree (axial) plies within ``tol``.
+
+    0 and 180 degrees are the same fibre direction (the convention of
+    :func:`_is_unidirectional`). An empty layup has no 0-degree plies.
+    """
+    if not angles:
+        return 0.0
+    n_0 = 0
+    for a in angles:
+        off = abs(float(a)) % 180.0
+        if min(off, 180.0 - off) <= tol:
+            n_0 += 1
+    return n_0 / len(angles)
+
+
+def _is_ud_dominated(angles: Sequence[float], tol: float = 5.0) -> bool:
+    """True when at least :data:`_UD_DOMINATED_FRACTION` of the plies are 0-deg.
+
+    Selects the material-anchored kink-band strain budget (issue #451,
+    :func:`_ud_kink_strain_budget`) on the peak-angle compression path.
+    Pure UD ``[0]_n`` qualifies, and so does a near-UD laminate with a
+    few transverse plies (Pilato 2022, 16 of 18 sub-plies at 0 deg);
+    quasi-isotropic and other multidirectional layups (at most 40 % 0-deg
+    plies in the validation set) do not.
+    """
+    return _zero_ply_fraction(angles, tol) >= _UD_DOMINATED_FRACTION
+
+
+def _ud_kink_strain_budget(material: OrthotropicMaterial) -> float:
+    """Material-anchored kink-band strain budget ``g = S12 / Xc`` (issue #451).
+
+    Budiansky-Fleck kinking with an intrinsic misalignment ``phi_0``
+    gives ``sigma_c = tau_Y / (gamma_Y + phi_0 + theta)`` for an extra
+    misalignment ``theta``. At ``theta = 0`` this is the pristine
+    strength, ``Xc = tau_Y / (gamma_Y + phi_0)``, so the wrinkled
+    retention is::
+
+        KD = (gamma_Y + phi_0) / (gamma_Y + phi_0 + theta) = g / (g + theta),
+        g = tau_Y / Xc ~ S12 / Xc
+
+    -- the existing law ``1 / (1 + theta / gamma_Y)`` with the strain
+    budget read from the material card instead of fitted. The same
+    anchoring (``S12`` against ``Xc``) sets LaRC05's intrinsic
+    misalignment. The cards in the validation set give 0.043 (IM6G/
+    3501-6) to 0.107 (T700GC/2510), against the layup model's 0.032 for
+    UD and its 0.016 floor. Independent check: re-fitting the
+    penetration gate's ``gamma_Y`` to one wrinkled test at a time
+    (``validation/gate_transfer_study.py``) gives 0.057-0.088 on Thor
+    (IM7/8552, S12/Xc = 0.077) and 0.064-0.087 on Pilato (S12/Xc =
+    0.102), the same order as the card values.
+    """
+    return float(material.S12) / float(material.Xc)
 
 
 def _profile_proportional_kd(
@@ -2812,7 +2884,10 @@ class AnalysisResults:
     :attr:`modulus_retention`."""
     analytical_onset_knockdown: float | None = None
     analytical_strength_MPa: float = 0.0
-    gamma_Y_eff: float = 0.02  # layup-dependent effective yield strain
+    # Kink-band strain budget the analytical path used: the layup
+    # confinement model, ``S12 / Xc`` for a UD-dominated laminate on the
+    # peak-angle path (issue #451), or the gate's ``gamma_Y``.
+    gamma_Y_eff: float = 0.02
     # Load-path eccentricity (issue #439): geometry, loading-independent.
     load_path_eccentricity_mm: float = 0.0
     load_path_eccentricity_ratio: float = 0.0
@@ -4827,6 +4902,23 @@ class WrinkleAnalysis:
         else:
             # Non-graded: peak-angle BF at the critical cross-section,
             # with the Argon-Fleck quadratic extension.
+            #
+            # Issue #451: a UD-dominated laminate takes the strain budget
+            # from its material card, g = S12 / Xc (Budiansky-Fleck with
+            # an intrinsic misalignment, normalised by the pristine Xc),
+            # not from the layup confinement model, which was calibrated
+            # on multidirectional laminates and left UD carbon 58-78 %
+            # conservative on this path (Thor 2021, Pilato 2022). With
+            # the default c_AF = 0 this is KD_BF = g / (g + theta_eff);
+            # a user-set c_AF still applies on top. The graded
+            # profile-proportional branch above keeps gamma_Y_eff: its
+            # budget is calibrated jointly with the profile average, and
+            # it is not biased conservative on UD carbon (Hsiao-Daniel
+            # -22 %, Krishnappa WM -7 % to -34 %, Shi +0.2 % to +26 %),
+            # so g there would push Shi and Dataset M's UD tension floor
+            # further unsafe.
+            if _is_ud_dominated(angles):
+                gamma_Y_eff = _ud_kink_strain_budget(mat)
             r_bf = theta_eff / gamma_Y_eff
             kd_bf = 1.0 / (1.0 + r_bf + c_AF * r_bf * r_bf)
             kd_compression = f_0 * kd_bf + (1.0 - f_0)

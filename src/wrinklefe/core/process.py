@@ -195,7 +195,7 @@ _WET_LAYUP_NOTE = (
     "quarantined: its undamaged laminate was itself weak (46% fibre "
     "volume, 4.2% porosity, a baseline outside the test standard). On it "
     "the kink-band "
-    "knockdown was conservative by about 56% on average, while first-ply "
+    "knockdown was conservative by about 32% on average, while first-ply "
     "FE over-predicted retained strength by up to about 100%."
 )
 

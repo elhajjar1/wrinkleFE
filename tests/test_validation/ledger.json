@@ -156,7 +156,7 @@
           "amplitude_p2p_mm": 2.38,
           "wavelength_mm": 27.9,
           "peak_angle_deg": 15,
-          "expected_analytical_kd": 0.108903,
+          "expected_analytical_kd": 0.141851,
           "measured_kd_modulus": 0.571,
           "expected_analytical_modulus_kd": 0.745459,
           "note": "Uniform-waviness coupon (A = 1.19 mm, lambda = 27.9 mm, 20 plies, t_ply = 0.95 mm, theta ~ 15 deg). Hsiao & Daniel report a measured MODULUS knockdown only (0.571); no measured strength knockdown for the uniform coupon, so measured_kd is omitted and expected_analytical_kd is a pure regression baseline. The shipped graded-Gaussian modulus path (width = lambda, mid-plane decay) is pinned here, not the periodic-RVE linear-taper estimate in validation/validate_modulus.py."
@@ -471,7 +471,7 @@
           "measured_kd": 0.2522,
           "measured_kd_modulus": 0.49,
           "note": "wave 1, Table 3: 333.5 MPa, E 78.7 GPa vs reference 1322.3 MPa, 160.6 GPa.",
-          "expected_analytical_kd": 0.1089,
+          "expected_analytical_kd": 0.227056,
           "expected_analytical_modulus_kd": 0.69824
         },
         {
@@ -483,7 +483,7 @@
           "measured_kd": 0.4957,
           "measured_kd_modulus": 0.8462,
           "note": "wave 2, Table 3: 655.5 MPa, E 135.9 GPa.",
-          "expected_analytical_kd": 0.20381,
+          "expected_analytical_kd": 0.380917,
           "expected_analytical_modulus_kd": 0.91
         }
       ]
@@ -524,7 +524,7 @@
           "measured_strength_MPa": 471.7,
           "measured_kd": 0.6837,
           "note": "Table 12: 471.7 MPa; Table 13 Side 1 2A 0.214/0.296 mm, L 8.55/8.82 mm.",
-          "expected_analytical_kd": 0.15506,
+          "expected_analytical_kd": 0.529958,
           "expected_analytical_modulus_kd": 0.94399
         },
         {
@@ -535,7 +535,7 @@
           "measured_strength_MPa": 458.8,
           "measured_kd": 0.665,
           "note": "Table 12: 458.8 MPa; Table 13 Side 1 2A 0.283/0.21 mm, L 8.01/7.65 mm.",
-          "expected_analytical_kd": 0.1466,
+          "expected_analytical_kd": 0.512792,
           "expected_analytical_modulus_kd": 0.93621
         },
         {
@@ -546,7 +546,7 @@
           "measured_strength_MPa": 404.5,
           "measured_kd": 0.5863,
           "note": "Table 12: 404.5 MPa; Table 13 Side 1 2A 0.324/0.27 mm, L 8.55/8.55 mm.",
-          "expected_analytical_kd": 0.13536,
+          "expected_analytical_kd": 0.488571,
           "expected_analytical_modulus_kd": 0.92355
         },
         {
@@ -557,7 +557,7 @@
           "measured_strength_MPa": 417.3,
           "measured_kd": 0.6049,
           "note": "Table 12: 417.3 MPa; Table 13 Side 1 2A 0.329/0.282 mm, L 8.3/8.3 mm.",
-          "expected_analytical_kd": 0.12912,
+          "expected_analytical_kd": 0.474365,
           "expected_analytical_modulus_kd": 0.91508
         },
         {
@@ -568,7 +568,7 @@
           "measured_strength_MPa": 426.8,
           "measured_kd": 0.6186,
           "note": "Table 12: 426.8 MPa; Table 13 Side 1 2A 0.261/0.26 mm, L 7.36/8.8 mm.",
-          "expected_analytical_kd": 0.1438,
+          "expected_analytical_kd": 0.506928,
           "expected_analytical_modulus_kd": 0.93334
         }
       ]
@@ -620,7 +620,7 @@
             "surface_pocket_side": "bottom",
             "surface_transition_plies": 7
           },
-          "expected_analytical_kd": 0.19232,
+          "expected_analytical_kd": 0.412504,
           "expected_analytical_modulus_kd": 0.9212
         },
         {
@@ -637,7 +637,7 @@
             "surface_pocket_side": "bottom",
             "surface_transition_plies": 7
           },
-          "expected_analytical_kd": 0.13448,
+          "expected_analytical_kd": 0.314212,
           "expected_analytical_modulus_kd": 0.83291
         },
         {
@@ -654,7 +654,7 @@
             "surface_pocket_side": "bottom",
             "surface_transition_plies": 7
           },
-          "expected_analytical_kd": 0.10517,
+          "expected_analytical_kd": 0.257373,
           "expected_analytical_modulus_kd": 0.74076
         },
         {
@@ -699,7 +699,7 @@
           "measured_kd": 0.563,
           "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 2 mm wide, 1 ply. Table 1: theta 9.7 deg, A/lambda 0.069. Strength 243.6 MPa +/- 19.3 (Fig. 7); A = 0.448 mm (Fig. 8a).",
           "morphology": "uniform",
-          "expected_analytical_kd": 0.15897,
+          "expected_analytical_kd": 0.357892,
           "expected_analytical_modulus_kd": 0.88054
         },
         {
@@ -711,7 +711,7 @@
           "measured_kd": 0.3511,
           "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 2 mm wide, 2 ply. Table 1: theta 14.7 deg, A/lambda 0.086. Strength 151.9 MPa +/- 12.8 (Fig. 7); A = 0.698 mm (Fig. 8a).",
           "morphology": "uniform",
-          "expected_analytical_kd": 0.11089,
+          "expected_analytical_kd": 0.268893,
           "expected_analytical_modulus_kd": 0.76284
         },
         {
@@ -723,7 +723,7 @@
           "measured_kd": 0.3136,
           "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 2 mm wide, 3 ply. Table 1: theta 20.7 deg, A/lambda 0.12. Strength 135.7 MPa +/- 15.2 (Fig. 7); A = 0.984 mm (Fig. 8a).",
           "morphology": "uniform",
-          "expected_analytical_kd": 0.08137,
+          "expected_analytical_kd": 0.207094,
           "expected_analytical_modulus_kd": 0.61947
         },
         {
@@ -740,7 +740,7 @@
             "surface_pocket_side": "bottom",
             "surface_transition_plies": 7
           },
-          "expected_analytical_kd": 0.18273,
+          "expected_analytical_kd": 0.397346,
           "expected_analytical_modulus_kd": 0.91158
         },
         {
@@ -757,7 +757,7 @@
             "surface_pocket_side": "bottom",
             "surface_transition_plies": 7
           },
-          "expected_analytical_kd": 0.18093,
+          "expected_analytical_kd": 0.394447,
           "expected_analytical_modulus_kd": 0.9096
         },
         {
@@ -774,7 +774,7 @@
             "surface_pocket_side": "bottom",
             "surface_transition_plies": 7
           },
-          "expected_analytical_kd": 0.12196,
+          "expected_analytical_kd": 0.290571,
           "expected_analytical_modulus_kd": 0.79944
         },
         {
@@ -819,7 +819,7 @@
           "measured_kd": 0.3608,
           "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 4 mm wide, 1 ply. Table 1: theta 14.3 deg, A/lambda 0.049. Strength 156.1 MPa +/- 31.3 (Fig. 7); A = 0.317 mm (Fig. 8a).",
           "morphology": "uniform",
-          "expected_analytical_kd": 0.11364,
+          "expected_analytical_kd": 0.27435,
           "expected_analytical_modulus_kd": 0.77263
         },
         {
@@ -831,7 +831,7 @@
           "measured_kd": 0.2822,
           "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 4 mm wide, 2 ply. Table 1: theta 21.3 deg, A/lambda 0.11. Strength 122.1 MPa +/- 7.2 (Fig. 7); A = 0.943 mm (Fig. 8a).",
           "morphology": "uniform",
-          "expected_analytical_kd": 0.07926,
+          "expected_analytical_kd": 0.202441,
           "expected_analytical_modulus_kd": 0.60601
         },
         {
@@ -843,7 +843,7 @@
           "measured_kd": 0.2685,
           "note": "strip under the first (tool-side) ply: every ply lifted, a whole-thickness wave; strip 4 mm wide, 3 ply. Table 1: theta 30.2 deg, A/lambda 0.13. Strength 116.2 MPa +/- 2.7 (Fig. 7); A = 1.243 mm (Fig. 8a).",
           "morphology": "uniform",
-          "expected_analytical_kd": 0.05724,
+          "expected_analytical_kd": 0.15184,
           "expected_analytical_modulus_kd": 0.43509
         }
       ]

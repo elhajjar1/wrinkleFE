@@ -71,7 +71,9 @@ above:
 - cases more than 15% unsafe drop from 6 to 1, the borderline Elhajjar
   A = 0.24 mm at e/t = 0.102, with FE at +20%;
 - the worst miss drops from +115% to +20%;
-- the MAE drops from 20.9% to 16.8%.
+- the MAE drops from 13.5% to 10.4% (20.9% to 16.8% before the UD
+  kink-band budget moved to the material card, issue #451, which cut
+  the deployed model's error on J UD and K).
 
 ## Reported failure modes
 
@@ -144,7 +146,9 @@ all 50 cases the prototype cuts the >15% misses from 6 to 4.
   - **A** assumes `uniform`.
   - **C and D** use the head-to-head recipes, which are not
     specimen-tuned.
-- The deployed model on UD carbon (K, J UD) is badly conservative
-  (−57% to −79%) for a different reason, the angle-only law on UD, which
-  is issue #435. The regime selector does not address it.
+- The deployed model on UD carbon (K, J UD) was badly conservative
+  (−57% to −79%) for a different reason: the layup strain budget, which
+  ignored the material. With the UD budget read from the card (S12/Xc,
+  issue #451) it is −10% to −23%, still conservative, so no unsafe
+  count above changes.
 - Tension is excluded. The bending argument is about compression.
