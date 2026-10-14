@@ -1376,13 +1376,16 @@ KD_lam = f_0 * min(cos^2(theta), KD_matrix, KD_oop) + (1 - f_0)
 
 The 0° ply knockdown is the *most severe* of three competing mechanisms:
 fibre load-rotation (`cos^2(theta)`), in-situ matrix cracking (a
-Hashin/LaRC `σ22`–`τ12` interaction with a thick-ply in-situ strength
-correction, `KD_matrix`), and a curved-beam out-of-plane delamination
-check (`KD_oop`: the wrinkle curvature drives an interlaminar `σ33` at the
-crest and `τ13` at the flanks). A Benzeggagh–Kenane mixed-mode
-delamination-*onset* knockdown is reported alongside, and the tension
-knockdown is floored by the compression value for the same defect
-("tension is never worse than compression").
+Hashin/LaRC `σ22`–`τ12` interaction with an in-situ shear strength that
+is never below the lamina `S12`, `KD_matrix`), and a curved-beam
+out-of-plane delamination check (`KD_oop`: the wrinkle curvature drives
+an interlaminar `σ33` at the crest and `τ13` at the flanks, each bounded
+by the interface strength, so `KD_oop >= 1/sqrt(2)`: past that strength
+the interface delaminates and sheds the traction, and the ply fails later
+by fibre or matrix). A Benzeggagh–Kenane mixed-mode delamination-*onset*
+knockdown is reported alongside. The tension knockdown is not floored by
+the compression (kink-band) value. That floor was removed in issue #454:
+it set every steep-wrinkle prediction of Dataset M, unsafely.
 
 ### Graded morphology
 
@@ -1390,7 +1393,9 @@ For the `graded` morphology the knockdown is averaged over the wrinkle
 profile in both the longitudinal (`x`) and through-thickness (`z`)
 directions. The **compression** path weights each ply by a Gaussian
 through-thickness envelope centred at `wrinkle_z_position` (decay scale
-`max(λ/2, A)`); the **tension** path uses an analogous linear taper. In
+`max(λ/2, A)`); the **tension** path uses an analogous linear taper,
+applied to each ply's angle and to its amplitude (so its curvature and
+interlaminar stress) alike. In
 both, `decay_floor` sets the surface-ply amplitude: `0` is a fully
 embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 `uniform`.

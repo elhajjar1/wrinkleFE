@@ -666,8 +666,10 @@ def test_gate_ply_thickness_plateau_still_converges():
 
 
 def test_tension_knockdown_is_monotone_in_amplitude():
-    """T-43: pins the compression cap that keeps the tension analytical
-    knockdown monotone over a dense amplitude scan."""
+    """T-43: the tension analytical knockdown is monotone over a dense
+    amplitude scan. It used to rely on the compression floor for that;
+    since issue #454 removed the floor it holds on the three tension
+    mechanisms alone."""
     cfg = _base(angles=[0.0] * 24, loading="tension")
     previous = 2.0
     for i in range(25):
