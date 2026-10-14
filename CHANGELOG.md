@@ -15,6 +15,11 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Community — **a "Usage question" issue form**
+  (`.github/ISSUE_TEMPLATE/question.yml`) that applies the `question`
+  label. It replaces the new-issue chooser's "Usage question" link, which
+  pointed to GitHub Discussions; Discussions are not enabled, so the link
+  led nowhere. CONTRIBUTING.md points questions to the form.
 - Community — **a "Contribute a validation dataset" issue form**
   (`.github/ISSUE_TEMPLATE/validation_dataset.yml`). It asks for what a
   validation-ledger entry needs: a published source and its DOI, a
