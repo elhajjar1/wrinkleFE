@@ -48,6 +48,13 @@ the repository and should be added to the ledger as their points land.
 See the table in [README.md](../../README.md). Current sources:
 
 - Elhajjar (2025), *Scientific Reports* 15:25977 — compression + tension.
+  Not in the ledger (scored by `validation/strength_error_summary.py`).
+  Its `uniform` recipe makes the five largest compression wrinkles
+  bending-dominated whole-thickness waves (e/t 0.10–0.31), so the
+  eccentric-column bending bound (issue #452) applies to them. It
+  governs on the two most severe, moving A = 0.61 mm from +18.5% to
+  +13.1% and A = 0.73 mm from +29.6% to +10.4%; the kink-band stays
+  lower on the other three.
 - Mukhopadhyay, Jones & Hallett (2015), *Compos. A* 73:132–142
   (compression) and 77:219–228 (tension).
 - Li, Y. et al. (2026), *Composites Part A* 205:109719 — S-glass/epoxy,
@@ -182,9 +189,19 @@ See the table in [README.md](../../README.md). Current sources:
   - **Measured strength KD:** quasi-isotropic **0.347** / 0.678; UD
     0.252 / 0.496. Moduli are in the ledger too (quasi-isotropic
     0.537 / 1.067, UD 0.490 / 0.846).
-  - **Analytical:** quasi-isotropic wave 1 **+52.1% (unsafe)**, wave 2
-    −7.9%; UD −56.8% / −58.9%. The severe quasi-isotropic miss matches
-    Shi's (+56% / +115%) from an independent lab.
+  - **Analytical:** quasi-isotropic wave 1 **+15.1% (unsafe)** with the
+    eccentric-column bending bound (+52.1% with the kink-band alone),
+    wave 2 −7.9%; UD −56.8% / −58.9%. Before the bound, the severe
+    quasi-isotropic miss matched Shi's (+56% / +115%) from an
+    independent lab.
+  - **Re-pinned (issue #452):** J-QI-1 `expected_analytical_kd`
+    0.5271 → 0.3990. Wave 1 is a whole-thickness wave (both surfaces
+    follow the load path) at e/t = 0.251, so the bound
+    (t_c/t_0) / (1 + 6 e/t_c) = 1 / (1 + 6 × 0.251) applies and is
+    below the kink-band value. It is the only ledger case that moved.
+    J-UD-1 has the same geometry and the same bound (0.399), but its
+    kink-band value (0.109) is lower and stays; wave 2 (e/t = 0.061) is
+    below the threshold.
   - **First-ply FE (ledger recipe, nx = 48):** quasi-isotropic −8.8% /
     −3.6%; UD −5.0% / +2.2%. Mesh-checked: nx = 72, nz_per_ply = 2 or
     ny = 4 move it by at most 0.03. The mesh carries the coupon's own
@@ -284,9 +301,13 @@ See the table in [README.md](../../README.md). Current sources:
       flat-surface sets (C, D, E).
     - WL: −4% to +25%.
     - WR: −50% to +25%.
-  - **Load-path eccentricity (#439).** All six WR cases and one WL case
-    sit at e/t ≥ 0.10. On these UD cases the kink-band stays
-    conservative, unlike on the multidirectional cases.
+  - **Load-path eccentricity (#439).** All six WR cases and four WL
+    cases (WL-2-2, WL-2-3, WL-4-2, WL-4-3) sit at e/t ≥ 0.10. On these
+    UD cases the kink-band stays conservative, unlike on the
+    multidirectional cases. They are whole-thickness waves (`uniform`
+    recipe), so the eccentric-column bending bound of issue #452 is
+    applied (0.25 to 0.57), but the kink-band (0.06 to 0.18) is lower on
+    every one, so no pin moved.
   - **Caveats:**
     - Low-quality laminate: wet layup, 46% Vf, porosity, and micro-wrinkles
       from the glass stitching yarn.
@@ -564,12 +585,17 @@ per-case values with wrinkle angle to
 Headline: on multidirectional compression the analytical model is
 conservative below 10° peak angle (12 cases, 4 labs), where the FE is
 unsafe on 9 of 12. Above 10° the analytical model is unsafe at high
-amplitude-to-thickness (Shi up to +115%, Thor +52%). The FE is accurate
+amplitude-to-thickness (Shi up to +115%; Thor +15% with the bending
+bound below, +52% without it). The FE is accurate
 there when its mesh reproduces the specimen's geometry (Shi, Thor: −9%
 to −1%) and unsafe on the generic recipes (Wang +92%, Mukhopadhyay
 +48%). Datasets J and K add the UD-carbon blind gate test: the shipped
-presets are unsafe on 7 of 10 UD carbon cases. A bending-dominated model
-for the high amplitude-to-thickness regime is issue #439. The guidance
+presets are unsafe on 7 of 10 UD carbon cases. In the high
+amplitude-to-thickness regime (issue #439) whole-thickness waves now
+carry an eccentric-column bending bound (issue #452): Thor's wave 1 goes
+from +52.1% to +15.1% and Elhajjar's two most severe compression cases
+from +18.5% / +29.6% to +13.1% / +10.4%. Shi's one-sided troughs are not
+covered and stay at up to +115%. The guidance
 table, with confidence levels, is in `docs/interpreting_results.md`
 ("Head-to-head: which model, when"). Follow-up data needs are issues
 #434 (severe multidirectional compression), #435 (UD carbon, blind
@@ -594,7 +620,9 @@ the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
 MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
 MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**70 of 105** points sit inside the corridor, not counting the quarantined
+**72 of 105** points sit inside the corridor (70 before the bending
+bound of issue #452 brought Elhajjar A = 0.73 mm and Thor's wave 1
+inside), not counting the quarantined
 Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
 analytical and 5 of 18 FE points inside: the kink-band is far too
 conservative on it, and the FE over-predicts its embedded (mid-plane)

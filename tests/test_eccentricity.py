@@ -112,10 +112,15 @@ def test_tension_reports_the_ratio_but_is_not_flagged():
     assert not res.bending_dominated
 
 
-def test_the_flag_does_not_change_the_knockdown():
-    """Reporting only: the analytical knockdown is the validated ledger
-    value (Dataset J, J-QI-1)."""
-    assert _run(_config()).analytical_knockdown == pytest.approx(0.5271, abs=5e-4)
+def test_the_flag_alone_does_not_change_the_knockdown():
+    """The flag is reporting only; what moves Thor's wave 1 (Dataset J,
+    J-QI-1) is the eccentric-column bound of issue #452, applied because
+    it is also a whole-thickness wave (``tests/test_bending_bound.py``).
+    The kink-band value it replaced is still reported, unchanged."""
+    res = _run(_config())
+    assert res.kink_band_knockdown == pytest.approx(0.5271, abs=5e-4)
+    assert res.bending_bound_applied
+    assert res.analytical_knockdown == pytest.approx(0.3990, abs=5e-4)
 
 
 def test_validation_cases_fall_on_the_documented_sides():
@@ -145,7 +150,7 @@ def test_summary_reports_the_ratio_and_warns_only_when_flagged():
     severe = _run(_config()).summary()
     mild = _run(_config(amplitude=0.29, wavelength=14.5)).summary()
     assert "Load-path eccentricity: e/t = 0.251" in severe
-    assert "WARNING (bending-dominated)" in severe
+    assert "WARNING (bending-dominated" in severe
     assert "Load-path eccentricity: e/t = 0.061" in mild
     assert "WARNING" not in mild
 
@@ -155,7 +160,7 @@ def test_results_json_carries_the_keys(tmp_path):
     export_results_json(_run(_config()), out)
     data = json.loads(out.read_text())
     assert data["schema_version"] == SCHEMA_VERSION
-    assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 3)
+    assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 5)
     analytical = data["analytical"]
     assert analytical["bending_dominated"] is True
     assert analytical["load_path_eccentricity_ratio"] == pytest.approx(

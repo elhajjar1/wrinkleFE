@@ -23,6 +23,12 @@ shipped models:
 
    and the prototype predicts ``min(KD_kink, KD_bend)``.
 
+Issue #452 has since shipped that bound for bending-dominated
+whole-thickness waves (:func:`wrinklefe.core.eccentricity.bending_knockdown`),
+so on a re-run the "deployed" column already includes it on those cases
+(Thor wave 1, Elhajjar A = 0.61 and 0.73 mm). The write-up's numbers are
+the pre-#452 ones.
+
 The geometry comes from the shipped measurement,
 :func:`wrinklefe.core.eccentricity.load_path_eccentricity` (the ply
 boundaries the FE mesh is built on, generated, not solved), on the recipe

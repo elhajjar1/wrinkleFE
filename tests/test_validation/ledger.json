@@ -416,7 +416,7 @@
           "measured_kd": 0.3466,
           "measured_kd_modulus": 0.537,
           "note": "wave 1, Table 3: 237.9 MPa, E 33.4 GPa vs reference 686.4 MPa, 62.2 GPa.",
-          "expected_analytical_kd": 0.5271,
+          "expected_analytical_kd": 0.399009,
           "expected_analytical_modulus_kd": 0.77795
         },
         {

@@ -895,7 +895,11 @@ def test_analyze_gate_reproduces_api_penetration_gate_kd():
         ])
     cfg = captured["config"]
     assert cfg.penetration_gate is GATE_LI2025_VACBAG
-    kd_cli = WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
+    # The gate's own value. This 8-ply `uniform` wave (A/t ~ 0.3) is a
+    # bending-dominated whole-thickness wave, so the eccentric-column
+    # bound of issue #452 may cap ``analytical_knockdown`` below it; the
+    # flag-to-config mapping under test is the gate's.
+    kd_cli = WrinkleAnalysis(cfg).run(analytical_only=True).kink_band_knockdown
 
     theta_deg = math.degrees(math.atan(2 * math.pi * amplitude / wavelength))
     dt = amplitude / (cfg.ply_thickness * len(angles))

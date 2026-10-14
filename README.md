@@ -42,7 +42,7 @@ Public link, no account needed.
   - three dataset-specific carbon cards: `T700_SHI2025`, `UD_CFRP_PILATO2022` and `YC300_LY5052`;
   - glass and aramid: AC318/S6C10 S-glass/epoxy (moulded, plus `AC318_S6C10_vacbag`, the Li 2025 vacuum-bag realization with measured Xc = 335.5 MPa and E1 = 50.8 GPa), S-2 glass/epoxy and Kevlar-49/epoxy;
   - plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone.
-- **Applicability warnings:** every analysis reports how far the wrinkle moves the laminate's load path (e/t) and flags a bending-dominated wrinkle. `manufacturing_process` flags a laminate made outside the validated processes (wet lay-up, infusion, RTM), and a penetration-gate preset used outside its fitted material or process is flagged too. The warnings reach the summary, the exports and the app; they change no number.
+- **Applicability warnings:** every analysis reports how far the wrinkle moves the laminate's load path (e/t) and flags a bending-dominated wrinkle. On a bending-dominated whole-thickness wave in compression the analytical knockdown is also capped by an eccentric-column bending bound, and the result says which bound governed (issue #452). `manufacturing_process` flags a laminate made outside the validated processes (wet lay-up, infusion, RTM), and a penetration-gate preset used outside its fitted material or process is flagged too. The warnings reach the summary, the exports and the app; apart from the bending bound, they change no number.
 - **Validation ledger:** 13 published datasets (A–M) from 10 research groups, with every prediction pinned so a model change shows up as test drift; see [Validation](docs/validation.md)
 - **Inverse goal-seek (acceptance limits):** `wrinklefe.goalseek.find_critical_value` / `wrinklefe critical` answer the disposition question directly — the largest wrinkle amplitude (or any float config field) that still meets a target knockdown or allowable strength. The answer is backed off to the safe side and verified by a real forward run, and the search refuses with an actionable message when the curve admits no unique root
 - **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
@@ -1199,15 +1199,16 @@ multidirectional cases A–D, the penetration gate for the UD cases E/F;
 Datasets H to L, which have no gate preset, are plotted twice —
 analytical and first-ply FE LaRC05 retention; Dataset M's tension
 coupons are plotted against both their ultimate and their measured
-damage onset). 70 of the 105 points fall inside the band. Of the 35
+damage onset). 72 of the 105 points fall inside the band. Of the 33
 outside it, 16 are conservative, seven of them the kink-band on UD carbon
-(Datasets J and K). The 19 that are not:
-- five high amplitude-to-thickness compression cases: the most severe
-  wrinkle in dataset A (+30%), Dataset H's severe cases (+26% UD; +56%
-  and +115% multidirectional) and Thor's severe quasi-isotropic wave in
-  Dataset J (+52%). On the H and J cases the FE retention, run on the
-  specimen's own geometry, is within −9% to −1%; a bending-dominated
-  model for this regime is issue #439;
+(Datasets J and K). The 17 that are not:
+- three high amplitude-to-thickness compression cases, Dataset H's
+  one-sided troughs (+26% UD; +56% and +115% multidirectional). On them
+  the FE retention, run on the specimen's own geometry, is within −8% to
+  −1% on the multidirectional half. The whole-thickness waves that used
+  to join them (the most severe wrinkle in dataset A, +30%, and Thor's
+  severe quasi-isotropic wave in Dataset J, +52%) now carry an
+  eccentric-column bending bound and sit at +10% and +15% (issue #452);
 - six of Dataset M's steep (22–36°) tension wrinkles under the
   three-mechanism model, +20% to +39%;
 - eight first-ply FE onset estimates on Dataset M, +23% to +154%
