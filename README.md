@@ -993,6 +993,13 @@ ledger. The NCR validation summary (`build_analysis_summary`) embeds
 the same block, and the top-level `wrinklefe_version` field reflects
 the real installed version.
 
+Both also carry a `validation_margin` block (issue #455). It gives the
+factor that would have kept 95% of the validation cases in the
+analytical knockdown's regime conservative: the same model path, load,
+laminate type and bending regime. With it come the regime and the
+number of cases behind it, or "insufficient evidence" below 10 cases.
+It is reporting only; see `docs/interpreting_results.md`.
+
 The Streamlit web app exposes the same exports as **Download results as
 JSON** and **Download per-ply results as CSV** buttons on the Export
 tab.

@@ -26,7 +26,7 @@ break consumers; see :data:`SCHEMA_VERSION` for when to bump it.
 Both this module and :mod:`wrinklefe.io.export` define a function named
 ``export_results_json``, and the two documents are almost entirely
 disjoint.  On an FE run the legacy document emits 33 leaf paths and
-this one 138, and all they share are ``provenance`` and the three
+this one about 160, and all they share are ``provenance`` and the three
 ``mesh`` counts; on an analytical-only run (no ``mesh`` block) the
 overlap outside ``provenance`` is empty.  Not one result, prediction or
 configuration value is reachable by the same path in both, partly
@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from wrinklefe.core.margins import margin_for_results
 from wrinklefe.io.export import build_provenance
 
 if TYPE_CHECKING:
@@ -76,8 +77,10 @@ if TYPE_CHECKING:
 #: ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue #439);
 #: 1.4 added the ``scope`` block: the manufacturing process and whether
 #: it, or a penetration-gate preset, is outside the validated scope
-#: (issue #445).
-SCHEMA_VERSION = "1.4"
+#: (issue #445); 1.5 added the ``validation_margin`` block: the
+#: regime-conditional margin on the analytical knockdown, its regime and
+#: the number of validation cases behind it (issue #455).
+SCHEMA_VERSION = "1.5"
 
 #: 1D arrays at or below this length are serialised in full; longer
 #: arrays are reduced to {min, max, mean, p95}.  A few-hundred-element
@@ -359,6 +362,17 @@ def _stress_field_summary(results: AnalysisResults) -> dict | None:
     return out
 
 
+def _validation_margin(results: AnalysisResults) -> dict:
+    """The regime-conditional margin on the analytical knockdown (#455)."""
+    out = {"applies_to": "analytical_knockdown"}
+    out.update(
+        margin_for_results(results).to_dict(
+            knockdown=_f(results.analytical_knockdown)
+        )
+    )
+    return out
+
+
 def results_to_dict(results: AnalysisResults) -> dict:
     """Build the JSON-shaped dict for :func:`export_results_json`.
 
@@ -418,6 +432,9 @@ def results_to_dict(results: AnalysisResults) -> dict:
             "gate_out_of_scope": bool(results.gate_out_of_scope),
             "gate_scope_caveat": results.gate_scope_caveat,
         },
+        # Issue #455: reporting only. The margin applies to the analytical
+        # knockdown and is read from the shipped, ledger-fitted table.
+        "validation_margin": _validation_margin(results),
         "first_ply_failure": _first_ply_failure(results),
         "per_ply": _per_ply_rows(results),
         "knockdown_factors": _knockdown_factors(results),

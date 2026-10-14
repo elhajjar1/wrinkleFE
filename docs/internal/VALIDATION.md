@@ -43,6 +43,37 @@ multidirectional measured strengths); the remaining multidirectional
 case data (Elhajjar 2025, Mukhopadhyay 2015, Li 2026) are not yet in
 the repository and should be added to the ledger as their points land.
 
+### Regime-conditional validation margins (issue #455)
+
+The NCR summary and the results JSON report a validation margin with
+every analytical knockdown. That is the factor that would have kept 95%
+of the knockdown's regime conservative, and "insufficient evidence"
+below 10 cases. The definition, method and current table are in
+[Interpreting results](../interpreting_results.md), "`validation_margin`".
+
+The margins are fitted from this ledger's non-quarantined residuals
+(measured over the pinned prediction). The ledger is not installed with
+the package, so they ship as package data,
+`src/wrinklefe/core/validation_margins.json`:
+
+```bash
+python scripts/fit_margins.py           # check: exit 1 if the shipped table is stale
+python scripts/fit_margins.py --write   # regenerate it from the ledger
+```
+
+`python scripts/validate.py --update` re-pins the baselines and then
+regenerates the table, so a deliberate model change is still one
+command. `python scripts/validate.py` fails while the table is stale,
+as does `tests/test_validation/test_margins_ledger.py`. Commit the regenerated
+table with the re-pinned ledger.
+
+The bending regime of a validation case is measured on the specimen's
+own wrinkle geometry. Where the knockdown recipe does not reproduce
+that geometry, the dataset carries an `eccentricity_recipe` of config
+overrides used only for this measurement. Today that is Dataset H's
+one-sided trough, `tool_flat` with a 10-ply ramp, as in
+`validation/bending_mode_study.py`.
+
 ## Included datasets
 
 See the table in [README.md](../../README.md). Current sources:

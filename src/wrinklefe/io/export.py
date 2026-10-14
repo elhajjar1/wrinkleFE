@@ -26,7 +26,8 @@ import scipy
 
 from wrinklefe import __version__ as _wrinklefe_version
 from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT
-from wrinklefe.core.layup import to_contracted_layup
+from wrinklefe.core.layup import parse_layup, to_contracted_layup
+from wrinklefe.core.margins import MARGIN_DEFINITION, lookup_margin, regime_for
 from wrinklefe.core.process import parse_process, process_scope_caveat
 
 if TYPE_CHECKING:
@@ -661,7 +662,12 @@ def build_analysis_summary(
         ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue
         #439; a flagged result carries :data:`BENDING_REGIME_CAVEAT`),
         ``gate_scope_caveat`` (issue #445; the analysis's warning for a
-        penetration-gate preset used outside its fit), an
+        penetration-gate preset used outside its fit),
+        ``analytical_path`` (issue #455; the model that produced
+        ``analytical_knockdown``: ``'kink_band'``, ``'three_mechanism'``
+        or ``'penetration_gate'``, see
+        :func:`wrinklefe.core.margins.analytical_path`; inferred from the
+        loading when absent, which is wrong only for a gate run), an
         optional ``fe`` sub-dict (``modulus_retention``,
         ``modulus_retention_global``, ``retention_factors``,
         ``retention_degenerate`` (criteria whose retention is undefined
@@ -721,6 +727,8 @@ def build_analysis_summary(
     gate_caveat = engineering.get("gate_scope_caveat") or None
 
     disposition = recommend_disposition(kd, di, loading=loading)
+    # Issue #455: reporting only; the disposition above does not read it.
+    margin_block = _summary_validation_margin(defect, engineering, kd)
 
     fe = engineering.get("fe") or None
     fe_block: dict | None = None
@@ -806,6 +814,16 @@ def build_analysis_summary(
             + (f"; limit in {_limit_units}." if _limit_units else ".")
         )
 
+    if margin_block and margin_block["status"] == "fitted":
+        criteria.append(
+            "Regime-conditional validation margin — "
+            f"{1.0 - float(margin_block['coverage']):.0%} quantile of "
+            "measured / predicted knockdown over the validation cases in "
+            f"the same regime (n = {margin_block['n']}), from a "
+            "two-component Gaussian-mixture (fat-tail) fit, after Elhajjar "
+            "(2025), Scientific Reports 15:25977."
+        )
+
     criteria.append(
         "Generic severity banding in this summary is advisory only and is "
         "superseded by the program-specific allowables, drawing "
@@ -869,6 +887,9 @@ def build_analysis_summary(
             "process_scope_caveat": process_caveat,
             "gate_out_of_scope": gate_caveat is not None,
             "gate_scope_caveat": gate_caveat,
+            # Issue #455: the margin on analytical_knockdown and its
+            # regime. ``None`` only when no layup was supplied.
+            "validation_margin": margin_block,
             "finite_element": fe_block,
             "progressive_damage": progressive_block,
         },
@@ -900,6 +921,67 @@ def build_analysis_summary(
         ),
     }
     return summary
+
+
+def _summary_validation_margin(
+    defect: dict, engineering: dict, kd: float,
+) -> dict | None:
+    """The validation margin on the analytical knockdown (issue #455).
+
+    ``None`` when no usable layup was supplied: the laminate regime, and
+    so the margin, is then unknown.
+    """
+    angles = defect.get("layup")
+    if isinstance(angles, str):
+        try:
+            angles = parse_layup(angles)
+        except ValueError:
+            return None
+    if not angles:
+        return None
+    loading = defect.get("loading") or "compression"
+    path = engineering.get("analytical_path") or (
+        "three_mechanism" if str(loading).lower().strip() == "tension"
+        else "kink_band"
+    )
+    regime = regime_for(
+        path, loading, [float(a) for a in angles],
+        bool(engineering.get("bending_dominated")),
+    )
+    block: dict = {"applies_to": "analytical_knockdown"}
+    block.update(lookup_margin(regime).to_dict(knockdown=kd))
+    return block
+
+
+def _margin_lines(block: dict | None) -> list[str]:
+    """Markdown lines for the validation-margin block (issue #455)."""
+    if block is None:
+        return ["- Validation margin: not determined (no layup supplied)"]
+    regime = block["regime"]["label"]
+    n = block["n"]
+    if block["status"] == "fitted":
+        factor = float(block["margin_factor"])
+        quantile = 1.0 - float(block["coverage"])
+        if factor >= 1.0:
+            head = (
+                f"- Validation margin: **{factor:.2f}** (no reduction: "
+                f"the regime's fitted {quantile:.0%} quantile of measured / "
+                f"predicted is {_fmt(block.get('ratio_quantile'))}, above 1)"
+            )
+        else:
+            head = (
+                f"- Validation margin: **{_fmt(factor)}** (fitted so "
+                f"{block['coverage']:.0%} of the regime's {n} validation "
+                f"cases are conservative)  ·  margined knockdown "
+                f"**{_fmt(block.get('margined_knockdown'))}**"
+            )
+    else:
+        head = (
+            f"- Validation margin: **insufficient evidence** ({n} "
+            f"validation case{'' if n == 1 else 's'} in this regime; at "
+            f"least {block['min_cases']} needed)"
+        )
+    return [head, f"- Margin regime: {regime} (n = {n})"]
 
 
 def _contracted_or_none(layup: Any) -> str | None:
@@ -997,6 +1079,10 @@ def render_summary_markdown(summary: dict) -> str:
         f"- Analytical knockdown: **{_fmt(ea['analytical_knockdown'])}** "
         f"({_fmt(ea['residual_strength_pct'])}% residual strength)"
     )
+    # Issue #455. A summary built before the margin existed has no key and
+    # renders no line: the margin is read from the table at build time.
+    if "validation_margin" in ea:
+        lines.extend(_margin_lines(ea["validation_margin"]))
     lines.append(
         f"- Predicted strength: {_fmt(ea['predicted_strength_MPa'])} MPa"
     )
@@ -1028,6 +1114,13 @@ def render_summary_markdown(summary: dict) -> str:
         lines.append(
             "> **Gate outside its fit:** "
             f"{ea.get('gate_scope_caveat')}"
+        )
+    margin = ea.get("validation_margin")
+    if margin:
+        lines.append("")
+        lines.append(
+            "> **Validation margin:** "
+            f"{margin.get('definition', MARGIN_DEFINITION)}"
         )
     fe_block = ea.get("finite_element")
     if fe_block:

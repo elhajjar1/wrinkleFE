@@ -130,6 +130,119 @@ number**: the scope is derived from
 by a new route brings that route into scope when it is added (issue
 #445).
 
+### `validation_margin` — how far to discount the knockdown, by regime
+
+The results JSON (`validation_margin` block, schema 1.5) and the NCR
+summary (all three formats) report, next to `analytical_knockdown`, the
+**validation margin** that applies to it, the regime it comes from and
+the number of validation cases behind it (issue #455). Reporting only:
+no knockdown changes, and the severity banding still reads the
+unmargined value.
+
+**Definition.** The margin *m* is the factor to multiply the predicted
+knockdown by so that 95% of the validation cases in the same regime
+would have been conservative:
+
+> measured knockdown ≥ *m* × predicted knockdown, for 95% of the regime's cases.
+
+So *m* is the 5% quantile of measured / predicted, capped at 1 (a
+margin never raises a knockdown). The report gives the margined
+knockdown *m* × `analytical_knockdown` alongside.
+
+**Regimes.** Four things decide how far a prediction can be trusted, so
+each cell of their product is a regime:
+
+- **Model path.** Kink-band (analytical, compression), three-mechanism
+  (analytical, tension) or the penetration gate, whichever produced
+  `analytical_knockdown`. The table also scores the FE strength paths.
+- **Load.** Compression or tension.
+- **Laminate type.** UD-dominated when at least 75% of the plies are
+  within 5° of the load axis, otherwise multidirectional. The validation
+  layups sit well either side: 89–100% for the UD sets, 25–40% for the
+  multidirectional ones.
+- **Bending regime.** `bending_dominated` (compression only; see above).
+  For each validation case it is measured on the specimen's own wrinkle
+  geometry. For Dataset H's one-sided trough that is the ledger's
+  `eccentricity_recipe`, because its knockdown recipe is an embedded
+  profile.
+
+**Fitting method, and why not a normal.** The residuals are fat-tailed
+and often multi-modal. On the kink-band UD cases measured / predicted
+runs from 1.0 to 4.7. On the multidirectional tension cases it falls in
+two tight clusters. A normal fitted to such a sample puts the 5%
+quantile in the wrong place. It is too high when a minority of cases
+sits far on the unsafe side, because it averages them into a symmetric
+bell. It is too low when two tight clusters are read as one wide one.
+
+The margin therefore comes from a **two-component Gaussian mixture**,
+the model Elhajjar (2025) fitted to the fat-tailed, multi-modal strength
+distributions that wrinkles produce. It follows either shape, and it
+reduces to a normal when the residuals are unimodal. The details:
+
+- It is fitted by expectation-maximisation to ln(measured / predicted),
+  because the errors are multiplicative and the ratio stays positive.
+- Every split of the sorted sample is tried as a start, so the fit is
+  deterministic.
+- Each component's standard deviation is floored at 0.05, about the test
+  scatter of one measured knockdown. For scale, Dataset M's replicate
+  coupons, with identical geometry and so identical predictions, differ
+  in measured knockdown by up to about 20% (M-MD-8 0.699, M-MD-9 0.585).
+  The floor also stops a component collapsing onto a single case.
+
+**Minimum sample: 10 cases.** That is two per free parameter of the
+mixture (two means, two standard deviations, one weight). A regime with
+fewer cases reports **insufficient evidence** and its *n*, not a margin.
+
+**The current table** (`python scripts/fit_margins.py` prints it;
+non-quarantined ledger cases only):
+
+| Regime | n | Margin | Mixture 5% quantile | Normal 5% quantile (comparison) | Smallest ratio |
+|---|---|---|---|---|---|
+| kink-band · compression · UD-dominated · not bending-dominated | 14 | **1.00** | 1.219 | 1.212 | 0.998 |
+| three-mechanism · tension · multidirectional | 10 | **0.771** | 0.771 | 0.747 | 0.771 |
+| kink-band · compression · UD-dominated · bending-dominated | 3 | insufficient evidence | — | — | 0.794 |
+| kink-band · compression · multidirectional · not bending-dominated | 2 | insufficient evidence | — | — | 0.945 |
+| kink-band · compression · multidirectional · bending-dominated | 3 | insufficient evidence | — | — | 0.465 |
+| penetration gate · compression · UD-dominated | 6 | insufficient evidence | — | — | 0.866 |
+| three-mechanism · tension · UD-dominated | 4 | insufficient evidence | — | — | 0.719 |
+| progressive damage (crack band) · compression · UD-dominated | 3 | insufficient evidence | — | — | 0.765 |
+| FE first-ply retention (LaRC05), any regime | 0 | insufficient evidence | — | — | — |
+
+Reading it:
+
+- **Multidirectional compression has no margin yet**, in either bending
+  regime. That is the most common case in practice. The ledger holds
+  only five such cases (Shi, Thor). Datasets A, C and D are scored by
+  `validation/strength_error_summary.py` but are not in the ledger.
+- **The kink-band UD margin is 1.00** because the angle-only law is
+  strongly conservative on most UD sets: measured / predicted is 1.9 to
+  4.7 on Li (2025), Thor and Pilato. One case, Shi H-UD-10, is level at
+  0.998.
+- **The tension multidirectional margin, 0.771,** sits above the normal's
+  0.747 because the residuals are two tight clusters, not one wide bell.
+  Both mixture components sit at the 0.05 floor, so the floor sets this
+  value.
+- **The gate's six cases are in-sample:** the preset was fitted to them.
+  Even with more cases its margin would measure fit quality, not
+  prediction error.
+- **FE first-ply retention has no pinned predictions in the ledger.** Its
+  scores live in the head-to-head matrix (below), which is not pinned.
+  It keeps the caveat it carries everywhere.
+
+**Not a basis value.** The margin is a point estimate from a few
+published studies. It is not a CMH-17 A- or B-basis value, which would
+need a statistical tolerance bound on test data at a stated confidence.
+Read it as how far this regime's predictions have missed on the unsafe
+side so far, not as an allowable.
+
+**Keeping it current.** The ledger is not installed with the package,
+so the table ships as package data
+(`src/wrinklefe/core/validation_margins.json`), generated by
+`scripts/fit_margins.py`. After a model change,
+`python scripts/validate.py --update` re-pins the ledger and regenerates
+the table in one step. `python scripts/validate.py` and
+`tests/test_validation/test_margins_ledger.py` fail while the table is stale.
+
 ### Stiffness: `analytical_modulus_knockdown`, `modulus_retention`, `modulus_retention_global`
 
 Three different stiffness numbers, in increasing order of fidelity to a

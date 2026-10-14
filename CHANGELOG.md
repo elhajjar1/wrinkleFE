@@ -254,6 +254,36 @@ version produced a given file.
     the measured profile above the threshold. No shipped prediction
     changes. The `interpreting_results` guidance gains an eccentricity
     row.
+- Reporting — **regime-conditional validation margins** (issue #455).
+  The NCR summary (JSON, Markdown and PDF) and the results JSON now
+  report, with every analytical knockdown, the margin that applies to it,
+  its regime and the number of validation cases behind it.
+  - A regime is the model path (kink-band, three-mechanism, penetration
+    gate, or the FE paths), the load, the laminate type (UD-dominated at
+    ≥ 75% 0° plies, otherwise multidirectional) and `bending_dominated`.
+  - The margin is the factor that would have kept 95% of the regime's
+    validation cases conservative: the 5% quantile of measured /
+    predicted, capped at 1. It comes from a two-component Gaussian-mixture
+    (fat-tail) fit, after Elhajjar (2025), not a normal assumption.
+  - A regime with fewer than 10 cases reports "insufficient evidence". On
+    today's ledger two regimes have margins: kink-band UD compression,
+    1.00 (n = 14), and three-mechanism multidirectional tension, 0.771
+    (n = 10). Multidirectional compression has none yet.
+  - New module `wrinklefe.core.margins`. The fitted table ships as
+    package data (`core/validation_margins.json`), generated from the
+    non-quarantined ledger by `scripts/fit_margins.py`.
+    `python scripts/validate.py --update` re-pins the ledger and
+    regenerates the table in one step. `python scripts/validate.py` and
+    `tests/test_validation/test_margins_ledger.py` fail while it is stale.
+  - The ledger's Dataset H entries gain an `eccentricity_recipe`, so
+    their bending regime is measured on the one-sided trough the
+    specimens have.
+  - The results JSON schema goes to **1.5**, an additive change (new
+    `validation_margin` block). The NCR builder accepts an optional
+    `analytical_path`, and the app passes it.
+  - Reporting only: no knockdown changes, `scripts/validate.py` shows
+    zero drift, and the severity banding still reads the unmargined
+    knockdown.
 
 ### Changed
 - Packaging — the PyPI author is now Rani F. Elhajjar, matching
