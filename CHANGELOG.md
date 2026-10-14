@@ -383,6 +383,13 @@ version produced a given file.
   middle-ply wrinkles). A slow test pins it.
 
 ### Fixed
+- CI — **the lint job pins Streamlit for the type checker**
+  (`requirements-lint.txt`: `streamlit==1.65.0`). Streamlit 1.66.0 imports
+  `Never` from `typing`, which Python 3.10, this project's mypy target,
+  lacks; every `st.selectbox` then resolved to its empty-options overload
+  and returned `None`, and mypy reported 15 false errors in `app.py`. It
+  turned lint red on `main` with no change to the code. The app and its
+  runtime requirements are unaffected.
 - Packaging — **a local build could ship the copyrighted validation
   papers to PyPI.** `MANIFEST.in` grafts `validation/`, which picks up
   the gitignored PDFs in `validation/papers/` on any machine that has

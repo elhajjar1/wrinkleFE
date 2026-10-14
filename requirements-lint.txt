@@ -19,3 +19,10 @@
 ruff==0.16.10
 mypy==2.4.0
 scipy-stubs==1.17.1.5
+# streamlit is pinned for the type checker, not for the app: mypy checks
+# app.py and streamlit_viz.py against its real types (issue #374).
+# 1.66.0 imports `Never` from `typing`, which Python 3.10 (this project's
+# mypy target) lacks, so every st.selectbox resolves to its empty-options
+# overload and returns None: 15 false errors in app.py. Move the pin once
+# a release fixes that, or when the project drops Python 3.10.
+streamlit==1.65.0
