@@ -105,7 +105,7 @@ Typical values:
 
 `bending_dominated` is `True` for a **compression** analysis with
 e/t ≥ 0.10. At that point the section bends as well as kinks, and the
-kink-band `analytical_knockdown` does not represent that.
+angle-based kink-band knockdown does not represent that.
 
 On measured cases (issue #439):
 - **Below 0.10** (39 cases), the deployed analytical model was never more
@@ -113,10 +113,72 @@ On measured cases (issue #439):
 - **Above 0.15** (8 cases), it was unsafe on 7, by up to +115%. First-ply
   FE on the specimen's own wrinkle geometry was never unsafe there.
 
-When the flag is set, prefer FE on the measured profile. The text
-summary, the results JSON, the NCR summary and the app all carry the
-same warning. The flag changes no number. Tension analyses report the
-ratio but are not flagged, because the study covered compression only.
+### `governing_bound` — the bending bound on whole-thickness waves
+
+What happens next depends on whether the wave runs through the whole
+thickness. `whole_thickness_wave` is `True` when **both** outer surfaces
+follow the load path: at the section where the offset e is largest, each
+surface has moved, the same way, by at least half of e. It is measured
+on the same generated ply boundaries as e, so it works for every
+morphology, decay setting and multi-wrinkle layout:
+
+| Wrinkle | Surfaces at the offset | `whole_thickness_wave` |
+|---|---|---|
+| `uniform`, or `graded` with a `decay_floor` that keeps the surfaces wavy | both move by about e | `True` |
+| `tool_flat` (a face pinned flat by the tool: a one-sided trough) | one moves about 2e, the pinned one 0 | `False` |
+| `graded` (floor 0), `stack`, `convex`, `concave`, multi-wrinkle specs | both flat | `False` |
+
+**A bending-dominated whole-thickness wave** (`bending_bound_applied`)
+is treated as an eccentric column (issue #452). The far-field load runs
+a distance e from the centroid of the section at the wrinkle, whose
+thickness is t_c, so the outer fibres reach the pristine strength at
+
+```text
+bending_knockdown = (t_c / t_0) / (1 + 6 e / t_c)
+```
+
+and `analytical_knockdown` becomes the lower of `kink_band_knockdown`
+(the angle-based value, or the penetration gate's when one is
+configured) and `bending_knockdown`. `governing_bound` says which one
+won: `"kink_band"` or `"bending"`. On the measured whole-thickness waves
+in this regime:
+
+| Case | e/t | Measured | Kink-band | With the bound |
+|---|---|---|---|---|
+| Thor quasi-isotropic, wave 1 (J-QI-1) | 0.25 | 0.347 | +52.1% | **+15.1%** (bending governs) |
+| Elhajjar A = 0.73 mm | 0.31 | 0.320 | +29.6% | **+10.4%** (bending governs) |
+| Elhajjar A = 0.61 mm | 0.25 | 0.350 | +18.5% | **+13.1%** (bending governs) |
+| Elhajjar A = 0.24–0.49 mm (3 cases) | 0.10–0.20 | 0.37–0.47 | +1.0% … +12.1% | unchanged (kink-band governs) |
+| Thor UD, wave 1 (J-UD-1) | 0.25 | 0.252 | −56.8% | unchanged (kink-band governs) |
+
+The bound is a screening bound, not a validated allowable. It is
+homogeneous-section beam theory with no column-stability (P-delta)
+amplification, and it still leaves Thor's wave 1 15% unsafe. Check it
+against FE on the measured wrinkle profile.
+
+**A bending-dominated wrinkle that is not a whole-thickness wave** (a
+one-sided trough, like Shi's Dataset H on its FE recipe) gets no bound:
+the eccentric-column formula did not explain its measured knockdown,
+which points to a local effect under the trough. The kink-band knockdown
+stands, `governing_bound` is `"kink_band"`, and the advice is to prefer
+FE on the measured profile.
+
+Nothing changes below e/t = 0.10: the bound is not consulted there. It
+switches on at the threshold, so a whole-thickness wave whose kink-band
+knockdown is above 1/1.6 = 0.625 at e/t = 0.10 (a long wave with a small peak
+angle) steps down as it crosses it; no validation case sits
+near that step. In tension `governing_bound`,
+`kink_band_knockdown` and `bending_knockdown` are `None` and nothing
+changes: an axial pull straightens the wave rather than bending it
+further, and the evidence is compression only. Tension analyses still
+report e/t and `whole_thickness_wave`.
+
+The text summary (a `Governing bound:` line and the bending warning),
+the results JSON (`analytical` block, schema 1.5), the NCR summary and
+the app carry the same information. The warning text differs by case:
+`BENDING_BOUND_CAVEAT` when the bound was applied,
+`BENDING_REGIME_CAVEAT` (prefer FE) when it was not
+(`wrinklefe.core.eccentricity`).
 
 ### `manufacturing_process` — is the laminate in the validated scope?
 
@@ -301,8 +363,12 @@ interpolation of the scan curve."*
   the intended path. Use `analytical_knockdown` for screening and the FE
   numbers to check the mechanism and the load redistribution.
 - **Any compression result with `bending_dominated` set** (e/t ≥ 0.10) —
-  the analytical knockdown is outside its validated regime. Run FE on the
-  measured wrinkle profile and carry that number, with margin.
+  the kink-band knockdown is outside its validated regime. On a
+  whole-thickness wave `analytical_knockdown` already carries the
+  eccentric-column bending bound (`governing_bound`), which brought the
+  measured cases to within about +15%; treat it as a screening number.
+  On a one-sided trough there is no bound. Either way, run FE on the
+  measured wrinkle profile and carry the lower number, with margin.
 - **Unidirectional laminates in compression** — the angle-only knockdown
   is scale-invariant and under-predicts the penetration effect. Use the
   penetration gate. `progressive_knockdown` is the only FE number that
@@ -334,14 +400,14 @@ keeps *more* strength than it did: the unsafe direction. Every figure here
 is regenerated by `python validation/strength_error_summary.py`.
 
 **Analytical paths** — each dataset predicted by the model that applies to
-it; 58 of the 77 analytical cases fall within ±20% (the parity figure,
+it; 60 of the 77 analytical cases fall within ±20% (the parity figure,
 which also plots the FE series of Datasets H to K and Dataset M's FE
-onset, shows 73 of 105 overall). Dataset L is **quarantined** (issue #445): a low-quality wet
+onset, shows 75 of 105 overall). Dataset L is **quarantined** (issue #445): a low-quality wet
 lay-up laminate, listed for reference and left out of every count here.
 
 | Dataset | Model | n | Mean abs. error | Range | Non-conservative |
 |---|---|---|---|---|---|
-| A Elhajjar (2025), compression | Budiansky–Fleck | 13 | 9.5% | −9.1% … **+29.6%** | 5 / 13 |
+| A Elhajjar (2025), compression | Budiansky–Fleck, bending bound | 13 | 7.6% | −9.1% … +13.1% | 5 / 13 |
 | B Elhajjar (2025), tension | three-mechanism | 7 | 6.2% | −15.7% … +9.7% | 3 / 7 |
 | C Mukhopadhyay (2015), compression | Budiansky–Fleck | 3 | 7.7% | −10.8% … −5.2% | 0 / 3 |
 | C Mukhopadhyay (2015), tension | three-mechanism | 3 | 19.9% | −22.4% … −18.2% | 0 / 3 |
@@ -354,29 +420,31 @@ lay-up laminate, listed for reference and left out of every count here.
 | I Calvo (2023), multidirectional CFRP, tension, 7 distributed waves | three-mechanism | 1 | 8.4% | −8.4% | 0 / 1 |
 | M Elhajjar & Shams (2016), multidirectional T700GC/2510, tension, steep rod-made wrinkles (23–36°) | three-mechanism | 9 | 13.4% | −7.6% … **+29.6%** | 8 / 9 |
 | M Elhajjar & Shams (2016), UD T700GC/2510, tension (22–27°) | three-mechanism | 4 | 19.5% | −1.0% … **+39.2%** | 2 / 4 |
-| J Thor (2021), quasi-isotropic IM7/8552, whole-thickness waves | Budiansky–Fleck | 2 | 30.0% | −7.9% … **+52.1%** | 1 / 2 |
+| J Thor (2021), quasi-isotropic IM7/8552, whole-thickness waves | Budiansky–Fleck, bending bound | 2 | 11.5% | −7.9% … +15.1% | 1 / 2 |
 | J Thor (2021), UD IM7/8552 | Budiansky–Fleck, UD budget S12/Xc (no gate preset) | 2 | 16.6% | −23.2% … −10.0% | 0 / 2 |
 | K Pilato (2022), near-UD industrial wrinkles | Budiansky–Fleck, UD budget S12/Xc (no gate preset) | 5 | 20.3% | −22.9% … −16.7% | 0 / 5 |
 | *L Krishnappa & Gururaja (2024), wet lay-up UD carbon, 18 strip-induced wrinkles (quarantined)* | Budiansky–Fleck (no gate preset; UD budget S12/Xc on the 12 WL/WR cases) | 18 | 31.7% | −48.0% … −6.9% | 0 / 18 |
 
-Of the 19 analytical cases outside ±20%, eight are conservative; four
+Of the 17 analytical cases outside ±20%, eight are conservative; four
 of those are the kink-band on UD carbon (J, K), just outside the band
 (−22% to −23%). Before the UD strain budget was anchored to the
 material card (issue #451) the kink-band was 57–79% conservative on all
 seven J UD and K cases. The quarantined Dataset L adds fifteen more
-conservative ones. Six of the eleven unsafe ones are Dataset M's steep
-tension wrinkles (+20% to +39%, below). The five in compression are:
-- the most severe wrinkle in dataset A (+29.6%, A = 0.73 mm, measured
-  knockdown 0.32, predicted 0.42);
-- Dataset H's severe cases, +25.9% on the UD half and +55.6% / +115.2%
-  on the multidirectional half, where buckling takes part;
-- Thor's severe quasi-isotropic wave (+52.1%), which fails by bending of
-  the wavy coupon: delamination, then fibre breakage.
+conservative ones. Six of the nine unsafe ones are Dataset M's steep
+tension wrinkles (+20% to +39%, below). The three in compression are
+Dataset H's severe cases: +25.9% on the UD half and +55.6% / +115.2% on
+the multidirectional half, where buckling takes part. They are one-sided
+troughs, which the bending bound does not cover.
 
-All five sit at high amplitude-to-thickness ratios, where the failure
-mode is not the kinking the model represents (issue #439). On the H and
-J cases the FE retention, run on the specimen's own geometry, is within
-−9% to −1% (tables below). On the other multidirectional compression
+The whole-thickness waves that used to be on this list now carry the
+eccentric-column bending bound (issue #452; see "`governing_bound`"
+above): the most severe Dataset A wrinkle went from +29.6% to +10.4%
+(A = 0.73 mm, measured knockdown 0.32, predicted 0.35), and Thor's severe
+quasi-isotropic wave, which fails by bending of the wavy coupon, from
++52.1% to +15.1%. All of these sit at high amplitude-to-thickness ratios,
+where the failure mode is not the kinking the kink-band model represents
+(issue #439). On the H and J cases the FE retention, run on the
+specimen's own geometry, is within −9% to −1% (tables below). On the other multidirectional compression
 datasets, with generic recipes, the FE misses on the unsafe side: see
 [the head-to-head](#head-to-head-which-model-when-provisional).
 
@@ -480,7 +548,7 @@ in `validation/head_to_head_cases.csv`.
 
 | Dataset | Analytical | Gate | FE LaRC05 (first ply) |
 |---|---|---|---|
-| A Elhajjar, MD compression (13) | **+0.9%** mean, 5 unsafe, worst +29.6% | — | +4.1%, 7 unsafe, worst +23.8% |
+| A Elhajjar, MD compression (13) | **−1.0%** mean, 5 unsafe, worst +13.1% | — | +4.1%, 7 unsafe, worst +23.8% |
 | B Elhajjar, MD tension (7) | **−0.7%**, 3 unsafe, worst +9.7% | — | −16.4%, 3 unsafe, worst +9.2% |
 | C Mukhopadhyay, MD compression (3) | **−7.7%**, 0 unsafe | — | +38.7%, 3 unsafe, worst +48.2% |
 | C Mukhopadhyay, MD tension (3) | −19.9%, 0 unsafe | — | **−7.5%**, 1 unsafe, worst +5.5% |
@@ -493,7 +561,7 @@ in `validation/head_to_head_cases.csv`.
 | I Calvo, MD tension (1) | **−8.4%** | — | −25.7% |
 | M Elhajjar & Shams, MD tension (9) | +11.7%, 8 unsafe, worst +29.6% | — | −49.4% (vs the ultimate); onset: +32.0%, 6 unsafe, worst +134% |
 | M Elhajjar & Shams, UD tension (4) | +18.8%, 2 unsafe, worst +39.2% | — | −41.0% (vs the ultimate); onset (3): +68.1%, 3 unsafe, worst +154% |
-| J Thor, quasi-isotropic compression (2) | +22.1%, 1 unsafe, worst +52.1% | — | **−6.2%**, 0 unsafe |
+| J Thor, quasi-isotropic compression (2) | +3.6%, 1 unsafe, worst +15.1% | — | **−6.2%**, 0 unsafe |
 | J Thor, UD carbon (2) | −16.6%, 0 unsafe | +75.0% *(blind)*, 2 unsafe, worst +96.7% | **−1.4%**, 1 unsafe, worst +2.2% |
 | K Pilato, near-UD carbon (5) | −20.3%, 0 unsafe | +29.7% *(blind)*, 5 unsafe, worst +36.6% | **+4.2%**, 4 unsafe, worst +9.3% |
 | *L Krishnappa, wet lay-up UD carbon (18), quarantined* | −31.7%, 0 unsafe, −48% … −7% | +15.5% *(blind)*, 14 unsafe, worst +45.1% | +15.0%, 10 unsafe, worst +99.7% (embedded mid-plane wrinkles) |
@@ -509,7 +577,7 @@ Split by severity, multidirectional compression (A, C, D, H, J) reads:
 |---|---|---|---|
 | < 5° | 6 | −7.8% mean, 0 unsafe | +8.5%, 4 unsafe |
 | 5–10° | 6 | −10.7%, 0 unsafe | +23.0%, 5 unsafe |
-| ≥ 10° | 13 | +19.6%, **9 unsafe**, worst +115% | +10.6%, **5 unsafe**, worst +92% |
+| ≥ 10° | 13 | +14.9%, **9 unsafe**, worst +115% | +10.6%, **5 unsafe**, worst +92% |
 
 **Provisional guidance.** Confidence reflects the number of independent
 sources behind each row, not the size of the errors.
@@ -519,8 +587,8 @@ Every row rests on prepreg laminates. No row covers wet lay-up, infusion or RTM:
 | Case | Use | Evidence | Process route (as stated) | Confidence |
 |---|---|---|---|---|
 | Multidirectional compression, peak angle < 10° | Analytical kink-band. FE is unsafe here (9 of 12). | 12 cases, 4 labs | Prepreg: autoclave or hot press (A, J); C, D not stated | **Moderate**  |
-| Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness (Shi up to +115%, Thor +52%). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | Prepreg: autoclave or hot press (A, J); C, D, H not stated | **Low**: issues #434, #439  |
-| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. Below e/t = 0.10 the reverse holds. See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | Prepreg: autoclave or hot press (A, J); H not stated | **Low–moderate**: issue #439  |
+| Multidirectional compression, peak angle ≥ 10° | The analytical model is unsafe at high amplitude-to-thickness: Shi's one-sided troughs up to +115%; on whole-thickness waves the bending bound (issue #452) holds Thor to +15% and Elhajjar to +13% (+52% and +30% without it). FE is accurate when its mesh reproduces the specimen's wrinkle geometry (Shi −8% to −1%, Thor −9% to −4%) and unsafe when it does not (Wang, Mukhopadhyay, up to +92%). Use FE on the measured profile; otherwise take the lower of the two and add margin. | 13 cases, 5 labs | Prepreg: autoclave or hot press (A, J); C, D, H not stated | **Low**: issues #434, #439  |
+| Any compression wrinkle that moves the load path (eccentricity e/t ≥ 0.15: whole-thickness waves, one-sided surface troughs) | FE on the measured profile: never unsafe there (−40% to −1%), while the deployed analytical model is unsafe on 7 of 8. With the eccentric-column bending bound on the whole-thickness waves (issue #452), 3 of the 8 stay more than 15% unsafe (5 without it): Thor's wave 1 at +15.1% and Shi's two one-sided troughs, which the bound does not cover. Below e/t = 0.10 the analytical model is the better choice. See [the bending-mode investigation](bending_mode_investigation.md). | 8 cases, 3 studies above 0.15; 39 below 0.10 | Prepreg: autoclave or hot press (A, J); H not stated | **Low–moderate**: issues #439, #452  |
 | Multidirectional tension, ultimate | Analytical three-mechanism up to about 20°. On steep wrinkles (23–36°, Dataset M) it was unsafe on 8 of 9, by up to +30%: add margin there. | 20 cases, 3 labs; 9 above 20°, from one lab | Prepreg: autoclave or hot press (B, M); C, I not stated | **Moderate** below 20°, **Low** above |
 | UD tension, ultimate | Analytical three-mechanism, with margin: within 1% on the smaller wrinkles, +37% to +39% unsafe on the larger (angles estimated). | 4 cases, 1 lab | Prepreg: hot press (M) | **Low** |
 | Tension, damage onset | No reliable predictor. First-ply FE is an onset estimate only: unsafe on 9 of 12 Dataset M coupons (−22% to +154%, worst on the deepest wrinkles) and 2 of 3 Mukhopadhyay. | 15 cases, 2 labs | Prepreg: hot press (M); C not stated | **Low** |

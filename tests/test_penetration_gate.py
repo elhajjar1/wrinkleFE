@@ -306,7 +306,12 @@ class TestZPositionReachesEveryMorphology:
             penetration_gate=gate,
             wrinkle_z_position=z,
         )
-        return WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
+        # The gate's own value (``kink_band_knockdown`` on the gate path).
+        # On `uniform` this is a whole-thickness wave at e/t ~ 0.13, so the
+        # eccentric-column bending bound of issue #452 caps the final
+        # ``analytical_knockdown`` at ~0.58 whatever z is: a separate
+        # mechanism, pinned in tests/test_bending_bound.py.
+        return WrinkleAnalysis(cfg).run(analytical_only=True).kink_band_knockdown
 
     @pytest.mark.parametrize(
         "morphology", ["uniform", "stack", "concave", "graded"]

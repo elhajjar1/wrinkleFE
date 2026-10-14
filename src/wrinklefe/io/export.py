@@ -25,7 +25,7 @@ import numpy as np
 import scipy
 
 from wrinklefe import __version__ as _wrinklefe_version
-from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT
+from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT, bending_caveat
 from wrinklefe.core.layup import to_contracted_layup
 from wrinklefe.core.process import parse_process, process_scope_caveat
 
@@ -659,7 +659,12 @@ def build_analysis_summary(
         ``analytical_strength_MPa``, ``damage_index``, ``max_angle_deg``,
         ``effective_angle_deg``, ``morphology_factor``,
         ``load_path_eccentricity_ratio`` and ``bending_dominated`` (issue
-        #439; a flagged result carries :data:`BENDING_REGIME_CAVEAT`),
+        #439), ``bending_bound_applied``, ``governing_bound``,
+        ``bending_knockdown`` and ``kink_band_knockdown`` (issue #452; a
+        flagged result carries
+        :func:`~wrinklefe.core.eccentricity.bending_caveat`: the bound's
+        caveat when it was applied, :data:`BENDING_REGIME_CAVEAT` when it
+        was not),
         ``gate_scope_caveat`` (issue #445; the analysis's warning for a
         penetration-gate preset used outside its fit), an
         optional ``fe`` sub-dict (``modulus_retention``,
@@ -729,6 +734,15 @@ def build_analysis_summary(
         "misalignment / morphology-factor formulation) — analytical "
         "residual strength and damage index.",
     ]
+    if engineering.get("bending_bound_applied"):
+        governing = engineering.get("governing_bound")
+        criteria.append(
+            "Eccentric-column bending bound for a bending-dominated "
+            "whole-thickness wave, (t_c/t_0) / (1 + 6 e/t_c); the analytical "
+            "knockdown is the lower of it and the kink-band knockdown "
+            "(issue #452)"
+            + (f" — governing: {governing}." if governing else ".")
+        )
     if fe:
         retention = fe.get("retention_factors") or {}
         min_ret = min(retention.values()) if retention else None
@@ -860,10 +874,18 @@ def build_analysis_summary(
                 "load_path_eccentricity_ratio"
             ),
             "bending_dominated": bool(engineering.get("bending_dominated")),
-            "bending_regime_caveat": (
-                BENDING_REGIME_CAVEAT
-                if engineering.get("bending_dominated") else None
+            "bending_regime_caveat": bending_caveat(
+                bool(engineering.get("bending_dominated")),
+                bool(engineering.get("bending_bound_applied")),
             ),
+            # Issue #452: which compression bound set the knockdown.
+            # ``None`` when the caller did not supply them (or tension).
+            "bending_bound_applied": bool(
+                engineering.get("bending_bound_applied")
+            ),
+            "governing_bound": engineering.get("governing_bound"),
+            "bending_knockdown": engineering.get("bending_knockdown"),
+            "kink_band_knockdown": engineering.get("kink_band_knockdown"),
             # Issue #445: reporting only.
             "process_out_of_scope": process_caveat is not None,
             "process_scope_caveat": process_caveat,
@@ -1017,8 +1039,19 @@ def render_summary_markdown(summary: dict) -> str:
             f"- Load-path eccentricity e/t: "
             f"{_fmt(ea['load_path_eccentricity_ratio'])}"
         )
+    if ea.get("governing_bound"):
+        # Issue #452.
+        bound = f"- Governing bound: {_fmt(ea['governing_bound'])}"
+        if ea.get("bending_knockdown") is not None:
+            bound += (
+                f" (kink-band {_fmt(ea.get('kink_band_knockdown'))}, "
+                f"eccentric-column bending {_fmt(ea['bending_knockdown'])})"
+            )
+        lines.append(bound)
     if ea.get("bending_dominated"):
         lines.append("")
+        # A summary from before #452 carries no caveat choice; it predates
+        # the bound, so the not-applied warning is the faithful one.
         lines.append(
             "> **Bending-dominated:** "
             f"{ea.get('bending_regime_caveat') or BENDING_REGIME_CAVEAT}"

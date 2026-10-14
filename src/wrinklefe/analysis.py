@@ -2821,7 +2821,9 @@ class AnalysisResults:
         Interlaminar damage index D.
     analytical_knockdown : float
         Analytical combined knockdown factor (the *ultimate* fibre-failure
-        KD for tension; the kink-band KD for compression).
+        KD for tension; the kink-band KD for compression, lowered to the
+        eccentric-column bending bound on a bending-dominated
+        whole-thickness wave: see ``governing_bound``).
     analytical_onset_knockdown : float or None
         Delamination-onset (first-load-drop) knockdown for tension
         loading, computed from a curved-beam mode-mixity criterion using
@@ -2840,7 +2842,32 @@ class AnalysisResults:
         ``True`` for a compression analysis whose ``e / t`` is at or above
         :data:`~wrinklefe.core.eccentricity.ECCENTRICITY_REGIME_THRESHOLD`:
         outside the regime where the kink-band knockdown was validated
-        (issue #439). Prefer FE on the measured wrinkle profile there.
+        (issue #439).
+    whole_thickness_wave : bool
+        Whether both outer surfaces follow the load path, i.e. the
+        wrinkle is a whole-thickness wave rather than a one-sided trough
+        or an embedded wrinkle
+        (:attr:`~wrinklefe.core.eccentricity.LoadPathEccentricity.whole_thickness`).
+        Geometry, loading-independent (issue #452).
+    bending_bound_applied : bool
+        ``True`` when the eccentric-column bending bound was applied: a
+        compression analysis that is ``bending_dominated`` on a
+        ``whole_thickness_wave``. ``analytical_knockdown`` is then
+        ``min(kink_band_knockdown, bending_knockdown)``. A
+        bending-dominated result without it (a one-sided trough) keeps
+        the advice to run FE on the measured profile (issue #452).
+    bending_knockdown : float or None
+        The bound, :func:`~wrinklefe.core.eccentricity.bending_knockdown`
+        ``= (t_c / t_0) / (1 + 6 e / t_c)``, when it was applied; else
+        ``None``.
+    kink_band_knockdown : float or None
+        The compression knockdown before the bound: the kink-band value,
+        or the penetration-gate value when a gate is configured. ``None``
+        for tension.
+    governing_bound : str or None
+        Which compression bound sets ``analytical_knockdown``:
+        ``"kink_band"`` or ``"bending"``. ``None`` for tension, which the
+        bound does not touch.
     manufacturing_process : str
         The config's ``manufacturing_process`` (issue #445).
     process_out_of_scope, process_scope_caveat : bool, str or None
@@ -2892,6 +2919,12 @@ class AnalysisResults:
     load_path_eccentricity_mm: float = 0.0
     load_path_eccentricity_ratio: float = 0.0
     bending_dominated: bool = False
+    # Eccentric-column bending bound (issue #452).
+    whole_thickness_wave: bool = False
+    bending_bound_applied: bool = False
+    bending_knockdown: float | None = None
+    kink_band_knockdown: float | None = None
+    governing_bound: str | None = None
     # Manufacturing-process scope (issue #445): reporting only.
     manufacturing_process: str = "unspecified"
     process_out_of_scope: bool = False
@@ -3119,13 +3152,28 @@ class AnalysisResults:
             f"{self.load_path_eccentricity_ratio:.3f} "
             f"(e = {self.load_path_eccentricity_mm:.3f} mm)",
         ]
+        if self.governing_bound is not None:
+            # Issue #452: which compression bound set the knockdown.
+            bound = f"    Governing bound:        {self.governing_bound}"
+            if self.bending_knockdown is not None:
+                bound += (
+                    f" (kink-band {self.kink_band_knockdown:.4f}, "
+                    f"bending {self.bending_knockdown:.4f})"
+                )
+            lines.append(bound)
         if self.bending_dominated:
             import textwrap
 
-            from wrinklefe.core.eccentricity import BENDING_REGIME_CAVEAT
+            from wrinklefe.core.eccentricity import bending_caveat
 
+            caveat = bending_caveat(True, self.bending_bound_applied)
+            label = (
+                "WARNING (bending-dominated, bending bound applied): "
+                if self.bending_bound_applied
+                else "WARNING (bending-dominated): "
+            )
             lines.extend(textwrap.wrap(
-                "WARNING (bending-dominated): " + BENDING_REGIME_CAVEAT,
+                label + str(caveat),
                 width=61, initial_indent="    ", subsequent_indent="    ",
             ))
         if self.manufacturing_process != "unspecified":
@@ -3767,9 +3815,12 @@ class WrinkleAnalysis:
         # 3. Analytical predictions
         self._compute_analytical(results, wrinkle_config)
 
-        # 3a. Load-path eccentricity and the bending-regime flag (#439).
-        # Geometry only (the ply boundaries the FE mesh is built on, not
-        # a solve), so it runs on the analytical path too.
+        # 3a. Load-path eccentricity and the bending-regime flag (#439),
+        # and the eccentric-column bending bound on a bending-dominated
+        # whole-thickness wave in compression (#452), which can lower the
+        # analytical knockdown set in step 3. Geometry only (the ply
+        # boundaries the FE mesh is built on, not a solve), so it runs on
+        # the analytical path too.
         self._compute_eccentricity(results, laminate, wrinkle_config)
 
         # 3a'. Manufacturing-process and gate scope (issue #445).
@@ -5236,9 +5287,20 @@ class WrinkleAnalysis:
         laminate: Laminate,
         wrinkle_config: WrinkleConfiguration,
     ) -> None:
-        """Populate the load-path eccentricity and the bending flag (#439)."""
+        """Populate the load-path eccentricity and the bending flag (#439),
+        and apply the eccentric-column bending bound (#452).
+
+        Runs after :meth:`_compute_analytical`. On a compression analysis
+        that is bending-dominated (``e / t`` at or above the threshold)
+        AND a whole-thickness wave (both outer surfaces follow the load
+        path), the analytical knockdown becomes the lower of the
+        kink-band (or gate) value and
+        :func:`~wrinklefe.core.eccentricity.bending_knockdown`. Below the
+        threshold, on a one-sided trough, and in tension nothing changes.
+        """
         from wrinklefe.core.eccentricity import (
             ECCENTRICITY_REGIME_THRESHOLD,
+            bending_knockdown,
             load_path_eccentricity,
         )
 
@@ -5248,21 +5310,53 @@ class WrinkleAnalysis:
         )
         results.load_path_eccentricity_mm = ecc.e_mm
         results.load_path_eccentricity_ratio = ecc.ratio
+        results.whole_thickness_wave = ecc.whole_thickness
         compression = str(cfg.loading).lower().strip() != "tension"
         results.bending_dominated = bool(
             compression and ecc.ratio >= ECCENTRICITY_REGIME_THRESHOLD
         )
-        if results.bending_dominated:
-            # INFO, not WARNING: the flag already reaches the summary, the
-            # exports and the app, and a stochastic or sweep run would
-            # otherwise log it once per sample.
+        if not compression:
+            # Tension is left alone: an axial pull straightens the wave
+            # (the P-delta moment reduces the offset rather than growing
+            # it), and the #439 evidence is compression only.
+            return
+        kd_kink = float(results.analytical_knockdown)
+        results.kink_band_knockdown = kd_kink
+        results.governing_bound = "kink_band"
+        if not results.bending_dominated:
+            return
+        # INFO, not WARNING, from here on: the flag and the bound already
+        # reach the summary, the exports and the app, and a stochastic or
+        # sweep run would otherwise log them once per sample.
+        if not ecc.whole_thickness:
             logger.info(
                 "Load-path eccentricity e/t = %.3f is at or above %.2f: "
                 "bending-dominated, outside the regime where the kink-band "
-                "knockdown was validated (issue #439). Prefer FE on the "
-                "measured wrinkle profile.",
+                "knockdown was validated (issue #439). Not a whole-thickness "
+                "wave (top/bottom surface offsets %.3f / %.3f mm against "
+                "e = %.3f mm), so the bending bound does not apply (issue "
+                "#452). Prefer FE on the measured wrinkle profile.",
                 ecc.ratio, ECCENTRICITY_REGIME_THRESHOLD,
+                ecc.top_surface_offset_mm, ecc.bottom_surface_offset_mm,
+                ecc.e_mm,
             )
+            return
+        kd_bend = bending_knockdown(ecc)
+        results.bending_bound_applied = True
+        results.bending_knockdown = kd_bend
+        if kd_bend < kd_kink:
+            results.governing_bound = "bending"
+            results.analytical_knockdown = kd_bend
+            material = cfg.material
+            assert material is not None  # set by AnalysisConfig.__post_init__
+            results.analytical_strength_MPa = float(material.Xc) * kd_bend
+        logger.info(
+            "Load-path eccentricity e/t = %.3f is at or above %.2f on a "
+            "whole-thickness wave: eccentric-column bending bound %.4f "
+            "against kink-band %.4f, %s governs (issue #452).",
+            ecc.ratio, ECCENTRICITY_REGIME_THRESHOLD, kd_bend, kd_kink,
+            results.governing_bound,
+        )
 
     def _compute_process_scope(self, results: AnalysisResults) -> None:
         """Populate the manufacturing-process and gate scope flags (#445)."""

@@ -123,18 +123,26 @@ def test_decay_floor_effective_under_both_loadings_issue_254(loading):
 
 def test_decay_floor_one_disables_compression_decay():
     """floor=1.0 means every ply keeps the full angle — identical to a
-    decay scale so large the Gaussian never drops below ~1."""
-    kd_floor1 = _graded_kd("compression", 1.0)
-    cfg = AnalysisConfig(
-        amplitude=0.75, wavelength=12.9, width=12.9,
-        morphology="graded", decay_floor=0.0, loading="compression",
-        angles=[0.0, 45.0, -45.0, 90.0] * 3
-        + [90.0, -45.0, 45.0, 0.0] * 3,
-        through_thickness_decay_scale=1.0e6,
-    )
-    kd_nodecay = float(
-        WrinkleAnalysis(cfg).run(analytical_only=True).analytical_knockdown
-    )
+    decay scale so large the Gaussian never drops below ~1.
+
+    Compared on the kink-band value: floor=1.0 also makes the GEOMETRY a
+    whole-thickness wave (both surfaces wavy), which the analytical decay
+    scale does not, so the eccentric-column bound of issue #452 caps the
+    first and not the second. The envelope semantics pinned here are the
+    kink-band's."""
+    def kink_band(**kw):
+        cfg = AnalysisConfig(
+            amplitude=0.75, wavelength=12.9, width=12.9,
+            morphology="graded", loading="compression",
+            angles=[0.0, 45.0, -45.0, 90.0] * 3
+            + [90.0, -45.0, 45.0, 0.0] * 3, **kw,
+        )
+        res = WrinkleAnalysis(cfg).run(analytical_only=True)
+        return float(res.kink_band_knockdown)
+
+    kd_floor1 = kink_band(decay_floor=1.0, through_thickness_decay_scale=0.5)
+    kd_nodecay = kink_band(decay_floor=0.0,
+                           through_thickness_decay_scale=1.0e6)
     assert kd_floor1 == pytest.approx(kd_nodecay, rel=1e-9)
 
 

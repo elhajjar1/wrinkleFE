@@ -280,7 +280,8 @@ def test_summary_names_the_process_and_warns():
 
 def test_results_json_carries_the_scope_block():
     data = results_to_dict(_run(_config("infusion")))
-    assert SCHEMA_VERSION == "1.4"
+    # 1.4 added the block; later additive bumps keep it (issue #452: 1.5).
+    assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 4)
     scope = data["scope"]
     assert scope["manufacturing_process"] == "infusion"
     assert scope["process_out_of_scope"] is True
