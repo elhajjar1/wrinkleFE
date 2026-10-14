@@ -236,12 +236,11 @@ def test_below_the_threshold_the_bound_is_not_applied():
 
 
 def test_one_sided_trough_keeps_the_kink_band_and_the_warning():
-    """Shi (2025), Dataset H, on its FE recipe: bending-dominated, but a
-    one-sided trough, so the bound is not applied."""
-    cfg, _ = _ledger_case(
-        "shi_2025_md", "H-MD-30", morphology="tool_flat",
-        surface_pocket_side="bottom", surface_transition_plies=10,
-        enable_surface_resin_pockets=False, analytical_only=True)
+    """Shi (2025), Dataset H, on its ledger recipe (the one-sided
+    ``tool_flat`` trough, issue #461): bending-dominated, but a one-sided
+    trough, so the bound is not applied."""
+    cfg, _ = _ledger_case("shi_2025_md", "H-MD-30")
+    assert cfg.morphology == "tool_flat"
     res = _run(cfg)
     assert res.bending_dominated and not res.whole_thickness_wave
     assert not res.bending_bound_applied

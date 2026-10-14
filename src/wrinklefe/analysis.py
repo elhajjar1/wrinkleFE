@@ -5061,12 +5061,14 @@ class WrinkleAnalysis:
             # the default c_AF = 0 this is KD_BF = g / (g + theta_eff);
             # a user-set c_AF still applies on top. The graded
             # profile-proportional branch above keeps gamma_Y_eff: its
-            # budget is calibrated jointly with the profile average, and
-            # it is not biased conservative on UD carbon (Hsiao-Daniel
-            # -22 %, Krishnappa WM -7 % to -34 %, Shi +0.2 % to +26 %),
-            # so g there would push Shi further unsafe (and, until issue
-            # #454 removed the compression floor from tension, Dataset M's
-            # UD tension floor too).
+            # budget is calibrated jointly with the profile average. When
+            # this was decided it was not biased conservative on UD carbon
+            # (Hsiao-Daniel -22 %, Krishnappa WM -7 % to -34 %, and Shi
+            # +0.2 % to +26 % while its one-sided troughs were scored as
+            # graded), so g there would have pushed Shi further unsafe
+            # (and, until issue #454 removed the compression floor from
+            # tension, Dataset M's UD tension floor too). Since issue
+            # #461 Shi is scored as tool_flat, on this branch.
             if _is_ud_dominated(angles):
                 gamma_Y_eff = _ud_kink_strain_budget(mat)
             r_bf = theta_eff / gamma_Y_eff

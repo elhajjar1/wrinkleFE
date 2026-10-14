@@ -2,7 +2,9 @@
 
 The validation study behind #439 found that the angle-based kink-band
 knockdown is safe while a wrinkle leaves the laminate's load path in
-place, and unsafe by up to +115% once the wrinkle moves it (e/t >= 0.10).
+place, and unsafe by up to +115% once the wrinkle moves it (e/t >= 0.10;
++115% on Shi's one-sided troughs scored as ``graded``, +52% once issue
+#461 scored them as ``tool_flat``).
 These tests pin the measurement, the flag, and every place the flag must
 reach: the text summary, the schema-versioned results JSON, the NCR
 summary and the app's result dict.

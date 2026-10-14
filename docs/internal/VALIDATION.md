@@ -68,21 +68,22 @@ as does `tests/test_validation/test_margins_ledger.py`. Commit the regenerated
 table with the re-pinned ledger.
 
 The bending regime of a validation case is measured on the specimen's
-own wrinkle geometry. Where the knockdown recipe does not reproduce
-that geometry, the dataset carries an `eccentricity_recipe` of config
-overrides used only for this measurement. Today that is Dataset H's
-one-sided trough, `tool_flat` with a 10-ply ramp, as in
-`validation/bending_mode_study.py`.
+own wrinkle geometry, which is the case's knockdown recipe. Dataset H's
+one-sided trough used to need an `eccentricity_recipe` of config
+overrides for this measurement (`tool_flat` with a 10-ply ramp), because
+its knockdown recipe was an embedded `graded` profile. Issue #461 made
+that geometry the knockdown recipe itself (see Dataset H below), so the
+overrides were removed; the classification is unchanged.
 
-A user who models such a trough the way the knockdown recipe does gets
-no bending warning (issue #461). `graded` with decay floor 0 keeps both
-outer surfaces flat. On Shi's recipes it measures e/t = 0 on the UD half
-(the centroid of a section with flat surfaces is midway between them)
-and 0.012 to 0.030 on the multidirectional half. The `eccentricity_recipe`
+A user who models such a trough as `graded`, as the ledger did before
+issue #461, gets no bending warning. `graded` with decay floor 0 keeps
+both outer surfaces flat. On Shi's troughs it measures e/t = 0 on the UD
+half (the centroid of a section with flat surfaces is midway between
+them) and 0.012 to 0.030 on the multidirectional half. `tool_flat`
 gives 0.05 to 0.18 and flags the 20% and 30% troughs. No detector was
 added, because nothing in a `graded` trough's inputs separates it from
-an embedded wrinkle. Over the 31 `graded` compression cases (the ledger
-plus Datasets C and E), Krishnappa's embedded L-WM-4-3 has a higher
+an embedded wrinkle. Among the 25 embedded `graded` compression cases
+(the ledger plus Datasets C and E), Krishnappa's L-WM-4-3 has a higher
 amplitude-to-thickness ratio (0.207) than Shi's 20% troughs (0.200). Li's
 embedded S-M-3 has a higher amplitude-to-wavelength ratio (0.093 against
 0.069) and peak angle (30° against 23.5°). Every single-metric threshold
@@ -147,11 +148,13 @@ See the table in [README.md](../../README.md). Current sources:
   - **H-UD** `[0]_20`: measured KD 0.638/0.494/0.400 (pristine 39.5 kN
     = 866 MPa; vendor Xc is 1450 — clamped-end D6641, so knockdowns are
     ratios to the measured pristine). Third UD strength set, first
-    carbon one with an amplitude sweep at fixed span. Plain analytical
-    (Budiansky–Fleck floor): +0.2/+11.8/+25.9% — dead-on at 12° and
-    drifting unsafe with angle, the saturation the penetration gate
-    exists for; no gate preset is calibrated for this material yet
-    (3 points would overfit the gate — wait for more carbon data).
+    carbon one with an amplitude sweep at fixed span. Analytical
+    (peak-angle Budiansky–Fleck on the one-sided `tool_flat` trough,
+    with the UD budget S12/Xc of issue #451): −58.9/−68.4/−71.0%,
+    strongly conservative; the 20% and 30% troughs are flagged
+    bending-dominated (e/t 0.10 and 0.15). No gate preset is
+    calibrated for this material yet (3 points would overfit the
+    gate — wait for more carbon data).
     First-ply FE (tool_flat recipe, nx = 48): −26.2/−36.7/−39.9%,
     strongly conservative — the FE sees the full local concentration
     of this short-span wrinkle while the specimens carry on past
@@ -162,8 +165,12 @@ See the table in [README.md](../../README.md). Current sources:
     severities are *worse* than the UD half at the same t/T — the
     paper attributes the 30% failures to buckling participation from
     the one-sided stiffness asymmetry, which no first-ply path models.
-    The analytical path over-predicts badly here (+5.8/+55.6/+115.2%)
-    and the docs steer multidirectional users to the FE accordingly.
+    The analytical path (`tool_flat`) gives −42.1/−22.4/+5.0%:
+    conservative except on the 30% trough, which is flagged
+    bending-dominated (e/t 0.18, like the 20% one at 0.12) with the
+    advice to run FE. On the `graded` recipe it used before issue #461
+    it over-predicted badly (+5.8/+55.6/+115.2%). The docs steer
+    multidirectional users to the FE in this regime.
     **First-ply FE retention: −7.7/−7.4/−0.9%** — conservative
     across the board (`FE_STRENGTH_CAVEAT` now carries this; the slow
     test in `tests/test_fe_strength_caveat.py` keeps it true).
@@ -172,14 +179,65 @@ See the table in [README.md](../../README.md). Current sources:
     T700/epoxy values, not from the paper; they set LaRC05's in-situ
     strengths, so the FE figures rest on that choice (documented on
     the card).
-  - Geometry representation: the ledger's analytical recipe is the
-    plain graded profile (the analytical path reads only the peak
-    angle); the FE recipe is `morphology='tool_flat'`, flat face on
-    the bottom, 10-ply ramp — for these symmetric layups the
+  - Geometry representation: since issue #461 the analytical and FE
+    recipes are the same geometry, `morphology='tool_flat'`, flat face
+    on the bottom, 10-ply ramp. For these symmetric layups the
     flat-bottom *crest* it builds is the z-mirror of the paper's
     flat-bottom *dip*, and the mirror is a symmetry of the specimen,
-    so the response is equivalent. The real assumption is the decay
-    shape itself (the paper sketches it; Figs. 3 and 8).
+    so the response is equivalent. The FE adds the surface resin
+    pockets, which are FE-only, so the ledger recipe sets
+    `analytical_only` (otherwise `tool_flat` switches them on). The
+    real assumption is the decay shape itself (the paper sketches it;
+    Figs. 3 and 8).
+  - **Recipe correction (issue #461), made after the results were
+    known.** Until issue #461 the analytical recipe was the plain
+    `graded` profile at the default mid interfaces, on the reasoning
+    that the analytical path reads only the peak angle. `graded` is an
+    embedded wrinkle with both outer surfaces flat, not the specimens'
+    one-sided trough. It also takes a different branch (the
+    profile-averaged kink-band with the layup strain budget, where
+    `tool_flat` takes the peak-angle cross-section and, on UD, the card
+    budget S12/Xc), and it measures e/t ≈ 0, so the troughs got no
+    bending warning. The recipe was changed after its errors against
+    these measurements were known. The reason is the geometry, not the
+    errors: the specimens are one-sided, `tool_flat` with only the tool
+    face pinned is the documented morphology for that
+    ([Interpreting results](../interpreting_results.md), "One-sided
+    surface troughs"), and the FE recipe already used it. Errors are
+    against the measured knockdown; positive is unsafe:
+
+    | Case | t/T | Measured | `graded` (before): KD, error, e/t | `tool_flat` (now): KD, error, e/t |
+    |---|---|---|---|---|
+    | H-UD-10 | 10% | 0.638 | 0.6395, +0.2%, 0.000 | 0.2620, −58.9%, 0.050 |
+    | H-UD-20 | 20% | 0.494 | 0.5521, +11.8%, 0.000 | 0.1563, −68.4%, **0.100 (flagged)** |
+    | H-UD-30 | 30% | 0.400 | 0.5035, +25.9%, 0.000 | 0.1162, −71.0%, **0.150 (flagged)** |
+    | H-MD-10 | 10% | 0.760 | 0.8039, +5.8%, 0.012 | 0.4397, −42.1%, 0.058 |
+    | H-MD-20 | 20% | 0.475 | 0.7390, +55.6%, 0.022 | 0.3687, −22.4%, **0.117 (flagged)** |
+    | H-MD-30 | 30% | 0.326 | 0.7015, +115.2%, 0.030 | 0.3423, +5.0%, **0.175 (flagged)** |
+
+    - Re-pinned: these six strength baselines and the six modulus
+      baselines (no measured modulus; they fall by 0.3% to 1.8%).
+      Nothing else in the ledger moved.
+    - None of the troughs is a whole-thickness wave, so the bending
+      bound of issue #452 does not apply; the flagged ones carry the
+      warning and the advice to run FE.
+    - Both halves move to the conservative side because the
+      peak-angle kink-band applies the full 12–33° peak angle at the
+      critical cross-section, where the `graded` branch averages it
+      over the decaying profile. On the UD half that holds although
+      the budget rises (S12/Xc = 0.076 against the layup model's
+      0.032); the multidirectional budget (0.066) is the same on both.
+    - Analytical cases within ±20%: 64 → 62 of 77; parity chart
+      79 → 77 of 105. H-UD-10, H-UD-20 and H-MD-10 leave the band on
+      the conservative side, and H-MD-30 enters it. Dataset H's three
+      unsafe misses outside the band (+25.9%, +55.6%, +115.2%) are
+      gone.
+    - Validation margins: the kink-band UD margin stays 1.00 (its one
+      level case, H-UD-10 at measured / predicted 0.998, is now 2.44).
+      The three other regimes Shi feeds still hold fewer than 10 cases
+      each; their smallest ratios rise to 0.869 (multidirectional,
+      bending-dominated: Thor's wave 1, where H-MD-30 was 0.465), 1.086
+      and 1.111.
   - Context reference: Luong, Trevarthen, Butler, Srisuriyachot & Lunt
     (2025), *Composites Part B* 307:112818 — a CC BY review compiling
     wrinkle knockdown ranges (compressive 30–75%); no case-level data,
@@ -253,7 +311,8 @@ See the table in [README.md](../../README.md). Current sources:
     wave 2 −7.9%; UD −10.0% / −23.2% with the material-anchored UD
     budget (S12/Xc = 0.077, issue #451; −56.8% / −58.9% with the layup
     model's 0.032). Before the bound, the severe quasi-isotropic miss
-    matched Shi's (+56% / +115%) from an independent lab.
+    matched Shi's (+56% / +115%, on the `graded` recipe Shi was scored
+    on before issue #461) from an independent lab.
   - **Re-pinned (issue #452):** J-QI-1 `expected_analytical_kd`
     0.5271 → 0.3990. Wave 1 is a whole-thickness wave (both surfaces
     follow the load path) at e/t = 0.251, so the bound
@@ -611,7 +670,9 @@ unsafe count and worst case:
 - **The bias is on the peak-angle path only.** The `graded` profile
   average is not biased conservative on UD carbon: its ten measured
   cases (G, H-UD, L-WM) average −10.5%. Its 0.032 was calibrated together
-  with the averaging.
+  with the averaging. *(Since issue #461 H-UD is scored as `tool_flat`,
+  on the peak-angle path. The seven `graded` UD carbon cases left, G and
+  the quarantined L-WM, average −20.4%, all conservative.)*
 - **g on the `graded` path too fails the acceptance bar:**
   - H-UD-10 goes from +0.2% to +17.6% unsafe;
   - L-WM-2-3 goes from −6.9% to +44.6%;
@@ -653,6 +714,9 @@ peak-angle path (a `uniform` analytical recipe) it is strongly
 conservative either way: −80% to −87% before, −59% to −71% now. Its
 remaining unsafe miss is the one-sided-trough regime (issue #439), which
 the two-sided-wave bending bound of issue #452 does not cover.
+*Update (issue #461): Shi's recipe is now the one-sided `tool_flat`
+trough the specimens have, which is on the peak-angle path, so it takes
+g: −58.9 / −68.4 / −71.0%, the "now" figures above (see Dataset H).*
 
 **Tension.** Tension takes the larger of its three-mechanism value and
 the compression knockdown.
@@ -809,8 +873,9 @@ per-case values with wrinkle angle to
 Headline: on multidirectional compression the analytical model is
 conservative below 10° peak angle (12 cases, 4 labs), where the FE is
 unsafe on 9 of 12. Above 10° the analytical model is unsafe at high
-amplitude-to-thickness (Shi up to +115%; Thor +15% with the bending
-bound below, +52% without it). The FE is accurate
+amplitude-to-thickness (Thor +15% with the bending bound below, +52%
+without it; Shi up to +115% while its troughs were scored as `graded`,
++5% on `tool_flat` since issue #461). The FE is accurate
 there when its mesh reproduces the specimen's geometry (Shi, Thor: −9%
 to −1%) and unsafe on the generic recipes (Wang +92%, Mukhopadhyay
 +48%). Datasets J and K add the UD-carbon blind gate test: the shipped
@@ -819,7 +884,9 @@ amplitude-to-thickness regime (issue #439) whole-thickness waves now
 carry an eccentric-column bending bound (issue #452): Thor's wave 1 goes
 from +52.1% to +15.1% and Elhajjar's two most severe compression cases
 from +18.5% / +29.6% to +13.1% / +10.4%. Shi's one-sided troughs are not
-covered and stay at up to +115%. The guidance
+covered by the bound; on their corrected `tool_flat` recipe (issue #461)
+the analytical model is −71% to +5% on them, and the 20% and 30%
+troughs are flagged bending-dominated. The guidance
 table, with confidence levels, is in `docs/interpreting_results.md`
 ("Head-to-head: which model, when"). Follow-up data needs are issues
 #434 (severe multidirectional compression), #435 (UD carbon, blind
@@ -924,11 +991,14 @@ the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
 MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
 MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**79 of 105** points sit inside the corridor (70 before the UD strain
+**77 of 105** points sit inside the corridor (70 before the UD strain
 budget of issue #451 brought three UD carbon cases inside, the
 bending bound of issue #452 brought Elhajjar A = 0.73 mm and Thor's
 wave 1 inside, and the tension corrections of issue #454 brought
-four tension cases inside), not counting the quarantined
+four tension cases inside; 79 until issue #461 corrected Dataset H's
+analytical recipe to its one-sided `tool_flat` trough, which moved
+H-UD-10, H-UD-20 and H-MD-10 out on the conservative side and H-MD-30
+in), not counting the quarantined
 Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
 analytical and 5 of 18 FE points inside: the kink-band is conservative
 on all 18 (mean −32%), and the FE over-predicts its embedded (mid-plane)

@@ -6,7 +6,9 @@ so a one-sided surface trough modelled that way reads as an embedded
 wrinkle and gets no bending warning. ``tool_flat`` with only the tool face
 pinned is flagged once the trough is deep enough. No detector was added
 on ``graded``, because its inputs overlap the measured embedded wrinkles'.
-Users are steered to ``tool_flat`` instead.
+Users are steered to ``tool_flat`` instead, and the validation ledger
+scores Shi's troughs (Dataset H) on ``tool_flat`` too (issue #461, part
+2); ``graded`` was its recipe before.
 
 These tests pin that evidence (the numbers ``docs/interpreting_results.md``
 quotes), the no-false-alarm property on the embedded datasets, and the
@@ -52,10 +54,10 @@ def _case_config(prefix, name, **overrides):
     return cfg, case
 
 
-def _trough_overrides(prefix):
-    """The dataset's ``eccentricity_recipe``: the specimen's real trough."""
-    recipe = _dataset(prefix)["eccentricity_recipe"]
-    return {k: v for k, v in recipe.items() if k != "_comment"}
+#: Shi's troughs as the ledger modelled them before issue #461 (part 2):
+#: an embedded ``graded`` profile at the default mid interfaces. The
+#: ledger recipe itself is now the one-sided ``tool_flat`` trough.
+_AS_GRADED = {"morphology": "graded"}
 
 
 def _run(cfg):
@@ -86,10 +88,11 @@ def _err(pred, meas):
 )
 def test_shi_trough_is_flagged_on_tool_flat_and_not_on_graded(
         prefix, case, graded_et, graded_err, trough_et, trough_err, flagged):
-    cfg, meta = _case_config(prefix, case)
+    trough_cfg, meta = _case_config(prefix, case)
     measured = float(meta["measured_kd"])
 
-    graded = _run(cfg)
+    graded_cfg, _ = _case_config(prefix, case, **_AS_GRADED)
+    graded = _run(graded_cfg)
     assert graded.config.morphology == "graded"
     assert graded.load_path_eccentricity_ratio == pytest.approx(
         graded_et, abs=5e-4)
@@ -98,9 +101,13 @@ def test_shi_trough_is_flagged_on_tool_flat_and_not_on_graded(
     assert _err(graded.analytical_knockdown, measured) == pytest.approx(
         graded_err, abs=0.05)
 
-    trough_cfg, _ = _case_config(prefix, case, **_trough_overrides(prefix))
+    # The ledger recipe (issue #461, part 2), so these are the pinned
+    # knockdowns the validation scores.
     trough = _run(trough_cfg)
     assert trough.config.morphology == "tool_flat"
+    assert trough.config.surface_pocket_side == "bottom"
+    assert trough.analytical_knockdown == pytest.approx(
+        float(meta["expected_analytical_kd"]), abs=5e-7)
     assert trough.load_path_eccentricity_ratio == pytest.approx(
         trough_et, abs=5e-4)
     assert trough.bending_dominated is flagged
@@ -118,6 +125,28 @@ def test_shi_trough_is_flagged_on_tool_flat_and_not_on_graded(
         assert "bending bound applied" not in summary
 
 
+def test_the_regime_caveat_quotes_the_flagged_troughs():
+    """``BENDING_REGIME_CAVEAT`` is what a flagged one-sided trough gets.
+    Its analytical range is the four flagged Shi troughs on their ledger
+    recipe. Its FE range is those troughs' first-ply retention, section
+    2b of ``validation/strength_error_summary.py`` (H-UD-20/30 -36.7 /
+    -39.9 %, H-MD-20/30 -7.4 / -0.9 %), which needs FE and is not
+    re-run here."""
+    errs = []
+    for prefix in ("shi_2025_ud", "shi_2025_md"):
+        for case in _dataset(prefix)["cases"]:
+            res = _run(_case_config(prefix, case["case"])[0])
+            if res.bending_dominated:
+                assert not res.whole_thickness_wave
+                errs.append(_err(res.analytical_knockdown,
+                                 float(case["measured_kd"])))
+    assert len(errs) == 4
+    assert min(errs) == pytest.approx(-71.0, abs=0.05)
+    assert max(errs) == pytest.approx(5.0, abs=0.05)
+    caveat = " ".join(BENDING_REGIME_CAVEAT.split())
+    assert "about 70% conservative to 5% unsafe" in caveat
+
+
 @pytest.mark.parametrize("case", ["H-UD-10", "H-UD-20", "H-UD-30"])
 def test_on_ud_graded_reads_zero_and_tool_flat_reads_half_the_depth(case):
     """A UD section's centroid is midway between its outer surfaces, so
@@ -125,11 +154,9 @@ def test_on_ud_graded_reads_zero_and_tool_flat_reads_half_the_depth(case):
     one-sided trough reads depth / (2 T)."""
     cfg, _ = _case_config("shi_2025_ud", case)
     thickness = len(cfg.angles) * cfg.ply_thickness
-    graded = _run(cfg)
+    graded = _run(_case_config("shi_2025_ud", case, **_AS_GRADED)[0])
     assert graded.load_path_eccentricity_mm == pytest.approx(0.0, abs=1e-9)
-    trough_cfg, _ = _case_config("shi_2025_ud", case,
-                                 **_trough_overrides("shi_2025_ud"))
-    trough = _run(trough_cfg)
+    trough = _run(cfg)
     assert trough.load_path_eccentricity_ratio == pytest.approx(
         cfg.amplitude / (2.0 * thickness), rel=1e-3)
 
@@ -139,9 +166,9 @@ def test_on_ud_graded_reads_zero_and_tool_flat_reads_half_the_depth(case):
     [
         ("uniform", {"morphology": "uniform"}, True, True),
         ("graded, decay centred on the top surface",
-         {"wrinkle_z_position": 1.0}, True, False),
+         {**_AS_GRADED, "wrinkle_z_position": 1.0}, True, False),
         ("graded, decay centred just below it",
-         {"wrinkle_z_position": 0.9}, False, False),
+         {**_AS_GRADED, "wrinkle_z_position": 0.9}, False, False),
         ("tool_flat on the top face",
          {"morphology": "tool_flat", "surface_pocket_side": "top",
           "surface_transition_plies": 10}, True, False),
@@ -258,8 +285,10 @@ def test_no_input_threshold_separates_the_trough_from_embedded_wrinkles():
         embedded = max(metric(krishnappa), metric(li))
         assert embedded > metric(shi), metric.__name__
     # Neither embedded case is bending-dominated (checked above), and the
-    # trough's own graded geometry reads as embedded too.
-    assert _run(shi).load_path_eccentricity_ratio < ECCENTRICITY_REGIME_THRESHOLD
+    # trough entered as graded reads as embedded too.
+    shi_graded, _ = _case_config("shi_2025_md", "H-MD-20", **_AS_GRADED)
+    assert _run(shi_graded).load_path_eccentricity_ratio < (
+        ECCENTRICITY_REGIME_THRESHOLD)
 
 
 # ----------------------------------------------------------------------
