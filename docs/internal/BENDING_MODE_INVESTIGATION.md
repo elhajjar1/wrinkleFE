@@ -75,6 +75,11 @@ above:
   kink-band budget moved to the material card, issue #451, which cut
   the deployed model's error on J UD and K).
 
+These figures treat "deployed" as the kink-band alone, before issue #452
+shipped the bending bound. With the bound, the deployed model itself is
+more than 15% unsafe on 4 of the 50 cases (MAE 12.3%): Thor's wave 1 at
++15.1% and Shi's three one-sided troughs.
+
 ## Reported failure modes
 
 | Dataset | What the paper reports | e/t of its unsafe cases |
