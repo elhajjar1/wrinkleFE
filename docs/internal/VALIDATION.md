@@ -969,16 +969,6 @@ Produced by `tests/integration/test_mmb_mixity_synthesis.py`.
 
 ![Mixity synthesis — predicted vs experimental](../../figures/phase7_mmb_mixity_synthesis.png)
 
-### Legacy knockdown snapshots
-
-No script in the current tree regenerates these two, so treat them as
-archival rather than reproducible evidence — the reproducible
-cross-dataset view is the consolidated parity chart above.
-
-![Compression knockdown, predicted vs experimental](../../figures/validation_compression.png)
-
-![Tension knockdown, predicted vs experimental](../../figures/validation_tension.png)
-
 ## Evaluated — not included
 
 ### Varkonyi, Belnoue, Kratz & Hallett (2020)

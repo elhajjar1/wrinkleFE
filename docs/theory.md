@@ -525,7 +525,10 @@ G_c(\psi) = G_{Ic} + (G_{IIc} - G_{Ic})\left(\frac{G_{II}}{G_I + G_{II}}\right)^
 $$
 
 with the mode ratio frozen at initiation (path-independent envelope). No
-friction is modelled between closed damaged surfaces. The full nonlinear
+friction is modelled between closed damaged surfaces. A closed interface
+transmits normal compression in full: pure compression causes no damage,
+and compression with shear damages the interface on the mode-II envelope.
+The law is static, with no fatigue, rate or thermal effects. The full nonlinear
 solve uses Newton–Raphson with backtracking line search
 (`solver/nonlinear.py`); an arc-length continuation exists
 (`solver/arclength.py`) but does not yet handle DCB-style snap-back.
