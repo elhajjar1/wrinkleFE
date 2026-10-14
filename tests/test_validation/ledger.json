@@ -203,6 +203,12 @@
       "width_convention": "wavelength_mm = 2 x the paper's wrinkle span L = 5.5 mm (the span is the half-wave trough); width_mm = L/2-scale Gaussian envelope isolating the single trough.",
       "width_mm": 5.5,
       "geometry_note": "One-sided wrinkle: trough depth t at the TOP surface decaying to a flat bottom over roughly the lower half of the laminate (paper Figs. 3 and 8). Modelled as morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp: a uniform-amplitude CREST over the upper plies. For these symmetric layups the flat-bottom crest is the z-mirror of the paper's flat-bottom dip, and the mirror is a symmetry of the specimen, so the response is equivalent; the unmeasured decay shape (sketched only) is the real modelling assumption. Surface resin pockets are disabled: the bottom ply is exactly flat on the tool (zero gap) and the top surface follows the wrinkle in the specimens. Specimens 140 x 12 mm, ASTM D6641 clamped; the t/T = 30% failures involve buckling participation (stated in the paper), which a first-ply strength path cannot capture.",
+      "eccentricity_recipe": {
+        "_comment": "Config overrides that reproduce the specimen's wrinkle geometry for the load-path eccentricity (bending-regime) classification of the validation margins (issue #455), as validation/bending_mode_study.py does: the one-sided surface trough over a flat tool face. The knockdown recipe above is unchanged; the analytical path reads only the peak angle.",
+        "morphology": "tool_flat",
+        "surface_pocket_side": "bottom",
+        "surface_transition_plies": 10
+      },
       "cases": [
         {
           "case": "H-UD-10",
@@ -266,6 +272,12 @@
       "width_convention": "wavelength_mm = 2 x the paper's wrinkle span L = 5.5 mm (the span is the half-wave trough); width_mm = L/2-scale Gaussian envelope isolating the single trough.",
       "width_mm": 5.5,
       "geometry_note": "One-sided wrinkle: trough depth t at the TOP surface decaying to a flat bottom over roughly the lower half of the laminate (paper Figs. 3 and 8). Modelled as morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp: a uniform-amplitude CREST over the upper plies. For these symmetric layups the flat-bottom crest is the z-mirror of the paper's flat-bottom dip, and the mirror is a symmetry of the specimen, so the response is equivalent; the unmeasured decay shape (sketched only) is the real modelling assumption. Surface resin pockets are disabled: the bottom ply is exactly flat on the tool (zero gap) and the top surface follows the wrinkle in the specimens. Specimens 140 x 12 mm, ASTM D6641 clamped; the t/T = 30% failures involve buckling participation (stated in the paper), which a first-ply strength path cannot capture.",
+      "eccentricity_recipe": {
+        "_comment": "Config overrides that reproduce the specimen's wrinkle geometry for the load-path eccentricity (bending-regime) classification of the validation margins (issue #455), as validation/bending_mode_study.py does: the one-sided surface trough over a flat tool face. The knockdown recipe above is unchanged; the analytical path reads only the peak angle.",
+        "morphology": "tool_flat",
+        "surface_pocket_side": "bottom",
+        "surface_transition_plies": 10
+      },
       "cases": [
         {
           "case": "H-MD-10",

@@ -47,6 +47,7 @@ from wrinklefe.core.eccentricity import (  # noqa: E402
     bending_caveat,
 )
 from wrinklefe.core.layup import parse_layup  # noqa: E402
+from wrinklefe.core.margins import analytical_path  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
 from wrinklefe.core.mesh import mesh_shear_diagnostics  # noqa: E402
 from wrinklefe.core.morphology import WrinkleConfiguration  # noqa: E402
@@ -2603,6 +2604,9 @@ def _run_analysis(
             float(result.kink_band_knockdown)
             if result.kink_band_knockdown is not None else None
         ),
+        # Issue #455: which model produced analytical_knockdown, so the NCR
+        # summary can look up the validation margin of the right regime.
+        "analytical_path": analytical_path(result.config),
         # Issue #445: reporting only.
         "manufacturing_process": result.manufacturing_process,
         "process_out_of_scope": bool(result.process_out_of_scope),
@@ -5050,6 +5054,7 @@ with tab_export:
                     "governing_bound": _res.get("governing_bound"),
                     "bending_knockdown": _res.get("bending_knockdown"),
                     "kink_band_knockdown": _res.get("kink_band_knockdown"),
+                    "analytical_path": _res.get("analytical_path"),
                     "fe": (
                         {
                             "modulus_retention": _fe.get("modulus_retention"),
