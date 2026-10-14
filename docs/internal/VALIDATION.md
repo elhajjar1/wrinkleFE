@@ -70,6 +70,10 @@ See the table in [README.md](../../README.md). Current sources:
   (θ ≈ 7.2°, modulus knockdown 0.941, strength knockdown 0.660). The
   first carbon system and the first dataset carrying a measured
   **stiffness** knockdown — see *Stiffness / modulus validation* below.
+  The uniform coupon has no measured strength, so its analytical
+  strength baseline is a pure regression pin: 0.109 → 0.142 when the UD
+  strain budget moved to the card's S12/Xc = 0.043 (issue #451). The
+  graded coupon (0.513, −22.3%) is unchanged.
 - **Dataset H — Shi, Yang, Sun, Zheng, Qian, Wang & Song (2025)**,
   *Materials* 18:4503, DOI 10.3390/ma18194503 (CC BY, so the measured
   values are transcribed directly from the paper's text — no digitised
@@ -183,8 +187,10 @@ See the table in [README.md](../../README.md). Current sources:
     0.252 / 0.496. Moduli are in the ledger too (quasi-isotropic
     0.537 / 1.067, UD 0.490 / 0.846).
   - **Analytical:** quasi-isotropic wave 1 **+52.1% (unsafe)**, wave 2
-    −7.9%; UD −56.8% / −58.9%. The severe quasi-isotropic miss matches
-    Shi's (+56% / +115%) from an independent lab.
+    −7.9%; UD −10.0% / −23.2% with the material-anchored UD budget
+    (S12/Xc = 0.077, issue #451; −56.8% / −58.9% with the layup model's
+    0.032). The severe quasi-isotropic miss matches Shi's (+56% / +115%)
+    from an independent lab.
   - **First-ply FE (ledger recipe, nx = 48):** quasi-isotropic −8.8% /
     −3.6%; UD −5.0% / +2.2%. Mesh-checked: nx = 72, nz_per_ply = 2 or
     ny = 4 move it by at most 0.03. The mesh carries the coupon's own
@@ -217,8 +223,10 @@ See the table in [README.md](../../README.md). Current sources:
     the wrinkle spans it: `morphology='uniform'`.
   - **Measured strength KD:** 0.586–0.684 (5 coupons), against a
     pristine mean of 689.9 MPa (4 coupons, CV 2.5%).
-  - **Analytical (kink-band): −77% to −79%**, the same over-
-    conservatism the angle-only law shows on every UD set.
+  - **Analytical (kink-band): −17% to −23%** with the material-anchored
+    UD budget (S12/Xc = 0.102, issue #451). The layup model gave −77% to
+    −79%: its block penalty drove this near-UD laminate to the 0.016
+    floor.
   - **First-ply FE (ledger recipe, nx = 48): −1.2% to +9.3%.**
   - **Blind gate:** moulded preset +22% to +36%, vacuum-bag +46% to
     +70%, both unsafe. The gate reads D/T as amplitude over thickness,
@@ -276,8 +284,10 @@ See the table in [README.md](../../README.md). Current sources:
       point is attached to its configuration by its knockdown value, which
       Figs. 8a and 8b share exactly.
   - **Measured strength KD:** 0.27–0.79.
-  - **Analytical (kink-band, measured γ_Y):** conservative on all 18
-    cases. WM −7% to −34%; WL and WR −68% to −79%.
+  - **Analytical (kink-band):** conservative on all 18 cases, mean
+    −31.7%. WM (`graded`) −7% to −34%. WL and WR (`uniform`) −23% to
+    −48%, with the UD budget S12/Xc = 0.094 from the card's measured
+    S12 and Xc (issue #451; −68% to −79% with the layup model's 0.032).
   - **First-ply FE** (nx = 48; refinement changes it by at most 0.04)
     depends on position:
     - WM: **+22% to +100%, unsafe**, as on the other embedded
@@ -435,6 +445,118 @@ Two calibrated presets ship, one per material realization:
 (Dataset F, vacuum-bag; carries the position exponent for the
 near-surface S-A-2 case). The gate is UD-scoped, has zero FE cost, and is
 the package's best UD knockdown predictor.
+
+### UD kink-band strain budget (issue #451)
+
+**Change.** The kink-band's strain budget `gamma_Y_eff` came from the
+layup confinement model alone: 0.032 for pure UD, down to a 0.016 floor
+for blocked near-UD layups, whatever the material. That model was
+calibrated on multidirectional laminates, and on the peak-angle path it
+left UD carbon 58–78% conservative. Now a **UD-dominated** laminate on
+the peak-angle path takes the budget from its material card:
+
+```
+g = S12 / Xc,   KD_BF = g / (g + theta_eff)   (default c_AF = 0)
+```
+
+This is Budiansky–Fleck with an intrinsic misalignment φ0. Kinking at
+`σc = τY / (γY + φ0 + θ)` must give the pristine `Xc` at `θ = 0`, so
+`γY + φ0 = τY / Xc ≈ S12 / Xc`, the same anchoring LaRC05 uses for its
+intrinsic misalignment. The peak-angle path is every morphology except
+`graded`, plus multi-wrinkle configs. Code: `_is_ud_dominated`,
+`_ud_kink_strain_budget` and `WrinkleAnalysis._compute_analytical` in
+`src/wrinklefe/analysis.py`; tests in `tests/test_ud_kink_budget.py`.
+
+**UD-dominated means at least 75% 0° plies** (±5°, 0° ≡ 180°).
+- Every multidirectional validation layup has at most 40% (A/B and
+  M-MD 37.5%, C and J-QI 25%, D and H-MD 40%, I 36%).
+- Pilato's near-UD laminate (K) has 89% (16 of 18 sub-plies). Its two
+  90° sub-plies had put it on the 0.016 floor through the block penalty.
+- Any cut in (0.40, 0.89] gives the same results. At 0.75 most 0° plies
+  sit next to another 0° ply, where the confinement model's
+  off-axis-neighbour argument no longer applies.
+
+**Choosing the form.** Each variant was prototyped (by monkeypatching)
+on every ledger dataset and on A–E before committing. Signed mean error,
+unsafe count and worst case:
+
+| Variant | J Thor UD | K Pilato | L [Q] | H Shi UD | M UD tension | G graded | E / F (BF column) |
+|---|---|---|---|---|---|---|---|
+| Layup model (before) | −57.9%, 0 | −77.5%, 0 | −55.8%, 0 | +12.6%, 2, +25.9% | +18.8%, 2, +39.2% | −22.3% | −37.4% / −58.2% |
+| **g on the peak-angle path (adopted)** | **−16.6%, 0** | **−20.3%, 0** | **−31.7%, 0** | unchanged | unchanged | unchanged | unchanged |
+| g on every path, `graded` too | −16.6%, 0 | −20.3%, 0 | −18.3%, 5, +44.6% | +34.8%, 3, +52.7% | +52.1%, 4, +77.6% | −13.1% | −12.3% / −38.6% |
+| g / (g + θ_max) at the peak angle everywhere | −16.6%, 0 | −20.3%, 0 | −36.9%, 0 | −66.1%, 0 | −56.4%, 0 | −61.0% | −63.0% / −77.1% |
+
+- **The bias is on the peak-angle path only.** The `graded` profile
+  average is not biased conservative on UD carbon: its ten measured
+  cases (G, H-UD, L-WM) average −10.5%. Its 0.032 was calibrated together
+  with the averaging.
+- **g on the `graded` path too fails the acceptance bar:**
+  - H-UD-10 goes from +0.2% to +17.6% unsafe;
+  - L-WM-2-3 goes from −6.9% to +44.6%;
+  - Dataset M's UD tension floor goes from −1.0% / −0.5% to +27% / +28%.
+- **Peak-angle-only everywhere over-corrects the other way** on the
+  graded data (Shi −66%, M UD −56%).
+- **The Argon–Fleck quadratic stays.** g replaces `gamma_Y_eff` inside
+  the existing law, so the default `c_AF = 0` is exactly `g / (g + θ)`,
+  and a user-set `kink_band_quadratic_coeff` still applies (the API is
+  unchanged). The data do not support a non-zero default: `c_AF` = 0.1 /
+  0.25 / 0.5 takes Thor UD to −29.5 / −42.1 / −55.0% and Pilato to
+  −24.1 / −29.2 / −36.2%, all further on the conservative side.
+- `AnalysisResults.gamma_Y_eff` reports the budget the path used.
+
+**Re-pinned baselines: 20 ledger cases, all from this change.** Every
+moved case is UD-dominated and on the peak-angle path.
+
+| Cases | Budget before → after | Signed mean error before → after | Unsafe | Range after |
+|---|---|---|---|---|
+| J-UD-1, J-UD-2 (Thor, IM7/8552) | 0.032 → 0.0769 | −57.9% → −16.6% | 0 → 0 | −23.2% … −10.0% |
+| K-6 … K-10 (Pilato) | 0.016 (floor) → 0.1021 | −77.5% → −20.3% | 0 → 0 | −22.9% … −16.7% |
+| L-WL-*, L-WR-* (Krishnappa, 12 of 18, quarantined) | 0.032 → 0.0944 | −73.6% → −37.5% (dataset −55.8% → −31.7%) | 0 → 0 | −48.0% … −23.4% |
+| HD-uniform (Hsiao & Daniel; no measured strength) | 0.032 → 0.0433 | KD 0.109 → 0.142 | — | — |
+
+**Unchanged, bit for bit.** The analytical knockdown and `gamma_Y_eff`
+are the same floats as before, checked under both loadings, for:
+- A, B, C (compression, tension, onset), D;
+- E and F (the kink-band column and the gate);
+- G graded, H-UD, H-MD, I, J-QI;
+- the six L-WM cases;
+- M-MD and M-UD.
+
+**Shi (Dataset H) does not get worse.** It is UD-dominated, but its
+recipe is `graded`, so it keeps +0.2 / +11.8 / +25.9%. The alternative
+of g on every path would have taken it to +17.6 / +34.1 / +52.7%. On the
+peak-angle path (a `uniform` analytical recipe) it is strongly
+conservative either way: −80% to −87% before, −59% to −71% now. Its
+remaining unsafe miss is the one-sided-trough regime (issue #439), which
+the two-sided-wave bending bound of issue #452 does not cover.
+
+**Tension.** Tension takes the larger of its three-mechanism value and
+the compression knockdown.
+- Dataset M's four UD coupons all sit on that floor, but their recipe is
+  `graded`, so they are unchanged: +18.8%, 2 of 4 unsafe, worst +39.2%.
+- On the peak-angle path the floor now uses g for a UD-dominated
+  laminate, so UD tension rises there with compression. No tension
+  dataset takes that path. As a sensitivity, M UD run as `uniform` moves
+  from −88% … −81% to −66% … −46%, still conservative.
+- Every multidirectional tension set (B, C, I, M-MD) is unchanged.
+- The tension recalibration in issue #454 should re-check this floor
+  for UD-dominated peak-angle cases.
+
+**Penetration gate.** The gate path returns before the kink-band block,
+and its fitted `gamma_Y` is separate, so it is untouched: no gate pin
+moves, and `validation/gate_transfer_study.py` is unchanged.
+Re-fitting the gate's `gamma_Y` to one test at a time gives 0.057–0.088
+on Thor (card S12/Xc 0.077) and 0.064–0.087 on Pilato (0.102), the same
+order as the card values.
+
+**Downstream numbers.**
+- Analytical cases within ±20%: 55 → 58 of 77.
+- Parity chart: 70 → 73 of 105.
+- Bending-mode study (issue #439), from `bending_mode_cases.csv` with
+  the new J-UD and K values: deployed MAE 20.9% → 13.5%, regime-selector
+  MAE 16.8% → 10.4%. The unsafe counts are unchanged.
+- Wet lay-up caveat (Dataset L): "about 56%" → "about 32%" conservative.
 
 ### Gate transfer to new materials (issue #435)
 
@@ -594,10 +716,10 @@ the script prints the per-dataset scorecard; headline entries are
 **E: 2.8 % MAE, 9/9**, **F: 5.0 % MAE, 6/6** and **H-MD (FE): 5.3 %
 MAE, 3/3**, **I (analytical): 8.4 %, 1/1**, **J (FE): 6.2 % / 3.6 %
 MAE, 4/4** and **K (FE): 4.7 % MAE, 5/5** (within ±20 %); overall
-**70 of 105** points sit inside the corridor, not counting the quarantined
+**73 of 105** points sit inside the corridor, not counting the quarantined
 Dataset L (hollow markers; issue #445). On its own, L lands 3 of 18
-analytical and 5 of 18 FE points inside: the kink-band is far too
-conservative on it, and the FE over-predicts its embedded (mid-plane)
+analytical and 5 of 18 FE points inside: the kink-band is conservative
+on all 18 (mean −32%), and the FE over-predicts its embedded (mid-plane)
 wrinkles. Dataset M lands 7 of 13 analytical points inside (the rest
 unsafe, +20% to +39%) and 3 of 12 FE onset points (8 of the other 9
 unsafe).

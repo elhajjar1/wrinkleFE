@@ -256,6 +256,18 @@ version produced a given file.
     row.
 
 ### Changed
+- Analysis — **the UD kink-band strain budget now comes from the
+  material card (issue #451).** On the peak-angle compression path
+  (every morphology except `graded`), a UD-dominated laminate (at least
+  75% 0° plies) uses `gamma_Y_eff = S12 / Xc`, so `KD_BF = g / (g +
+  theta_eff)`: Budiansky–Fleck with an intrinsic misalignment,
+  normalised by the pristine `Xc`. The layup confinement model does not
+  read the material and left UD carbon 58–78% conservative.
+  - Multidirectional layups (at most 40% 0° plies in the validation
+    set), the `graded` path and the penetration gate are unchanged, bit
+    for bit.
+  - A user-set `kink_band_quadratic_coeff` still applies on top of `g`.
+  - `AnalysisResults.gamma_Y_eff` reports the budget actually used.
 - Packaging — the PyPI author is now Rani F. Elhajjar, matching
   `CITATION.cff` (it was "Elhajjar Research Group").
 - `FE_STRENGTH_CAVEAT` (app warning and NCR summary) no longer says the
@@ -319,6 +331,18 @@ version produced a given file.
     loading's sign.
 
 ### Numerical results
+- **UD-dominated analytical compression knockdowns rise on the
+  peak-angle path (issue #451).** Signed mean error: Thor (2021) UD
+  −57.9% → −16.6%, Pilato (2022) −77.5% → −20.3%, Krishnappa &
+  Gururaja (2024, quarantined) −55.8% → −31.7% (its WL/WR cases; the
+  embedded WM cases are `graded` and unchanged). No case becomes
+  unsafe. 20 ledger baselines are re-pinned (J-UD, K, L-WL/WR and the
+  Hsiao & Daniel uniform coupon, which has no measured strength); every
+  other ledger, A–D and E prediction is bit-for-bit unchanged. The
+  tension floor on that path rises with it (`tension` is never below
+  `compression`); no tension dataset takes that path. The wet lay-up
+  out-of-scope caveat now says the kink-band was about 32% conservative
+  on Dataset L (it said 56%).
 - **Tension configs that left `applied_strain` unset now run the FE in
   tension instead of compression.** This changes the FE failure
   indices, retention factors, modulus, and the CZM and progressive

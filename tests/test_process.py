@@ -177,15 +177,18 @@ def test_every_ledger_dataset_carries_quality_metadata():
 
 def test_the_wet_layup_warning_numbers_are_the_ledger_numbers():
     """The analytical half of the wet lay-up note: the kink-band was
-    conservative by about 56% on average on Dataset L (the FE half is
-    pinned by tests/test_fe_strength_caveat.py)."""
+    conservative by about 32% on average on Dataset L (the FE half is
+    pinned by tests/test_fe_strength_caveat.py). It was about 56% before
+    the UD strain budget was anchored to the material card (issue #451),
+    which moved the 12 whole-thickness (WL/WR) cases."""
     ds = next(d for d in _LEDGER["datasets"]
               if d["name"].startswith("krishnappa_2024"))
     errs = [(c["expected_analytical_kd"] - c["measured_kd"])
             / c["measured_kd"] * 100.0 for c in ds["cases"]]
-    assert statistics.mean(errs) == pytest.approx(-56.0, abs=1.0)
+    assert statistics.mean(errs) == pytest.approx(-32.0, abs=1.0)
+    assert max(errs) < 0.0  # still conservative on all 18
     caveat = process_scope_caveat(MP.WET_LAYUP)
-    assert "about 56% on average" in caveat
+    assert "about 32% on average" in caveat
     assert "up to about 100%" in caveat
 
 

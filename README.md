@@ -1199,9 +1199,10 @@ multidirectional cases A–D, the penetration gate for the UD cases E/F;
 Datasets H to L, which have no gate preset, are plotted twice —
 analytical and first-ply FE LaRC05 retention; Dataset M's tension
 coupons are plotted against both their ultimate and their measured
-damage onset). 70 of the 105 points fall inside the band. Of the 35
-outside it, 16 are conservative, seven of them the kink-band on UD carbon
-(Datasets J and K). The 19 that are not:
+damage onset). 73 of the 105 points fall inside the band. Of the 32
+outside it, 13 are conservative, four of them the kink-band on UD carbon
+(Datasets J and K, −22% to −23% since the UD strain budget was anchored
+to the material card, issue #451). The 19 that are not:
 - five high amplitude-to-thickness compression cases: the most severe
   wrinkle in dataset A (+30%), Dataset H's severe cases (+26% UD; +56%
   and +115% multidirectional) and Thor's severe quasi-isotropic wave in
@@ -1367,6 +1368,19 @@ floored at half the UD value. So a dispersed `[0/45/90/-45]s` resists
 wrinkle knockdown far better than a blocked `[0_4/90_4]s`. The optional
 Argon–Fleck quadratic term `c_AF` (`kink_band_quadratic_coeff`) defaults
 to `0` — the pure linear Budiansky–Fleck floor.
+
+UD-dominated laminates (at least 75% 0° plies) are the exception on
+every morphology except `graded` (issue #451). The confinement model
+does not read the material and left UD carbon 58–78% conservative, so
+these laminates take the strain budget from the material card instead:
+
+```
+gamma_Y_eff = g = S12 / Xc,   KD_BF = g / (g + theta_eff)   (c_AF = 0)
+```
+
+This is Budiansky–Fleck with an intrinsic misalignment, normalised by
+the pristine `Xc`. The `graded` path keeps the confinement budget,
+which was calibrated together with its profile average.
 
 ### Tension — three-mechanism minimum, CLT-weighted
 
