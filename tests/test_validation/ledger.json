@@ -179,7 +179,7 @@
     },
     {
       "name": "shi_2025_ud_cfrp_compression",
-      "status": "active - Dataset H (UD half). First carbon strength dataset with an amplitude sweep at fixed span (t/T = 0.1-0.3, peak angles 12-33 deg). Plain Budiansky-Fleck pinned; no penetration-gate preset is calibrated for this material yet. See VALIDATION.md 'Dataset H'.",
+      "status": "active - Dataset H (UD half). First carbon strength dataset with an amplitude sweep at fixed span (t/T = 0.1-0.3, peak angles 12-33 deg). Peak-angle Budiansky-Fleck (UD budget S12/Xc) pinned on the one-sided tool_flat recipe (issue #461); no penetration-gate preset is calibrated for this material yet. See VALIDATION.md 'Dataset H'.",
       "layup": "[0]_20",
       "pristine_strength_MPa": 866.2,
       "reference": "Shi, Yang, Sun, Zheng, Qian, Wang & Song (2025), Materials 18:4503, DOI 10.3390/ma18194503 (CC BY 4.0)",
@@ -198,17 +198,14 @@
       },
       "ply_thickness_mm": 0.19,
       "loading": "compression",
-      "morphology": "graded",
+      "morphology": "tool_flat",
+      "surface_pocket_side": "bottom",
+      "surface_transition_plies": 10,
+      "analytical_only": true,
       "amplitude_convention": "config amplitude = trough depth t (the paper's wrinkle amplitude, one-sided surface dip); amplitude_p2p_mm = 2t only to fit the shared schema (config amplitude = amplitude_p2p_mm / 2).",
       "width_convention": "wavelength_mm = 2 x the paper's wrinkle span L = 5.5 mm (the span is the half-wave trough); width_mm = L/2-scale Gaussian envelope isolating the single trough.",
       "width_mm": 5.5,
-      "geometry_note": "One-sided wrinkle: trough depth t at the TOP surface decaying to a flat bottom over roughly the lower half of the laminate (paper Figs. 3 and 8). Modelled as morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp: a uniform-amplitude CREST over the upper plies. For these symmetric layups the flat-bottom crest is the z-mirror of the paper's flat-bottom dip, and the mirror is a symmetry of the specimen, so the response is equivalent; the unmeasured decay shape (sketched only) is the real modelling assumption. Surface resin pockets are disabled: the bottom ply is exactly flat on the tool (zero gap) and the top surface follows the wrinkle in the specimens. Specimens 140 x 12 mm, ASTM D6641 clamped; the t/T = 30% failures involve buckling participation (stated in the paper), which a first-ply strength path cannot capture.",
-      "eccentricity_recipe": {
-        "_comment": "Config overrides that reproduce the specimen's wrinkle geometry for the load-path eccentricity (bending-regime) classification of the validation margins (issue #455), as validation/bending_mode_study.py does: the one-sided surface trough over a flat tool face. The knockdown recipe above is unchanged; the analytical path reads only the peak angle.",
-        "morphology": "tool_flat",
-        "surface_pocket_side": "bottom",
-        "surface_transition_plies": 10
-      },
+      "geometry_note": "One-sided wrinkle: trough depth t at the TOP surface decaying to a flat bottom over roughly the lower half of the laminate (paper Figs. 3 and 8). Modelled as morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp: a uniform-amplitude CREST over the upper plies. For these symmetric layups the flat-bottom crest is the z-mirror of the paper's flat-bottom dip, and the mirror is a symmetry of the specimen, so the response is equivalent; the unmeasured decay shape (sketched only) is the real modelling assumption. The bottom ply is exactly flat on the tool (zero gap) and the top surface follows the wrinkle in the specimens. Surface resin pockets are FE-only: the analytical recipe runs without them (analytical_only), and the FE head-to-head enables them (validation/strength_error_summary.py). Specimens 140 x 12 mm, ASTM D6641 clamped; the t/T = 30% failures involve buckling participation (stated in the paper), which a first-ply strength path cannot capture.",
       "cases": [
         {
           "case": "H-UD-10",
@@ -218,8 +215,8 @@
           "measured_strength_MPa": 552.6,
           "measured_kd": 0.638,
           "note": "t = 0.38 mm (t/T = 10%); mean ultimate load 25.2 kN of 39.5 kN pristine (paper Sec. 6).",
-          "expected_analytical_kd": 0.639466,
-          "expected_analytical_modulus_kd": 0.870449
+          "expected_analytical_kd": 0.261953,
+          "expected_analytical_modulus_kd": 0.866011
         },
         {
           "case": "H-UD-20",
@@ -229,8 +226,8 @@
           "measured_strength_MPa": 427.6,
           "measured_kd": 0.494,
           "note": "t = 0.76 mm (t/T = 20%); mean 19.5 kN.",
-          "expected_analytical_kd": 0.55213,
-          "expected_analytical_modulus_kd": 0.649147
+          "expected_analytical_kd": 0.15628,
+          "expected_analytical_modulus_kd": 0.640643
         },
         {
           "case": "H-UD-30",
@@ -240,11 +237,11 @@
           "measured_strength_MPa": 346.5,
           "measured_kd": 0.4,
           "note": "t = 1.14 mm (t/T = 30%); mean 15.8 kN; buckling participation in the failures.",
-          "expected_analytical_kd": 0.503461,
-          "expected_analytical_modulus_kd": 0.48586
+          "expected_analytical_kd": 0.116165,
+          "expected_analytical_modulus_kd": 0.477228
         }
       ],
-      "recipe_note": "Ledger (analytical) recipe: plain graded profile at the default mid interfaces - the analytical path reads only the wrinkle PROFILE (peak angle), not the through-thickness decay, so the one-sided tool_flat representation is not needed here and is FE-only by design (its surface pockets are mesh physics). The FE scoring recipe in validation/strength_error_summary.py uses morphology='tool_flat' with the flat face on the bottom and a 10-ply ramp; see geometry_note."
+      "recipe_note": "Ledger (analytical) recipe since issue #461: the specimen's one-sided trough, morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp (see geometry_note), the geometry the FE scoring in validation/strength_error_summary.py also meshes (adding the FE-only surface pockets). analytical_only=true because tool_flat otherwise auto-enables those pockets, which the analytical path refuses. tool_flat takes the peak-angle kink-band path (a UD-dominated layup takes the S12/Xc budget of issue #451), and the bending flag is measured on this geometry (e/t 0.05-0.18), so no separate eccentricity recipe is needed. Until issue #461 the recipe was a plain graded profile at the default mid interfaces, an embedded wrinkle with both outer surfaces flat; it was corrected after its results were known, because the specimens are one-sided and tool_flat is the documented morphology for that geometry (before/after in VALIDATION.md 'Dataset H')."
     },
     {
       "name": "shi_2025_md_cfrp_compression",
@@ -267,17 +264,14 @@
       },
       "ply_thickness_mm": 0.19,
       "loading": "compression",
-      "morphology": "graded",
+      "morphology": "tool_flat",
+      "surface_pocket_side": "bottom",
+      "surface_transition_plies": 10,
+      "analytical_only": true,
       "amplitude_convention": "config amplitude = trough depth t (the paper's wrinkle amplitude, one-sided surface dip); amplitude_p2p_mm = 2t only to fit the shared schema (config amplitude = amplitude_p2p_mm / 2).",
       "width_convention": "wavelength_mm = 2 x the paper's wrinkle span L = 5.5 mm (the span is the half-wave trough); width_mm = L/2-scale Gaussian envelope isolating the single trough.",
       "width_mm": 5.5,
-      "geometry_note": "One-sided wrinkle: trough depth t at the TOP surface decaying to a flat bottom over roughly the lower half of the laminate (paper Figs. 3 and 8). Modelled as morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp: a uniform-amplitude CREST over the upper plies. For these symmetric layups the flat-bottom crest is the z-mirror of the paper's flat-bottom dip, and the mirror is a symmetry of the specimen, so the response is equivalent; the unmeasured decay shape (sketched only) is the real modelling assumption. Surface resin pockets are disabled: the bottom ply is exactly flat on the tool (zero gap) and the top surface follows the wrinkle in the specimens. Specimens 140 x 12 mm, ASTM D6641 clamped; the t/T = 30% failures involve buckling participation (stated in the paper), which a first-ply strength path cannot capture.",
-      "eccentricity_recipe": {
-        "_comment": "Config overrides that reproduce the specimen's wrinkle geometry for the load-path eccentricity (bending-regime) classification of the validation margins (issue #455), as validation/bending_mode_study.py does: the one-sided surface trough over a flat tool face. The knockdown recipe above is unchanged; the analytical path reads only the peak angle.",
-        "morphology": "tool_flat",
-        "surface_pocket_side": "bottom",
-        "surface_transition_plies": 10
-      },
+      "geometry_note": "One-sided wrinkle: trough depth t at the TOP surface decaying to a flat bottom over roughly the lower half of the laminate (paper Figs. 3 and 8). Modelled as morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp: a uniform-amplitude CREST over the upper plies. For these symmetric layups the flat-bottom crest is the z-mirror of the paper's flat-bottom dip, and the mirror is a symmetry of the specimen, so the response is equivalent; the unmeasured decay shape (sketched only) is the real modelling assumption. The bottom ply is exactly flat on the tool (zero gap) and the top surface follows the wrinkle in the specimens. Surface resin pockets are FE-only: the analytical recipe runs without them (analytical_only), and the FE head-to-head enables them (validation/strength_error_summary.py). Specimens 140 x 12 mm, ASTM D6641 clamped; the t/T = 30% failures involve buckling participation (stated in the paper), which a first-ply strength path cannot capture.",
       "cases": [
         {
           "case": "H-MD-10",
@@ -287,8 +281,8 @@
           "measured_strength_MPa": 561.4,
           "measured_kd": 0.76,
           "note": "loads 24.5/26.2/26.0 kN, mean 25.6 +/- 0.9 of 33.7 pristine (paper Sec. 3).",
-          "expected_analytical_kd": 0.80393,
-          "expected_analytical_modulus_kd": 0.89453
+          "expected_analytical_kd": 0.43969,
+          "expected_analytical_modulus_kd": 0.891867
         },
         {
           "case": "H-MD-20",
@@ -298,8 +292,8 @@
           "measured_strength_MPa": 350.9,
           "measured_kd": 0.475,
           "note": "loads 16.9/15.8/15.4 kN, mean 16.0 +/- 0.8.",
-          "expected_analytical_kd": 0.738992,
-          "expected_analytical_modulus_kd": 0.723906
+          "expected_analytical_kd": 0.36868,
+          "expected_analytical_modulus_kd": 0.718981
         },
         {
           "case": "H-MD-30",
@@ -309,11 +303,11 @@
           "measured_strength_MPa": 241.2,
           "measured_kd": 0.326,
           "note": "loads 10.2/11.8/11.1 kN, mean 11.0 +/- 0.8; buckling participation in the failures.",
-          "expected_analytical_kd": 0.701513,
-          "expected_analytical_modulus_kd": 0.596695
+          "expected_analytical_kd": 0.342256,
+          "expected_analytical_modulus_kd": 0.591702
         }
       ],
-      "recipe_note": "Ledger (analytical) recipe: plain graded profile at the default mid interfaces - the analytical path reads only the wrinkle PROFILE (peak angle), not the through-thickness decay, so the one-sided tool_flat representation is not needed here and is FE-only by design (its surface pockets are mesh physics). The FE scoring recipe in validation/strength_error_summary.py uses morphology='tool_flat' with the flat face on the bottom and a 10-ply ramp; see geometry_note."
+      "recipe_note": "Ledger (analytical) recipe since issue #461: the specimen's one-sided trough, morphology='tool_flat' with the flat tool face on the bottom and a 10-ply ramp (see geometry_note), the geometry the FE scoring in validation/strength_error_summary.py also meshes (adding the FE-only surface pockets). analytical_only=true because tool_flat otherwise auto-enables those pockets, which the analytical path refuses. tool_flat takes the peak-angle kink-band path (a UD-dominated layup takes the S12/Xc budget of issue #451), and the bending flag is measured on this geometry (e/t 0.05-0.18), so no separate eccentricity recipe is needed. Until issue #461 the recipe was a plain graded profile at the default mid interfaces, an embedded wrinkle with both outer surfaces flat; it was corrected after its results were known, because the specimens are one-sided and tool_flat is the documented morphology for that geometry (before/after in VALIDATION.md 'Dataset H')."
     },
     {
       "name": "calvo_2023_md_cfrp_tension",
@@ -884,7 +878,7 @@
       "applied_strain": 0.01,
       "amplitude_convention": "config amplitude = wrinkle height A (Table 1; the depth of the one-sided dip under the resin pocket); amplitude_p2p_mm = 2A only to fit the shared schema.",
       "width_convention": "width_mm = the wrinkle length L (single-bump envelope, as Dataset H). wavelength_mm = 2*pi*A/tan(theta) where the paper measured theta (specimens 1-5: 30 and 23 deg, Fig. 2); otherwise 2L (Dataset H convention), which gives 22-36 deg, consistent with the 34 deg Gaussian-fit slope of the same rod method (El-Hajjar & Petersen 2011, Table 3).",
-      "geometry_note": "Wrinkles made with close-tolerance steel rods separated from the layup by a Teflon sheet, removed after cure: a 'degrading' one-sided dip, sharpest under the first ply (where resin pools, the 'front' face) and diminishing to the flat back face. Both faces are flat. Analytical recipe: graded at the mid interfaces (the analytical path reads only the profile, as Dataset H). FE recipe: tool_flat with the flat face at the bottom and a 15-ply ramp (the dip decays through the whole thickness), applied by validation/strength_error_summary.py.",
+      "geometry_note": "Wrinkles made with close-tolerance steel rods separated from the layup by a Teflon sheet, removed after cure: a 'degrading' one-sided dip, sharpest under the first ply (where resin pools, the 'front' face) and diminishing to the flat back face. Both faces are flat. Analytical recipe: graded at the mid interfaces (the analytical path reads only the profile). FE recipe: tool_flat with the flat face at the bottom and a 15-ply ramp (the dip decays through the whole thickness), applied by validation/strength_error_summary.py.",
       "onset_note": "measured_onset is the DIC 'limit point': the first jump in the out-of-plane displacement of the surface, which optical microscopy shows is interlaminar damage onset; there is no load drop at it. No pristine onset is reported, so measured_onset_kd = limit point / pristine ULTIMATE (the paper's own Table 2 normalisation). FE first-ply onset is scored in absolute stress against it.",
       "pristine_strength_MPa": 765.0,
       "baseline_note": "Control (unwrinkled) ultimate 765 MPa: the value the 2016 paper normalised by. Its Table 2 ratio column (limit point / control ultimate, two decimals) bounds it to 763-768 MPa across the nine specimens; El-Hajjar & Petersen (2011) Fig. 10 plots the same layup's controls at 106-111 ksi (731-765 MPa), CoV < 1%.",
@@ -1032,7 +1026,7 @@
       "applied_strain": 0.01,
       "amplitude_convention": "config amplitude = wrinkle height A (Table 1; the depth of the one-sided dip under the resin pocket); amplitude_p2p_mm = 2A only to fit the shared schema.",
       "width_convention": "width_mm = the wrinkle length L (single-bump envelope, as Dataset H). wavelength_mm = 2*pi*A/tan(theta) where the paper measured theta (specimens 1-5: 30 and 23 deg, Fig. 2); otherwise 2L (Dataset H convention), which gives 22-36 deg, consistent with the 34 deg Gaussian-fit slope of the same rod method (El-Hajjar & Petersen 2011, Table 3).",
-      "geometry_note": "Wrinkles made with close-tolerance steel rods separated from the layup by a Teflon sheet, removed after cure: a 'degrading' one-sided dip, sharpest under the first ply (where resin pools, the 'front' face) and diminishing to the flat back face. Both faces are flat. Analytical recipe: graded at the mid interfaces (the analytical path reads only the profile, as Dataset H). FE recipe: tool_flat with the flat face at the bottom and a 15-ply ramp (the dip decays through the whole thickness), applied by validation/strength_error_summary.py.",
+      "geometry_note": "Wrinkles made with close-tolerance steel rods separated from the layup by a Teflon sheet, removed after cure: a 'degrading' one-sided dip, sharpest under the first ply (where resin pools, the 'front' face) and diminishing to the flat back face. Both faces are flat. Analytical recipe: graded at the mid interfaces (the analytical path reads only the profile). FE recipe: tool_flat with the flat face at the bottom and a 15-ply ramp (the dip decays through the whole thickness), applied by validation/strength_error_summary.py.",
       "onset_note": "measured_onset is the DIC 'limit point': the first jump in the out-of-plane displacement of the surface, which optical microscopy shows is interlaminar damage onset; there is no load drop at it. No pristine onset is reported, so measured_onset_kd = limit point / pristine ULTIMATE (the paper's own Table 2 normalisation). FE first-ply onset is scored in absolute stress against it.",
       "pristine_strength_MPa": 1785.0,
       "baseline_note": "Control ultimate 1785 MPa, inferred from the 2016 paper's Table 2 ratio column, which bounds it to 1783-1786 MPa across the four specimens. The 2011 paper does not tabulate a [0]16 control strength.",

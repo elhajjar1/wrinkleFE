@@ -26,16 +26,16 @@ the current code's output.
 
 Regime: model path, load, laminate type (``laminate_class`` in
 ``wrinklefe.core.margins``, from the case's layup) and the
-bending-dominated flag. The flag is measured on the specimen's wrinkle
-geometry: the case's recipe, plus the dataset's ``eccentricity_recipe``
-overrides where the knockdown recipe does not reproduce that geometry
-(Dataset H's one-sided trough).
+bending-dominated flag. The flag is measured on the case's knockdown
+recipe, which models the specimen's wrinkle geometry. (Dataset H's
+one-sided trough used to need separate ``eccentricity_recipe`` overrides
+for this, because its recipe was an embedded ``graded`` profile; issue
+#461 made the recipe itself ``tool_flat``.)
 """
 
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 import math
 import sys
@@ -63,35 +63,19 @@ from wrinklefe.core.margins import (  # noqa: E402
 #: platforms and nothing more.
 _TOL = 2e-4
 
-#: Fields of an ``eccentricity_recipe`` that are notes, not overrides.
-_NOTE_KEYS = {"_comment"}
-
 
 def _geometry_results(dataset: dict, case: dict):
-    """Analytical results on the specimen's geometry, for its regime.
+    """Analytical results on the case's recipe, for its regime.
 
-    The knockdown recipe, plus the dataset's (and the case's)
-    ``eccentricity_recipe`` overrides where they exist. Surface resin
-    pockets are a material zone, not geometry, and FE-only, so they are
-    off here (as in ``validation/bending_mode_study.py``).
+    The knockdown recipe models the specimen's wrinkle geometry, so its
+    ``bending_dominated`` flag is the case's bending regime.
     """
     from wrinklefe.analysis import WrinkleAnalysis
 
-    cfg = case_config(dataset, case)
-    overrides = {
-        k: v
-        for src in (dataset.get("eccentricity_recipe", {}),
-                    case.get("eccentricity_recipe", {}))
-        for k, v in src.items() if k not in _NOTE_KEYS
-    }
-    if overrides:
-        cfg = dataclasses.replace(
-            cfg, analytical_only=True, enable_surface_resin_pockets=False,
-            **overrides,
-        )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return WrinkleAnalysis(cfg).run(analytical_only=True)
+        return WrinkleAnalysis(case_config(dataset, case)).run(
+            analytical_only=True)
 
 
 def ledger_residuals(ledger: dict) -> list[MarginResidual]:

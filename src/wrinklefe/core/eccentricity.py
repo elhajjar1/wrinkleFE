@@ -14,8 +14,11 @@ The validation study behind issue #439
 compression cases against this offset, as a fraction ``e / t`` of the
 laminate thickness. Below :data:`ECCENTRICITY_REGIME_THRESHOLD` the
 angle-based analytical knockdown was never more than 15 % unsafe. Above
-it the analytical model missed on the unsafe side by up to +115 %, while
-first-ply FE on the specimen's own geometry did not. The ratio is
+it the analytical model missed on the unsafe side by up to +115 % (Shi's
+one-sided troughs, scored then on an embedded ``graded`` recipe; +52 %,
+on Thor's whole-thickness wave, once issue #461 scored them as
+``tool_flat``), while first-ply FE on the specimen's own geometry did
+not. The ratio is
 therefore reported with every analysis, and compression analyses above
 the threshold are flagged as bending-dominated.
 
@@ -59,7 +62,8 @@ if TYPE_CHECKING:
 #: bending-dominated: outside the regime where the angle-based kink-band
 #: knockdown was validated (issue #439). Below 0.10 the deployed model was
 #: never more than 15 % unsafe on 39 measured cases; between 0.10 and 0.15
-#: the evidence is mixed (3 cases), and above 0.15 it was unsafe on 7 of 8.
+#: the evidence is mixed (3 cases), and above 0.15 it was unsafe on 7 of 8
+#: (6 of 8 once issue #461 scored Shi's troughs on their one-sided geometry).
 ECCENTRICITY_REGIME_THRESHOLD = 0.10
 
 #: Fraction of the load-path offset ``e`` that EACH outer surface must
@@ -79,10 +83,11 @@ BENDING_REGIME_CAVEAT = (
     "bends as well as kinks, but it is not a whole-thickness wave (one "
     "outer surface does not follow the load path, as over a flat tool "
     "face), so the eccentric-column bending bound is not applied. The "
-    "kink-band knockdown does not represent the bending: on measured "
-    "compression cases of this kind it over-predicted retained strength "
-    "by up to about 115%. Prefer FE on the measured wrinkle profile "
-    "(issues #439, #452)."
+    "kink-band knockdown does not represent the bending: on the measured "
+    "one-sided troughs of this kind it ranged from about 70% conservative "
+    "to 5% unsafe, while first-ply FE on their geometry was conservative "
+    "by 1% to 40%. Prefer FE on the measured wrinkle profile (issues "
+    "#439, #452, #461)."
 )
 
 #: Warning for a bending-dominated whole-thickness wave, where the

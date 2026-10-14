@@ -109,7 +109,9 @@ version produced a given file.
     half's, with buckling participation at t/T = 30%); on the UD half
     it is +0.2/+11.8/+25.9%, the angle-saturation pattern the
     penetration gate addresses (no gate preset calibrated for this
-    material yet). Docs carry both tables.
+    material yet). Docs carry both tables. *(Those figures are on the
+    `graded` recipe this entry shipped with; issue #461 corrected it to
+    the one-sided `tool_flat` trough: see Numerical results.)*
   - Context reference: Luong et al. (2025), Composites Part B
     307:112818 (CC BY review; knockdown ranges, no case data).
 - Validation — **Dataset I: Calvo et al. (2023), the first distributed
@@ -376,7 +378,8 @@ version produced a given file.
     `tests/test_validation/test_margins_ledger.py` fail while it is stale.
   - The ledger's Dataset H entries gain an `eccentricity_recipe`, so
     their bending regime is measured on the one-sided trough the
-    specimens have.
+    specimens have. *(Removed again by issue #461, which made that
+    trough the knockdown recipe itself.)*
   - The results JSON schema goes to **1.6**, an additive change (new
     `validation_margin` block). The NCR builder accepts an optional
     `analytical_path`, and the app passes it.
@@ -563,6 +566,46 @@ version produced a given file.
   a non-zero `decay_floor`, and `convex`). Thick UD blocks that had
   collapsed onto the floor come out higher. Analytical cases within
   ±20%: 60 → 64 of 77 (parity chart 75 → 79 of 105).
+- **Dataset H (Shi 2025) is scored on its one-sided trough, `tool_flat`
+  (issue #461, part 2).** The specimens are surface troughs over a flat
+  tool face, and part 1 made `tool_flat` with only the tool face pinned
+  the documented morphology for that. The ledger's analytical recipe was
+  `graded`, an embedded wrinkle with both surfaces flat; it is now the
+  geometry the FE recipe already used (flat bottom, 10-ply ramp). The
+  recipe was corrected after its errors against the measurements were
+  known. No model changes, and only the six Shi baselines move. The
+  ledger recipe sets `analytical_only` (a new optional recipe field of
+  `scripts/validate.py`), because `tool_flat` otherwise switches on its
+  FE-only surface pockets, which the analytical path refuses.
+  - Analytical knockdown, signed error against the measurement: UD
+    0.639/0.552/0.503 → 0.262/0.156/0.116 (+0.2/+11.8/+25.9% →
+    −58.9/−68.4/−71.0%); multidirectional 0.804/0.739/0.702 →
+    0.440/0.369/0.342 (+5.8/+55.6/+115.2% → −42.1/−22.4/+5.0%). The
+    peak-angle kink-band applies the full peak angle where `graded`
+    averaged it over the profile; on UD it also takes the card budget
+    S12/Xc of issue #451.
+  - The 20% and 30% troughs are flagged bending-dominated (e/t 0.10 to
+    0.18); they are not whole-thickness waves, so the bending bound
+    does not apply. `BENDING_REGIME_CAVEAT`, the warning such a result
+    carries, quoted the +115% of the `graded` recipe; it now gives the
+    flagged troughs' range on `tool_flat` (about 70% conservative to 5%
+    unsafe, first-ply FE 1% to 40% conservative) and still advises FE.
+  - Bending-mode study (issue #439), re-run: with the kink-band alone,
+    3 of 50 cases are more than 15% unsafe (6 before), all
+    whole-thickness waves; with the bending bound, 1 (Thor's wave 1,
+    +15.1%). Above e/t = 0.15 the kink-band is unsafe on 6 of 8 (7
+    before), FE on none.
+  - The six modulus baselines fall by 0.3% to 1.8% (no measured
+    modulus). The FE scoring is unchanged (same mesh recipe).
+  - Analytical cases within ±20%: 64 → 62 of 77 (parity chart 79 → 77
+    of 105). No analytical case is now outside the band on the unsafe
+    side; the 8 unsafe parity points left are Dataset M's FE onset
+    estimates.
+  - Validation margins refitted: the kink-band UD margin stays 1.00
+    (smallest ratio 0.998 → 1.200); the other regimes Shi feeds still
+    have fewer than 10 cases. The ledger's `eccentricity_recipe` is
+    removed, and `scripts/fit_margins.py` measures every regime on the
+    knockdown recipe (Shi's classification is unchanged).
 - **Tension configs that left `applied_strain` unset now run the FE in
   tension instead of compression.** This changes the FE failure
   indices, retention factors, modulus, and the CZM and progressive

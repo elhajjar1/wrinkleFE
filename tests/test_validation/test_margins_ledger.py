@@ -130,11 +130,15 @@ def _regime_of(table: dict, dataset_prefix: str, case: str) -> str:
     # Whole-thickness waves: Thor wave 1 bends, wave 2 kinks (issue #439).
     ("thor_2021_qi", "J-QI-1", "kink_band/compression/md/bending"),
     ("thor_2021_qi", "J-QI-2", "kink_band/compression/md/non-bending"),
-    # Shi's one-sided trough, measured on its own geometry through the
-    # ledger's eccentricity_recipe: e/t 0.06 / 0.12 / 0.17.
+    # Shi's one-sided trough, measured on its own geometry, which is the
+    # ledger's knockdown recipe since issue #461 (tool_flat):
+    # e/t 0.06 / 0.12 / 0.17 multidirectional, 0.05 / 0.10 / 0.15 UD.
     ("shi_2025_md", "H-MD-10", "kink_band/compression/md/non-bending"),
     ("shi_2025_md", "H-MD-20", "kink_band/compression/md/bending"),
     ("shi_2025_md", "H-MD-30", "kink_band/compression/md/bending"),
+    ("shi_2025_ud", "H-UD-10", "kink_band/compression/ud/non-bending"),
+    ("shi_2025_ud", "H-UD-20", "kink_band/compression/ud/bending"),
+    ("shi_2025_ud", "H-UD-30", "kink_band/compression/ud/bending"),
     # Embedded UD wrinkle (flat surfaces) and the near-UD industrial
     # laminate with two woven 90-degree plies.
     ("li_2025", "S-M-3", "kink_band/compression/ud/non-bending"),
