@@ -31,7 +31,7 @@ as its default; ``--json-schema structured`` selects the new layout.
 
 Be aware of what switching costs. The two documents are almost entirely
 disjoint: on an FE run the legacy one emits 33 leaf paths and the
-structured one 138, sharing only ``provenance`` and the three ``mesh``
+structured one 152, sharing only ``provenance`` and the three ``mesh``
 counts, and on an analytical-only run nothing outside ``provenance``.
 No result, prediction or configuration value is reachable by the same
 path in both -- even the common blocks were renamed (``configuration``

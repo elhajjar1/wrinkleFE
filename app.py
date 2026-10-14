@@ -43,8 +43,8 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 import usage_tracking  # noqa: E402
 from wrinklefe.analysis import AnalysisConfig, WrinkleAnalysis  # noqa: E402
 from wrinklefe.core.eccentricity import (  # noqa: E402
-    BENDING_REGIME_CAVEAT,
     ECCENTRICITY_REGIME_THRESHOLD,
+    bending_caveat,
 )
 from wrinklefe.core.layup import parse_layup  # noqa: E402
 from wrinklefe.core.material import MaterialLibrary, OrthotropicMaterial  # noqa: E402
@@ -2592,6 +2592,17 @@ def _run_analysis(
             result.load_path_eccentricity_ratio
         ),
         "bending_dominated": bool(result.bending_dominated),
+        # Issue #452: the eccentric-column bending bound.
+        "bending_bound_applied": bool(result.bending_bound_applied),
+        "governing_bound": result.governing_bound,
+        "bending_knockdown": (
+            float(result.bending_knockdown)
+            if result.bending_knockdown is not None else None
+        ),
+        "kink_band_knockdown": (
+            float(result.kink_band_knockdown)
+            if result.kink_band_knockdown is not None else None
+        ),
         # Issue #445: reporting only.
         "manufacturing_process": result.manufacturing_process,
         "process_out_of_scope": bool(result.process_out_of_scope),
@@ -4249,9 +4260,13 @@ with tab_analyze:
 
         st.subheader("Analytical predictions")
         # Above the metrics, like the FE caveat: the knockdown next to it is
-        # outside its validated regime when this fires (issue #439).
+        # outside its validated regime when this fires (issue #439), and
+        # may be the eccentric-column bending bound (issue #452).
         if r.get("bending_dominated"):
-            st.warning(f"**Bending-dominated wrinkle:** {BENDING_REGIME_CAVEAT}")
+            _bend_caveat = bending_caveat(
+                True, bool(r.get("bending_bound_applied")),
+            )
+            st.warning(f"**Bending-dominated wrinkle:** {_bend_caveat}")
         if r.get("process_out_of_scope"):
             st.warning(
                 "**Manufacturing process outside the validated scope:** "
@@ -4296,7 +4311,20 @@ with tab_analyze:
                 "of its thickness. At or above "
                 f"{ECCENTRICITY_REGIME_THRESHOLD:.2f} in compression the "
                 "section bends as well as kinks, which the kink-band "
-                "knockdown does not represent."
+                "knockdown does not represent; on a whole-thickness wave "
+                "the knockdown is then capped by an eccentric-column "
+                "bending bound."
+            )
+        if r.get("bending_knockdown") is not None:
+            _governs = (
+                "governs" if r.get("governing_bound") == "bending"
+                else "does not govern"
+            )
+            st.caption(
+                f"Eccentric-column bending bound **"
+                f"{float(r['bending_knockdown']):.3f}** against kink-band "
+                f"**{float(r['kink_band_knockdown']):.3f}**: the bending "
+                f"bound {_governs} (issue #452)."
             )
 
         _mod_kd = float(r.get("analytical_modulus_knockdown", 1.0))
@@ -5016,6 +5044,12 @@ with tab_export:
                         "load_path_eccentricity_ratio"
                     ),
                     "bending_dominated": _res.get("bending_dominated"),
+                    "bending_bound_applied": _res.get(
+                        "bending_bound_applied"
+                    ),
+                    "governing_bound": _res.get("governing_bound"),
+                    "bending_knockdown": _res.get("bending_knockdown"),
+                    "kink_band_knockdown": _res.get("kink_band_knockdown"),
                     "fe": (
                         {
                             "modulus_retention": _fe.get("modulus_retention"),

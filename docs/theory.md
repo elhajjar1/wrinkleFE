@@ -214,6 +214,30 @@ embedded wrinkle that fades to flat at the surfaces; `decay_floor` $=1$
 collapses to `uniform`. The **tension** graded path uses an analogous
 *linear* through-thickness taper instead of the Gaussian.
 
+### 2.5 Eccentric-column bending bound (whole-thickness waves)
+
+A wrinkle that moves the laminate's outer surfaces moves its load path:
+the axial-stiffness-weighted centroid of the section at the wrinkle sits
+a distance $e$ off the line joining the end centroids
+(`wrinklefe.core.eccentricity.load_path_eccentricity`, measured on
+the generated ply boundaries). At $e/t \ge 0.10$ a compression result is
+`bending_dominated` (issue #439). When, in addition, both outer surfaces
+follow the load path (`whole_thickness_wave`), the section is treated as
+an eccentric column of thickness $t_c$ at the wrinkle. The outer fibres
+carry $\sigma\,(t_0/t_c)(1 + 6e/t_c)$, so
+
+$$
+\mathrm{KD}_\text{bend} = \frac{t_c / t_0}{1 + 6\,e/t_c},
+\qquad
+\mathrm{KD} = \min(\mathrm{KD}_\text{kink}, \mathrm{KD}_\text{bend})
+$$
+
+where $\mathrm{KD}_\text{kink}$ is the Budiansky–Fleck value above (or
+the penetration gate's, §4.1). Homogeneous-section beam theory, with no
+P-delta amplification: a screening bound (issue #452). A one-sided
+trough, with one face pinned flat by the tool, gets no bound and keeps
+the advice to run FE; tension is not bounded.
+
 ## 3. Tension — three competing mechanisms
 
 In tension a wrinkled 0° ply can fail three ways, and the *most severe*
@@ -489,6 +513,9 @@ therefore **measures** the curve rather than assuming it.
   `modulus_knockdown` keeps falling well past it (0.332 at $A = 4.392$,
   0.151 at $A = 10^{6}$), and a graded $[0]_{24}$ wrinkle at
   $\lambda = 1$ mm, $A = 4.392$ mm reaches $\mathrm{KD} = 0.024$.
+  On a whole-thickness wave the bending bound (§2.5) keeps the curve
+  decreasing: it falls with $A$ and switches on at $e/t = 0.10$, where
+  it can only step the knockdown down.
 - **Wavelength.** Monotonicity **fails** for `morphology="graded"`. The
   through-thickness Gaussian widens with wavelength
   ($\sigma_\text{eff} = \max(\lambda/2, A)$), so decreasing $\lambda$
