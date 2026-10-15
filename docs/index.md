@@ -1,10 +1,10 @@
 # WrinkleFE
 
-Finite element analysis of wrinkled composite laminates with advanced
-failure theories — analytical Budiansky–Fleck knockdown, 3-D FE with
-LaRC05/Hashin/Puck ply failure, cohesive-zone delamination, and
-unidirectional wrinkle-defect models (resin-pocket zone,
-progressive-damage FE, and a (θ, D/T, z) penetration gate).
+Strength and stiffness knockdown of composite laminates with
+fibre-waviness (wrinkle) defects — analytical Budiansky–Fleck and
+three-mechanism knockdown, 3-D FE with LaRC05 ply failure, cohesive-zone
+delamination, and unidirectional wrinkle-defect models (resin-pocket
+zone, progressive-damage FE, and a (θ, D/T, z) penetration gate).
 
 ```{toctree}
 :maxdepth: 2

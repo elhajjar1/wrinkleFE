@@ -16,7 +16,9 @@ happens on first attribute access.
 
 .. code-block:: bash
 
-   pip install 'wrinklefe[plotly]'
+   pip install "wrinklefe[plotly] @ git+https://github.com/elhajjar1/wrinkleFE.git"
+
+(``pip install 'wrinklefe[plotly]'`` once the package is on PyPI.)
 
 .. code-block:: python
 
@@ -26,7 +28,7 @@ happens on first attribute access.
    fig.show()
 
 Without plotly installed, that import raises an :class:`ImportError`
-naming the command above; the rest of :mod:`wrinklefe.viz` (the
+naming the ``plotly`` extra; the rest of :mod:`wrinklefe.viz` (the
 matplotlib plots) is unaffected.
 
 .. automodule:: wrinklefe.viz.plotly_figs

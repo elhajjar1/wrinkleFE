@@ -14,7 +14,8 @@ The `vtk` extra is optional — the plain install stays lean and
 headless-safe (no VTK); add it only for the 3D cohesive-zone renders.
 
 From a clone, `pip install -e ".[all]"` installs everything including
-the dev tooling (and the `vtk` extra).
+the dev tooling (and the `vtk` extra). Once the first release is
+published to PyPI, `pip install wrinklefe` will work as well.
 
 ## A five-minute analysis
 
@@ -32,8 +33,9 @@ print(result.summary())
 `amplitude` is the **half-amplitude** in mm (peak displacement of the
 wrinkled mid-surface from the flat reference); `wavelength` is the
 crest-to-crest period; `width` is the longitudinal envelope decay
-length. All lengths are millimetres. The full parameter reference is
-the wrinkle-geometry table in the [overview](overview.md) and the
+length. All lengths are millimetres. The geometry inputs are defined in
+[Units & conventions](units_conventions.md), the six morphologies in the
+[overview](overview.md), and every field with its default on the
 {class}`~wrinklefe.analysis.AnalysisConfig` API page.
 
 ## Unidirectional wrinkle knockdown (penetration gate)
@@ -70,13 +72,16 @@ Li 2024/2025 UD glass/epoxy grids; `penetration_gate_kd` also takes an
 optional `z_position` (0.5 = mid-plane) for the through-thickness
 position factor. To route a full `AnalysisConfig` run through the gate,
 set `AnalysisConfig.penetration_gate = GATE_LI2025_VACBAG`. The gate is
-**UD-scoped** — do not apply it to multidirectional / blocked laminates.
+**UD-scoped** — do not apply it to multidirectional / blocked laminates
+— and the shipped presets are **material-scoped**: they were fitted to
+one glass/epoxy prepreg and are unsafe on UD carbon as shipped (see
+[Interpreting results](interpreting_results.md)).
 
 For the FE side, `AnalysisConfig.enable_resin_pocket=True` tags a soft
 epoxy lens at the wrinkle crest, and
 `AnalysisConfig.enable_progressive_damage=True` load-steps the solve to
-ultimate load for a real UD compression knockdown; both are documented
-on the {class}`~wrinklefe.analysis.AnalysisConfig` API page.
+ultimate load, past first-ply failure; both are documented on the
+{class}`~wrinklefe.analysis.AnalysisConfig` API page.
 
 The same pipeline is available from the command line:
 
@@ -108,9 +113,10 @@ via `to_dict` / `from_dict` and `save_json` / `load_json`.
 ## Runnable examples
 
 The repository's `examples/` directory contains scripts for the common
-workflows — parametric sweeps, morphology comparison, CZM delamination,
-multi-wrinkle crest-to-crest delamination link-up, export round-trips,
-custom materials, mesh convergence, and deriving an acceptance limit
-(the maximum wrinkle amplitude that still meets a target knockdown) —
-each with its expected runtime and output in the header. CI executes
-them all on every push.
+workflows — from a basic knockdown, parametric sweeps and morphology
+comparison through CZM delamination, the penetration gate, progressive
+damage, uncertainty propagation, cure residual stress, fitting a
+measured micrograph trace and deriving an acceptance limit (the maximum
+wrinkle amplitude that still meets a target knockdown). Each states its
+expected runtime and output in its header, `examples/README.md` lists
+them all, and CI executes them on every push.

@@ -9,30 +9,38 @@ solved on a structured hexahedral mesh.
 
 ## Analytical knockdown
 
-For multidirectional laminates the analytical path reduces a wrinkle to
-its peak fibre-misalignment angle and applies angle-based knockdown
-models: a CLT-weighted Budiansky–Fleck kink-band law with
-layup-dependent confinement in compression, and a three-mechanism model
-in tension (fibre `cos^2(theta)`, Hashin matrix, and a curved-beam
-through-thickness `sigma_33` delamination term with a thick-ply in-situ
-correction). These run from `amplitude`, `wavelength`, and `width`
-without meshing.
+The analytical path reduces a wrinkle to its peak fibre-misalignment
+angle and applies angle-based knockdown models: in compression, a
+CLT-weighted Budiansky–Fleck kink-band law with layup-dependent
+confinement (a UD-dominated laminate takes its strain budget from the
+material card, issue #451), capped on a bending-dominated
+whole-thickness wave by an eccentric-column bending bound (issue #452);
+in tension, a three-mechanism model (fibre `cos^2(theta)`, in-situ
+matrix cracking, and curved-beam interlaminar delamination). These run
+from `amplitude`, `wavelength`, and `width` without meshing.
 
 ## 3-D finite element
 
 The FE path deforms a structured hexahedral mesh to the wrinkle profile
-and evaluates ply failure with LaRC05, Hashin, and Puck criteria, with
-optional cohesive-zone modelling (CZM) for delamination. Five
-morphologies are supported — `stack`, `convex`, and `concave` (dual
-wrinkles distinguished by phase) and `uniform` and `graded` (single
-wrinkles distinguished by their through-thickness amplitude profile);
-see the wrinkle-geometry table in the README/landing page for the full
-parameter reference.
+and evaluates ply failure with the LaRC05 criterion (Hashin, Puck,
+Tsai–Wu and others are available through
+{class}`~wrinklefe.failure.evaluator.FailureEvaluator`), with optional
+cohesive-zone modelling (CZM) for delamination. Six morphologies are
+supported — `stack`, `convex`, and `concave` (dual wrinkles
+distinguished by phase) and `uniform`, `graded`, and `tool_flat` (single
+wrinkles distinguished by their through-thickness amplitude profile).
+Pick by what the outer surfaces do: `graded` (or a dual-wrinkle mode)
+when both stay flat, `uniform` when both are wavy, and `tool_flat` for a
+one-sided surface trough over a flat tool face. The
+{class}`~wrinklefe.analysis.AnalysisConfig` API page is the full
+parameter reference, and [Units & conventions](units_conventions.md)
+defines the geometry inputs.
 
 Beyond the named morphologies, arbitrary **multi-wrinkle layouts** are
 supported through `AnalysisConfig.wrinkles` — a list of
 {class}`~wrinklefe.analysis.WrinkleSpec` entries, each with its own
-amplitude, wavelength, width, ply interface, and longitudinal position.
+amplitude, wavelength, width, ply interface, and phase offset (which
+sets its longitudinal position).
 The displacement and fibre-angle fields derive from the composed
 wrinkle field ("compose then differentiate"), the penetration gate
 scores each wrinkle on its own geometry and takes the weakest link, and
@@ -55,7 +63,9 @@ three capabilities aimed at unidirectional laminates:
   through-thickness location). Calibrated presets `GATE_LI2024_MOULDED`
   and `GATE_LI2025_VACBAG` (Li 2024/2025 UD glass/epoxy) ship with the
   package, and `AnalysisConfig.penetration_gate` routes the analytical
-  knockdown through it.
+  knockdown through it. The presets are material-scoped: on UD carbon
+  they are unsafe as shipped (see
+  [Interpreting results](interpreting_results.md)).
 - **Resin-pocket material zone.** `wrinklefe.core.resin_pocket` tags the
   hex elements inside a resin lens at the wrinkle crest and assigns them
   an isotropic epoxy card (the built-in `EPOXY_S6C10`), capturing the
@@ -65,9 +75,9 @@ three capabilities aimed at unidirectional laminates:
   `resin_pocket_height_scale`, and `resin_pocket_length_scale`.
 - **Progressive-damage FE.** `wrinklefe.solver.progressive_damage`
   (`ProgressiveDamageSolver`) load-steps a ply-discount FE solve to
-  ultimate load — the first FE route to a real UD compression knockdown,
-  since a linear first-ply-failure index never activates for pristine
-  UD. Controlled by `AnalysisConfig.enable_progressive_damage`,
+  ultimate load — the only FE route that carries UD compression past
+  first-ply failure; a research output, not an allowable. Controlled by
+  `AnalysisConfig.enable_progressive_damage`,
   `progressive_n_increments`, `progressive_residual_factor`, and
   `progressive_max_strain`.
 
@@ -77,14 +87,16 @@ the wrinkle as a fraction of the laminate thickness (`0.5` = mid-plane),
 which also feeds the penetration gate's position factor.
 
 In short: **use the angle-based analytical models for multidirectional
-laminates, and the penetration gate for unidirectional laminates**,
-because at a fixed angle the UD knockdown still varies with
-through-thickness penetration.
+laminates, and the penetration gate for unidirectional laminates of the
+material it was calibrated on**, because at a fixed angle the UD
+knockdown still varies with through-thickness penetration. Which number
+to carry in each case is set out in
+[Interpreting results](interpreting_results.md).
 
 For the full mechanism-by-mechanism derivation — kink-band confinement,
 the tension three-mechanism minimum, the penetration gate, the
 progressive-damage crack-band, and the cohesive law — see the
 [Theory: physics & mechanics](theory.md) page. See the
-[API reference](api/index.md) for the full public surface and the
+[API reference](api/index.rst) for the full public surface and the
 [validation page](validation.md) for how these models compare against
 experiment.

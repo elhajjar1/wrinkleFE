@@ -1,4 +1,4 @@
 ```{include} internal/ARCHITECTURE.md
-:relative-docs: docs/
+:relative-docs: ../
 :relative-images:
 ```

@@ -1,4 +1,4 @@
 ```{include} internal/VALIDATION.md
-:relative-docs: docs/
+:relative-docs: ../
 :relative-images:
 ```
