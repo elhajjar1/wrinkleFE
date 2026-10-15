@@ -1623,10 +1623,9 @@ class AnalysisConfig:
     # the :class:`~wrinklefe.solver.progressive_damage.ProgressiveDamageSolver`
     # on the wrinkled mesh and a pristine baseline, populating
     # ``progressive_strength_MPa`` and ``progressive_knockdown`` on the
-    # result.  This is the only path that carries UD compression past
-    # first-ply failure (the linear LaRC05 index never activates for
-    # pristine UD).  No effect on ``analytical_only`` runs; not combinable
-    # with ``enable_czm``.
+    # result.  This is the only FE path that follows damage past
+    # first-ply failure to an ultimate load.  No effect on
+    # ``analytical_only`` runs; not combinable with ``enable_czm``.
     enable_progressive_damage: bool = False
     progressive_n_increments: int = 15
     progressive_residual_factor: float = 0.1

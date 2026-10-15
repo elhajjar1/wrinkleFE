@@ -1,9 +1,9 @@
 """Progressive-damage load-stepping solver for wrinkled laminates.
 
 The linear FE path reports a *first-ply* failure index at a single
-applied strain — it cannot follow damage past initiation, so for
-unidirectional compression (where the pristine LaRC05 index never
-activates) it returns no knockdown at all.  This module carries the
+applied strain — it cannot follow damage past initiation, so its
+knockdown is a first-ply retention, not an ultimate-strength ratio.
+This module carries the
 solve to **ultimate load** by ramping the applied strain in increments
 and, at each increment, iterating an equilibrium loop that:
 

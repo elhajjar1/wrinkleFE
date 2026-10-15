@@ -9,7 +9,7 @@ so they cannot rot.
 |--------|----------|---------|
 | [`01_basic_knockdown.py`](01_basic_knockdown.py) | Pristine vs wrinkled strength, analytical + FE, wrinkle-profile figure | ~10 s |
 | [`02_parametric_sweep.py`](02_parametric_sweep.py) | Amplitude sweep with knockdown-curve plot (`WrinkleAnalysis.parametric_sweep`) | ~1 s |
-| [`03_morphology_comparison.py`](03_morphology_comparison.py) | The 5 named morphologies on one laminate (`compare_morphologies`) | ~1 s |
+| [`03_morphology_comparison.py`](03_morphology_comparison.py) | Five named morphologies on one laminate (`compare_morphologies`); `tool_flat`, for one-sided surface troughs, pins one face and is shown in the guide | ~1 s |
 | [`04_czm_delamination.py`](04_czm_delamination.py) | Cohesive-zone delamination run (`enable_czm`) with damage summary | ~10 s |
 | [`05_export_roundtrip.py`](05_export_roundtrip.py) | JSON / Abaqus `.inp` / VTK export; open the `.vtk` in ParaView | ~10 s |
 | [`06_custom_material.py`](06_custom_material.py) | Defining an `OrthotropicMaterial` not in the preset library | ~1 s |
