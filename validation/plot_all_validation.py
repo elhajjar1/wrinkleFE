@@ -581,7 +581,8 @@ def main():
     _render(
         headline,
         "WrinkleFE validation -- analytical prediction vs ultimate strength "
-        "(A-M)\nmarker = method, colour = dataset, band = +/-20 %, "
+        "(Datasets A-F, H-M)\nmarker = method, colour = dataset, "
+        "band = +/-20 %, "
         "hollow = quarantined",
         REPO / "validation" / "fig_all_validation_parity.png",
     )
