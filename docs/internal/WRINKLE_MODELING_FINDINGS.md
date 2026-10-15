@@ -4,7 +4,9 @@ This note records the outcome of the five-item modelling programme (list
 "D") aimed at closing the residual gaps in WrinkleFE's prediction of
 compressive strength knockdown for unidirectional (UD) laminates with
 fibre waviness, validated against the Li (2024 Dataset E / 2025 Dataset
-F) controlled `(θ, D/T)` grids.
+F) controlled `(θ, D/T)` grids. The figures are as measured during the
+programme; later model fixes moved some FE values, and the
+[validation record](../validation.md) holds the current ones.
 
 ## Starting point
 
@@ -34,30 +36,35 @@ equals the fibre-kink fracture energy `Gf` regardless of mesh.
   (energy-regularized softening carries more load), which *helps* the
   over-knock cases but *worsens* F's deep under-knock cases — a softening
   regularizer cannot fix a damage-*initiation* deficit.
+- *Later finding:* on the Li (2025) coupons the crack band does not make
+  the strength mesh-objective. Refining the mesh changes the answer and
+  inverted the amplitude ordering, so `Gf` holds only at the mesh it was
+  fitted at (VALIDATION.md, the Li (2025) caveat).
 
 ## D.3 — Two-parameter (θ, D/T) penetration gate — **adopted (best predictor)**
 
-`KD = 1 − (1 − KD_angle(θ))·min(1, (D/T / dt0)^p)`, the VALIDATION_DATA
-§2.7 penetration-gate form.  Captures both axes of the Li grids — the
-angle response *and* the steep penetration drop (KD 1.00→0.94→0.63 over
-D/T 0.041→0.122) — that defeated the angle-only and FE models.
+`KD = 1 − (1 − KD_angle(θ))·min(1, (D/T / dt0)^p)`, the penetration-gate
+form.  Captures both axes of the Li grids — the angle response *and* the
+steep penetration drop (KD 1.00→0.94→0.63 over D/T 0.041→0.122) — that
+defeated the angle-only and FE models.
 
 - **E: MAE 2.8 %, 9/9** (`GATE_LI2024_MOULDED`: γ_Y = 0.2577,
   dt0 = 0.0938, p = 0.59).
 - **F: MAE 6.0 %, 5/5** on the five mid-plane cases used to fit the gate
-  (`GATE_LI2025_VACBAG`: γ_Y = 0.6215, dt0 = 0.122, p = 4.31; matches
-  §2.7's predicted dt0 ≈ 0.12, p ≈ 4.8). Adding the near-surface S-A-2
-  case via the D.5 position factor gives the full six-case F result
-  **5.0 %, 6/6** (the value reported in the consolidated chart and the
-  "Net picture" table below).
+  (`GATE_LI2025_VACBAG`: γ_Y = 0.6215, dt0 = 0.122, p = 4.31). Adding the
+  near-surface S-A-2 case via the D.5 position factor gives the full
+  six-case F result **5.0 %, 6/6** (the value reported in the
+  consolidated chart and the "Net picture" table below).
 - Material-realization specific (E moulded vs F vacuum-bag give
-  contradictory KD at the same (θ, D/T) — the §2.7 normalization issue);
-  UD-scoped.
+  contradictory KD at the same (θ, D/T) — the normalization issue in
+  VALIDATION.md, "E vs F"); UD-scoped.
 - Shipped as `wrinklefe.core.penetration_gate` and wired into the
   analytical pipeline (`AnalysisConfig.penetration_gate`).
 
 This is the **best knockdown predictor in the package** for UD wrinkles,
-at zero FE cost.
+at zero FE cost, on the material system it was fitted to. It does not
+transfer blind to other materials (VALIDATION.md, "Gate transfer to new
+materials").
 
 ## D.4 — Continuum geometric nonlinearity — **negative finding (not adopted)**
 
@@ -131,24 +138,26 @@ wrinkle near the surface instead of mid-plane; measured KD jumps from 0.63
 | Need | Model | Accuracy (E / F) |
 |---|---|---|
 | UD knockdown prediction (incl. position) | **D.3+D.5 (θ, D/T, z) gate** | 2.8 % / **5.0 %, 6/6** |
-| Mesh-objective FE field, wavelength axis | D.1 crack-band FE | 10.3 % / 20.1 % |
+| FE field, wavelength axis (mesh-locked) | D.1 crack-band FE | 10.3 % / 20.1 % |
 | Multidirectional (A–D) | existing BF / three-mechanism | (unchanged) |
 | Continuum / structural buckling | D.4 `K_geo` (correct, but not for kinking) | — |
 
 The throughline: the governing physics is **fibre-scale** (kinking with
 fibre bending), which closed-form models capture (the gate) but the
 homogenised continuum FE cannot.  The gate (D.3) is the production UD
-predictor; the FE (D.1) gives mesh-objective field detail.
+predictor; the FE (D.1) gives field detail, at the mesh its `Gf` was
+fitted at.
 
 **Consolidated parity chart.** `validation/plot_all_validation.py`
-renders every single-wrinkle case (Datasets A–F) on one
-predicted-vs-experimental parity plot with a ±20 % corridor, each dataset
-predicted by the model that physically applies to it (multidirectional
-A–D via the analytical BF / three-mechanism path; UD E/F via this gate).
-Running it prints the per-dataset scorecard — E 2.8 % (9/9), F 5.0 %
-(6/6) — and writes `validation/fig_all_validation_parity.png` (the
-analytical prediction against ultimate strength) and
+scores the single-wrinkle cases (Datasets A–F during this programme; H
+to M have joined since) with a ±20 % corridor, each dataset predicted by
+the model that physically applies to it (multidirectional A–D via the
+analytical BF / three-mechanism path; UD E/F via this gate). Running it
+prints the per-dataset scorecards — E 2.8 % (9/9), F 5.0 % (6/6) — and
+writes `validation/fig_all_validation_parity.png` (the analytical
+prediction against ultimate strength) and
 `validation/fig_fe_onset_parity.png` (first-ply FE and onset estimates).
+The current totals are in VALIDATION.md, "Consolidated parity chart".
 
 ## Open items
 
@@ -157,5 +166,7 @@ analytical prediction against ultimate strength) and
   Until then the gate parameters are material-realization specific.
 - **Position factor robustness**: `position_q` is fit to a single point
   (S-A-2); more position data would firm it up.
-- **Multi-wrinkle** (Li D-/T- cases): separate capability (the gate is
-  single-wrinkle; the FE multi-wrinkle path exists but is uncalibrated).
+- **Multi-wrinkle** (Li D-/T- cases): separate capability. The gate is
+  calibrated on single wrinkles; since issue #342 a multi-wrinkle config
+  applies it per wrinkle (weakest link), and the FE multi-wrinkle path
+  exists, but neither is calibrated on these cases.

@@ -14,8 +14,9 @@ pip install -e .
 streamlit run app.py
 ```
 
-A browser tab should open at <http://localhost:8501>. Tweak parameters in the
-sidebar, click **Run analysis**, and verify the **Results** tab populates.
+A browser tab should open at <http://localhost:8501>. Pass the acknowledgment
+gate (section 10), tweak parameters in the sidebar, click **Run analysis**, and
+check that the results appear on the **Analyze** tab.
 
 ## 2. Push to GitHub
 
@@ -26,8 +27,8 @@ your branch is on GitHub and you know the branch name. For this repo:
 elhajjar1/wrinkleFE
 ```
 
-If you've been working on a feature branch (e.g. `claude/review-open-issues-uX18N`),
-either deploy directly from that branch or merge to `main` first.
+If you've been working on a feature branch, either deploy directly from that
+branch or merge to `main` first.
 
 ## 3. Sign in to Streamlit Community Cloud
 
@@ -38,23 +39,30 @@ either deploy directly from that branch or merge to `main` first.
 
 ## 4. Create the app
 
-1. Click **Create app** (top right) → **Deploy a public app from GitHub**.
+1. Click **Create app** (top right) and choose to deploy an existing app from
+   GitHub.
 2. Fill in:
    - **Repository:** `elhajjar1/wrinkleFE`
    - **Branch:** `main` (or your feature branch)
    - **Main file path:** `app.py`
    - **App URL:** pick a sub-domain like `wrinklefe.streamlit.app`
-3. Click **Advanced settings** if you need a non-default Python version
-   (Streamlit Cloud defaults to 3.11 currently). Pick **Python 3.11** to match
-   `pyproject.toml`'s `requires-python = ">=3.10"` and the test matrix.
+3. Under **Advanced settings**, pick the Python version. Any version the CI
+   test matrix covers (3.10–3.13) works; Streamlit's default is 3.12 at the
+   time of writing. The version can only be chosen here: changing it later
+   means deleting and redeploying the app.
 4. Click **Deploy**.
 
 Streamlit Cloud will:
 - clone the repo
-- create a virtualenv
-- run `pip install -r requirements.txt`
-- run `pip install -e .` if a `pyproject.toml` is present
+- install the dependencies in `requirements.txt` (it uses the first
+  dependency file it finds, so `pyproject.toml` is not read)
 - start `streamlit run app.py`
+
+It does not install the `wrinklefe` package itself: `app.py` puts the
+repository's `src/` directory on `sys.path`, so the import works without it.
+`requirements.txt` sets only a floor for Streamlit (`streamlit>=1.57.0`), so a
+deploy picks up the newest release. The exact `streamlit==1.65.0` in
+`requirements-lint.txt` is for the type checker, not for the app.
 
 The first build typically takes 2–4 minutes (numpy/scipy/matplotlib wheels).
 Subsequent redeploys reuse the cache and finish in ~30 s.
@@ -68,25 +76,28 @@ Streamlit account is needed to use a public app.
 ## 6. Iterate
 
 Every push to the configured branch triggers an automatic redeploy. Use the
-**Manage app** panel (bottom-right gear in the live app) to:
+**Manage app** panel (lower-right corner of the live app) to:
 - view live logs
 - reboot the app if it gets stuck
-- change Python version or secrets
-- pause / delete the app
+- change secrets (the Python version needs a redeploy, see step 4)
+- delete the app
 
 ## 7. Resource limits to know about
 
-Streamlit Cloud (Community tier) gives every app:
-- **1 GB RAM**
-- **1 vCPU**
-- **shared filesystem**, ephemeral
+Streamlit's documentation gives every Community Cloud app the same
+approximate limits (as of February 2024, subject to change):
+- **CPU:** 0.078 cores minimum, 2 cores maximum
+- **Memory:** 690 MB minimum, 2.7 GB maximum
+- **Storage:** up to 50 GB, ephemeral
 - no GPU
-- public-only repo by default (private requires a paid plan)
+
+Apps with no traffic for 12 hours go to sleep until a visitor wakes them.
 
 Implications for WrinkleFE:
-- The default config keeps `analytical_only=True` — full FE solves can blow
-  past 1 GB on dense meshes. If you want to allow full FE, cap `nx*ny*nz_per_ply`
-  or reduce the default mesh.
+- The default sidebar runs analytical-only. Expert mode turns the full FE
+  solve on, with the mesh capped by the widget ranges (`nx` ≤ 64, `ny` ≤ 32,
+  `nz_per_ply` ≤ 4); dense meshes can still run out of memory, so lower those
+  caps in `app.py` if that happens.
 - Don't write user-supplied data anywhere except `tempfile`-scoped paths;
   the filesystem resets on every reboot.
 
@@ -95,19 +106,16 @@ Implications for WrinkleFE:
 | Symptom | Fix |
 |---|---|
 | Build fails on `PyQt6` | It shouldn't be in `requirements.txt` (this repo's already correct). Streamlit Cloud has no display server. |
-| `pyvistaqt` install errors | Same — pyvista 3D is desktop-only. The Streamlit app uses matplotlib. |
-| App boots but `import wrinklefe` fails | Confirm the package installs from source: `pip install -e .` works locally. The deployer runs the same step. |
+| `pyvistaqt` install errors | Same — pyvista 3D is desktop-only. The Streamlit app uses matplotlib and Plotly. |
+| App boots but `import wrinklefe` fails | The deployer does not install the package; `app.py` imports it from `src/` via `sys.path`. Check that `src/wrinklefe/` is on the deployed branch and that `requirements.txt` lists every runtime dependency. |
 | Plots don't render | Make sure `matplotlib.use("Agg")` is called before any `pyplot` import. `app.py` already does this. |
 | Slow first run | Expected — numpy/scipy wheels are ~80 MB combined. Subsequent runs are cached. |
 | Out of memory on large sweep | Reduce `nx/ny/nz_per_ply` or stick to `analytical_only`. |
 
 ## 9. Optional next steps
 
-- Add a `runtime.txt` with `python-3.11` if you want to pin the Python version
-  exactly (Streamlit Cloud reads this).
 - Add Streamlit secrets via the Manage panel if the app needs API keys later.
-- Configure a custom domain in Streamlit Cloud's settings.
-- Add CI to run `streamlit run --headless` smoke tests on every PR.
+- Change the app's `*.streamlit.app` subdomain in its settings.
 
 ## 10. Acknowledgment gate + usage logging (optional)
 
@@ -146,6 +154,8 @@ The sheet gets one row per event with columns
 |----------|-----------------------------------|---------------------------------------------|
 | `signup` | visitor clicks **Enter the app**  | `email` (blank if they skipped it)          |
 | `run`    | an analysis completes             | `props` → morphology, loading, n_plies, …   |
+| `goalseek` | an acceptable-limit search finishes | `props` → parameter, objective, status, … |
+| `compare_morphologies` | a morphology comparison finishes | `props` → morphologies, loading, … |
 
 `session_id` is a random per-session token (no identity, no IP) so you can
 tell repeat runs from distinct visits. Logging is **fail-soft**: a missing
@@ -159,31 +169,34 @@ an analysis. The required `gspread` / `google-auth` packages are already in
 ## App features
 
 Once the app is running, the sidebar offers four features worth calling out:
-three that aren't exposed through the Python API at all, and the
-acceptable-limit search, which is the browser form of the `wrinklefe
-critical` subcommand. All four live in `app.py` and are available in both
-the hosted Streamlit instance and a local `streamlit run app.py`.
+three browser conveniences (the Python API takes the layup and material
+directly, through `wrinklefe.core.layup.parse_layup` and
+`OrthotropicMaterial`), and the acceptable-limit search, which is the browser
+form of the `wrinklefe critical` subcommand. All four live in `app.py` and are
+available in both the hosted Streamlit instance and a local
+`streamlit run app.py`.
 
 ### Morphology schematics
 
 When **Expert mode** is on, the **Morphology** selectbox is followed by a
 live cartoon (rendered by `_morphology_schematic()` in `app.py`) that
-matches the active choice — stack / convex / concave / uniform / graded.
-A `?` popover next to the selector also lists thumbnails of all five so you
-can compare them at a glance without changing the selection. For the
-`graded` mode an additional **Decay floor** slider appears (0 = full decay
-to zero at the surface, 1 = uniform).
+matches the active choice — stack / convex / concave / uniform / graded /
+tool_flat — and tracks the amplitude, wavelength and envelope-width inputs.
+The selector's help text describes all six and says which to pick from what
+the outer surfaces do. For the `graded` mode an additional **Decay floor**
+slider appears (0 = full decay to zero at the surface, 1 = uniform); for
+`tool_flat` the pinned-surface and transition-ply controls appear below the
+cartoon.
 
-Below the morphology cartoon, a separate **wrinkle preview** plot tracks the
-current `amplitude` (`A`), `wavelength` (`λ`), envelope `width` (`w`) and
-`decay_floor` in real time, so you can see the through-thickness profile
-update as you drag the sidebar sliders — no analysis run needed.
+On the **Analyze** tab, the **Wrinkle & laminate preview** expander draws the
+deformed ply stack through the thickness from the same inputs, so you can see
+the profile update as you change the sidebar — no analysis run needed.
 
 ### Layup notation (contracted)
 
 The **Layup** textarea accepts either a contracted laminate string or an
 explicit comma/semicolon/newline-separated list of ply angles in degrees.
-Quoting the in-app help text (`app.py:417-436`):
+Quoting the in-app help text:
 
 > Accepts contracted notation like `[0/45/-45/90]_3s` or an explicit
 > comma-separated list of angles in degrees.
@@ -203,8 +216,9 @@ Modifiers (also from the in-app help):
 | `[±30]_2`           | `30, -30` repeated twice                          | 4     |
 
 The default layup is `[0/45/-45/90]_3s` — the 24-ply quasi-isotropic stack.
-Both the contracted and explicit forms can be edited freely in the textarea
-and validated immediately by the plies-count preview below it.
+Both the contracted and explicit forms can be edited freely in the textarea;
+the cross-section and the **Layup stack visualizer** on the Analyze tab show
+the parsed plies and report a layup that does not parse.
 
 ### Custom-material editor
 
@@ -266,7 +280,7 @@ Three things about the result are worth knowing:
   morphology is left off, and the tab says so rather than omitting it
   silently.
 
-**Apply this limit to the sidebar** seeds the geometry widget with the
-limit (clamped to the widget's range) so the full analysis can be run at
-it. Doing so changes the inputs, so the search above is then correctly
-flagged as computed for the previous configuration.
+**Apply this amplitude (or wavelength) to the sidebar** seeds the geometry
+widget with the limit (clamped to the widget's range) so the full analysis
+can be run at it. Doing so changes the inputs, so the search above is then
+correctly flagged as computed for the previous configuration.

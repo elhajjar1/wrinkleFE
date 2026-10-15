@@ -3,13 +3,19 @@
 ## Module Dependency Diagram
 
 ```
-core ──→ elements ──→ solver ──→ failure ──→ analysis
-  │                                            ↑
-  └──────────────────── viz                    │
-                                     sweep ────┘
+core ←─→ elements ──→ solver ──→ analysis ──→ sweep, convergence,
+  │                     ↑           ↑          goalseek, stochastic, io
+  ├──→ failure ─────────┴───────────┘
+  └──→ viz
 ```
 
-`core` has no internal dependencies. Each layer depends only on layers to its left.
+`core` is the base layer. Two of its mesh modules borrow element-level
+helpers from `elements` (`core/mesh.py` the hex8 centroid Jacobian,
+`core/cohesive_mesh.py` the cohesive element), so those two packages
+import each other. `failure` depends only on `core`; `solver` uses
+`failure` for progressive damage. The drivers on the right import
+`analysis`. `viz` needs only `core` at import time, and `cli` imports
+the rest lazily.
 
 ## Data Flow
 
@@ -29,6 +35,9 @@ WrinkleAnalysis.run     Orchestrates the full pipeline:
        │       three-mechanism tension model, OR the (theta, D/T, z)
        │       penetration gate when `penetration_gate` is set; plus the
        │       closed-form modulus knockdown and the damage index
+       │         3a. load-path eccentricity, the bending-regime flag and
+       │             the eccentric-column bending bound; process scope
+       │         3b. CLT first-ply failure under a thermal load (`delta_T`)
        │   4.  Generate WrinkleMesh -> MeshData (structured hex), then the
        │       per-element material overrides, in order:
        │         4a2. crest resin lens        (`enable_resin_pocket`)
@@ -43,19 +52,21 @@ WrinkleAnalysis.run     Orchestrates the full pipeline:
        │         - progressive      -> ProgressiveDamageSolver on the wrinkled
        │           damage             mesh AND a pristine baseline (ultimate
        │                              strength), then the linear solve below
-       │         - linear (default) -> StaticSolver with compression BCs
+       │         - linear (default) -> StaticSolver with the loading's BCs
        │   6.  Evaluate failure on the FE field (FailureEvaluator)
        │   6b. Retention factors vs a pristine baseline solve
        ▼
-AnalysisResults         Analytical + FE knockdowns, modulus retention (local
-                        and global), FPF retention factors, progressive
+AnalysisResults         Analytical + FE knockdowns, eccentricity and bending
+                        flag, modulus retention (local and global), FPF
+                        retention factors, progressive
                         ultimate strengths and load history, CZM damage /
                         energy / crack lengths, damage fields, morphology
                         factors, mesh data, field results
 ```
 
-Steps 3-4 are skipped past the mesh when `analytical_only=True`; every
-defect feature in 4a is opt-in and FE-only.
+With `analytical_only=True` the run stops after step 3 (no mesh, solve,
+failure evaluation or retention); every defect feature in 4a is opt-in
+and FE-only.
 
 Around that core sit the modules that *drive* the pipeline rather than
 extend it: `sweep/parametric_sweep.py` and `convergence.py` sweep it,
@@ -95,7 +106,7 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `core/material.py` | `OrthotropicMaterial` dataclass + `MaterialLibrary` (16 built-in fibre-reinforced systems + 1 isotropic neat-epoxy card) |
 | `core/laminate.py` | `Laminate`, `Ply`, `LoadState`; Classical Lamination Theory ABD matrices |
 | `core/wrinkle.py` | `GaussianSinusoidal` wrinkle profile: z(x) = A exp(-x^2/w^2) cos(2pi x/lam) |
-| `core/morphology.py` | `WrinkleConfiguration`, `MorphologyFactor`, `MORPHOLOGY_PHASES`; phase-to-Mf mapping |
+| `core/morphology.py` | `WrinkleConfiguration`, `WrinklePlacement`, `MORPHOLOGY_PHASES`; phase-to-Mf mapping |
 | `core/mesh.py` | `WrinkleMesh` generates structured hex mesh; returns `MeshData` (nodes, elements, fiber angles) |
 | `core/transforms.py` | Stress/strain coordinate transforms between material and global frames |
 | `core/penetration_gate.py` | `GateParameters`, `penetration_gate_kd` -- closed-form UD (theta, D/T, z) penetration-gate knockdown; calibration presets `GATE_LI2024_MOULDED`, `GATE_LI2025_VACBAG` |
@@ -104,6 +115,10 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `core/micromechanics.py` | Constituent (fibre + matrix + `Vf`) to ply constants; `FIBER_PRESETS` / `MATRIX_PRESETS`. Used as a *ratio* by `compaction`, not for absolute cards |
 | `core/layup.py` | `parse_layup`, `to_contracted_layup`, `validate_ply_angle` -- single source of truth for contracted layup notation and the `\|angle\| <= 90` rule |
 | `core/cohesive_mesh.py` | `insert_cohesive_interface` -- splits a hex8 mesh at a z-plane and inserts zero-thickness cohesive elements |
+| `core/eccentricity.py` | `load_path_eccentricity`, `bending_knockdown`, `bending_caveat` -- load-path eccentricity e/t, the bending-regime flag and the eccentric-column bending bound (issues #439, #452); `ONE_SIDED_TROUGH_ADVICE` |
+| `core/process.py` | `ManufacturingProcess`, `VALIDATION_EVIDENCE`, `process_scope_caveat`, `gate_scope_caveat` -- the manufacturing route and the validated-scope warnings (issue #445) |
+| `core/margins.py` | `regime_for`, `build_margin_table`, `lookup_margin`, `margin_for_results` -- regime-conditional validation margins (issue #455), read from the generated package data `core/validation_margins.json` |
+| `core/fit.py` | `fit_profile`, `rank_families`, `load_trace` -- least-squares fit of a wrinkle profile family to a measured trace |
 | `elements/hex8.py` | Standard 8-node hexahedral element stiffness, B-matrix, and `geometric_stiffness_matrix` (initial-stress K_geo) |
 | `elements/hex8i.py` | Incompatible-modes hex element (improved bending) |
 | `elements/gauss.py` | Gauss quadrature points and weights (1D/3D) |
@@ -116,24 +131,28 @@ from wrinklefe.failure.evaluator import FailureEvaluator
 | `solver/arclength.py` | `ArcLengthSolver` -- Crisfield cylindrical arc-length continuation |
 | `solver/progressive_damage.py` | `ProgressiveDamageSolver`, `ProgressiveDamageResult` -- load-stepping ply-discount damage to ultimate load (optional crack-band fibre-mode regularization) |
 | `solver/buckling.py` | `LinearBucklingSolver`, `BucklingResult`, `microbuckling_knockdown` -- linearized (eigenvalue) buckling from the geometric stiffness |
+| `solver/czm_history.py` | `CzmDamageRecorder`, `CzmDamageHistory`, `CzmOnset` -- per-increment record of cohesive damage on the CZM path, including the delamination-onset load (issue #453) |
 | `failure/base.py` | `FailureCriterion` ABC and `FailureResult` dataclass |
 | `failure/larc05.py` | LaRC05 composite failure criterion implementation |
 | `failure/hashin.py`, `puck.py`, `tsai_wu.py`, `tsai_hill.py`, `max_stress.py`, `max_strain.py` | The other ply-level criteria behind the same `FailureCriterion` ABC |
 | `failure/kinkband.py` | Budiansky-Fleck kink-band classes shared with the analytical path |
-| `failure/delamination.py` | Interfacial delamination as a first-class failure mode (CZM phase 3) |
+| `failure/delamination.py` | `build_delamination_report` -- interfacial delamination, from the cohesive damage state, as a failure mode alongside the ply criteria |
 | `failure/progressive.py` | Material-degradation strategies applied after a criterion detects damage |
 | `failure/evaluator.py` | `FailureEvaluator` applies criteria across all elements; `LaminateFailureReport` |
 | `viz/plots_2d.py` | 2D matplotlib plots (wrinkle profiles, knockdown curves, distributions) |
 | `viz/plots_3d.py` | 3D plots: matplotlib mesh/contour/mode-shape renders, plus optional PyVista cohesive-interface damage and crack-front plots (the `vtk` extra) |
 | `viz/style.py` | Publication styling constants and helpers |
+| `viz/plotly_figs.py` | Interactive Plotly mesh, contour and failure-index figures for the app (optional `plotly` extra, loaded lazily) |
 | `sweep/parametric_sweep.py` | Parametric sweep over amplitude/wavelength/morphology; CSV output |
 | `convergence.py` | `mesh_convergence_study` -- refines `nx`/`ny`/`nz_per_ply` until the FE numbers settle |
 | `goalseek.py` | `find_critical_value`, `CriticalValueResult` -- inverse goal-seek for the largest defect meeting a target, backed off to the safe side and forward-verified |
 | `stochastic.py` | `probabilistic_analysis`, `ProbabilisticResults` -- LHS / Monte-Carlo propagation of input distributions to percentile knockdowns (explicitly *not* A-/B-basis values) |
-| `analysis.py` | Top-level orchestrator: `WrinkleAnalysis`, `AnalysisConfig`, `compare_morphologies`, `parametric_sweep` |
+| `analysis.py` | Top-level orchestrator: `WrinkleAnalysis` (with its `compare_morphologies` and `parametric_sweep` methods), `AnalysisConfig`, `AnalysisResults`, `WrinkleSpec` |
 | `cli.py` | Entry point referenced by `[project.scripts]` (the `wrinklefe` command) |
-| `io/export.py` | Native JSON, Abaqus `.inp`, and legacy VTK export (no extra dependencies); the NCR validation summary (`build_analysis_summary`, `recommend_disposition`, `_SEVERITY_BANDS`, `export_summary`) |
-| `io/results.py` | Tidy tabular result export complementing `io/export.py` |
+| `io/export.py` | Legacy JSON (deprecated since 1.3; `io/results.py` replaces it), Abaqus `.inp`, and legacy VTK export (no extra dependencies); the NCR validation summary (`build_analysis_summary`, `recommend_disposition`, `_SEVERITY_BANDS`, `export_summary`) |
+| `io/results.py` | Schema-versioned JSON (`SCHEMA_VERSION` 1.7) and per-ply CSV export, complementing `io/export.py` |
+| `io/archive.py` | `save_results`, `load_results` -- lossless archive of a full `AnalysisResults` (`.wfr`) for reloading without re-solving |
+| `io/permalink.py` | `encode_config`, `decode_config`, `permalink_url` -- an `AnalysisConfig` encoded in a URL (the app's share links) |
 
 ## Wrinkle-defect modelling
 
@@ -159,8 +178,12 @@ wrinkled-mesh FE path. Each is opt-in and composes with the others through
   with the `StaticSolver` and degrading newly-failed elements (ply-discount, by
   failure-mode family) until each increment settles; the peak carried stress
   over the history is the ultimate strength. An optional crack-band (Bažant-Oh)
-  regularization makes the dominant fibre-compression mode mesh-objective. This
-  is the first FE route to a real UD compression knockdown.
+  regularization of the dominant fibre-compression mode is meant to make it
+  mesh-objective, but on the Li (2025) coupons the calibrated strength still
+  changes with the mesh, so the calibration holds only at the mesh it was
+  fitted at (`PROGRESSIVE_DAMAGE_CAVEAT`; VALIDATION.md, Li 2025). This is the
+  first FE route to a UD compression knockdown, and a research output rather
+  than an allowable.
 
 - **Penetration gate** (`core/penetration_gate.py`). The angle-only
   Budiansky-Fleck knockdown is scale-invariant and cannot reproduce the strong

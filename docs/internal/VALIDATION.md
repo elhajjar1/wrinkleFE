@@ -2,9 +2,28 @@
 
 This file tracks every external paper assessed for inclusion in the
 WrinkleFE knockdown validation database, with the decision and rationale.
-The active validation dataset (data points, pass counts, MAE) lives in the
-**Validation** section of [README.md](../../README.md); this file is the
-evaluation history behind it.
+The **Validation** section of [README.md](../../README.md) summarises the
+active datasets; this file is the evaluation history behind them. A
+passage that records an earlier result says so ("at the time", "before
+issue #N").
+
+**Current state.**
+
+- The ledger holds Datasets A–D and F–M: 16 ledger datasets, 85 cases.
+  Dataset E is scored by the validation scripts only.
+- Headline parity figure (the analytical prediction against the ultimate
+  strength): 61 of 74 cases within ±20%, none more than 20% unsafe, and
+  all 13 outside the band conservative. Second figure (first-ply FE and
+  onset estimates): 16 of 31 inside. With Mukhopadhyay's three
+  analytical onset estimates added to the headline cases, 62 of 77
+  analytical cases are inside. The quarantined Dataset L is in none of
+  these counts. See "Consolidated parity chart".
+- Validation margins are fitted for three regimes: UD kink-band
+  compression, not bending-dominated (1.00, n = 14); multidirectional
+  kink-band compression, not bending-dominated (1.00, n = 17); and
+  multidirectional three-mechanism tension (0.896, n = 20). The other
+  regimes have too few cases. See "Regime-conditional validation
+  margins".
 
 ## Inclusion methodology
 
@@ -18,7 +37,8 @@ A paper qualifies as a knockdown validation point when it reports, for a
 - the measured strength (or knockdown) of the wrinkled vs pristine coupon.
 
 Each case is run through `WrinkleAnalysis`; predicted vs measured knockdown
-gives the per-point error, aggregated into the README table.
+gives the per-point error, aggregated in the parity chart (see
+"Consolidated parity chart").
 
 ## Reproducible harness
 
@@ -42,8 +62,9 @@ Datasets A–D and F–M: 16 ledger datasets, 85 cases (55 before issue
 2015 compression and tension ultimate, Wang 2021) joined in issue #462,
 on the recipes `validation/plot_all_validation.py` scores them with, so
 each pin is the value the parity chart plots;
-`tests/test_validation/test_ledger.py` keeps the two in step. Mukhopadhyay's onset points stay out, because the
-analytical onset estimate is unvalidated (issue #463). Dataset E (Li
+`tests/test_validation/test_ledger.py` keeps the two in step.
+Mukhopadhyay's onset points stay out, because the analytical onset
+estimate is unvalidated (issue #463). Dataset E (Li
 2024) is a (θ, D/T) grid scored by the gate scripts and is not in the
 ledger. Li (2026) case data are not in the repository.
 
@@ -127,7 +148,7 @@ no embedded case is flagged.
 
 ## Included datasets
 
-See the table in [README.md](../../README.md). Current sources:
+Current sources:
 
 - **Datasets A/B — Elhajjar (2025)**, *Scientific Reports* 15:25977 —
   compression (13 cases) + tension (7). In the ledger since issue #462
@@ -156,12 +177,14 @@ See the table in [README.md](../../README.md). Current sources:
   ratio 56.6%, autoclave cure, ASTM D6641). In the ledger since issue
   #462.
 - Li, Y. et al. (2026), *Composites Part A* 205:109719 — S-glass/epoxy,
-  compression (material `AC318_S6C10`).
+  compression (material `AC318_S6C10`). Its case data are not in the
+  repository, so it is not scored here.
 - **Dataset E — Li, X. et al. (2024)**, *Composites Science and
   Technology* 256:110762 — UD glass/epoxy single-wrinkle compression,
   9 cases, **moulded** material realization (material card
   `AC318_S6C10`). Normalised ÷830 MPa (indicative — the paper reports
-  no measured pristine).
+  no measured pristine). Scored by the validation scripts, not in the
+  ledger.
 - **Dataset F — Li, Li, Ge & Liang (2025)**, *Polymer Composites*
   46:15176–15187 — UD glass/epoxy single-wrinkle compression, 6 cases
   (incl. the near-surface position case S-A-2), **vacuum-bag**
@@ -278,8 +301,10 @@ See the table in [README.md](../../README.md). Current sources:
       gone.
     - Validation margins: the kink-band UD margin stays 1.00 (its one
       level case, H-UD-10 at measured / predicted 0.998, is now 2.44).
-      The three other regimes Shi feeds still hold fewer than 10 cases
-      each; their smallest ratios rise to 0.869 (multidirectional,
+      The three other regimes Shi feeds still held fewer than 10 cases
+      each at the time (issue #462 later gave multidirectional
+      non-bending compression 17 cases and a margin); their smallest
+      ratios rose to 0.869 (multidirectional,
       bending-dominated: Thor's wave 1, where H-MD-30 was 0.465), 1.086
       and 1.111.
   - Context reference: Luong, Trevarthen, Butler, Srisuriyachot & Lunt
@@ -374,7 +399,8 @@ See the table in [README.md](../../README.md). Current sources:
     further off.
   - **Mechanism (the paper):** wave 1 fails by bending from the wave
     geometry, delamination first and then fibre breakage; wave 2 by
-    fibre kinking then delamination. A bending model is issue #439.
+    fibre kinking then delamination. Issue #439 studied this regime,
+    and issue #452 added the bending bound above.
   - **Caveats:** the pristine reference is a thinner planar coupon
     (16 plies, 2.1 mm, 10 mm wide; 3 specimens for quasi-isotropic)
     than the 40-ply wavy coupons, so the knockdowns may carry a
@@ -429,7 +455,9 @@ See the table in [README.md](../../README.md). Current sources:
     statistics, and the evidence behind the model-choice guidance. An
     analysis that states `manufacturing_process="wet_layup"` now carries
     an out-of-scope warning citing this dataset (see "Manufacturing-process
-    scope" below). More wet lay-up data is issue #445.
+    scope" below). A search for more wet lay-up data found none (issue
+    #445; see "Decision: wet lay-up, infusion and RTM stay out of
+    scope").
   - **Material and test.** Wet-laid YC300 carbon / LY5052 epoxy, `[0]8`,
     2.8 mm, Vf 0.46, 4.2% porosity, ASTM D6641; 78 specimens. New card
     `YC300_LY5052` with the paper's measured E1 98 GPa, Xc 432.7 MPa,
@@ -444,7 +472,12 @@ See the table in [README.md](../../README.md). Current sources:
     - WR: `uniform` (every ply lifted).
     - WL: `uniform` on the analytical path, which reads only the profile.
       Its `fe_recipe` is `tool_flat`, with the flat face at the bottom and
-      a 7-ply ramp.
+      a 7-ply ramp. Issue #461 rejected this reasoning for Shi's
+      one-sided troughs, and it only half holds here: the WL knockdowns
+      are the same on `tool_flat`, but the eccentricity is measured on the
+      recipe's geometry, and `uniform` makes four WL cases
+      bending-dominated whole-thickness waves where `tool_flat` flags
+      one. Not revisited, since the dataset is quarantined.
     - Wavelength = 2πA/tan θ, so the recipe reproduces the measured angle
       (as for Dataset I).
     - The 90° strip and its resin pocket are not modelled.
@@ -507,6 +540,12 @@ See the table in [README.md](../../README.md). Current sources:
       profile). FE: `tool_flat` with the flat face at the bottom and a
       ramp over 15 of the 16 plies, as the dip fades through the whole
       thickness.
+    - Open question: issue #461 rejected the "reads only the profile"
+      reasoning for Shi's one-sided troughs, and it does not hold here
+      either. On the FE's `tool_flat` geometry the analytical knockdown
+      is much lower, conservative on all 13 coupons, so the `graded`
+      recipe is a modelling choice rather than an equivalent geometry.
+      It has not been changed.
   - **Baselines.** Control ultimates 765 MPa (multidirectional) and
     1785 MPa (UD): the values the 2016 paper normalised by. Its ratio
     column (limit point / control ultimate, two decimals) bounds them to
@@ -612,8 +651,7 @@ See the table in [README.md](../../README.md). Current sources:
 
 Everything above scores **strength** knockdown. WrinkleFE also predicts a
 **stiffness** (axial Young's-modulus) knockdown, exercised by
-`validation/validate_modulus.py` against every UD dataset that reports a
-measured modulus:
+`validation/validate_modulus.py` against the UD datasets E, F and G:
 
 - **FE** — the linear static solve's `modulus_retention` (mean
   fibre-direction stress / applied strain, wrinkled vs pristine).
@@ -653,8 +691,10 @@ uniform-waviness case at θ = 15° (whose *strength* would fall far
 further). The analytical CLT tracks the angle, amplitude/penetration and
 through-thickness-position axes; the homogenised-continuum FE is flatter
 on the amplitude/position axes, consistent with the strength findings.
-The modulus validation is **UD-only** — no multidirectional dataset in
-the ledger reports a measured modulus knockdown.
+The modulus validation is **UD-only**. Datasets I and J, added later,
+also report measured moduli (J on both its UD and quasi-isotropic
+coupons); the ledger stores them as `measured_kd_modulus`, but
+`validate_modulus.py` does not score them.
 
 `validation/plot_modulus_validation.py` renders the consolidated
 predicted-vs-experimental view (`validation/fig_modulus_validation.png`):
@@ -665,8 +705,8 @@ datasets — the stiffness counterpart of `plot_all_validation.py`.
 
 The adopted predictor for the UD single-wrinkle datasets (E, F) is the
 penetration gate, `wrinklefe.core.penetration_gate`
-(`AnalysisConfig.penetration_gate`), documented in
-[WRINKLE_MODELING_FINDINGS.md](WRINKLE_MODELING_FINDINGS.md) (items D.3 /
+(`AnalysisConfig.penetration_gate`), documented in the
+[wrinkle-modelling findings](../wrinkle_modeling_findings.md) (items D.3 /
 D.5). It exists because angle-only Budiansky–Fleck knockdown is
 **scale-invariant**: at a *fixed* peak misalignment angle, the Li grids
 show knockdown still varying strongly with through-thickness penetration
@@ -684,7 +724,9 @@ Two calibrated presets ship, one per material realization:
 `GATE_LI2024_MOULDED` (Dataset E, moulded) and `GATE_LI2025_VACBAG`
 (Dataset F, vacuum-bag; carries the position exponent for the
 near-surface S-A-2 case). The gate is UD-scoped, has zero FE cost, and is
-the package's best UD knockdown predictor.
+the package's best UD knockdown predictor on the material and process it
+was fitted to; it does not transfer blind (see "Gate transfer to new
+materials").
 
 ### UD kink-band strain budget (issue #451)
 
@@ -956,9 +998,10 @@ covered by the bound; on their corrected `tool_flat` recipe (issue #461)
 the analytical model is −71% to +5% on them, and the 20% and 30%
 troughs are flagged bending-dominated. The guidance
 table, with confidence levels, is in `docs/interpreting_results.md`
-("Head-to-head: which model, when"). Follow-up data needs are issues
-#434 (severe multidirectional compression), #435 (UD carbon, blind
-gate test) and #436 (tension onset plus ultimate).
+("Head-to-head: which model, when"). The follow-up data requests,
+issues #434 (severe multidirectional compression), #435 (UD carbon,
+blind gate test) and #436 (tension onset plus ultimate), brought in
+Dataset J, Datasets K and L, and Dataset M respectively.
 
 ### Size-aware FE study: embedded flat-surface wrinkles (issue #453)
 
@@ -1082,7 +1125,7 @@ three conservative, −22% to −23%; 7 of 13 before issue #454, the rest
 unsafe at +20% to +39%) and 3 of 12 FE onset points (8 of the other 9
 unsafe).
 
-## Interlaminar (CZM) validation evidence — Phase 7
+## Interlaminar (CZM) validation evidence
 
 The cohesive-zone model is validated separately from the wrinkle-knockdown
 datasets above, against NASA-TM mode-I / mode-II / mixed-mode benchmarks.
@@ -1211,8 +1254,8 @@ wrinkle defects.* AIP Advances 15, 065118. DOI 10.1063/5.0276297.
 *Experimental Investigation on the Effect of Multi-Wrinkle Fiber Defects
 on the Compressive Testing of Unidirectional Composites.* Polymer
 Composites 46(16):15176–15187. DOI 10.1002/pc.30121. **Distinct** from
-Li et al. (2026), *Compos. A* 205:109719 already in the database
-(different journal, year, and specimens; same material system).
+Li et al. (2026), *Compos. A* 205:109719, listed above (different
+journal, year, and specimens; same material system).
 
 - **Evaluated**: 2026-05-18
 - **Decision**: *Qualifies* methodologically (meets every inclusion
@@ -1239,9 +1282,10 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   > the amplitude and angle orderings are asserted monotonic, and all
   > six cases sit inside the ±20 % parity band. The gate is the issue's
   > candidate direction 3 (a zone-based knockdown layered on the BF
-  > core). The multi-wrinkle D-/T- cases remain out of the ledger (the
-  > gate is calibrated on single wrinkles; gate × multi-wrinkle wiring
-  > is issue #342).
+  > core). The multi-wrinkle D-/T- cases remain out of the ledger: the
+  > gate is calibrated on single wrinkles. Since issue #342 a
+  > multi-wrinkle config applies it per wrinkle (weakest link), but
+  > that has not been scored against these cases.
 - **Dataset** (pristine plate 335.52 MPa; A = peak-to-peak amplitude;
   θ_max = arctan(2π·(A/2)/λ)):
 
@@ -1254,19 +1298,23 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   | S-M-5 | 0.5 |  4.3 | 20° | 335.63 | 1.000 | 0.923 | 0.777 |
   | S-A-2 | 1.5 | 12.9 | 20° | 329.29 | 0.981 | 0.782 | 0.767 |
 
-  (S-A-2 is S-M-2 geometry at a near-surface interface.)
+  (S-A-2 is S-M-2 geometry at a near-surface interface. The KD
+  analytical and FE max FI columns are as evaluated on 2026-05-18; the
+  analytical column came from a script that was never committed and
+  cannot be reproduced, so the ledger's pinned values supersede it.)
 - **Finding (model-wide structural limitation)**: the diagnostic trio
   S-M-2 / S-M-4 / S-M-5 has an *identical* peak angle (20°) with amplitude
   1.5 / 1.0 / 0.5 mm and a measured strength span of 0.63 → 1.00 (~60%).
   On a proper **strength** basis — LaRC05 max-FI scales ~linearly with
   load (k ≈ 0.82–0.91), load scaled to FI = 1, σ_f = E_eff·ε_f, referenced
   to the near-pristine wrinkle S-M-5 — the FE strength knockdown for the
-  trio is 1.000 / 1.000 / 1.000 (the FE does not reach first-ply failure
-  for ≤20° wrinkles at all, regardless of amplitude). The
+  trio was, at the time, 1.000 / 1.000 / 1.000 (the FE did not reach
+  first-ply failure for ≤20° wrinkles at all, regardless of amplitude,
+  until the LaRC05 kinking fix below). The
   amplitude-at-constant-angle effect is captured by **neither** the
   analytical Budiansky–Fleck path **nor** the FE LaRC05 strength path —
   both reduce the wrinkle to its peak misalignment angle, and the FE
-  strength response is in fact flatter than the analytical one (S-M-2 FE
+  strength response was in fact flatter than the analytical one (S-M-2 FE
   strength error ≈ 59%). (Underlying FE LaRC05 max-FI at ε = −0.01:
   0.767 / 0.765 / 0.777, ≤1.5% spread; modulus retention 0.945 for all
   three — both confirm the same flat behaviour.) In the *analytical*
@@ -1274,19 +1322,24 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   closure note above). On the *FE* side, the crack-band
   progressive-damage solver (`ProgressiveDamageSolver`,
   `crack_band=True`) does develop a genuine amplitude trend at constant
-  angle — at Gf = 3.0, nx = 16 the trio predicts 0.781 / 0.878 / 0.965
-  (measured 0.629 / 0.943 / 1.000), MAE 11.5 %, monotonic in amplitude
-  like the measurement (see `validation/validate_li_progressive.py`,
-  whose runs are pinned in the ledger).
+  angle — at Gf = 3.0, nx = 16 the trio predicted, before the
+  fibre-angle sign fix below, 0.781 / 0.878 / 0.965 (measured 0.629 /
+  0.943 / 1.000), MAE 11.5 %, monotonic in amplitude like the
+  measurement (see `validation/validate_li_progressive.py`, whose runs
+  are pinned in the ledger).
 
   **Caveat — not mesh-objective (re-measured 2026-09-29).** The crack
   band does *not* make the predicted strength mesh-independent here.
   Refining to a wavelength-proportional 12 elements per wavelength
-  (nx = 36) at the same Gf = 3.0 gives 0.891 / 0.800 / 0.812 and more
-  than doubles the error, MAE 11.5 % → 25.2 %. Worse, the **amplitude
-  ordering inverts**: at nx = 36 the *largest* wrinkle (S-M-2, 1.5 mm)
-  predicts the *highest* retained strength, so the one property the
-  crack band is credited with above does not survive refinement. The Gf
+  (nx = 36) at the same Gf = 3.0 gave 0.891 / 0.800 / 0.812 and more
+  than doubled the error, MAE 11.5 % → 25.2 %. Worse, the **amplitude
+  ordering inverted**: at nx = 36 the *largest* wrinkle (S-M-2, 1.5 mm)
+  predicted the *highest* retained strength, so the one property the
+  crack band is credited with above did not survive refinement. It
+  still does not after the fibre-angle sign fix below: a re-run at
+  nx = 36 (October 2026) gave S-M-2 0.882, S-M-4 0.889 and S-M-5 0.836,
+  so the smallest wrinkle now predicts the lowest strength. Only S-M-2
+  is pinned at that mesh, so the tests do not re-check the ordering. The Gf
   calibration is therefore only valid at the mesh density it was fitted
   at (nx = 16, nz_per_ply = 2) — do not "improve" the mesh without
   recalibrating.
@@ -1295,9 +1348,9 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   > collapsing to 0.32–0.57 with errors −33 % to −62 % (MAE 46 %) and
   > attributed it to earlier FI-driven initiation on the steeper
   > resolved misalignment. That no longer reproduces: the magnitudes are
-  > about half and the signs are mixed — today the refined mesh
-  > over-predicts the most severe wrinkle (S-M-2 +42 %) and
-  > under-predicts the milder two (S-M-4 −15 %, S-M-5 −19 %), rather than
+  > about half and the signs are mixed — on 2026-09-29 the refined mesh
+  > over-predicted the most severe wrinkle (S-M-2 +42 %) and
+  > under-predicted the milder two (S-M-4 −15 %, S-M-5 −19 %), rather than
   > being uniformly over-conservative. The
   > conclusion (mesh-locked calibration) is unchanged and, with the
   > ordering inversion, better supported. The nx = 16 figures also
@@ -1305,36 +1358,41 @@ Li et al. (2026), *Compos. A* 205:109719 already in the database
   > the MAE held near 11.5 %; nothing pinned them at the time, which is
   > why they are in the ledger now.
 
-  Note the direction on both meshes: the crack band **over-predicts the
-  most severe wrinkle** (S-M-2: +24 % at nx = 16, +42 % at nx = 36) and
-  under-predicts the milder two (S-M-4 −7 % / −15 %, S-M-5 −3.5 % /
-  −19 %). (Corrected 2026-10-07: this note previously said every error
-  was positive; the "+15 %" quoted for the refined mesh was S-M-4's
-  −15 % with its sign dropped.) The FE LaRC05 path, after the LaRC05
-  kinking fix (a pristine ply now kinks at exactly Xc, so the FE is
-  measured against a true pristine baseline instead of being normalised
-  to S-M-5), over-predicts the two most severe wrinkles, S-M-2 +16 % and
-  S-M-3 +32 %, and under-predicts the rest: S-M-1 −5 %, S-M-4 −22 %,
-  S-M-5 −26 %, S-A-2 −26 %. Its four 20° cases all predict about 0.73
-  whatever the amplitude: first-ply FE sees the wrinkle's angle, not its
-  size. (Before the fix it over-predicted all five non-reference cases,
-  by up to +58 %.) (Re-measured 2026-10-07 after the fibre-angle sign
-  fix — the unsigned angle field had mirror-handed the material frame on
-  the positive-slope flank of every wrinkle, inflating wrinkle-zone FI:
-  S-M-1 −4.9 %, S-M-2 +20.1 %, S-M-3 +38.7 %, S-M-4 −18.7 %, S-M-5
-  −24.1 %, S-A-2 −23.0 %; the four 20° cases now sit near 0.76. The
-  masking FI inflation was an artefact, so removing it makes the unsafe
-  over-prediction LARGER; the caveat quotes "about 40%".) The progressive-damage figures did not move with the
-  fix: on those meshes first failure is interlaminar shear (MaxStress
-  τ13, index 0.989 at the pinned peak on S-M-2 nx = 16), which the
-  corrected kinking index (0.948, up from 0.257) does not overtake.
-  The fibre-angle sign fix DID move them (it changes the stress field
-  itself): re-pinned 2026-10-07 to S-M-2 0.822 (+30.7 %), S-M-4 0.924
-  (−2.0 %), S-M-5 1.003 (+0.3 %) at nx = 16, and S-M-2 0.882 (+40.3 %)
-  at nx = 36. The milder wrinkles now land within a few per cent, but
-  Gf was calibrated against the pre-fix stress field, so that agreement
-  is not yet earned; the severe-wrinkle over-prediction grows, as on
-  the linear path.
+  Before the fibre-angle sign fix the direction was the same on both
+  meshes: the crack band **over-predicted the most severe wrinkle**
+  (S-M-2: +24 % at nx = 16, +42 % at nx = 36) and under-predicted the
+  milder two (S-M-4 −7 % / −15 %, S-M-5 −3.5 % / −19 %). (Corrected
+  2026-10-07: this note previously said every error was positive; the
+  "+15 %" quoted for the refined mesh was S-M-4's −15 % with its sign
+  dropped.) The FE LaRC05 path, after the LaRC05 kinking fix (a pristine
+  ply now kinks at exactly Xc, so the FE is measured against a true
+  pristine baseline instead of being normalised to S-M-5), over-predicted
+  the two most severe wrinkles, S-M-2 +16 % and S-M-3 +32 %, and
+  under-predicted the rest: S-M-1 −5 %, S-M-4 −22 %, S-M-5 −26 %,
+  S-A-2 −26 %. Its four 20° cases all predicted about 0.73 whatever the
+  amplitude: first-ply FE sees the wrinkle's angle, not its size.
+  (Before the kinking fix it over-predicted all five non-reference
+  cases, by up to +58 %.)
+
+  **Current figures, since the fibre-angle sign fix (re-measured
+  2026-10-07).** The unsigned angle field had mirror-handed the material
+  frame on the positive-slope flank of every wrinkle, inflating
+  wrinkle-zone FI.
+  - FE LaRC05: S-M-1 −4.9 %, S-M-2 +20.1 %, S-M-3 +38.7 %, S-M-4
+    −18.7 %, S-M-5 −24.1 %, S-A-2 −23.0 %; the four 20° cases sit near
+    0.76. The masking FI inflation was an artefact, so removing it makes
+    the unsafe over-prediction larger; the caveat quotes "about 40%".
+  - Progressive damage: the kinking fix had not moved these figures (on
+    those meshes first failure is interlaminar shear, MaxStress τ13,
+    index 0.989 at the pinned peak on S-M-2 nx = 16, which the corrected
+    kinking index, 0.948 up from 0.257, does not overtake). The sign fix
+    did, because it changes the stress field itself: re-pinned to S-M-2
+    0.822 (+30.7 %), S-M-4 0.924 (−2.0 %), S-M-5 1.003 (+0.3 %) at
+    nx = 16, and S-M-2 0.882 (+40.2 %) at nx = 36. The milder wrinkles
+    now land within a few per cent, but Gf was calibrated against the
+    pre-fix stress field, so that agreement is not yet earned; the
+    severe-wrinkle over-prediction grows, as on the linear path.
+
   Both FE strength paths therefore miss on the unsafe
   side exactly where it matters most, the severe wrinkles. Treat FE
   strength numbers as indicative, not as allowables; the app and the NCR
