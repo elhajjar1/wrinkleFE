@@ -460,7 +460,9 @@ kinematic mismatch across the transition equals the *full* amplitude, so
 the trough pocket is ≈ `amplitude` deep (≈2.7 ply thicknesses at
 defaults) — significant and visible. Surface pockets **auto-enable** for
 `tool_flat` (they are its defining physics), and the analytical path
-equals `uniform` (M_f = 1.0; the pocket effect is FE-only).
+takes `uniform`'s kink-band knockdown (M_f = 1.0; the pocket effect is
+FE-only) but not its eccentric-column bending bound, which applies only
+to a wave through the whole thickness (issue #452).
 
 ```python
 config = AnalysisConfig(
@@ -1069,7 +1071,7 @@ plot-identity checks.
 
 ### Building a ply from its constituents (fibre volume fraction)
 
-The 11 built-in systems above are fixed cards. When the question is
+The 16 built-in laminate cards above are fixed. When the question is
 *"what if my fibre volume fraction is 0.55 rather than 0.60?"*,
 `wrinklefe.core.micromechanics` builds the ply from its constituents —
 a fibre, a neat resin, and a Vf — instead:
@@ -1246,9 +1248,9 @@ embedded (mid-plane) wrinkles by up to +100%.
 > **FE strength is indicative, not an allowable.** The analytical
 > knockdown (the penetration gate for UD) is the validated strength path.
 > The FE strength outputs — `retention_factors` and
-> `progressive_knockdown` — have only one measured-strength check (six UD
-> glass/epoxy specimens), and there they missed on the unsafe side
-> exactly where it matters most: FE LaRC05 over-predicted retained strength
+> `progressive_knockdown` — were first checked on six UD glass/epoxy
+> specimens, and there they missed on the unsafe side exactly where it
+> matters most: FE LaRC05 over-predicted retained strength
 > on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
 > the most severe wrinkle by +24% (+42% on a refined mesh). On
@@ -1256,12 +1258,13 @@ embedded (mid-plane) wrinkles by up to +100%.
 > ways: conservative (−9% to −1%) on Shi et al. 2025 and Thor et al.
 > 2021 (Datasets H and J), but unsafe on Datasets A, C and D, by up to
 > +92% (the head-to-head in
-> `validation/strength_error_summary.py`, section 4); the progressive
-> model has no multidirectional check. For an embedded wrinkle under flat
-> surfaces no FE strength path is offered at all: the two size-aware
-> candidates (progressive peak load, cohesive-zone delamination onset)
-> stayed unsafe on every such dataset, by up to +109% and +139%
-> (issue #453). The app and the NCR summary show this
+> `validation/strength_error_summary.py`, section 4). In tension the
+> first-ply FE is an onset estimate: against Dataset M's measured damage
+> onset it was unsafe on 9 of 12 coupons, by up to +154%. For an
+> embedded wrinkle under flat surfaces no FE strength path is offered at
+> all: the two size-aware candidates (progressive peak load,
+> cohesive-zone delamination onset) stayed unsafe on every such dataset,
+> by up to +109% and +139% (issue #453). The app and the NCR summary show this
 > warning beside the FE numbers; the per-case figures are in
 > [Interpreting results](docs/interpreting_results.md#how-far-to-trust-each-number)
 > and `python validation/strength_error_summary.py` regenerates them.
@@ -1306,7 +1309,7 @@ modes that swap that taper for a different through-thickness profile.
 | `concave`    | 2          | −π/2    | Linear decay, 1 at interface → 0 at surfaces | > 1               | Two phase-shifted wrinkles whose interface pinches inward. *Most* damaging dual-wrinkle case in compression — design-driving.                       |
 | `uniform`    | 1          | n/a     | Full amplitude on **every** ply (no decay)   | 1.0 (no pairing)  | A single through-thickness-wide wrinkle — every ply wavy with the same A. Conservative bound and sanity-check baseline.                              |
 | `graded`     | 1          | n/a     | Linear decay from mid-ply to surfaces, with floor `decay_floor` ∈ [0, 1] | 1.0 (no pairing) | An embedded wrinkle that fades toward the surface plies. `decay_floor=0` is pure graded; `decay_floor=1` collapses to `uniform`.                    |
-| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Shares `uniform`'s analytical knockdown; amplitude is bounded (see below). |
+| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Also the morphology for a one-sided surface trough over a flat tool face (issue #461). Shares `uniform`'s kink-band knockdown but not its bending bound (it is not a whole-thickness wave); amplitude is bounded (see below). |
 
 ### `stack` vs `uniform` — what's the difference?
 
@@ -1424,7 +1427,8 @@ an interlaminar `σ33` at the crest and `τ13` at the flanks, each bounded
 by the interface strength, so `KD_oop >= 1/sqrt(2)`: past that strength
 the interface delaminates and sheds the traction, and the ply fails later
 by fibre or matrix). A Benzeggagh–Kenane mixed-mode delamination-*onset*
-knockdown is reported alongside. The tension knockdown is not floored by
+knockdown is reported alongside; it is unvalidated, and the output flags
+it as such (issue #463). The tension knockdown is not floored by
 the compression (kink-band) value. That floor was removed in issue #454:
 it set every steep-wrinkle prediction of Dataset M, unsafely.
 

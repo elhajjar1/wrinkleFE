@@ -524,11 +524,15 @@ strength prediction has been checked against measured strength it missed
 on the unsafe side exactly where it matters most: on the six Li (2025) UD
 specimens it over-predicted retained strength on the two most severe
 wrinkles, by up to +39%, while under-predicting the four milder ones. On
-the one multidirectional laminate with measured strengths (three CFRP
-wrinkles, Shi et al. 2025, Dataset H) it ran conservative, −8% to −1%
-— a first check, not a validation (see
-[How far to trust each number](#how-far-to-trust-each-number)). The app
-and the NCR summary print this warning next to the number.
+multidirectional laminates in compression it has erred both ways: −9% to
+−1% where the mesh reproduces the specimen's own wrinkle (Shi et al.
+2025 and Thor et al. 2021, Datasets H and J), but over-predicting
+retained strength by up to +92% on Datasets A, C and D (see
+[How far to trust each number](#how-far-to-trust-each-number) and
+[the head-to-head](#head-to-head-which-model-when-provisional)). For an
+embedded wrinkle under flat surfaces no FE strength path is offered
+(issue #453). The app and the NCR summary print this warning next to the
+number.
 
 ### `progressive_knockdown` — ultimate strength from load-stepping FE
 
@@ -724,8 +728,9 @@ anchored to the material card (issue #451) the kink-band was 57–79%
 conservative on all seven J UD and K cases. The quarantined Dataset L
 adds fifteen more conservative ones.
 
-None is unsafe. The last three were Dataset H's severe cases, +25.9% on
-the UD half and +55.6% / +115.2% on the multidirectional half, where
+None is more than 20% unsafe. The last three were Dataset H's severe
+cases, +25.9% on the UD half and +55.6% / +115.2% on the
+multidirectional half, where
 buckling takes part. Those errors came from modelling the specimens'
 one-sided troughs as an embedded `graded` wrinkle. Issue #461 corrected
 the recipe to `tool_flat`, after those errors were known, because that
@@ -751,8 +756,9 @@ datasets, with generic recipes, the FE misses on the unsafe side: see
 [the head-to-head](#head-to-head-which-model-when-provisional).
 
 **FE strength (LaRC05)** — Li (2025) UD glass/epoxy, the FE path's
-first measured-strength check (Datasets H and I below are the second and
-third). Wrinkled over pristine strength at first failure:
+first measured-strength check (Dataset H below was the second; the
+head-to-head further down scores the others). Wrinkled over pristine
+strength at first failure:
 
 | Case | Wrinkle | FE | Measured | Error |
 |---|---|---|---|---|

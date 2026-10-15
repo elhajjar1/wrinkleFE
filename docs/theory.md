@@ -321,7 +321,11 @@ of the pristine ultimate (the DIC limit point), fibre failure at
 terminal and drove $\mathrm{KD}_\text{oop}$ to 0.01–0.24 on those
 coupons. Below the interface strength nothing changes. A separate
 Benzeggagh–Kenane mixed-mode delamination-*onset* knockdown, driven by
-the unbounded stresses, is reported alongside the ultimate value.
+the unbounded stresses, is reported alongside the ultimate value. It is
+unvalidated (issue #463): against Dataset M's measured onset it is above
+the measurement on every multidirectional coupon, by up to about 240%,
+and 95–99% below it on the UD ones, whose notional interface flaw spans
+the full thickness. The output flags it (`analytical_onset_caveat`).
 
 For the `graded` morphology the 0° plies are averaged at their local
 angle $\theta_p = B_p\,\theta_{\max}$, and each ply's amplitude, and so

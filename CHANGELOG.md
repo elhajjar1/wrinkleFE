@@ -14,6 +14,25 @@ version produced a given file.
 
 ## [Unreleased]
 
+Several entries below quote validation counts as they stood when that
+change landed. Later changes in this release superseded some of them,
+and each such figure is marked. The final figures (section 1 of
+`python validation/strength_error_summary.py` prints the per-dataset
+errors behind each):
+- The headline parity figure (`validation/fig_all_validation_parity.png`,
+  the analytical prediction against each case's ultimate strength) has
+  61 of 74 cases inside ±20%, none more than 20% unsafe; the 13 outside
+  are all conservative.
+- The second figure (`validation/fig_fe_onset_parity.png`, first-ply FE
+  and onset estimates) has 16 of 31 inside. Its 8 points more than 20%
+  unsafe are all Dataset M's first-ply FE onset estimates.
+- Counting Mukhopadhyay's three analytical onset estimates with the
+  analytical cases, 62 of 77 are within ±20%.
+- Every count leaves out the quarantined Dataset L.
+
+The results JSON schema moves from 1.2 to 1.7 in five additive steps:
+1.3 (issue #439), 1.4 (#445), 1.5 (#452), 1.6 (#455) and 1.7 (#463).
+
 ### Added
 - Validation — **Datasets A–D are in the validation ledger** (issue
   #462), so multidirectional compression has enough cases for a
@@ -75,9 +94,10 @@ version produced a given file.
   keeps both outer surfaces flat. A trough modelled that way therefore
   read as an embedded wrinkle and got no warning: e/t 0 on Shi's UD
   troughs and at most 0.03 on the multidirectional ones, where the
-  analytical knockdown is up to 115% unsafe. As `tool_flat` with the
-  tool face pinned, the 20% and 30% troughs are flagged (e/t 0.10 to
-  0.18).
+  analytical knockdown on that `graded` recipe was up to 115% unsafe
+  (part 2, under Changed, rescored them as `tool_flat`). As `tool_flat`
+  with the tool face pinned, the 20% and 30% troughs are flagged (e/t
+  0.10 to 0.18).
   - No detector was added on `graded`. Its inputs overlap the measured
     embedded wrinkles' (amplitude/thickness up to 0.207, peak angle up to
     30°, against 0.200 and 23.5° for Shi's 20% trough), so any threshold
@@ -144,6 +164,8 @@ version produced a given file.
     they set LaRC05's in-situ strengths and CZM capability.
     `FE_STRENGTH_CAVEAT` now states the multidirectional result
     instead of "has not been checked"; a slow truth-test pins it.
+    *(Datasets A, C, D and J later showed the FE erring both ways on
+    multidirectional laminates, and the caveat says so: see Changed.)*
   - The analytical path on the multidirectional half over-predicts
     badly (+5.8/+55.6/+115.2% — the measured severities exceed the UD
     half's, with buckling participation at t/T = 30%); on the UD half
@@ -151,7 +173,9 @@ version produced a given file.
     penetration gate addresses (no gate preset calibrated for this
     material yet). Docs carry both tables. *(Those figures are on the
     `graded` recipe this entry shipped with; issue #461 corrected it to
-    the one-sided `tool_flat` trough: see Numerical results.)*
+    the one-sided `tool_flat` trough, where the analytical path is
+    −59% to −71% on UD and −42% to +5% on multidirectional: see
+    Changed.)*
   - Context reference: Luong et al. (2025), Composites Part B
     307:112818 (CC BY review; knockdown ranges, no case data).
 - Validation — **Dataset I: Calvo et al. (2023), the first distributed
@@ -166,8 +190,8 @@ version produced a given file.
   (−25.7%, conservative by construction in tension). The paper's wave
   length/height/angle are mutually inconsistent for a sinusoid; the
   recipe matches the measured angle and documents the 9.3° literal
-  reading (0.613) as a sensitivity. Parity chart: 50 of 62 points in
-  band.
+  reading (0.613) as a sensitivity. Parity chart at the time: 50 of 62
+  points in band.
 - Validation — **head-to-head model matrix** (issue #433):
   `validation/strength_error_summary.py` section 4 runs every applicable
   model on every strength dataset on the same cases, and writes
@@ -178,11 +202,15 @@ version produced a given file.
   table with confidence levels.
   - On multidirectional compression below 10° peak angle the analytical
     model is conservative on all 11 cases from 3 labs, while the FE is
-    unsafe on 9 of 11.
+    unsafe on 9 of 11 (12 cases from 4 labs, FE unsafe on 9 of 12, once
+    Dataset J joined).
   - Above 10° both models fail, on different datasets: analytical up
     to +115% (Shi), FE up to +92% (Wang). The earlier reading "use FE
     for severe multidirectional wrinkles", based on Shi alone, does not
-    hold.
+    hold. *(The +115% was Shi's trough on the `graded` recipe of the
+    time. With the bending bound of issue #452 and the `tool_flat`
+    recipe of issue #461 the worst analytical miss above 10° is +15%,
+    Thor's wave 1.)*
   - The shipped gate presets do not transfer to UD carbon: −20% with
     the moulded preset, +22% to +40% with the vacuum-bag one.
 - Validation — **Datasets J and K: a second lab for severe
@@ -197,15 +225,17 @@ version produced a given file.
     two woven plies, natural wrinkles at 5–7°, KD 0.59–0.68. New card
     `UD_CFRP_PILATO2022`.
   - Three new ledger datasets with pinned analytical and modulus
-    baselines (existing datasets untouched); parity chart now 60 of 80
+    baselines (existing datasets untouched); parity chart then 60 of 80
     in band, legend moved outside the axes; head-to-head (section 4)
     covers J and K, including the blind gate on their UD halves.
-  - **Findings.** The analytical model is +52% unsafe on Thor's severe
-    quasi-isotropic wave, the same high amplitude-to-thickness pattern
-    as Shi's, from an independent lab. Thor attribute it to bending
-    of the wavy coupon (delamination, then fibre breakage). First-ply
-    FE on the specimen's own geometry is within −9% to +9% on all nine
-    J and K cases. The shipped gate presets are unsafe on 7 of 10 UD
+  - **Findings.** The analytical model was +52% unsafe on Thor's severe
+    quasi-isotropic wave (+15% with the bending bound of issue #452),
+    the same high amplitude-to-thickness pattern as Shi's troughs on
+    their `graded` recipe of the time, from an independent lab. Thor
+    attribute it to bending of the wavy coupon (delamination, then
+    fibre breakage). First-ply FE on the specimen's own geometry is
+    within −9% to +9% on all nine J and K cases. The shipped gate
+    presets are unsafe on 7 of 10 UD
     carbon cases (up to +97%). A bending-dominated model for this
     regime is issue #439.
   - `docs/interpreting_results.md` guidance table updated:
@@ -236,11 +266,12 @@ version produced a given file.
     strain (0.60–0.77% on the other UD carbon sets). A new ledger
     `quarantine` entry keeps the dataset and its baselines but reports it
     on its own: the parity chart draws it hollow and leaves it out of
-    the headline count (still 60 of 80), and the summary, head-to-head
-    and gate study tag it `[Q]` and leave it out of pooled figures and
-    the guidance evidence.
+    the headline count (then still 60 of 80), and the summary,
+    head-to-head and gate study tag it `[Q]` and leave it out of pooled
+    figures and the guidance evidence.
   - **Findings, on its own.** The kink-band is conservative on all 18
-    (mean −56%). First-ply FE depends on position: **+22% to +100%
+    (mean −56%; −32% with the UD strain budget of issue #451). First-ply
+    FE depends on position: **+22% to +100%
     unsafe on the embedded WM wrinkles**; −4% to +25% on WL; −50% to
     +25% on WR.
 - Validation — **gate transfer study** (issue #435):
@@ -280,9 +311,13 @@ version produced a given file.
     unsafe on 8 of 9 multidirectional coupons, by up to +30%, and on the
     larger UD wrinkles by +37% to +39%. These wrinkles are 22–36°,
     steeper than any other tension data here. The tension guidance rows
-    in `interpreting_results` are updated.
+    in `interpreting_results` are updated. *(Issue #454 found these
+    values were the compression floor, not the tension model. After its
+    fix the model is unsafe on 3 of 9 multidirectional coupons, by up to
+    +14%, and +16% to +18% on the larger UD wrinkles: see Fixed and
+    Numerical results.)*
   - Strength summary section 2d, head-to-head rows for ultimate and
-    onset, and the parity chart carry the dataset (now 70 of 105 points
+    onset, and the parity chart carry the dataset (then 70 of 105 points
     in band).
 - Validation — **laminate-quality metadata, process routes in the
   guidance, and a scope decision** (issue #445).
@@ -316,7 +351,8 @@ version produced a given file.
   - A route outside the scope sets `process_out_of_scope` and attaches
     `process_scope_caveat`. **Wet lay-up gets it**, with what happened
     on the quarantined wet lay-up dataset (kink-band about 56%
-    conservative, FE up to about 100% unsafe).
+    conservative, about 32% since issue #451; FE up to about 100%
+    unsafe).
   - Penetration-gate presets now record their fit
     (`GateParameters.fitted_materials`, `fitted_process`). A preset used
     on another material, or on a laminate whose stated route differs,
@@ -337,7 +373,9 @@ version produced a given file.
     analytical runs too.
   - `bending_dominated` is set for compression at e/t ≥ 0.10
     (`ECCENTRICITY_REGIME_THRESHOLD`), where the kink-band knockdown was
-    unsafe by up to +115% on measured cases.
+    unsafe by up to +115% on measured cases (Shi's trough on its
+    `graded` recipe of the time; +52%, Thor's wave 1, since issue #461
+    rescored Shi as `tool_flat`).
   - A single caveat (`BENDING_REGIME_CAVEAT`) appears in the text summary,
     the app (above the analytical metrics), the NCR summary (JSON and
     Markdown) and the results JSON. The results JSON schema goes to
@@ -358,10 +396,15 @@ version produced a given file.
     where first-ply FE on the specimen geometry is never unsafe (−40%
     to −1%). Using the deployed model below 0.10 and FE above cuts the
     more-than-15%-unsafe cases from 6 to 1, and the worst miss from
-    +115% to +20%.
+    +115% to +20%. *(Re-run after issues #452 and #461, see the Dataset H
+    entry under Changed: above e/t = 0.15 the kink-band is unsafe on 6
+    of 8, and with the bending bound only Thor's wave 1 stays more than
+    15% unsafe, at +15.1%, so the FE-above-0.10 selector no longer
+    improves on the shipped model.)*
   - A closed-form eccentric-column knockdown fixes the whole-thickness
     waves (Thor +52% → +15%, Elhajjar +30% → +10%) but not Shi's
-    one-sided trough, so it is not shipped.
+    one-sided trough, so it was not shipped as a general correction.
+    Issue #452 (below) then shipped it for whole-thickness waves only.
   - Recommendation: report e/t with an out-of-regime flag; prefer FE on
     the measured profile above the threshold. No shipped prediction
     changes. The `interpreting_results` guidance gains an eccentricity
@@ -407,9 +450,9 @@ version produced a given file.
     predicted, capped at 1. It comes from a two-component Gaussian-mixture
     (fat-tail) fit, after Elhajjar (2025), not a normal assumption.
   - A regime with fewer than 10 cases reports "insufficient evidence". On
-    today's ledger two regimes have margins: kink-band UD compression,
-    1.00 (n = 14), and three-mechanism multidirectional tension, 0.881
-    (n = 10). Multidirectional compression has none yet.
+    the ledger as of this change two regimes have margins: kink-band UD
+    compression, 1.00 (n = 14), and three-mechanism multidirectional
+    tension, 0.881 (n = 10). Multidirectional compression has none yet.
   - New module `wrinklefe.core.margins`. The fitted table ships as
     package data (`core/validation_margins.json`), generated from the
     non-quarantined ledger by `scripts/fit_margins.py`.
@@ -427,26 +470,58 @@ version produced a given file.
     zero drift, and the severity banding still reads the unmargined
     knockdown.
 
-### Removed
-- Repository cleanup: eleven stale files, about 700 KB. A scratch
-  calibration probe at the top level (`_calibrate_mmb25.py`; the MMB-25
-  test records its own calibration), a one-off resin-pocket diagnostic
-  (`validation/diag_crest_pocket.py`), six progressive-damage run CSVs
-  (`validation/li_progressive_*.csv`, superseded by the ledger pins and
-  regenerated by `validate_li_progressive.py`) and three unreferenced
-  visualisation images (`validation/li_mesh_E.png`, `li_mesh_F.png`,
-  `li_load_displacement.png`, regenerated by `viz_li_fe.py`). The
-  calibration and probe scripts behind shipped constants stay.
-- The completed cohesive-zone implementation plan
-  (`docs/internal/CZM_PLAN.md`), already excluded from the published docs
-  and partly out of date. Its still-relevant notes, how a closed interface
-  behaves under compression and the static-only scope, now sit in the
-  cohesive-zone section of `docs/theory.md`, and the integration tests
-  that cited it point there instead. Also the two archival knockdown
-  figures (`figures/validation_compression.png`, `validation_tension.png`)
-  that no script regenerates; the parity chart supersedes them.
-
 ### Changed
+- Validation — **Dataset H (Shi 2025) is scored on its one-sided
+  trough, `tool_flat`** (issue #461, part 2). The specimens are surface
+  troughs over a flat tool face, and part 1 made `tool_flat` with only
+  the tool face pinned the documented morphology for that. The ledger's
+  analytical recipe was `graded`, an embedded wrinkle with both surfaces
+  flat; it is now the geometry the FE recipe already used (flat bottom,
+  10-ply ramp). The recipe was corrected after its errors against the
+  measurements were known. No model or shipped prediction changes, and
+  only the six Shi baselines move. The ledger recipe sets
+  `analytical_only` (a new optional recipe field of
+  `scripts/validate.py`), because `tool_flat` otherwise switches on its
+  FE-only surface pockets, which the analytical path refuses.
+  - Analytical knockdown, signed error against the measurement: UD
+    0.639/0.552/0.503 → 0.262/0.156/0.116 (+0.2/+11.8/+25.9% →
+    −58.9/−68.4/−71.0%); multidirectional 0.804/0.739/0.702 →
+    0.440/0.369/0.342 (+5.8/+55.6/+115.2% → −42.1/−22.4/+5.0%). The
+    peak-angle kink-band applies the full peak angle where `graded`
+    averaged it over the profile; on UD it also takes the card budget
+    S12/Xc of issue #451.
+  - The 20% and 30% troughs are flagged bending-dominated (e/t 0.10 to
+    0.18); they are not whole-thickness waves, so the bending bound
+    does not apply. `BENDING_REGIME_CAVEAT`, the warning such a result
+    carries, quoted the +115% of the `graded` recipe; it now gives the
+    flagged troughs' range on `tool_flat` (next entry).
+  - Bending-mode study (issue #439), re-run: with the kink-band alone,
+    3 of 50 cases are more than 15% unsafe (6 before), all
+    whole-thickness waves; with the bending bound, 1 (Thor's wave 1,
+    +15.1%). Above e/t = 0.15 the kink-band is unsafe on 6 of 8 (7
+    before), FE on none.
+  - The six modulus baselines fall by 0.3% to 1.8% (no measured
+    modulus). The FE scoring is unchanged (same mesh recipe).
+  - Analytical cases within ±20%: 64 → 62 of 77, the final count (the
+    combined parity chart of the time: 79 → 77 of 105, before the split
+    below). No analytical case is now outside the band on the unsafe
+    side; the 8 unsafe parity points left are Dataset M's FE onset
+    estimates.
+  - Validation margins refitted: the kink-band UD margin stays 1.00
+    (smallest ratio 0.998 → 1.200); the other regimes Shi feeds still
+    have fewer than 10 cases. The ledger's `eccentricity_recipe` is
+    removed, and `scripts/fit_margins.py` measures every regime on the
+    knockdown recipe (Shi's classification is unchanged).
+- Warnings — **the one-sided-trough warning explains why the kink-band
+  errs conservative there** (`BENDING_REGIME_CAVEAT`, issue #461). On
+  Shi's measured troughs it ranged from about 70% conservative to 5%
+  unsafe, because it applies the peak misalignment angle to the whole
+  section, although the misalignment fades toward the flat tool face,
+  and it does not credit the straighter plies near that face with the
+  load the wavy plies shed. First-ply FE on the measured geometry was
+  1% to 40% conservative. The warning still says the kink-band is not
+  always conservative and still advises FE on the measured profile;
+  `docs/interpreting_results.md` gives the same two reasons.
 - Validation — **the parity chart is split in two.**
   `validation/fig_all_validation_parity.png` now plots only the
   analytical prediction the package reports by default against each
@@ -458,15 +533,10 @@ version produced a given file.
   counted Datasets H to L twice and mixed onset with ultimate strength
   (77 of 105). `plot_all_validation.is_headline` decides which figure a
   series belongs to; `strength_error_summary.py` prints both counts.
-- Warnings — **the one-sided-trough warning explains why the kink-band
-  errs conservative there** (`BENDING_REGIME_CAVEAT`, issue #461). On
-  Shi's measured troughs it ranged from about 70% conservative to 5%
-  unsafe, because it applies the peak misalignment angle to the whole
-  section, although the misalignment fades toward the flat tool face,
-  and it does not credit the straighter plies near that face with the
-  load the wavy plies shed. The warning still says it is not always
-  conservative and still advises FE on the measured profile;
-  `docs/interpreting_results.md` gives the same two reasons.
+  Counting Mukhopadhyay's three onset estimates with the analytical
+  cases, 62 of 77 are within ±20%; over this release that count went
+  55 → 58 → 60 → 64 → 62 (issues #451, #452, #454, #461), and the
+  combined chart 70 → 73 → 75 → 79 → 77 of 105.
 - Analysis — **the analytical delamination-onset estimate is flagged as
   unvalidated** (issue #463). Against Dataset M's measured onset it is
   above the measurement on all nine multidirectional coupons, by up to
@@ -510,6 +580,25 @@ version produced a given file.
   unidirectional carbon laminate with embedded wrinkles the FE
   over-predicted retained strength by up to about 100% (Dataset L,
   middle-ply wrinkles). A slow test pins it.
+
+### Removed
+- Repository cleanup: eleven stale files, about 700 KB. A scratch
+  calibration probe at the top level (`_calibrate_mmb25.py`; the MMB-25
+  test records its own calibration), a one-off resin-pocket diagnostic
+  (`validation/diag_crest_pocket.py`), six progressive-damage run CSVs
+  (`validation/li_progressive_*.csv`, superseded by the ledger pins and
+  regenerated by `validate_li_progressive.py`) and three unreferenced
+  visualisation images (`validation/li_mesh_E.png`, `li_mesh_F.png`,
+  `li_load_displacement.png`, regenerated by `viz_li_fe.py`). The
+  calibration and probe scripts behind shipped constants stay.
+- The completed cohesive-zone implementation plan
+  (`docs/internal/CZM_PLAN.md`), already excluded from the published docs
+  and partly out of date. Its still-relevant notes, how a closed interface
+  behaves under compression and the static-only scope, now sit in the
+  cohesive-zone section of `docs/theory.md`, and the integration tests
+  that cited it point there instead. Also the two archival knockdown
+  figures (`figures/validation_compression.png`, `validation_tension.png`)
+  that no script regenerates; the parity chart supersedes them.
 
 ### Fixed
 - CI — **the lint job pins Streamlit for the type checker**
@@ -601,15 +690,17 @@ version produced a given file.
 - **UD-dominated analytical compression knockdowns rise on the
   peak-angle path (issue #451).** Signed mean error: Thor (2021) UD
   −57.9% → −16.6%, Pilato (2022) −77.5% → −20.3%, Krishnappa &
-  Gururaja (2024, quarantined) −55.8% → −31.7% (its WL/WR cases; the
-  embedded WM cases are `graded` and unchanged). No case becomes
+  Gururaja (2024, quarantined) −55.8% → −31.7% over all 18 cases
+  (−73.6% → −37.5% on the 12 WL/WR cases that move; the embedded WM
+  cases are `graded` and unchanged). No case becomes
   unsafe. 20 ledger baselines are re-pinned (J-UD, K, L-WL/WR and the
   Hsiao & Daniel uniform coupon, which has no measured strength); every
   other ledger, A–D and E prediction is bit-for-bit unchanged. No
   tension result moves: issue #454 (below) removed the compression
   floor from tension, so the budget reaches compression only. The wet lay-up
   out-of-scope caveat now says the kink-band was about 32% conservative
-  on Dataset L (it said 56%).
+  on Dataset L (it said 56%). Analytical cases within ±20%: 55 → 58 of
+  77 (the combined parity chart of the time: 70 → 73 of 105).
 - **Bending-dominated whole-thickness waves in compression get a lower
   analytical knockdown where the bending bound governs** (issue #452).
   Nothing changes below e/t = 0.10, in tension, or on a one-sided
@@ -619,8 +710,8 @@ version produced a given file.
   (+18.5% → +13.1%) and A = 0.73 mm 0.415 → 0.353 (+29.6% → +10.4%).
   Thor's UD wave 1 and ten Krishnappa (quarantined) cases also get the
   bound, but their kink-band value, even with the UD strain budget of
-  issue #451, is lower and stays. Analytical cases within ±20%: 58 → 60
-  of 77 (parity chart 73 → 75 of 105), on top of issue #451.
+  issue #451, is lower and stays. Analytical cases within ±20%, on top
+  of issue #451: 58 → 60 of 77 (combined parity chart 73 → 75 of 105).
 - **Analytical tension knockdowns move (issue #454); compression is
   bit-for-bit unchanged.** Dataset M, multidirectional: signed mean
   +11.7% → −4.9%, 8 → 3 of 9 unsafe, worst +29.6% → +14.2%. Dataset M,
@@ -631,47 +722,9 @@ version produced a given file.
   that the floor was holding up now come out lower (mostly `graded` with
   a non-zero `decay_floor`, and `convex`). Thick UD blocks that had
   collapsed onto the floor come out higher. Analytical cases within
-  ±20%: 60 → 64 of 77 (parity chart 75 → 79 of 105).
-- **Dataset H (Shi 2025) is scored on its one-sided trough, `tool_flat`
-  (issue #461, part 2).** The specimens are surface troughs over a flat
-  tool face, and part 1 made `tool_flat` with only the tool face pinned
-  the documented morphology for that. The ledger's analytical recipe was
-  `graded`, an embedded wrinkle with both surfaces flat; it is now the
-  geometry the FE recipe already used (flat bottom, 10-ply ramp). The
-  recipe was corrected after its errors against the measurements were
-  known. No model changes, and only the six Shi baselines move. The
-  ledger recipe sets `analytical_only` (a new optional recipe field of
-  `scripts/validate.py`), because `tool_flat` otherwise switches on its
-  FE-only surface pockets, which the analytical path refuses.
-  - Analytical knockdown, signed error against the measurement: UD
-    0.639/0.552/0.503 → 0.262/0.156/0.116 (+0.2/+11.8/+25.9% →
-    −58.9/−68.4/−71.0%); multidirectional 0.804/0.739/0.702 →
-    0.440/0.369/0.342 (+5.8/+55.6/+115.2% → −42.1/−22.4/+5.0%). The
-    peak-angle kink-band applies the full peak angle where `graded`
-    averaged it over the profile; on UD it also takes the card budget
-    S12/Xc of issue #451.
-  - The 20% and 30% troughs are flagged bending-dominated (e/t 0.10 to
-    0.18); they are not whole-thickness waves, so the bending bound
-    does not apply. `BENDING_REGIME_CAVEAT`, the warning such a result
-    carries, quoted the +115% of the `graded` recipe; it now gives the
-    flagged troughs' range on `tool_flat` (about 70% conservative to 5%
-    unsafe, first-ply FE 1% to 40% conservative) and still advises FE.
-  - Bending-mode study (issue #439), re-run: with the kink-band alone,
-    3 of 50 cases are more than 15% unsafe (6 before), all
-    whole-thickness waves; with the bending bound, 1 (Thor's wave 1,
-    +15.1%). Above e/t = 0.15 the kink-band is unsafe on 6 of 8 (7
-    before), FE on none.
-  - The six modulus baselines fall by 0.3% to 1.8% (no measured
-    modulus). The FE scoring is unchanged (same mesh recipe).
-  - Analytical cases within ±20%: 64 → 62 of 77 (parity chart 79 → 77
-    of 105). No analytical case is now outside the band on the unsafe
-    side; the 8 unsafe parity points left are Dataset M's FE onset
-    estimates.
-  - Validation margins refitted: the kink-band UD margin stays 1.00
-    (smallest ratio 0.998 → 1.200); the other regimes Shi feeds still
-    have fewer than 10 cases. The ledger's `eccentricity_recipe` is
-    removed, and `scripts/fit_margins.py` measures every regime on the
-    knockdown recipe (Shi's classification is unchanged).
+  ±20%: 60 → 64 of 77 (combined parity chart 75 → 79 of 105); issue
+  #461 then took it to the final 62 (see the Dataset H entry under
+  Changed).
 - **Tension configs that left `applied_strain` unset now run the FE in
   tension instead of compression.** This changes the FE failure
   indices, retention factors, modulus, and the CZM and progressive

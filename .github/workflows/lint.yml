@@ -27,7 +27,8 @@ jobs:
       # than the Any-typed fallback (issue #374): without it CI's mypy stays
       # green while the documented local gate fails on real type errors.
       #
-      # `-c requirements-lint.txt` pins ruff, mypy and scipy-stubs exactly.
+      # `-c requirements-lint.txt` pins ruff, mypy, scipy-stubs and
+      # streamlit (for the type check of app.py) exactly.
       # Unpinned, a new tool release changes the verdict with no change to
       # the code (mypy 2.4.0 did); pinned, Dependabot proposes the upgrade
       # as a PR and that PR's CI shows whether the tree still passes.

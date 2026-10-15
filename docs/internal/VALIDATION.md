@@ -270,7 +270,9 @@ See the table in [README.md](../../README.md). Current sources:
       the budget rises (S12/Xc = 0.076 against the layup model's
       0.032); the multidirectional budget (0.066) is the same on both.
     - Analytical cases within ±20%: 64 → 62 of 77; parity chart
-      79 → 77 of 105. H-UD-10, H-UD-20 and H-MD-10 leave the band on
+      79 → 77 of 105, before the chart was split (61 of 74 on the
+      headline figure; see "Consolidated parity chart"). H-UD-10,
+      H-UD-20 and H-MD-10 leave the band on
       the conservative side, and H-MD-30 enters it. Dataset H's three
       unsafe misses outside the band (+25.9%, +55.6%, +115.2%) are
       gone.
@@ -776,8 +778,11 @@ the two-sided-wave bending bound of issue #452 does not cover.
 trough the specimens have, which is on the peak-angle path, so it takes
 g: −58.9 / −68.4 / −71.0%, the "now" figures above (see Dataset H).*
 
-**Tension.** Tension takes the larger of its three-mechanism value and
-the compression knockdown.
+**Tension.** *Superseded by issue #454, which removed the compression
+floor: tension no longer reads the kink-band budget, and Dataset M's
+numbers are in its re-pin table (Dataset M above). As written for issue
+#451:* tension took the larger of its three-mechanism value and the
+compression knockdown.
 - Dataset M's four UD coupons all sit on that floor, but their recipe is
   `graded`, so they are unchanged: +18.8%, 2 of 4 unsafe, worst +39.2%.
 - On the peak-angle path the floor now uses g for a UD-dominated
@@ -795,7 +800,9 @@ Re-fitting the gate's `gamma_Y` to one test at a time gives 0.057–0.088
 on Thor (card S12/Xc 0.077) and 0.064–0.087 on Pilato (0.102), the same
 order as the card values.
 
-**Downstream numbers.**
+**Downstream numbers** (at the time; issues #452, #454 and #461 moved
+them again, and the chart was then split: see "Consolidated parity
+chart").
 - Analytical cases within ±20%: 55 → 58 of 77.
 - Parity chart: 70 → 73 of 105.
 - Bending-mode study (issue #439), from `bending_mode_cases.csv` with
