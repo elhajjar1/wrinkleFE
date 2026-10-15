@@ -43,7 +43,7 @@ Public link, no account needed.
   - glass and aramid: AC318/S6C10 S-glass/epoxy (moulded, plus `AC318_S6C10_vacbag`, the Li 2025 vacuum-bag realization with measured Xc = 335.5 MPa and E1 = 50.8 GPa), S-2 glass/epoxy and Kevlar-49/epoxy;
   - plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone.
 - **Applicability warnings:** every analysis reports how far the wrinkle moves the laminate's load path (e/t) and flags a bending-dominated wrinkle. On a bending-dominated whole-thickness wave in compression the analytical knockdown is also capped by an eccentric-column bending bound, and the result says which bound governed (issue #452). `manufacturing_process` flags a laminate made outside the validated processes (wet lay-up, infusion, RTM), and a penetration-gate preset used outside its fitted material or process is flagged too. The warnings reach the summary, the exports and the app; apart from the bending bound, they change no number.
-- **Validation ledger:** 13 published datasets (A–M) from 10 research groups, with every prediction pinned so a model change shows up as test drift; see [Validation](docs/validation.md)
+- **Validation ledger:** 13 published datasets (A–M) from 10 research groups; every one but Dataset E is in the ledger with each prediction pinned, so a model change shows up as test drift; see [Validation](docs/validation.md)
 - **Inverse goal-seek (acceptance limits):** `wrinklefe.goalseek.find_critical_value` / `wrinklefe critical` answer the disposition question directly — the largest wrinkle amplitude (or any float config field) that still meets a target knockdown or allowable strength. The answer is backed off to the safe side and verified by a real forward run, and the search refuses with an actionable message when the curve admits no unique root
 - **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
@@ -460,7 +460,9 @@ kinematic mismatch across the transition equals the *full* amplitude, so
 the trough pocket is ≈ `amplitude` deep (≈2.7 ply thicknesses at
 defaults) — significant and visible. Surface pockets **auto-enable** for
 `tool_flat` (they are its defining physics), and the analytical path
-equals `uniform` (M_f = 1.0; the pocket effect is FE-only).
+takes `uniform`'s kink-band knockdown (M_f = 1.0; the pocket effect is
+FE-only) but not its eccentric-column bending bound, which applies only
+to a wave through the whole thickness (issue #452).
 
 ```python
 config = AnalysisConfig(
@@ -1069,7 +1071,7 @@ plot-identity checks.
 
 ### Building a ply from its constituents (fibre volume fraction)
 
-The 11 built-in systems above are fixed cards. When the question is
+The 16 built-in laminate cards above are fixed. When the question is
 *"what if my fibre volume fraction is 0.55 rather than 0.60?"*,
 `wrinklefe.core.micromechanics` builds the ply from its constituents —
 a fibre, a neat resin, and a Vf — instead:
@@ -1145,18 +1147,18 @@ strengths:
   tension knockdown is no more severe than compression for the same
   defect.
 
-These act as regression guards on the analytical model. For the
-multidirectional datasets of the accompanying paper (Elhajjar 2025,
-Mukhopadhyay 2015, Li et al. 2026) the repository does not ship the
-experimental data points, so case-level error statistics for them are
-not reproducible in-repo (tracking issue: #22). The exception is
-**Dataset H — Shi et al. (2025)**, whose measured knockdowns (a UD and
-a multidirectional CFRP laminate, three wrinkle severities each) are
-transcribed into the ledger from the paper's text (CC BY), making it
-the first in-repo multidirectional measured-strength set.
+These act as regression guards on the analytical model. The
+multidirectional datasets of the accompanying paper, Elhajjar (2025)
+and Mukhopadhyay (2015), are in the validation ledger as Datasets A–C
+(with Wang 2021 as D) since issue #462, on the recipes the parity chart
+uses, so their case-level errors are reproducible in-repo; Li et al.
+(2026)'s data points are not in the repository (tracking issue: #22).
+**Dataset H — Shi et al. (2025)** was the first multidirectional
+measured-strength set transcribed into the ledger from the paper's text
+(CC BY): a UD and a multidirectional CFRP laminate, three wrinkle
+severities each.
 
-For the **unidirectional** datasets the situation is different: the
-committed validation ledger
+For the **unidirectional** datasets, the committed validation ledger
 ([`tests/test_validation/ledger.json`](tests/test_validation/ledger.json))
 carries the digitized measured knockdowns for **Li et al. (2025)**
 (Dataset F, 6 single-wrinkle S-glass compression cases) and **Hsiao &
@@ -1192,9 +1194,9 @@ data is documented in the accompanying paper:
 
 Additional datasets referenced by the model calibration (Mukhopadhyay
 et al., 2015; Li et al., 2026) are cited in [References](#references)
-below. Reproducing case-level pass/fail tables for those
-multidirectional datasets from this repository alone is not currently
-possible — their raw data are not included.
+below. Mukhopadhyay's case data are in the validation ledger (Dataset C,
+issue #462); Li et al. (2026)'s raw data are not included, so its
+case-level pass/fail table cannot be reproduced from this repository.
 
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
@@ -1246,9 +1248,9 @@ embedded (mid-plane) wrinkles by up to +100%.
 > **FE strength is indicative, not an allowable.** The analytical
 > knockdown (the penetration gate for UD) is the validated strength path.
 > The FE strength outputs — `retention_factors` and
-> `progressive_knockdown` — have only one measured-strength check (six UD
-> glass/epoxy specimens), and there they missed on the unsafe side
-> exactly where it matters most: FE LaRC05 over-predicted retained strength
+> `progressive_knockdown` — were first checked on six UD glass/epoxy
+> specimens, and there they missed on the unsafe side exactly where it
+> matters most: FE LaRC05 over-predicted retained strength
 > on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
 > the most severe wrinkle by +24% (+42% on a refined mesh). On
@@ -1256,12 +1258,13 @@ embedded (mid-plane) wrinkles by up to +100%.
 > ways: conservative (−9% to −1%) on Shi et al. 2025 and Thor et al.
 > 2021 (Datasets H and J), but unsafe on Datasets A, C and D, by up to
 > +92% (the head-to-head in
-> `validation/strength_error_summary.py`, section 4); the progressive
-> model has no multidirectional check. For an embedded wrinkle under flat
-> surfaces no FE strength path is offered at all: the two size-aware
-> candidates (progressive peak load, cohesive-zone delamination onset)
-> stayed unsafe on every such dataset, by up to +109% and +139%
-> (issue #453). The app and the NCR summary show this
+> `validation/strength_error_summary.py`, section 4). In tension the
+> first-ply FE is an onset estimate: against Dataset M's measured damage
+> onset it was unsafe on 9 of 12 coupons, by up to +154%. For an
+> embedded wrinkle under flat surfaces no FE strength path is offered at
+> all: the two size-aware candidates (progressive peak load,
+> cohesive-zone delamination onset) stayed unsafe on every such dataset,
+> by up to +109% and +139% (issue #453). The app and the NCR summary show this
 > warning beside the FE numbers; the per-case figures are in
 > [Interpreting results](docs/interpreting_results.md#how-far-to-trust-each-number)
 > and `python validation/strength_error_summary.py` regenerates them.
@@ -1306,7 +1309,7 @@ modes that swap that taper for a different through-thickness profile.
 | `concave`    | 2          | −π/2    | Linear decay, 1 at interface → 0 at surfaces | > 1               | Two phase-shifted wrinkles whose interface pinches inward. *Most* damaging dual-wrinkle case in compression — design-driving.                       |
 | `uniform`    | 1          | n/a     | Full amplitude on **every** ply (no decay)   | 1.0 (no pairing)  | A single through-thickness-wide wrinkle — every ply wavy with the same A. Conservative bound and sanity-check baseline.                              |
 | `graded`     | 1          | n/a     | Linear decay from mid-ply to surfaces, with floor `decay_floor` ∈ [0, 1] | 1.0 (no pairing) | An embedded wrinkle that fades toward the surface plies. `decay_floor=0` is pure graded; `decay_floor=1` collapses to `uniform`.                    |
-| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Shares `uniform`'s analytical knockdown; amplitude is bounded (see below). |
+| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Also the morphology for a one-sided surface trough over a flat tool face (issue #461). Shares `uniform`'s kink-band knockdown but not its bending bound (it is not a whole-thickness wave); amplitude is bounded (see below). |
 
 ### `stack` vs `uniform` — what's the difference?
 
@@ -1424,7 +1427,8 @@ an interlaminar `σ33` at the crest and `τ13` at the flanks, each bounded
 by the interface strength, so `KD_oop >= 1/sqrt(2)`: past that strength
 the interface delaminates and sheds the traction, and the ply fails later
 by fibre or matrix). A Benzeggagh–Kenane mixed-mode delamination-*onset*
-knockdown is reported alongside. The tension knockdown is not floored by
+knockdown is reported alongside; it is unvalidated, and the output flags
+it as such (issue #463). The tension knockdown is not floored by
 the compression (kink-band) value. That floor was removed in issue #454:
 it set every steep-wrinkle prediction of Dataset M, unsafely.
 
@@ -1445,8 +1449,11 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 
 - Elhajjar, R. (2025). Scientific Reports, 15:25977.
 - Li, Y. et al. (2026). Composites Part A, 205:109719.
-- Li, X. et al. (2024). Composites Science and Technology, 256:110762.
-- Li, Y. et al. (2025). Polymer Composites, 46:15176-15187.
+- Mukhopadhyay, S., Jones, M.I. & Hallett, S.R. (2015). Composites Part A, 73:132-142. https://doi.org/10.1016/j.compositesa.2015.03.012 (Dataset C, compression)
+- Mukhopadhyay, S., Jones, M.I. & Hallett, S.R. (2015). Composites Part A, 77:219-228. https://doi.org/10.1016/j.compositesa.2015.07.007 (Dataset C, tension)
+- Wang, Y., Zhu, S., Li, H., Zhou, L. & Yi, W. (2021). Polymers, 13(19):3204. https://doi.org/10.3390/polym13193204 (Dataset D)
+- Li, X., Ge, J., Chen, G., Zhang, B. & Liang, J. (2024). Composites Science and Technology, 256:110762. https://doi.org/10.1016/j.compscitech.2024.110762 (Dataset E)
+- Li, Y., Li, X., Ge, J. & Liang, J. (2025). Polymer Composites, 46(16):15176-15187. https://doi.org/10.1002/pc.30121 (Dataset F)
 - Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593.
 - Shi, J., Yang, G., Sun, N., Zheng, J., Qian, J., Wang, W. & Song, K. (2025). Materials, 18:4503. https://doi.org/10.3390/ma18194503 (Dataset H)
 - Luong, H.M., Trevarthen, J., Butler, R., Srisuriyachot, J. & Lunt, A.J.G. (2025). Composites Part B, 307:112818. https://doi.org/10.1016/j.compositesb.2025.112818 (review; knockdown context)

@@ -120,19 +120,20 @@ def test_a_quarantined_dataset_does_not_widen_the_scope():
 
 
 def test_each_validated_route_has_its_evidence():
-    """Autoclave rests on Elhajjar A/B and Thor; press on Elhajjar A/B,
+    """Autoclave rests on Elhajjar A/B, Wang and Thor; press on Elhajjar A/B,
     Li 2024 and Elhajjar & Shams (M); vacuum bag on Li 2025 alone."""
     def datasets(p):
         return sorted(e.dataset.split()[0] for e in VALIDATION_EVIDENCE
                       if p in e.processes and not e.quarantined)
 
-    assert datasets(MP.PREPREG_AUTOCLAVE) == ["A/B", "J"]
+    assert datasets(MP.PREPREG_AUTOCLAVE) == ["A/B", "D", "J"]
     assert datasets(MP.PREPREG_PRESS) == ["A/B", "E", "M"]
     assert datasets(MP.PREPREG_VACUUM_BAG) == ["F"]
 
 
 # The ledger's dataset prefix -> the evidence table's dataset letter.
 _LEDGER_LETTER = {
+    "elhajjar_2025": "A/B", "mukhopadhyay_2015": "C", "wang_2021": "D",
     "li_2025": "F", "hsiao_daniel_1996": "G", "shi_2025_ud": "H",
     "shi_2025_md": "H", "calvo_2023": "I", "thor_2021_qi": "J",
     "thor_2021_ud": "J", "pilato_2022": "K", "krishnappa_2024": "L",
@@ -149,6 +150,11 @@ def test_ledger_process_entries_match_the_evidence_table():
         expected = [p.value for p in evidence.processes]
         assert route == (expected[0] if len(expected) == 1 else None), (
             ds["name"])
+        # A null route is either "not stated" or "more than one" (A/B,
+        # issue #462); for the second, the source names every route.
+        if len(expected) > 1:
+            for value in expected:
+                assert value in ds["process"]["source"], (ds["name"], value)
         assert ("quarantine" in ds) == evidence.quarantined, ds["name"]
 
 
