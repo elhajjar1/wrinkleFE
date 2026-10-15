@@ -104,7 +104,9 @@ have landed, and drop any version that has reached end-of-life.
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes
-4. Run the test suite (`pytest`) and ensure all tests pass
+4. Run the checks CI enforces and make sure they pass: `pytest`,
+   `ruff check .` and `python -m mypy src/wrinklefe app.py streamlit_viz.py`
+   (plus `sphinx-build -W docs docs/_build` for documentation changes)
 5. For user-visible changes, add an entry to the `[Unreleased]` section
    of [`CHANGELOG.md`](CHANGELOG.md) — and call out anything that shifts
    predictions under its **Numerical results** category
@@ -274,10 +276,7 @@ visible rather than silently skipped.
 **To promote it to a blocking gate:**
 
 1. Download the `benchmark-timings` artifact from a green `main` run of
-   the `benchmarks` job. (Note: before #376 this artifact was always
-   empty — `.benchmarks/` is a dot directory and
-   `actions/upload-artifact` skips hidden files unless
-   `include-hidden-files: true` is set, which it now is.)
+   the `benchmarks` job.
 2. Replace the `*.json` run under
    `tests/test_benchmarks/baseline/<machine-id>/` with the downloaded
    one, keeping the machine-id directory that matches the `benchmarks`
@@ -350,7 +349,7 @@ credentials and nothing is uploaded from a laptop.
 
 5. **Watch the release run.** In order: `build` → `version-check` and
    `wheel-test` (the wheel installed into a clean venv on Python
-   3.10/3.11/3.12) → `publish` (PyPI) → `github-release`. If the `pypi`
+   3.10–3.13) → `publish` (PyPI) → `github-release`. If the `pypi`
    environment has required reviewers, `publish` waits for an approval.
 
 6. **Nothing to do for the DOI.** Zenodo archives the GitHub Release and

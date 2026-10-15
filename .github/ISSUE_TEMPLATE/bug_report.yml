@@ -7,13 +7,13 @@ body:
     attributes:
       value: |
         Thanks for the report. Please include enough to reproduce — a
-        results JSON's `provenance` block (added in #261) has the
-        version and environment fields if you have one.
+        results JSON's `provenance` block has the version and
+        environment fields if you have one.
   - type: input
     id: version
     attributes:
       label: WrinkleFE version
-      description: "`python -c \"import wrinklefe; print(wrinklefe.__version__)\"`, or the version shown in the app footer / a results JSON `provenance.wrinklefe`."
+      description: "`python -c \"import wrinklefe; print(wrinklefe.__version__)\"`, or the version shown on the app's Export tab / a results JSON `provenance.wrinklefe`."
       placeholder: "1.3.0"
     validations:
       required: true
@@ -22,7 +22,7 @@ body:
     attributes:
       label: How are you running it?
       options:
-        - PyPI install (pip install wrinklefe)
+        - pip install (from GitHub or PyPI)
         - From source (cloned repo)
         - Hosted Streamlit app
         - Other (describe below)
