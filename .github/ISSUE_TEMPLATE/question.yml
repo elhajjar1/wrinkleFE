@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check the [documentation](https://wrinklefe.readthedocs.io) first, in particular "Interpreting the results", which says which model to trust for each kind of wrinkle. If WrinkleFE gives a wrong answer or crashes, use the **Bug report** form instead.
+        Check the [documentation](https://wrinklefe.readthedocs.io) first, in particular "Interpreting results", which says which model to trust for each kind of wrinkle. If WrinkleFE gives a wrong answer or crashes, use the **Bug report** form instead.
   - type: textarea
     id: question
     attributes:

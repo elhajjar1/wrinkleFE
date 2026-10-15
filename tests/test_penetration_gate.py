@@ -23,7 +23,7 @@ F_GRID_POS = [
     (20.1, 0.041, 0.5, 1.000), (20.1, 0.122, 10.0 / 14.0, 0.981),
 ]
 
-# VALIDATION_DATA section 2.7 single-wrinkle grids (theta_deg, D/T, KD).
+# Li (2024/2025) single-wrinkle grids, Datasets E and F (theta_deg, D/T, KD).
 F_GRID = [
     (10.3, 0.122, 0.891), (20.1, 0.122, 0.629), (30.2, 0.122, 0.472),
     (20.1, 0.081, 0.943), (20.1, 0.041, 1.000),

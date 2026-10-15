@@ -1,6 +1,6 @@
-"""Morphology comparison: the 5 named morphologies on one laminate.
+"""Morphology comparison: five named morphologies on one laminate.
 
-Runs the same wrinkle geometry through every named morphology
+Runs the same wrinkle geometry through five named morphologies
 (``stack``, ``convex``, ``concave``, ``uniform``, ``graded``) using
 ``WrinkleAnalysis.compare_morphologies`` and tabulates the analytical
 predictions side by side.

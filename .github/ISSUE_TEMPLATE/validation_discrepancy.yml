@@ -8,7 +8,8 @@ body:
       value: |
         These reports produce the project's most valuable issues. The
         more of the wrinkle geometry and measured data you can give, the
-        more likely it lands in the validation ledger (`VALIDATION.md`).
+        more likely it lands in the validation ledger
+        (`tests/test_validation/ledger.json`).
   - type: input
     id: material
     attributes:

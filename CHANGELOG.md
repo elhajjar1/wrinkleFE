@@ -471,6 +471,18 @@ The results JSON schema moves from 1.2 to 1.7 in five additive steps:
     knockdown.
 
 ### Changed
+- Documentation — **pre-release cleanup.** README, CONTRIBUTING, the issue
+  forms, the user guides and the internal validation and architecture
+  records were checked against the code: stale claims corrected (the FE
+  path evaluates LaRC05 only; first-ply FE does give a UD knockdown since
+  the kinking fix; `analytical_modulus_knockdown` covers any layup;
+  `wrinklefe compare` runs three morphologies), install instructions work
+  before the first PyPI release, tutorial output regenerated, references
+  to removed files and to never-committed notes dropped, superseded
+  before/after histories trimmed to the current state with pointers to
+  this file and `docs/internal/VALIDATION.md`, and the API reference gains
+  `wrinklefe.io.results` and `wrinklefe.core.eccentricity`. No number
+  changes.
 - Validation — **Dataset H (Shi 2025) is scored on its one-sided
   trough, `tool_flat`** (issue #461, part 2). The specimens are surface
   troughs over a flat tool face, and part 1 made `tool_flat` with only

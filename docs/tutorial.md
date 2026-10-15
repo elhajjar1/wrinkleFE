@@ -7,9 +7,9 @@ limit**, and **export** the validation summary that gets attached to a
 Nonconformance Report.
 
 Every command below is real and every output block is trimmed but
-unedited, produced with WrinkleFE 1.0.0 on a minimal install
-(`pip install -e .`, no extras). Your own run will differ in the date
-and provenance lines the summary records.
+unedited, produced on a minimal install (`pip install -e .`, no
+extras). Your own run will differ in the date and provenance lines the
+summary records.
 
 The case: a 24-ply quasi-isotropic IM7/8552 panel, `[0/45/-45/90]_3s`,
 with a single out-of-plane wrinkle found at the mid-thickness during
@@ -111,8 +111,8 @@ result = WrinkleAnalysis(config).run()
 ## 3. Run
 
 The command above already ran the analysis while saving the config
-(about 11 s on this laptop — the analytical path alone is milliseconds;
-the FE solve is the rest):
+(a few seconds — the analytical path alone is milliseconds; the FE
+solve is the rest):
 
 ```text
 =================================================================
@@ -136,6 +136,8 @@ the FE solve is the rest):
     Combined knockdown:     0.6865
     Modulus knockdown:      0.9811
     Predicted strength:     823.8 MPa
+    Load-path eccentricity: e/t = 0.006 (e = 0.025 mm)
+    Governing bound:        kink_band
 
   Mesh:
     Nodes:    2275
@@ -143,9 +145,9 @@ the FE solve is the rest):
     DOFs:     6825
 
   FE Results:
-    Max displacement: 5.455599e-01 mm
-    Modulus retention (local σ₁₁):  0.9950
-    Modulus retention (global E_x): 0.9954
+    Max displacement: 5.443704e-01 mm
+    Modulus retention (local σ₁₁):  0.9992
+    Modulus retention (global E_x): 0.9991
 =================================================================
 ```
 
@@ -168,12 +170,16 @@ here is what this run says.
   is derived from it — but the severity banding reads it as a second,
   independent metric.
 - **Modulus knockdown 0.9811 (closed form) and modulus retention
-  0.9954 (FE, global).** The wrinkle costs about 31 % of the strength
+  0.9991 (FE, global).** The wrinkle costs about 31 % of the strength
   but under 2 % of the axial stiffness. That asymmetry is the point:
   **stiffness retention is not strength retention**, and a
   stiffness-based screen would have passed this wrinkle. Of the two FE
   numbers, quote `modulus_retention_global` (the coupon-level reaction
   response), not the local σ₁₁ proxy.
+- **Load-path eccentricity e/t = 0.006.** Far below the 0.10 at which a
+  compression result is flagged `bending_dominated`, so the kink-band
+  knockdown is in its regime and no bending bound applies
+  (`Governing bound: kink_band`).
 
 Severity, from the bands in
 [Interpreting results](interpreting_results.md#severity-bands): a
@@ -295,14 +301,17 @@ summary = build_analysis_summary(
 export_summary(summary, "NCR-2026-0417-wrinkle.md", fmt="md")
 ```
 
-The rendered attachment (sections 3 and 5 shown; the file also carries
-the date, tool version, provenance, geometry, laminate and cited
-criteria):
+The rendered attachment (sections 3 and 5 shown, with the
+validation-margin definition and the FE-strength caveat notes trimmed
+from section 3; the file also carries the date, tool version,
+provenance, geometry, laminate and cited criteria):
 
 ```markdown
 ## 3. Engineering analysis (WrinkleFE)
 
 - Analytical knockdown: **0.6865** (68.65% residual strength)
+- Validation margin: **1.00** (no reduction: the regime's fitted 5% quantile of measured / predicted is 1, above 1)
+- Margin regime: kink-band (analytical, Budiansky-Fleck); compression; multidirectional; not bending-dominated (n = 17)
 - Predicted strength: 823.8 MPa
 - Damage index D: **0.2253**
 - Max fibre misalignment: 4.789°
@@ -311,9 +320,10 @@ criteria):
 
 **Finite-element evaluation**
 
-- Modulus retention (local σ₁₁ proxy): 0.995
-- Modulus retention (global coupon E_x/E_x0): 0.9954
-- Min strength retention: 0.8951
+- Modulus retention (local σ₁₁ proxy): 0.9992
+- Modulus retention (global coupon E_x/E_x0): 0.9991
+- Min strength retention: 0.9813
+- Governing criterion: — (mode: —, ply: —)
 
 **Acceptance limit (goal-seek)**
 
@@ -356,9 +366,12 @@ the Streamlit app exposes the same generator under its summary tab.
 
 - The wrinkle here is multidirectional. For a **unidirectional**
   laminate in compression the angle-only knockdown is scale-invariant
-  and under-predicts the penetration effect — use the penetration gate
-  (`--gate li2025-vacbag`) and the progressive-damage FE path
-  (`--progressive`). See [getting started](getting_started.md) and
+  and misses the penetration effect — use the penetration gate
+  (`--gate li2025-vacbag`) on the glass/epoxy its presets were fitted
+  to, and the progressive-damage FE path (`--progressive`) to study the
+  mechanism. For other UD materials see
+  [Interpreting results](interpreting_results.md#which-number-governs).
+  See also [getting started](getting_started.md) and
   `examples/11_penetration_gate.py` / `examples/12_progressive_damage.py`.
 - Measurement uncertainty on *A* and *λ* propagates to the knockdown:
   `wrinklefe stochastic` (and `examples/14_stochastic_knockdown.py`)

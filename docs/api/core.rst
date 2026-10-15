@@ -79,6 +79,13 @@ Penetration gate
              predict_from_geometry, calibrate_gate
    :show-inheritance:
 
+Load-path eccentricity and the bending bound
+--------------------------------------------
+
+.. automodule:: wrinklefe.core.eccentricity
+   :members:
+   :show-inheritance:
+
 Manufacturing process and validated scope
 -----------------------------------------
 

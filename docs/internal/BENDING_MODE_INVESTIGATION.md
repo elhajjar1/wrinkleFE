@@ -72,10 +72,10 @@ was; a wave that moves the surfaces bends the section.
 
 ## Transition metrics
 
-Six of the 50 cases are more than 15% unsafe under the deployed model:
-Elhajjar A = 0.61 and 0.73 mm, Shi UD t/T = 30%, Shi multidirectional
-t/T = 20% and 30%, and Thor quasi-isotropic wave 1. The best single
-threshold on each metric:
+Six of the 50 cases were more than 15% unsafe under the deployed model
+(the kink-band alone, with Shi on `graded`): Elhajjar A = 0.61 and
+0.73 mm, Shi UD t/T = 30%, Shi multidirectional t/T = 20% and 30%, and
+Thor quasi-isotropic wave 1. The best single threshold on each metric:
 
 | Metric | Best split | Misclassified (of 50) |
 |---|---|---|
@@ -158,11 +158,12 @@ all 50 cases the prototype cuts the >15% misses from 6 to 4.
 1. **Report the regime.** *Implemented:* every analysis now reports
    `load_path_eccentricity_ratio` (e/t) and flags `bending_dominated`
    for compression at e/t ≥ 0.10 (`wrinklefe.core.eccentricity`). The
-   flag reaches the text summary, the results JSON (schema 1.3), the NCR
-   summary and the app. On its own it changes no number (stage 3 below
-   does). This study now uses the same measurement.
+   flag reaches the text summary, the results JSON (since schema 1.3),
+   the NCR summary and the app. On its own it changes no number (stage 3
+   below does). This study now uses the same measurement.
 2. **Prefer FE above the threshold in the guidance** in
-   `docs/interpreting_results.md`, for the specimen's own geometry. Do
+   `docs/interpreting_results.md`, for the specimen's own geometry.
+   *Implemented* in its "Head-to-head: which model, when" table. Do
    not prefer it below the threshold, where FE is unsafe on 29 of 39
    cases.
 3. **Ship KD_bend for whole-thickness waves only.** *Implemented
@@ -171,9 +172,9 @@ all 50 cases the prototype cuts the >15% misses from 6 to 4.
    (`whole_thickness_wave`: each moves, the same way, by at least half
    of e at the section of largest offset) predicts
    min(kink-band, KD_bend), and reports which governed
-   (`governing_bound`, results JSON schema 1.5). It moves exactly the
-   three cases in the table above (Thor wave 1, Elhajjar A = 0.61 and
-   0.73 mm) and nothing below e/t = 0.10. The one-sided trough is not
+   (`governing_bound`, results JSON since schema 1.5). It moves exactly
+   the three cases in the table above (Thor wave 1, Elhajjar A = 0.61
+   and 0.73 mm) and nothing below e/t = 0.10. The one-sided trough is not
    covered: it keeps the warning and the advice to run FE. Tension is
    untouched.
 

@@ -17,7 +17,7 @@ optional **3-D finite-element solve**, both driven by one
 - **Unidirectional laminates** show a strong dependence on how deep the
   wrinkle penetrates the thickness *at a fixed angle* — an effect the
   angle-only models cannot capture (they are scale-invariant). Use the
-  penetration gate (and the progressive-damage FE route).
+  penetration gate on the material it was calibrated on (§6).
 
 ## 1. Wrinkle kinematics
 
@@ -153,16 +153,13 @@ validation layup has at most 40% 0° plies, so its result is unchanged.
 
 The `graded` path (§2.4) keeps $\gamma_{Y,\text{eff}}$ even for UD. Its
 budget was calibrated together with the profile average, which already
-raises the knockdown. When this was decided it was not biased
-conservative on UD carbon (Shi +0.2% to +26%, Hsiao & Daniel −22%), and
-$g$ there would have pushed Shi's UD cases up to +53% unsafe (and, until
-issue #454 removed the compression floor from tension, Dataset M's UD
-tension floor up to +78%). Shi's specimens are one-sided surface
-troughs, and since issue #461 they are scored as `tool_flat`, on the
-peak-angle path with $g$ (−59% to −71%). The `graded` UD carbon cases
-left are Hsiao & Daniel (−22%) and the quarantined Krishnappa mid-plane
-strips (−7% to −34%). The reported `gamma_Y_eff` is the budget the path
-actually used.
+raises the knockdown; when issue #451 was decided, $g$ there would have
+pushed Shi's UD troughs (then scored as `graded`) up to +53% unsafe.
+Since issue #461 those one-sided troughs are scored as `tool_flat`, on
+the peak-angle path with $g$ (−59% to −71%). The `graded` UD carbon
+cases left are Hsiao & Daniel (−22%) and the quarantined Krishnappa
+mid-plane strips (−7% to −34%). The reported `gamma_Y_eff` is the budget
+the path actually used.
 
 ### 2.3 Morphology factor $M_f$
 
@@ -182,8 +179,8 @@ $$
 
 with $\alpha_\text{asym}=0.288$, $\alpha_\text{offset}=0$ in compression
 (in tension $0.033$ and $0.183$). For $N$ wrinkles the factors combine as
-a geometric mean; single-wrinkle modes (`uniform`, `graded`) have
-$M_f=1$.
+a geometric mean; single-wrinkle modes (`uniform`, `graded`,
+`tool_flat`) have $M_f=1$.
 
 **Amplitude contract in the FE mesh.** The morphology factor above scales
 the *analytical* angle. The FE mesh builds the same paired-wrinkle geometry
@@ -330,20 +327,13 @@ the full thickness. The output flags it (`analytical_onset_caveat`).
 For the `graded` morphology the 0° plies are averaged at their local
 angle $\theta_p = B_p\,\theta_{\max}$, and each ply's amplitude, and so
 its curvature and interlaminar stress, decays with the same factor
-$B_p$. (Before issue #454 every ply was charged the crest curvature, so
-a ply the grading leaves flat still carried the peak
-$\mathrm{KD}_\text{oop}$.)
+$B_p$ (issue #454).
 
-The tension knockdown is **not** bounded by the compression value.
-Earlier versions floored it there ("tension is never worse than
-compression"). A kink band is a compressive micro-buckling failure with
-no counterpart in tension, so its knockdown cannot bound a tension
-failure. In practice the floor was propping up a tension model that
-collapsed on steep wrinkles. On Dataset M it set all 13 predictions and
-was unsafe on 10 of them, by up to +39%. It also tied tension results
-to the kink-band strain budget, so a compression recalibration moved
-tension predictions. Issue #454 removed it, with the collapse corrected
-at its source above.
+The tension knockdown is **not** bounded by the compression value: a
+kink band is a compressive micro-buckling failure with no counterpart
+in tension, so its knockdown cannot bound a tension failure. (Earlier
+versions applied that floor; issue #454 removed it. The CHANGELOG
+records the effect on Dataset M.)
 
 ## 4. The unidirectional scale effect
 
@@ -404,10 +394,10 @@ $(1-w)\,\text{host} + w\,\text{resin}$ (the isotropic `EPOXY_S6C10` card),
 **and** scales the fibre-misalignment angle by $(1-w)$ so the soft
 inclusion and the kink-band are counted *once*, not twice.
 
-### 4.3 Progressive-damage FE (the first FE route to a UD knockdown)
+### 4.3 Progressive-damage FE (past first-ply failure)
 
-A linear first-ply-failure index never activates for pristine UD
-compression, so there is no FE knockdown from a single linear solve. The
+A single linear solve gives only the first-ply failure index (§5), the
+onset of failure, not the load a UD coupon finally carries. The
 `ProgressiveDamageSolver` (`solver/progressive_damage.py`) instead ramps
 the applied strain in increments, re-solving and degrading newly-failed
 elements (ply-discount by failure-mode family, residual factor 0.1) using
@@ -417,8 +407,9 @@ which pins the pristine baseline to $X_c$) and the peak redistributed
 stress over the load history.
 
 An optional **crack-band (Bažant–Oh) regularization** (`crack_band=True`,
-off by default) makes the dominant fibre-compression mode mesh-objective:
-the linear-softening end point is scaled by the element size $h$,
+off by default and not used by `AnalysisConfig.enable_progressive_damage`)
+targets mesh objectivity for the dominant fibre-compression mode: the
+linear-softening end point is scaled by the element size $h$,
 
 $$
 r_f = \frac{2\,G_{c,\text{fiber}}\, E_1}{X_c^2\, h},
@@ -428,7 +419,10 @@ $$
 
 so the dissipated energy per crack area equals the fibre-kink fracture
 energy $G_{c,\text{fiber}}$ regardless of mesh, degrading $E_1$,
-$\nu_{12}$, $\nu_{13}$.
+$\nu_{12}$, $\nu_{13}$. In practice the predicted strength still changes
+with mesh refinement, so the calibrated $G_{c,\text{fiber}}$ is only valid
+at the mesh it was fitted at (see
+[Interpreting results](interpreting_results.md)).
 
 ### 4.4 Linear buckling — a documented negative finding
 
@@ -479,10 +473,7 @@ load-stepped) system and evaluates ply failure.
   and a Mohr–Coulomb check in the misaligned frame. The FE evaluates it
   on stresses already rotated into the local wrinkled-fibre frame, so an
   out-of-plane wrinkle reaches it as $\tau_{13}$ on a $\psi \approx 90°$
-  plane. (Before this was corrected, the criterion had no $\varphi_C$ — a
-  pristine UD ply could not kink at all — and re-rotated the FE's
-  already-rotated stresses by the wrinkle angle in the in-plane 1–2
-  plane.) The progressive-damage UD path also carries a plain MaxStress
+  plane. The progressive-damage UD path also carries a plain MaxStress
   $|\sigma_{11}|\ge X_c$ check (§4.3). Other criteria available through
   `FailureEvaluator`: Hashin, Puck, Tsai-Wu, Tsai-Hill, maximum stress,
   and maximum strain.
@@ -495,16 +486,18 @@ load-stepped) system and evaluates ply failure.
 - **Stiffness (modulus) knockdown.** The analysis reports two estimates
   of the axial Young's-modulus knockdown $E_x/E_{x,0}$. The FE
   `modulus_retention` is the ratio of the wrinkled to pristine mean
-  fibre-direction stress at a fixed applied strain (any layup). For
-  **unidirectional** layups the analytical path additionally returns a
-  closed-form `analytical_modulus_knockdown`
-  (`analysis._profile_modulus_knockdown`): a Classical-Lamination-Theory
-  series-average of the off-axis lamina modulus
+  fibre-direction stress at a fixed applied strain (any layup). The
+  analytical path additionally returns a closed-form
+  `analytical_modulus_knockdown`, evaluated with no FE solve. For a UD
+  single wrinkle (`analysis._profile_modulus_knockdown`) it is a
+  Classical-Lamination-Theory series-average of the off-axis lamina
+  modulus
   $1/E_x(\theta)=\cos^4\theta/E_1+(1/G_{12}-2\nu_{12}/E_1)\sin^2\theta\cos^2\theta+\sin^4\theta/E_2$
   over the wrinkle profile (the same off-axis-compliance integration as
-  Hsiao & Daniel 1996), evaluated with no FE solve. It is loading-
-  independent and UD-scoped (it stays $1.0$ for multidirectional layups,
-  where `modulus_retention` is the predictor). Both are validated against
+  Hsiao & Daniel 1996); any other layup or multi-wrinkle layout uses its
+  laminate (A-matrix) generalization
+  (`analysis._laminate_modulus_knockdown`), which reduces to the UD
+  result for $[0]_n$. It is loading-independent. Both are validated against
   the UD modulus datasets (Li 2025, Hsiao & Daniel 1996) by
   `validation/validate_modulus.py` — see the
   [validation page](validation.md). Stiffness is consistently far more
@@ -599,8 +592,12 @@ extremum.
 ## 6. Scope, calibration, and honest limitations
 
 - **Use the angle-based analytical models for multidirectional laminates,
-  the penetration gate for unidirectional laminates.** At a fixed angle
-  the UD knockdown still varies with $D/T$, which only the gate captures.
+  the penetration gate for unidirectional laminates of the material it
+  was calibrated on.** At a fixed angle the UD knockdown still varies
+  with $D/T$, which only the gate captures. The shipped presets are
+  unsafe on UD carbon (7 of 10 cases, up to +97%); see
+  [Interpreting results](interpreting_results.md) for which number to
+  carry there.
 - **The UD gate is material-realization specific.** The moulded (E) and
   vacuum-bag (F) realizations of the same prepreg give contradictory
   knockdown at the same $(\theta, D/T)$ — roughly a 2× consolidation
@@ -614,10 +611,12 @@ extremum.
   budget $S_{12}/X_c$ is read from the material card (§2.2, issue #451);
   the graded path and every multidirectional layup keep the fitted
   confinement model.
-- **The in-repo integration tests assert physical-sanity properties**
-  (monotonicity, morphology ordering, mode bookkeeping), not absolute
-  experimental agreement; the quantitative comparison lives in the
-  [validation ledger](validation.md) and the consolidated parity chart.
+- **The quantitative comparison with experiment lives in the
+  [validation ledger](validation.md)**, whose pinned predictions
+  `tests/test_validation/` checks, and in its two parity figures (the
+  CZM coupon checks are under `tests/integration/`, §5.1). Elsewhere
+  the tests assert physical-sanity properties (monotonicity, morphology
+  ordering, mode bookkeeping), not experimental agreement.
 - **Through-thickness position** ($P(z)$) is fit to a single near-surface
   data point and is indicative; multi-wrinkle interaction and a unified
   E/F calibration remain open.
@@ -626,7 +625,7 @@ For the modelling programme that produced these choices (items D.1–D.5),
 see [Wrinkle modelling findings](wrinkle_modeling_findings.md); for the
 predicted-vs-experimental scorecard see the
 [validation page](validation.md); for the public surface that exposes
-every model, see the [API reference](api/index.md).
+every model, see the [API reference](api/index.rst).
 
 ## Symbols
 

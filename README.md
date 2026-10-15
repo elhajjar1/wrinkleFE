@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![GitHub stars](https://img.shields.io/github/stars/elhajjar1/wrinkleFE?style=social)](https://github.com/elhajjar1/wrinkleFE)
 
-An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fiber waviness defects.
+An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fibre waviness defects.
 
 > ⭐ **Found WrinkleFE useful?** Please [star the repository](https://github.com/elhajjar1/wrinkleFE) and [cite it](#citation) — it's a free academic project, and stars and citations are what keep it supported.
 
@@ -24,9 +24,9 @@ Public link, no account needed.
 ## Features
 
 - **Compression model:** CLT-weighted Budiansky-Fleck kink-band with layup-dependent confinement
-- **Tension model:** Three-mechanism (fiber cos^2 theta, Hashin matrix, curved-beam sigma_33 delamination) with thick-ply in-situ correction
+- **Tension model:** Three-mechanism (fibre cos^2 theta, Hashin matrix, curved-beam sigma_33 delamination) with thick-ply in-situ correction
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
-- **Six morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) and tool_flat (one surface flat on the tool, for one-sided surface troughs) — compared side by side in one click from the app (**Compare morphologies**) or the CLI (`wrinklefe compare`)
+- **Six morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) and tool_flat (one surface flat on the tool, for one-sided surface troughs) — compared side by side in one click from the app (**Compare morphologies**, any of the six) or the CLI (`wrinklefe compare`: stack, convex and concave)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **Movable wrinkle position:** Configurable through-thickness placement (`wrinkle_z_position`, 0.5 = mid-plane)
 - **Multi-wrinkle configurations:** Arbitrary N-wrinkle layouts via `AnalysisConfig.wrinkles` — a list of `WrinkleSpec(amplitude, wavelength, width, ply_interface, phase_offset)` — through the analytical, FE, penetration-gate (per-spec, weakest-link) and CZM paths
@@ -34,9 +34,9 @@ Public link, no account needed.
 - **Resin-pocket material zone:** Graded neat-epoxy lens at the wrinkle crest (modulus + fibre-angle blend, counted once) via `wrinklefe.core.resin_pocket`
 - **Tool-flat surfaces & surface resin pockets:** Parts cured against rigid tooling / a caul sheet keep perfectly flat outer surfaces while the fibres undulate internally; the wrinkle troughs fill with neat resin under the flat surface (`enable_surface_resin_pockets`, `surface_pocket_side` = `top`/`bottom`/`both`). FE-only, trough-following, volume-conserving; composes with the crest lens
 - **Compaction Vf / ply-thickness gradient:** Under rigid tooling the resin is squeezed out of the compacted regions and pools where the geometry opens up, so ply thickness and local fibre volume fraction vary through the wrinkle (`enable_vf_gradient`, `tool_flat` only — `surface_pocket_side="both"` is the two-caul-plate case). `Vf_local = vf_nominal · h0/h` per element (fibre content conserved), and the local ply is the preset **scaled by the micromechanics Vf ratio** (`wrinklefe.core.compaction`); FE-only, opt-in, and the continuous generalization of the binary surface pockets
-- **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the first FE route to a UD compression knockdown
+- **Progressive-damage FE:** Load-stepping `ProgressiveDamageSolver` to ultimate load with optional crack-band (Bažant–Oh) regularization — the only path that carries UD compression past first-ply failure
 - **Penetration gate (θ, D/T, z):** Closed-form two-parameter UD predictor `KD = 1 − (1 − KD_angle(θ))·S(D/T)·P(z)` with calibrated presets; zero FE cost (`wrinklefe.core.penetration_gate`)
-- **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown — verified structural-buckling infrastructure, but a homogenised-continuum eigenvalue does not capture the *fibre-scale* wrinkle knockdown (it gets the sign wrong: the bifurcation load *rises* with the wrinkle), so it is **not** the production UD predictor (the penetration gate is); see the [modelling findings](docs/wrinkle_modeling_findings.md)
+- **Linear buckling:** Geometric-stiffness eigenvalue solve (`LinearBucklingSolver`) with a microbuckling knockdown. It is verified structural-buckling infrastructure, **not** the UD wrinkle predictor (the penetration gate is): a homogenised-continuum eigenvalue misses the *fibre-scale* knockdown, and its bifurcation load even *rises* with the wrinkle; see the [modelling findings](docs/wrinkle_modeling_findings.md)
 - **16 built-in laminate materials:**
   - carbon/epoxy: AS4/3501-6, IM7/8552, T300/914, T700/2510, T700GC/2510 (AGATE allowables), T800S/M21, M21E/IMA, IM10/8552 and IM6G/3501-6 (the Hsiao & Daniel 1996 wavy-UD study);
   - three dataset-specific carbon cards: `T700_SHI2025`, `UD_CFRP_PILATO2022` and `YC300_LY5052`;
@@ -48,16 +48,19 @@ Public link, no account needed.
 - **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
 
-## Developer / library install
+## Installation
 
-If you want to script against the package or contribute to development,
-install it from GitHub (WrinkleFE is not on PyPI yet):
+WrinkleFE needs Python 3.10 or newer. It is not on PyPI yet, so install
+it from GitHub:
 
 ```bash
 pip install "git+https://github.com/elhajjar1/wrinkleFE.git"
 ```
 
-Or clone the source:
+Once a release is published on PyPI, `pip install wrinklefe` will work
+too.
+
+To contribute, or to run the Streamlit app locally, clone the source:
 
 ```bash
 git clone https://github.com/elhajjar1/wrinkleFE.git
@@ -84,15 +87,15 @@ Run the test suite:
 pytest
 ```
 
-## Quick Start
+## Usage
 
 ### Streamlit web app
 
-The fastest path is the hosted Streamlit instance — no install, no Python
-required: **<https://wrinklefe.streamlit.app/>**. Pick a material from the
-sidebar (or **Custom…** to enter your own elastic constants and strength
-allowables), enter a layup in contracted notation (e.g. `[0/45/-45/90]_3s`),
-set the wrinkle geometry, and click **Run analysis**. The app ships with
+In the [hosted app](https://wrinklefe.streamlit.app/), pick a material
+from the sidebar (or, in **Expert mode**, **Custom…** to enter your own
+elastic constants and strength allowables), enter a layup in contracted
+notation (e.g. `[0/45/-45/90]_3s`), set the wrinkle geometry, and click
+**Run analysis**. The app ships with
 per-morphology schematic cartoons (including the `tool_flat`
 surface-resin-pocket morphology, whose pinned-side and transition-ply
 controls appear inline with the Morphology selector), a live wrinkle
@@ -130,7 +133,7 @@ curve instead of a number. See
 [`DEPLOYMENT_STREAMLIT.md`](docs/internal/DEPLOYMENT_STREAMLIT.md) for the full feature
 tour and instructions for self-hosting.
 
-To run the app locally:
+To run the app locally, from a clone:
 
 ```bash
 pip install -r requirements.txt
@@ -143,7 +146,7 @@ draw the same figures in a notebook — the mesh surface, the σ contour, the
 deformed shape, the failure-index surface and the y-slice scatters:
 
 ```bash
-pip install 'wrinklefe[plotly]'
+pip install "wrinklefe[plotly] @ git+https://github.com/elhajjar1/wrinkleFE.git"
 ```
 
 ```python
@@ -183,7 +186,8 @@ Three pages carry most of what a new user needs:
   measurement to the NCR validation attachment.
 - [Interpreting results](docs/interpreting_results.md) — what each
   headline number means, what it does not mean, which one governs, and
-  the severity bands (`io/export.py` remains authoritative for those).
+  the severity bands (`src/wrinklefe/io/export.py` remains authoritative
+  for those).
 - [Units & conventions](docs/units_conventions.md) — mm / MPa / N/mm,
   strain and `Vf` as fractions, angle and coordinate conventions, signs.
 
@@ -227,7 +231,7 @@ the docs and the dataclass cannot drift.
 | `amplitude_profile` | name | `"constant"` | Spatially varying in-plane modulation of the wrinkle amplitude `A`, applied on top of the wrinkle's own longitudinal envelope. `"constant"` (default) preserves the legacy uniform `A`; `"gaussian"` multiplies `A` by `exp(−(s/d)²)`; `"linear"` multiplies `A` by `max(0, 1 − \|s\|/d)` (clipped). `s` is the coordinate from the wrinkle centre along `amplitude_profile_axis` and `d` is `amplitude_profile_decay_length`. | one of `constant`, `gaussian`, `linear` |
 | `amplitude_profile_decay_length` | mm | `None` | Decay length `d` (mm) for the Gaussian sigma or linear-decay extent. `None` falls back to the wrinkle profile's own `width`. Ignored when `amplitude_profile == "constant"`. | finite and > 0 when set |
 | `amplitude_profile_axis` | axis | `"x"` | In-plane axis along which the amplitude modulation runs. Pick `"y"` for an independent transverse tapering of `A` that does not stack with the existing longitudinal envelope on `x`. | one of `x`, `y` |
-| `transverse_mode` | name | `"uniform"` | Through-width (transverse, y-direction) wrinkle-surface envelope `f(y)`. `"uniform"` (default) builds the bare x-only wrinkle exactly as before (bit-identical). The non-uniform modes wrap the profile in a `WrinkleSurface3D` so the crest amplitude varies across the specimen width: `"gaussian_decay"` decays it toward the edges (localized mid-width defect), `"sinusoidal_y"` ripples it across the width, and `"elliptical"` confines it to a mid-width patch. **FE-only** — a non-uniform mode requires `analytical_only=False` and is not yet combinable with multi-wrinkle (`wrinkles`) or `enable_czm` (both rejected at construction). | one of `uniform`, `gaussian_decay`, `sinusoidal_y`, `elliptical` |
+| `transverse_mode` | name | `"uniform"` | Through-width (transverse, y-direction) wrinkle-surface envelope `f(y)`. `"uniform"` (default) builds the bare x-only wrinkle. The non-uniform modes wrap the profile in a `WrinkleSurface3D` so the crest amplitude varies across the specimen width: `"gaussian_decay"` decays it toward the edges (localized mid-width defect), `"sinusoidal_y"` ripples it across the width, and `"elliptical"` confines it to a mid-width patch. **FE-only** — a non-uniform mode requires `analytical_only=False` and is not yet combinable with multi-wrinkle (`wrinkles`) or `enable_czm` (both rejected at construction). | one of `uniform`, `gaussian_decay`, `sinusoidal_y`, `elliptical` |
 | `transverse_span` | mm | `None` | Specimen width `span_y` seen by the transverse envelope. `None` tracks `domain_width` so the envelope always spans the meshed y-extent. Ignored when `transverse_mode == "uniform"`. | finite and > 0 when set |
 | `transverse_width` | mm | `None` | Transverse localization half-width `width_y`: the Gaussian 1/e length for `"gaussian_decay"` and the ellipse half-width for `"elliptical"` (ignored by `"uniform"`/`"sinusoidal_y"`). `None` resolves to `span_y / 4` — a localized mid-width patch whose amplitude has fallen to `exp(−4) ≈ 0.018` of the crest at the edges (`gaussian_decay`) or that occupies the central half of the width (`elliptical`). | finite and > 0 when set |
 | `surface_transition_plies` | count | `2` | `tool_flat` morphology only: number of plies over which the amplitude ramps linearly from the full-amplitude core to zero at the pinned (tool-flat) surface. A short transition concentrates the full-amplitude trough mismatch into a thin surface band (significant resin pockets), but the crest-side transition elements compress by `amplitude / surface_transition_plies`, so the amplitude is bounded: `amplitude ≤ 0.8 · surface_transition_plies · ply_thickness / nz_per_ply` (enforced at construction; exceed it and the message names both remedies). | integer ≥ 1 |
@@ -248,8 +252,9 @@ knockdown conservative. Set `transverse_mode` to `"gaussian_decay"`,
 `z(x, y)` wrinkle surface (`transverse_span` and `transverse_width` tune
 the width envelope). At the same crest amplitude a localized wrinkle
 predicts a *milder* knockdown than the uniform baseline. This is FE-only
-and single-wrinkle for now (analytical-only, multi-wrinkle, and CZM runs
-are rejected at construction); the CLI/app knobs are a follow-up. See
+and single-wrinkle (analytical-only, multi-wrinkle, and CZM runs are
+rejected at construction). The CLI exposes it on `analyze
+--transverse-mode`, the app in Expert mode. See
 `examples/transverse_wrinkle_knockdown.py` for a runnable comparison.
 
 ### Thermal / cure-residual loading (`delta_T`)
@@ -356,8 +361,7 @@ the load state: one quantity, one owner.
 Moisture (`LoadState.delta_C`, and the `beta1/2/3` swelling coefficients
 on every material preset) is deliberately **not** exposed on
 `AnalysisConfig` yet: nothing in the CLT solve consumes `delta_C`, so a
-config field would be a silent no-op — the exact failure mode this
-change removes for temperature.
+config field would be a silent no-op.
 
 ### Tension analysis
 
@@ -492,7 +496,7 @@ instead of a binary neat-resin tag:
 ```python
 config = AnalysisConfig(
     morphology="tool_flat", amplitude=0.25, surface_pocket_side="both",
-    enable_vf_gradient=True,          # opt-in; tool_flat only in v1
+    enable_vf_gradient=True,          # opt-in; tool_flat only
     vf_nominal=None,                  # None -> the card's documented Vf
     vf_max=0.75,                      # compaction cap (square packing)
     material=lib.get("IM7_8552"), angles=[0.0] * 24, ply_thickness=0.183,
@@ -586,12 +590,12 @@ so a delamination can propagate crest-to-crest between neighbours
 (`examples/08_multi_wrinkle_czm_linkup.py` demonstrates the link-up
 vs far-separated contrast).
 
-#### When a CZM solve fails to converge
+### When a CZM solve fails to converge
 
 CZM solves can fail for physical reasons — the tangent goes indefinite
 near peak load, the load steps are too coarse for the damage evolution,
 or the residual stagnates. When that happens the run still returns
-(partial) results with `czm_converged = False`, and the solver now
+(partial) results with `czm_converged = False`, and the solver
 classifies *why* and hands back one actionable hint. `AnalysisResults`
 carries `czm_failure_diagnostics` (increment index + load fraction,
 iteration count, final residual, residual history, line-search status)
@@ -729,7 +733,7 @@ wrinklefe analyze --transverse-mode gaussian_decay --transverse-width 5 \
 
 #### Wrinkle-defect capabilities
 
-`analyze` also exposes the newer defect models. The FE-only features
+`analyze` also exposes the wrinkle-defect models. The FE-only features
 (`--resin-pocket`, `--surface-resin-pockets`, `--vf-gradient`,
 `--progressive`) force the
 full FE solve, so they take precedence over `--analytical-only` / `--no-fe`:
@@ -785,7 +789,7 @@ wrinklefe analyze --morphology tool-flat --amplitude 0.25 \
 The long tail of finer knobs (custom `GateParameters`, resin-pocket
 geometry scales, progressive load-ramp targets) stays reachable through
 `--config` (see below). `sweep` sweeps any numeric `AnalysisConfig` field,
-including `wrinkle_z_position`, over its `--config` base setup:
+including `wrinkle_z_position` (add `--config` to sweep over a saved setup):
 
 ```bash
 wrinklefe sweep --parameter wrinkle_z_position --min 0.2 --max 0.8 \
@@ -796,9 +800,7 @@ wrinklefe sweep --parameter wrinkle_z_position --min 0.2 --max 0.8 \
 
 `solver="iterative"` runs conjugate gradient with an incomplete-LU (ILU)
 preconditioner — memory-efficient for large meshes (>100 k DOFs). Its
-knobs are `AnalysisConfig` fields, reachable through `--config` (their
-defaults reproduce the historical hardcoded values, so an existing
-iterative run is unchanged):
+knobs are `AnalysisConfig` fields, reachable through `--config`:
 
 | Config field | Default | Meaning |
 | --- | --- | --- |
@@ -809,8 +811,8 @@ iterative run is unchanged):
 | `preconditioner` | `"ilu"` | `"ilu"`, `"jacobi"` (diagonal — much lower memory for huge meshes), or `"none"` |
 
 If ILU construction fails (out of memory, or a structurally/numerically
-singular factor), the solver now emits a **`WARNING`** and falls back to
-the diagonal (Jacobi) preconditioner instead of switching silently — an
+singular factor), the solver emits a **`WARNING`** and falls back to
+the diagonal (Jacobi) preconditioner — an
 ill-conditioned matrix can make that fallback orders of magnitude slower,
 so the warning names the original error and points at
 `preconditioner="jacobi"` (to silence it) or the direct solver. Only the
@@ -894,7 +896,7 @@ url = permalink_url(AnalysisConfig(amplitude=0.5), "https://wrinklefe.streamlit.
 config = decode_config(url.split("cfg=", 1)[1]).config
 ```
 
-### Probabilistic (stochastic) analysis
+### Probabilistic analysis from the command line
 
 `wrinklefe stochastic` propagates input distributions through the analysis
 to report percentile knockdowns — the "P5 knockdown under measurement
@@ -958,10 +960,8 @@ a message quoting the measurements behind the refusal — never a scipy
 traceback. "No crossing in range" is not an error: it means no defect size
 in range fails your criterion.
 
-The same search is a button in the Streamlit app — **Find acceptable
-limit**, directly under *Run analysis* — which additionally carries the
-limit onto the NCR validation summary when the search and the run were
-made on the same configuration.
+The same search is the **Find acceptable limit** button in the
+Streamlit app (see [Streamlit web app](#streamlit-web-app)).
 
 ### Exporting results to CSV / JSON
 
@@ -989,11 +989,11 @@ for `pandas.read_csv` or `csv.DictReader`.
 
 Every JSON export carries a `provenance` block recording the installed
 WrinkleFE version (never a hardcoded literal), the Python/numpy/scipy
-versions, the platform, a UTC timestamp, and a solver snapshot — so a
-result file can be audited and reproduced against the validation
-ledger. The NCR validation summary (`build_analysis_summary`) embeds
-the same block, and the top-level `wrinklefe_version` field reflects
-the real installed version.
+versions and the platform — so a result file can be audited and
+reproduced against the validation ledger. The schema-versioned export
+adds a solver snapshot and leaves out the write time, so identical
+input gives a byte-identical file; the NCR validation summary
+(`build_analysis_summary`) embeds the block with a UTC timestamp.
 
 Both also carry a `validation_margin` block (issue #455). It gives the
 factor that would have kept 95% of the validation cases in the
@@ -1030,6 +1030,7 @@ plot a different slice tomorrow is to solve again.
 
 ```python
 from wrinklefe.io import load_results, save_results
+from wrinklefe.viz import plot_displacement_3d
 
 save_results(result, "run.wfr")
 
@@ -1123,10 +1124,9 @@ transverse set from Daniel & Ishai (2006) Table A.2/A.3.
    deviations. Use the model for the *trend* — how properties move with
    Vf, anchored on a measured ply — not as a source of allowables.
 
-Nothing in the analysis pipeline consumes this yet: it is the
-prerequisite capability for modelling resin squeeze-out under a
-constrained wrinkle (issue #379), where the local Vf varies from
-element to element.
+In the analysis pipeline these rules are used only as a ratio, by the
+compaction Vf gradient (`enable_vf_gradient`, issue #379, above), where
+the local Vf varies from element to element.
 
 ## Validation
 
@@ -1147,30 +1147,21 @@ strengths:
   tension knockdown is no more severe than compression for the same
   defect.
 
-These act as regression guards on the analytical model. The
-multidirectional datasets of the accompanying paper, Elhajjar (2025)
-and Mukhopadhyay (2015), are in the validation ledger as Datasets A–C
-(with Wang 2021 as D) since issue #462, on the recipes the parity chart
-uses, so their case-level errors are reproducible in-repo; Li et al.
-(2026)'s data points are not in the repository (tracking issue: #22).
-**Dataset H — Shi et al. (2025)** was the first multidirectional
-measured-strength set transcribed into the ledger from the paper's text
-(CC BY): a UD and a multidirectional CFRP laminate, three wrinkle
-severities each.
-
-For the **unidirectional** datasets, the committed validation ledger
-([`tests/test_validation/ledger.json`](tests/test_validation/ledger.json))
-carries the digitized measured knockdowns for **Li et al. (2025)**
-(Dataset F, 6 single-wrinkle S-glass compression cases) and **Hsiao &
-Daniel (1996)** (Dataset G, carbon), and one command regenerates the
-full per-case predicted-vs-measured table with drift detection against
-pinned baselines:
+These act as regression guards on the analytical model. The measured
+knockdowns live in the committed validation ledger
+([`tests/test_validation/ledger.json`](tests/test_validation/ledger.json)):
+85 cases in 16 entries covering Datasets A–D and F–M, each with its
+analysis recipe and a pinned prediction (Dataset E, Li et al. 2024, is
+scored by the validation scripts only). One command regenerates the
+full per-case predicted-vs-measured table, with drift detection against
+the pinned baselines:
 
 ```bash
 python scripts/validate.py
 ```
 
-For Li (2025) the ledger scores three predictors per case: the plain
+For **Li et al. (2025)** (Dataset F, 6 single-wrinkle UD S-glass
+compression cases) the ledger scores three predictors per case: the plain
 Budiansky–Fleck angle floor, the closed-form **modulus** knockdown, and
 the calibrated **penetration gate** — the UD strength path (issue #161)
 that is sensitive to amplitude and through-thickness position
@@ -1195,22 +1186,23 @@ data is documented in the accompanying paper:
 Additional datasets referenced by the model calibration (Mukhopadhyay
 et al., 2015; Li et al., 2026) are cited in [References](#references)
 below. Mukhopadhyay's case data are in the validation ledger (Dataset C,
-issue #462); Li et al. (2026)'s raw data are not included, so its
-case-level pass/fail table cannot be reproduced from this repository.
+issue #462); Li et al. (2026)'s raw data are not included (tracking
+issue: #22), so its case-level pass/fail table cannot be reproduced from
+this repository.
 
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
 regenerates two parity figures against a ±20% band. The headline,
 `validation/fig_all_validation_parity.png`, plots the analytical
 prediction the package reports by default against each case's
-ultimate strength, one point per case (Datasets A–F plus H to M), with
+ultimate strength, one point per case (Datasets A–F and H–M), with
 each dataset predicted by the model that physically applies to it
 (Budiansky–Fleck / three-mechanism for the multidirectional cases,
 the penetration gate for the UD glass cases E/F). 61 of its 74 cases
 fall inside the band and none is more than 20% unsafe. The 13 outside
 it are all conservative: five of Dataset H's one-sided troughs (−22%
-to −71%), four of the kink-band on UD carbon (Datasets J and K, −22% to
-−23% since the UD strain budget was anchored to the material card,
+to −71%), four kink-band predictions on UD carbon (Datasets J and K,
+−22% to −23%, with the UD strain budget read from the material card,
 issue #451), three Dataset M tension coupons (−22% to −23%) and one of
 Wang's wrinkles (−27%).
 
@@ -1221,23 +1213,19 @@ first-ply FE onset against its measured damage onset, and
 Mukhopadhyay's analytical onset estimate. 16 of its 31 points fall
 inside the band. The 8 more than 20% unsafe are all first-ply FE onset
 estimates on Dataset M, +23% to +154% against the measured damage
-onset, which the FE warning and the guidance already say.
+onset, as the FE warning and the guidance state.
 
-No analytical point now falls outside the band on the unsafe side.
-- Dataset H's troughs were three such points (+26% UD; +56% and +115%
-  multidirectional) while the ledger modelled them as an embedded
-  `graded` wrinkle. Issue #461 corrected the recipe to the specimens'
-  one-sided `tool_flat` geometry, after those errors were known. On it
-  the analytical path is conservative except +5% on the deepest
-  multidirectional trough, which it flags as bending-dominated (run FE:
-  on that half the FE retention, on the specimen's own geometry, is
-  within −8% to −1%).
-- The whole-thickness waves that used to join them (the most severe
-  wrinkle in dataset A, +30%, and Thor's severe quasi-isotropic wave in
-  Dataset J, +52%) now carry an eccentric-column bending bound and sit
-  at +10% and +15% (issue #452).
-- Six of Dataset M's steep tension wrinkles (+20% to +39%) left the list
-  when issue #454 stopped the compression floor setting them.
+No analytical point falls outside the band on the unsafe side. On
+Dataset H's one-sided troughs, scored on the specimens' `tool_flat`
+geometry (issue #461), the analytical path is conservative except +5%
+on the deepest multidirectional trough, which it flags as
+bending-dominated (run FE: on that half the FE retention, on the
+specimen's own geometry, is within −8% to −1%). The most severe
+whole-thickness waves (in Datasets A and J) carry an eccentric-column
+bending bound and sit at +10% and +15% (issue #452). The earlier unsafe
+points and the changes that removed them (issues #452, #454 and #461)
+are recorded in [CHANGELOG.md](CHANGELOG.md) and
+[VALIDATION.md](docs/internal/VALIDATION.md).
 
 Dataset L, a low-quality wet lay-up laminate, is **quarantined**
 (issue #445): it is plotted with hollow markers and left out of that
@@ -1253,7 +1241,7 @@ embedded (mid-plane) wrinkles by up to +100%.
 > matters most: FE LaRC05 over-predicted retained strength
 > on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
-> the most severe wrinkle by +24% (+42% on a refined mesh). On
+> the most severe wrinkle by +31% (+40% on a refined mesh). On
 > multidirectional laminates in compression FE LaRC05 has erred both
 > ways: conservative (−9% to −1%) on Shi et al. 2025 and Thor et al.
 > 2021 (Datasets H and J), but unsafe on Datasets A, C and D, by up to
@@ -1273,14 +1261,17 @@ embedded (mid-plane) wrinkles by up to +100%.
 
 Besides strength, WrinkleFE reports a **stiffness** knockdown of the axial
 Young's modulus two ways: the FE `modulus_retention` (wrinkled vs pristine
-from the linear static solve, any layup) and — for unidirectional layups —
-a closed-form `analytical_modulus_knockdown` (a CLT series-average of the
-off-axis lamina modulus over the wrinkle profile, no FE solve). The script
-[`validation/validate_modulus.py`](validation/validate_modulus.py) scores
-both against the UD datasets that report a *measured modulus* — **F**
-(Li 2025, S-glass), **G** (Hsiao & Daniel 1996, carbon — the
-`IM6G_3501_6` card), and the indicative **E** (Li 2024). The analytical estimate lands at
-3.9 % MAE (F) / 1.2 % (G) and the FE at 6.9 % (F) / 5.1 % (G). The data
+from the linear static solve, any layup) and the closed-form
+`analytical_modulus_knockdown` (a CLT series-average of the off-axis
+lamina modulus over the wrinkle profile, any layup, no FE solve). The
+script [`validation/validate_modulus.py`](validation/validate_modulus.py)
+scores the FE value and the script's own CLT estimate against the UD
+datasets that report a *measured modulus* — **F** (Li 2025, S-glass),
+**G** (Hsiao & Daniel 1996, carbon — the `IM6G_3501_6` card), and the
+indicative **E** (Li 2024): the script's estimate lands at 3.9 % MAE (F)
+/ 1.2 % (G) and the FE at 7.2 % (F) / 5.7 % (G). The shipped
+`analytical_modulus_knockdown`, pinned for every ledger case, is at
+7.5 % MAE on F (see `docs/internal/VALIDATION.md`). The data
 and both models agree that stiffness is far more wrinkle-tolerant than
 strength: the modulus knockdown stays ≈0.81–0.98 for the S-glass cases
 and only reaches ≈0.52–0.57 for a carbon uniform wrinkle at θ = 15°. The
@@ -1309,7 +1300,7 @@ modes that swap that taper for a different through-thickness profile.
 | `concave`    | 2          | −π/2    | Linear decay, 1 at interface → 0 at surfaces | > 1               | Two phase-shifted wrinkles whose interface pinches inward. *Most* damaging dual-wrinkle case in compression — design-driving.                       |
 | `uniform`    | 1          | n/a     | Full amplitude on **every** ply (no decay)   | 1.0 (no pairing)  | A single through-thickness-wide wrinkle — every ply wavy with the same A. Conservative bound and sanity-check baseline.                              |
 | `graded`     | 1          | n/a     | Linear decay from mid-ply to surfaces, with floor `decay_floor` ∈ [0, 1] | 1.0 (no pairing) | An embedded wrinkle that fades toward the surface plies. `decay_floor=0` is pure graded; `decay_floor=1` collapses to `uniform`.                    |
-| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Also the morphology for a one-sided surface trough over a flat tool face (issue #461). Shares `uniform`'s kink-band knockdown but not its bending bound (it is not a whole-thickness wave); amplitude is bounded (see below). |
+| `tool_flat`  | 1          | n/a     | Full-amplitude core, linear ramp over `surface_transition_plies`, **flat** at the pinned surface | 1.0 (no pairing) | A wrinkle cured against rigid tooling / a caul sheet: the pinned-flat surface fills the wrinkle troughs with **significant** resin pockets (auto-enabled). Also the morphology for a one-sided surface trough over a flat tool face (issue #461). Shares `uniform`'s kink-band knockdown but not its bending bound (it is not a whole-thickness wave); amplitude is bounded (see [The `tool_flat` morphology](#the-tool_flat-morphology-significant-pockets)). |
 
 ### `stack` vs `uniform` — what's the difference?
 
@@ -1429,8 +1420,7 @@ the interface delaminates and sheds the traction, and the ply fails later
 by fibre or matrix). A Benzeggagh–Kenane mixed-mode delamination-*onset*
 knockdown is reported alongside; it is unvalidated, and the output flags
 it as such (issue #463). The tension knockdown is not floored by
-the compression (kink-band) value. That floor was removed in issue #454:
-it set every steep-wrinkle prediction of Dataset M, unsafely.
+the compression (kink-band) value (issue #454).
 
 ### Graded morphology
 
@@ -1447,14 +1437,14 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 
 ## References
 
-- Elhajjar, R. (2025). Scientific Reports, 15:25977.
+- Elhajjar, R. (2025). Scientific Reports, 15:25977. https://doi.org/10.1038/s41598-025-06693-4 (Datasets A and B)
 - Li, Y. et al. (2026). Composites Part A, 205:109719.
 - Mukhopadhyay, S., Jones, M.I. & Hallett, S.R. (2015). Composites Part A, 73:132-142. https://doi.org/10.1016/j.compositesa.2015.03.012 (Dataset C, compression)
 - Mukhopadhyay, S., Jones, M.I. & Hallett, S.R. (2015). Composites Part A, 77:219-228. https://doi.org/10.1016/j.compositesa.2015.07.007 (Dataset C, tension)
 - Wang, Y., Zhu, S., Li, H., Zhou, L. & Yi, W. (2021). Polymers, 13(19):3204. https://doi.org/10.3390/polym13193204 (Dataset D)
 - Li, X., Ge, J., Chen, G., Zhang, B. & Liang, J. (2024). Composites Science and Technology, 256:110762. https://doi.org/10.1016/j.compscitech.2024.110762 (Dataset E)
 - Li, Y., Li, X., Ge, J. & Liang, J. (2025). Polymer Composites, 46(16):15176-15187. https://doi.org/10.1002/pc.30121 (Dataset F)
-- Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593.
+- Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593. (Dataset G)
 - Shi, J., Yang, G., Sun, N., Zheng, J., Qian, J., Wang, W. & Song, K. (2025). Materials, 18:4503. https://doi.org/10.3390/ma18194503 (Dataset H)
 - Luong, H.M., Trevarthen, J., Butler, R., Srisuriyachot, J. & Lunt, A.J.G. (2025). Composites Part B, 307:112818. https://doi.org/10.1016/j.compositesb.2025.112818 (review; knockdown context)
 - Calvo, J.V., Quiñonero-Moya, A.R., Feito, N., Miguélez, M.H. et al. (2023). Composite Structures, 323:117498. https://doi.org/10.1016/j.compstruct.2023.117498 (Dataset I)
@@ -1484,7 +1474,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Measured strengths of wrinkled
 laminates from published work are especially welcome: the
 [**Contribute a validation dataset**](https://github.com/elhajjar1/wrinkleFE/issues/new?template=validation_dataset.yml)
 form asks for what a validation-ledger entry needs, and every
-contributed dataset is cited by name in the validation record.
+contributed dataset is cited by name in the validation record. Bug
+reports and usage questions go through the
+[issue forms](https://github.com/elhajjar1/wrinkleFE/issues/new/choose).
 
 ## Citation
 

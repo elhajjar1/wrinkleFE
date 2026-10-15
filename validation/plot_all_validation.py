@@ -18,7 +18,7 @@ way:
 The rest of this docstring describes the series themselves.
 
 Plots every *single-wrinkle* experimental case in the WrinkleFE validation
-database (Datasets A-F of VALIDATION_DATA, plus the ledger's Datasets H
+database (Datasets A-F, transcribed below, plus the ledger's Datasets H
 to L; I is a distributed seven-wave tension case) on one parity axes,
 with the +/-20 % pass corridor around the y = x diagonal.
 
@@ -89,7 +89,7 @@ from wrinklefe.core.penetration_gate import (
 
 ML = MaterialLibrary()
 
-# --- Layups (VALIDATION_DATA section 2) -------------------------------
+# --- Layups ------------------------------------------------------------
 ELHAJJAR = [0, 45, 90, -45, 0, 45, -45, 0]
 ELHAJJAR = ELHAJJAR + ELHAJJAR[::-1]                       # [...]_s, 16 plies
 MUKHO = [45, 45, 90, 90, -45, -45, 0, 0] * 3
@@ -144,7 +144,7 @@ D_ROWS = [  # Wang (2021): (A_mm, morphology, KD_exp)
     (0.38, "convex", 0.729), (0.76, "convex", 0.677),
     (0.38, "concave", 0.635), (0.76, "concave", 0.419),
 ]
-E_GRID = [  # Li (2024), VALIDATION_DATA section 2.7: (theta_deg, D/T, KD_exp)
+E_GRID = [  # Li (2024), Dataset E: (theta_deg, D/T, KD_exp)
     (4.9, 0.025, 0.907), (10.6, 0.026, 0.823), (16.0, 0.026, 0.758),
     (16.7, 0.056, 0.612), (15.8, 0.079, 0.523), (16.5, 0.083, 0.545),
     (14.2, 0.105, 0.506), (16.6, 0.042, 0.657), (15.9, 0.059, 0.558),
