@@ -6,8 +6,9 @@ not a kinking problem. They occur when the wrinkle moves the laminate's
 at the wrinkle is offset from the far-field load line. Split by that
 offset (the eccentricity e, over the far-field thickness t), the
 deployed model is never more than 15% unsafe below e/t = 0.10 (39
-cases). Above e/t = 0.15 it is unsafe on 7 of 8 cases. There, first-ply
-FE run on the specimen's own geometry is never unsafe (−40% to −1%).
+cases). Above e/t = 0.15 it is unsafe on 7 of 8 cases (6 of 8 since
+issue #461; see the update below). There, first-ply FE run on the
+specimen's own geometry is never unsafe (−40% to −1%).
 
 Regenerate everything here with `python validation/bending_mode_study.py`
 (per-case table: `validation/bending_mode_cases.csv`).
@@ -116,7 +117,7 @@ more than 15% unsafe on 4 of the 50 cases (MAE 12.3%): Thor's wave 1 at
 | Dataset | What the paper reports | e/t of its unsafe cases |
 |---|---|---|
 | J Thor (2021) | wave 1 (A/t 0.23): bending from the wave geometry, delamination, then fibre breakage; wave 2: fibre kinking | 0.25 |
-| H Shi (2025) | kinking, with buckling participation at t/T = 30% | 0.12–0.18 |
+| H Shi (2025) | kinking, with buckling participation at t/T = 30% | 0.12–0.18 on the `graded` recipe; none on `tool_flat` since issue #461 (worst H-MD-30, +5% at 0.18) |
 | A Elhajjar (2025) | early kink-band failure at the severe end (about 0.4 normalised strength) | 0.25–0.31 |
 | C Mukhopadhyay (2015) | fibre compression below 8–9°, delamination above | 0.01 (deployed model conservative) |
 | K Pilato (2022) | delamination in the paper's FE; delamination and fibre breakage post-test | 0.05 (deployed model conservative) |

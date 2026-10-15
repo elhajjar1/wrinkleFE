@@ -116,7 +116,7 @@ have landed, and drop any version that has reached end-of-life.
 type errors before pushing rather than after:
 
 ```bash
-pip install -e ".[all,dev]" -c requirements-lint.txt   # CI's exact ruff/mypy
+pip install -e ".[all,dev]" -c requirements-lint.txt   # CI's exact ruff/mypy/streamlit
 pip install pre-commit
 pre-commit install                        # ruff on every commit
 pre-commit install --hook-type pre-push   # + mypy before a push
@@ -136,8 +136,11 @@ newer than CI's pin can disagree with it; mypy 2.4.0 rejected code 2.3.1
 accepted. Upgrades to the pins arrive as Dependabot PRs. The mypy hook also
 needs the full development install, because it type-checks `app.py` / `streamlit_viz.py`
 against the real streamlit and plotly packages, exactly as the lint job
-does. mypy is whole-tree and runs on the **pre-push** stage only; it is
-too slow to sit on every commit.
+does. The constraints file pins streamlit too (1.65.0): 1.66.0 imports
+`Never` from `typing`, which Python 3.10, the mypy target, lacks, and
+mypy then reports 15 false errors in `app.py`. mypy is whole-tree and
+runs on the **pre-push** stage only; it is too slow to sit on every
+commit.
 
 Run everything against the whole tree at once with `pre-commit run
 --all-files` (add `--hook-stage pre-push` to include mypy). There is
