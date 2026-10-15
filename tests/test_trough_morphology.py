@@ -206,10 +206,16 @@ def test_other_morphologies_for_the_same_trough(label, overrides, flagged,
 def _embedded_ledger_cases():
     """Every ledger compression case modelled as an embedded wrinkle:
     ``graded``, both outer surfaces flat (Hsiao & Daniel's graded coupon,
-    Li 2025, Krishnappa's mid-plane WM strips)."""
+    Li 2025, Krishnappa's mid-plane WM strips), all UD.
+
+    Datasets C and D joined the ledger in issue #462 with the recipe of
+    ``validation/plot_all_validation.py``; they are multidirectional, and
+    :func:`test_embedded_head_to_head_wrinkles_are_not_flagged` checks
+    them on that same recipe, so they are not counted twice here."""
     out = []
     for ds in _LEDGER["datasets"]:
-        if ds["loading"] != "compression" or ds["name"].startswith("shi"):
+        if ds["loading"] != "compression" or ds["name"].startswith(
+                ("shi", "mukhopadhyay_2015", "wang_2021")):
             continue
         for case in ds["cases"]:
             if case.get("morphology", ds["morphology"]) == "graded":
@@ -242,7 +248,8 @@ def test_embedded_ledger_wrinkles_are_not_flagged(prefix, case):
 def _head_to_head_embedded():
     """Datasets C (Mukhopadhyay, ``graded``), D (Wang, ``convex`` and
     ``concave``) and E (Li 2024, ``graded``): the embedded compression
-    wrinkles scored outside the ledger."""
+    wrinkles of the head-to-head scripts. C and D are also in the ledger
+    since issue #462, on the same recipe; E is not."""
     sys.path.insert(0, str(_ROOT / "validation"))
     import strength_error_summary as ses
 

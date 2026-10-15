@@ -143,13 +143,57 @@ def _regime_of(table: dict, dataset_prefix: str, case: str) -> str:
     # laminate with two woven 90-degree plies.
     ("li_2025", "S-M-3", "kink_band/compression/ud/non-bending"),
     ("pilato_2022", "K-6", "kink_band/compression/ud/non-bending"),
+    # Elhajjar (2025), Dataset A, on its whole-thickness 'uniform' recipe
+    # (issue #462): the five largest waves bend (e/t 0.10-0.31), the rest
+    # do not. Mukhopadhyay's embedded wrinkles (C) and Wang's dual
+    # wrinkles (D) have both surfaces flat (e/t at most 0.02).
+    ("elhajjar_2025_md_cfrp_compression", "A-8",
+     "kink_band/compression/md/non-bending"),
+    ("elhajjar_2025_md_cfrp_compression", "A-9",
+     "kink_band/compression/md/bending"),
+    ("elhajjar_2025_md_cfrp_compression", "A-13",
+     "kink_band/compression/md/bending"),
+    ("mukhopadhyay_2015_md_im7_compression", "C-COMP-3",
+     "kink_band/compression/md/non-bending"),
+    ("wang_2021", "D-CONCAVE-2", "kink_band/compression/md/non-bending"),
     # Tension is never bending-dominated.
     ("elhajjar_shams_2016_md", "M-MD-1", "three_mechanism/tension/md/non-bending"),
     ("elhajjar_shams_2016_ud", "M-UD-10", "three_mechanism/tension/ud/non-bending"),
     ("calvo_2023", "I-B5", "three_mechanism/tension/md/non-bending"),
+    ("elhajjar_2025_md_cfrp_tension", "B-7",
+     "three_mechanism/tension/md/non-bending"),
+    ("mukhopadhyay_2015_md_im7_tension", "C-TENS-3",
+     "three_mechanism/tension/md/non-bending"),
 ])
 def test_cases_fall_in_the_documented_regimes(regenerated, prefix, case, key):
     assert _regime_of(regenerated, prefix, case) == key
+
+
+def test_multidirectional_regimes_after_issue_462(regenerated):
+    """Datasets A-D (issue #462) give multidirectional compression that is
+    not bending-dominated, the commonest case, a margin. The
+    bending-dominated cell gains Elhajjar's five largest waves and stays
+    below the minimum; multidirectional tension doubles."""
+    regimes = regenerated["regimes"]
+    plain = regimes["kink_band/compression/md/non-bending"]
+    assert (plain["n"], plain["status"]) == (17, STATUS_FITTED)
+    assert plain["datasets"] == [
+        "elhajjar_2025_md_cfrp_compression",
+        "mukhopadhyay_2015_md_im7_compression",
+        "shi_2025_md_cfrp_compression",
+        "thor_2021_qi_im7_compression",
+        "wang_2021_md_cfrp_compression",
+    ]
+    bending = regimes["kink_band/compression/md/bending"]
+    assert (bending["n"], bending["status"]) == (8, STATUS_INSUFFICIENT)
+    tension = regimes["three_mechanism/tension/md/non-bending"]
+    assert (tension["n"], tension["status"]) == (20, STATUS_FITTED)
+    assert tension["datasets"] == [
+        "calvo_2023_md_cfrp_tension",
+        "elhajjar_2025_md_cfrp_tension",
+        "elhajjar_shams_2016_md_cfrp_tension",
+        "mukhopadhyay_2015_md_im7_tension",
+    ]
 
 
 def test_the_gate_and_crack_band_paths_are_their_own_regimes(regenerated):

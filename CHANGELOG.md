@@ -15,6 +15,41 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Validation — **Datasets A–D are in the validation ledger** (issue
+  #462), so multidirectional compression has enough cases for a
+  validation margin. Five ledger datasets, 30 cases: Elhajjar (2025)
+  compression (13) and tension (7), Mukhopadhyay, Jones & Hallett (2015)
+  compression (3) and tension ultimate (3), and Wang (2021) concave and
+  convex compression (4). Mukhopadhyay's onset points stay out (the
+  analytical onset estimate is unvalidated, issue #463).
+  - Each recipe is the one `validation/plot_all_validation.py` already
+    scored the case on, so every pinned `expected_analytical_kd` is the
+    parity chart's value bit for bit, and the closed-form modulus
+    knockdown is pinned too. A new test in
+    `tests/test_validation/test_ledger.py` keeps the ledger and the
+    script in step. `scripts/validate.py` shows zero drift on every
+    existing case. The parity counts are unchanged (61 of 74 headline,
+    16 of 31 second figure), because A–D were already plotted from the
+    script.
+  - `process`: Elhajjar's laminates were autoclaved or hot-pressed (per
+    the author), so `route` is `null` and the source names both routes,
+    which `tests/test_process.py` now checks; C and D record no route.
+    `quality` is `null` throughout: none of the four sources'
+    transcriptions records fibre volume fraction, porosity or the test
+    standard.
+  - Validation margins (reporting only; no knockdown moves):
+    multidirectional compression that is not bending-dominated goes from
+    2 cases (insufficient evidence) to 17, with a margin of 1.00 (the
+    kink-band was conservative on all 17); the bending-dominated cell
+    goes from 3 to 8 cases, still insufficient (7 of the 8 unsafe);
+    multidirectional tension goes from 10 to 20 cases, margin 0.881 →
+    0.896.
+  - Consumers: `plot_all_validation._LEDGER_SERIES` maps the A–D series
+    to their ledger datasets, so a ledger quarantine would reach them;
+    `tests/test_trough_morphology.py` keeps checking C and D on the
+    script recipe and leaves them out of its UD-only ledger set.
+    `docs/interpreting_results.md` and `VALIDATION.md` carry the new
+    margin table.
 - Community — **a "Usage question" issue form**
   (`.github/ISSUE_TEMPLATE/question.yml`) that applies the `question`
   label. It replaces the new-issue chooser's "Usage question" link, which
@@ -552,6 +587,12 @@ version produced a given file.
     strain budget (issue #451), and the tension model no longer needs it.
 
 ### Numerical results
+- **Validation margins reported for multidirectional laminates change**
+  (issue #462; the results JSON's and the NCR summary's
+  `validation_margin` block, reporting only). Not-bending-dominated
+  multidirectional compression now reports a margin of 1.00 (n = 17)
+  instead of insufficient evidence; multidirectional tension reports
+  0.896 (n = 20) instead of 0.881 (n = 10). No knockdown moves.
 - **UD-dominated analytical compression knockdowns rise on the
   peak-angle path (issue #451).** Signed mean error: Thor (2021) UD
   −57.9% → −16.6%, Pilato (2022) −77.5% → −20.3%, Krishnappa &

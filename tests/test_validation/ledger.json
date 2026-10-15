@@ -18,9 +18,11 @@
     "NOTE: the 'KD analytical' column published in VALIDATION.md for Li (2025) was",
     "produced by an uncommitted script whose configuration could not be reproduced",
     "from a clean checkout \u2014 exactly the gap this ledger closes going forward.",
-    "Elhajjar (2025), Mukhopadhyay (2015) and Li (2026) case-level data are not in",
-    "the repository (see README 'Validation'); add their datasets here when the",
-    "raw points land (tracked by issue #22's follow-ups)."
+    "Datasets A-D (Elhajjar 2025 compression and tension, Mukhopadhyay 2015",
+    "compression and tension, Wang 2021) joined in issue #462 with the recipes",
+    "validation/plot_all_validation.py scores them on, so each pin is the value the",
+    "parity chart plots; Mukhopadhyay's onset points stay out (issue #463). Li (2026)",
+    "case-level data are not in the repository."
   ],
   "rel_tolerance": 0.001,
   "datasets": [
@@ -1087,6 +1089,500 @@
           "expected_analytical_kd": 0.474733,
           "expected_analytical_modulus_kd": 0.700763,
           "note": "Specimen 13: wrinkle height A = 0.35 mm, length L = 2.7 mm (Table 1); peak angle from wavelength = 2L (Dataset H convention; not measured). DIC limit point 251.5 MPa, ultimate 720.4 MPa (Table 2); DIC on the front face (resin-pocket side)."
+        }
+      ]
+    },
+    {
+      "name": "elhajjar_2025_md_cfrp_compression",
+      "status": "active - Dataset A (compression half of Elhajjar 2025). Multidirectional T700/2510 compression over 13 wrinkle severities (D/T 0.003-0.30). Scored by validation/plot_all_validation.py since v1.0; in the ledger since issue #462 with the same recipe and prediction. See VALIDATION.md 'Included datasets'.",
+      "reference": "Elhajjar (2025), Scientific Reports 15:25977, DOI 10.1038/s41598-025-06693-4 (Fig. 5b, fibre-waviness group)",
+      "material": "T700_2510",
+      "process": {
+        "route": null,
+        "source": "two routes, so no single route: prepreg_autoclave and prepreg_press. T700/2510 prepreg, autoclave or hot-press cure, with high consolidation and fibre volume fraction (the author, R. Elhajjar, 2026; wrinklefe.core.process.VALIDATION_EVIDENCE 'A/B')"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "the author (2026) states high consolidation and fibre volume fraction but no value is recorded in the repository; porosity, test standard and baseline validity not recorded"
+      },
+      "layup": "[0/45/90/-45/0/45/-45/0]s",
+      "ply_thickness_mm": 0.152,
+      "loading": "compression",
+      "morphology": "uniform",
+      "analytical_only": true,
+      "amplitude_convention": "config amplitude = A = (D/T) x 2.43 mm (the laminate thickness), rounded to 0.1 um, with D/T the wrinkle depth over thickness of the paper's Fig. 5b; amplitude_p2p_mm = 2A only to fit the shared schema.",
+      "width_convention": "The paper reports D/T, not a wavelength. wavelength_mm = max(19.9 A, 8.2 mm), the legacy linear rule (wrinklefe.analysis.estimate_wavelength_from_amplitude with scaling='linear'; validation/plot_all_validation.py elhajjar_wavelength), so the peak angle is fixed at 17.5 deg from A = 0.41 mm up. width_mm = 0.75 x wavelength, the A-D recipe (plot_all_validation.case_config).",
+      "geometry_note": "Modelled as morphology='uniform': every ply carries the full amplitude, a whole-thickness wave. That is the validation scripts' recipe since v1.0; the specimens' through-thickness wrinkle shape is not recorded in the repository. 16 plies x 0.152 mm = 2.43 mm.",
+      "data_note": "Knockdowns are normalised strengths read from the paper's Fig. 5b scatter plot, the midpoint of each D/T group's observed range: the repository's original transcription (validation/reference_elhajjar2025.json in v1.0.0), not tabulated values.",
+      "pristine_strength_MPa": null,
+      "baseline_note": "Knockdowns are the paper's normalised strengths; the absolute pristine strength is not recorded in the repository.",
+      "failure_note": "Reported mode: kinking, with an early kink band at the severe end (validation/bending_mode_study.py). On the uniform recipe the five largest wrinkles (A-9 to A-13, A >= 0.243 mm) are bending-dominated whole-thickness waves (e/t 0.10 to 0.31); the eccentric-column bound of issue #452 governs on the two most severe (A-12, A-13), the kink-band on the others.",
+      "recipe_note": "Transcribed field for field from validation/plot_all_validation.py (dataset_A; strength_error_summary._md_cases builds the same configs), so expected_analytical_kd is the prediction the parity chart plots, bit for bit; tests/test_validation/test_ledger.py keeps the two in step. analytical_only=true because those configs set it. Added in issue #462, which needed these cases for the regime-conditional validation margins; the recipe and the prediction are unchanged.",
+      "cases": [
+        {
+          "case": "A-1",
+          "amplitude_p2p_mm": 0.0146,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 0.3,
+          "measured_kd": 1.02,
+          "expected_analytical_kd": 0.942891,
+          "expected_analytical_modulus_kd": 0.999915,
+          "note": "D/T = 0.003: A = 0.0073 mm; normalised compression strength 1.02 (Fig. 5b)."
+        },
+        {
+          "case": "A-2",
+          "amplitude_p2p_mm": 0.0244,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 0.5,
+          "measured_kd": 1.0,
+          "expected_analytical_kd": 0.909466,
+          "expected_analytical_modulus_kd": 0.999763,
+          "note": "D/T = 0.005: A = 0.0122 mm; normalised compression strength 1.00 (Fig. 5b)."
+        },
+        {
+          "case": "A-3",
+          "amplitude_p2p_mm": 0.0388,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 0.9,
+          "measured_kd": 0.95,
+          "expected_analytical_kd": 0.866155,
+          "expected_analytical_modulus_kd": 0.9994,
+          "note": "D/T = 0.008: A = 0.0194 mm; normalised compression strength 0.95 (Fig. 5b)."
+        },
+        {
+          "case": "A-4",
+          "amplitude_p2p_mm": 0.0486,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 1.1,
+          "measured_kd": 0.9,
+          "expected_analytical_kd": 0.840003,
+          "expected_analytical_modulus_kd": 0.999059,
+          "note": "D/T = 0.010: A = 0.0243 mm; normalised compression strength 0.90 (Fig. 5b)."
+        },
+        {
+          "case": "A-5",
+          "amplitude_p2p_mm": 0.0972,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 2.1,
+          "measured_kd": 0.8,
+          "expected_analytical_kd": 0.739105,
+          "expected_analytical_modulus_kd": 0.996257,
+          "note": "D/T = 0.020: A = 0.0486 mm; normalised compression strength 0.80 (Fig. 5b)."
+        },
+        {
+          "case": "A-6",
+          "amplitude_p2p_mm": 0.1458,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 3.2,
+          "measured_kd": 0.72,
+          "expected_analytical_kd": 0.669707,
+          "expected_analytical_modulus_kd": 0.991651,
+          "note": "D/T = 0.030: A = 0.0729 mm; normalised compression strength 0.72 (Fig. 5b)."
+        },
+        {
+          "case": "A-7",
+          "amplitude_p2p_mm": 0.243,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 5.3,
+          "measured_kd": 0.62,
+          "expected_analytical_kd": 0.580539,
+          "expected_analytical_modulus_kd": 0.977423,
+          "note": "D/T = 0.050: A = 0.1215 mm; normalised compression strength 0.62 (Fig. 5b)."
+        },
+        {
+          "case": "A-8",
+          "amplitude_p2p_mm": 0.3888,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 8.5,
+          "measured_kd": 0.52,
+          "expected_analytical_kd": 0.505687,
+          "expected_analytical_modulus_kd": 0.945641,
+          "note": "D/T = 0.080: A = 0.1944 mm; normalised compression strength 0.52 (Fig. 5b)."
+        },
+        {
+          "case": "A-9",
+          "amplitude_p2p_mm": 0.486,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 10.5,
+          "measured_kd": 0.47,
+          "expected_analytical_kd": 0.474574,
+          "expected_analytical_modulus_kd": 0.919396,
+          "note": "D/T = 0.100: A = 0.243 mm; normalised compression strength 0.47 (Fig. 5b)."
+        },
+        {
+          "case": "A-10",
+          "amplitude_p2p_mm": 0.729,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 15.6,
+          "measured_kd": 0.4,
+          "expected_analytical_kd": 0.426841,
+          "expected_analytical_modulus_kd": 0.845143,
+          "note": "D/T = 0.150: A = 0.3645 mm; normalised compression strength 0.40 (Fig. 5b)."
+        },
+        {
+          "case": "A-11",
+          "amplitude_p2p_mm": 0.972,
+          "wavelength_mm": 9.6714,
+          "width_mm": 7.25355,
+          "peak_angle_deg": 17.5,
+          "measured_kd": 0.37,
+          "expected_analytical_kd": 0.414702,
+          "expected_analytical_modulus_kd": 0.815215,
+          "note": "D/T = 0.200: A = 0.486 mm; normalised compression strength 0.37 (Fig. 5b)."
+        },
+        {
+          "case": "A-12",
+          "amplitude_p2p_mm": 1.215,
+          "wavelength_mm": 12.08925,
+          "width_mm": 9.0669375,
+          "peak_angle_deg": 17.5,
+          "measured_kd": 0.35,
+          "expected_analytical_kd": 0.395849,
+          "expected_analytical_modulus_kd": 0.815215,
+          "note": "D/T = 0.250: A = 0.6075 mm; normalised compression strength 0.35 (Fig. 5b)."
+        },
+        {
+          "case": "A-13",
+          "amplitude_p2p_mm": 1.458,
+          "wavelength_mm": 14.5071,
+          "width_mm": 10.880325,
+          "peak_angle_deg": 17.5,
+          "measured_kd": 0.32,
+          "expected_analytical_kd": 0.353175,
+          "expected_analytical_modulus_kd": 0.815215,
+          "note": "D/T = 0.300: A = 0.729 mm; normalised compression strength 0.32 (Fig. 5b)."
+        }
+      ]
+    },
+    {
+      "name": "elhajjar_2025_md_cfrp_tension",
+      "status": "active - Dataset B (tension half of Elhajjar 2025). Multidirectional T700/2510 tension over 7 wrinkle severities (D/T 0.003-0.30). Scored by validation/plot_all_validation.py since v1.0; in the ledger since issue #462 with the same recipe and prediction. See VALIDATION.md 'Included datasets'.",
+      "reference": "Elhajjar (2025), Scientific Reports 15:25977, DOI 10.1038/s41598-025-06693-4 (Fig. 5b, fibre-waviness group)",
+      "material": "T700_2510",
+      "process": {
+        "route": null,
+        "source": "two routes, so no single route: prepreg_autoclave and prepreg_press. T700/2510 prepreg, autoclave or hot-press cure, with high consolidation and fibre volume fraction (the author, R. Elhajjar, 2026; wrinklefe.core.process.VALIDATION_EVIDENCE 'A/B')"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "the author (2026) states high consolidation and fibre volume fraction but no value is recorded in the repository; porosity, test standard and baseline validity not recorded"
+      },
+      "layup": "[0/45/90/-45/0/45/-45/0]s",
+      "ply_thickness_mm": 0.152,
+      "loading": "tension",
+      "morphology": "uniform",
+      "analytical_only": true,
+      "amplitude_convention": "config amplitude = A = (D/T) x 2.43 mm (the laminate thickness), rounded to 0.1 um, with D/T the wrinkle depth over thickness of the paper's Fig. 5b; amplitude_p2p_mm = 2A only to fit the shared schema.",
+      "width_convention": "The paper reports D/T, not a wavelength. wavelength_mm = max(19.9 A, 8.2 mm), the legacy linear rule (wrinklefe.analysis.estimate_wavelength_from_amplitude with scaling='linear'; validation/plot_all_validation.py elhajjar_wavelength), so the peak angle is fixed at 17.5 deg from A = 0.41 mm up. width_mm = 0.75 x wavelength, the A-D recipe (plot_all_validation.case_config).",
+      "geometry_note": "Modelled as morphology='uniform': every ply carries the full amplitude, a whole-thickness wave. That is the validation scripts' recipe since v1.0; the specimens' through-thickness wrinkle shape is not recorded in the repository. 16 plies x 0.152 mm = 2.43 mm.",
+      "data_note": "Knockdowns are normalised strengths read from the paper's Fig. 5b scatter plot, the midpoint of each D/T group's observed range: the repository's original transcription (validation/reference_elhajjar2025.json in v1.0.0), not tabulated values.",
+      "pristine_strength_MPa": null,
+      "baseline_note": "Knockdowns are the paper's normalised strengths; the absolute pristine strength is not recorded in the repository.",
+      "recipe_note": "Transcribed field for field from validation/plot_all_validation.py (dataset_B; strength_error_summary._md_cases builds the same configs), so expected_analytical_kd is the prediction the parity chart plots, bit for bit; tests/test_validation/test_ledger.py keeps the two in step. analytical_only=true because those configs set it. Added in issue #462, which needed these cases for the regime-conditional validation margins; the recipe and the prediction are unchanged.",
+      "cases": [
+        {
+          "case": "B-1",
+          "amplitude_p2p_mm": 0.0146,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 0.3,
+          "measured_kd": 1.0,
+          "expected_analytical_kd": 0.99886,
+          "expected_analytical_modulus_kd": 0.999915,
+          "note": "D/T = 0.003: A = 0.0073 mm; normalised tension strength 1.00 (Fig. 5b)."
+        },
+        {
+          "case": "B-2",
+          "amplitude_p2p_mm": 0.0244,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 0.5,
+          "measured_kd": 0.95,
+          "expected_analytical_kd": 0.996829,
+          "expected_analytical_modulus_kd": 0.999763,
+          "note": "D/T = 0.005: A = 0.0122 mm; normalised tension strength 0.95 (Fig. 5b)."
+        },
+        {
+          "case": "B-3",
+          "amplitude_p2p_mm": 0.0486,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 1.1,
+          "measured_kd": 0.9,
+          "expected_analytical_kd": 0.987666,
+          "expected_analytical_modulus_kd": 0.999059,
+          "note": "D/T = 0.010: A = 0.0243 mm; normalised tension strength 0.90 (Fig. 5b)."
+        },
+        {
+          "case": "B-4",
+          "amplitude_p2p_mm": 0.243,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 5.3,
+          "measured_kd": 0.77,
+          "expected_analytical_kd": 0.806482,
+          "expected_analytical_modulus_kd": 0.977423,
+          "note": "D/T = 0.050: A = 0.1215 mm; normalised tension strength 0.77 (Fig. 5b)."
+        },
+        {
+          "case": "B-5",
+          "amplitude_p2p_mm": 0.486,
+          "wavelength_mm": 8.2,
+          "width_mm": 6.15,
+          "peak_angle_deg": 10.5,
+          "measured_kd": 0.65,
+          "expected_analytical_kd": 0.604588,
+          "expected_analytical_modulus_kd": 0.919396,
+          "note": "D/T = 0.100: A = 0.243 mm; normalised tension strength 0.65 (Fig. 5b)."
+        },
+        {
+          "case": "B-6",
+          "amplitude_p2p_mm": 0.972,
+          "wavelength_mm": 9.6714,
+          "width_mm": 7.25355,
+          "peak_angle_deg": 17.5,
+          "measured_kd": 0.55,
+          "expected_analytical_kd": 0.463529,
+          "expected_analytical_modulus_kd": 0.815215,
+          "note": "D/T = 0.200: A = 0.486 mm; normalised tension strength 0.55 (Fig. 5b)."
+        },
+        {
+          "case": "B-7",
+          "amplitude_p2p_mm": 1.458,
+          "wavelength_mm": 14.5071,
+          "width_mm": 10.880325,
+          "peak_angle_deg": 17.5,
+          "measured_kd": 0.47,
+          "expected_analytical_kd": 0.463529,
+          "expected_analytical_modulus_kd": 0.815215,
+          "note": "D/T = 0.300: A = 0.729 mm; normalised tension strength 0.47 (Fig. 5b)."
+        }
+      ]
+    },
+    {
+      "name": "mukhopadhyay_2015_md_im7_compression",
+      "status": "active - Dataset C (compression). IM7/8552 blocked quasi-isotropic laminate with an embedded wrinkle, 3 severities. Scored by validation/plot_all_validation.py since v1.0; in the ledger since issue #462 with the same recipe and prediction. See VALIDATION.md 'Included datasets'.",
+      "reference": "Mukhopadhyay, Jones & Hallett (2015), Composites Part A 73:132-142, DOI 10.1016/j.compositesa.2015.03.012",
+      "material": "IM7_8552",
+      "process": {
+        "route": null,
+        "source": "IM7/8552 prepreg; cure route not recorded in the repository"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "not recorded in the repository"
+      },
+      "layup": "[45_2/90_2/-45_2/0_2]_3s",
+      "ply_thickness_mm": 0.125,
+      "loading": "compression",
+      "morphology": "graded",
+      "analytical_only": true,
+      "amplitude_convention": "config amplitude = the wrinkle amplitude A as transcribed in validation/plot_all_validation.py; amplitude_p2p_mm = 2A only to fit the shared schema.",
+      "width_convention": "wavelength_mm = max(22 A, 10 mm) (plot_all_validation.mukhopadhyay_wavelength), an amplitude-scaled rule, not a measured wavelength; width_mm = 0.75 x wavelength, the A-D recipe (plot_all_validation.case_config).",
+      "geometry_note": "An embedded wrinkle (the papers' titles: 'laminates containing an embedded wrinkle'), modelled as morphology='graded' at the default mid interfaces: both outer surfaces flat. Blocked quasi-isotropic [+45_2/90_2/-45_2/0_2]_3s, 48 plies x 0.125 mm = 6.0 mm.",
+      "data_note": "Amplitudes and knockdowns as transcribed in validation/plot_all_validation.py; the figure or table they were read from is not recorded in the repository.",
+      "pristine_strength_MPa": null,
+      "baseline_note": "Knockdowns are wrinkled over pristine strength as the papers report them; the absolute pristine strength is not recorded in the repository.",
+      "failure_note": "Reported mode: fibre compression below 8-9 deg, delamination above (validation/bending_mode_study.py). No case is bending-dominated (e/t at most 0.015).",
+      "recipe_note": "Transcribed field for field from validation/plot_all_validation.py (dataset_C_comp; strength_error_summary._md_cases builds the same configs), so expected_analytical_kd is the prediction the parity chart plots, bit for bit; tests/test_validation/test_ledger.py keeps the two in step. analytical_only=true because those configs set it. Added in issue #462, which needed these cases for the regime-conditional validation margins; the recipe and the prediction are unchanged.",
+      "cases": [
+        {
+          "case": "C-COMP-1",
+          "amplitude_p2p_mm": 0.336,
+          "wavelength_mm": 10.0,
+          "width_mm": 7.5,
+          "peak_angle_deg": 6.0,
+          "measured_kd": 0.82,
+          "expected_analytical_kd": 0.731417,
+          "expected_analytical_modulus_kd": 0.964962,
+          "note": "A = 0.168 mm; measured compression knockdown 0.82."
+        },
+        {
+          "case": "C-COMP-2",
+          "amplitude_p2p_mm": 0.744,
+          "wavelength_mm": 10.0,
+          "width_mm": 7.5,
+          "peak_angle_deg": 13.2,
+          "measured_kd": 0.68,
+          "expected_analytical_kd": 0.644355,
+          "expected_analytical_modulus_kd": 0.862147,
+          "note": "A = 0.372 mm; measured compression knockdown 0.68."
+        },
+        {
+          "case": "C-COMP-3",
+          "amplitude_p2p_mm": 0.984,
+          "wavelength_mm": 10.824,
+          "width_mm": 8.118,
+          "peak_angle_deg": 15.9,
+          "measured_kd": 0.67,
+          "expected_analytical_kd": 0.622739,
+          "expected_analytical_modulus_kd": 0.813739,
+          "note": "A = 0.492 mm; measured compression knockdown 0.67."
+        }
+      ]
+    },
+    {
+      "name": "mukhopadhyay_2015_md_im7_tension",
+      "status": "active - Dataset C (tension, ultimate). The same laminate and wrinkle in tension, 3 severities, scored against the ultimate. The paper's delamination-onset points are NOT in the ledger: the analytical onset estimate is unvalidated (issue #463); validation/plot_all_validation.py plots them in the second figure. In the ledger since issue #462 with the scripts' recipe and prediction. See VALIDATION.md 'Included datasets'.",
+      "reference": "Mukhopadhyay, Jones & Hallett (2015), Composites Part A 77:219-228 (tension); compression companion Composites Part A 73:132-142, DOI 10.1016/j.compositesa.2015.03.012",
+      "material": "IM7_8552",
+      "process": {
+        "route": null,
+        "source": "IM7/8552 prepreg; cure route not recorded in the repository"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "not recorded in the repository"
+      },
+      "layup": "[45_2/90_2/-45_2/0_2]_3s",
+      "ply_thickness_mm": 0.125,
+      "loading": "tension",
+      "morphology": "graded",
+      "analytical_only": true,
+      "amplitude_convention": "config amplitude = the wrinkle amplitude A as transcribed in validation/plot_all_validation.py; amplitude_p2p_mm = 2A only to fit the shared schema.",
+      "width_convention": "wavelength_mm = max(22 A, 10 mm) (plot_all_validation.mukhopadhyay_wavelength), an amplitude-scaled rule, not a measured wavelength; width_mm = 0.75 x wavelength, the A-D recipe (plot_all_validation.case_config).",
+      "geometry_note": "An embedded wrinkle (the papers' titles: 'laminates containing an embedded wrinkle'), modelled as morphology='graded' at the default mid interfaces: both outer surfaces flat. Blocked quasi-isotropic [+45_2/90_2/-45_2/0_2]_3s, 48 plies x 0.125 mm = 6.0 mm.",
+      "data_note": "Amplitudes and knockdowns as transcribed in validation/plot_all_validation.py; the figure or table they were read from is not recorded in the repository.",
+      "pristine_strength_MPa": null,
+      "baseline_note": "Knockdowns are wrinkled over pristine strength as the papers report them; the absolute pristine strength is not recorded in the repository.",
+      "recipe_note": "Transcribed field for field from validation/plot_all_validation.py (dataset_C_tens; strength_error_summary._md_cases builds the same configs), so expected_analytical_kd is the prediction the parity chart plots, bit for bit; tests/test_validation/test_ledger.py keeps the two in step. analytical_only=true because those configs set it. Added in issue #462, which needed these cases for the regime-conditional validation margins; the recipe and the prediction are unchanged.",
+      "cases": [
+        {
+          "case": "C-TENS-1",
+          "amplitude_p2p_mm": 0.336,
+          "wavelength_mm": 10.0,
+          "width_mm": 7.5,
+          "peak_angle_deg": 6.0,
+          "measured_kd": 0.94,
+          "expected_analytical_kd": 0.873407,
+          "expected_analytical_modulus_kd": 0.964962,
+          "note": "A = 0.168 mm; measured tension (ultimate) knockdown 0.94."
+        },
+        {
+          "case": "C-TENS-2",
+          "amplitude_p2p_mm": 0.744,
+          "wavelength_mm": 10.0,
+          "width_mm": 7.5,
+          "peak_angle_deg": 13.2,
+          "measured_kd": 0.83,
+          "expected_analytical_kd": 0.699165,
+          "expected_analytical_modulus_kd": 0.862147,
+          "note": "A = 0.372 mm; measured tension (ultimate) knockdown 0.83."
+        },
+        {
+          "case": "C-TENS-3",
+          "amplitude_p2p_mm": 0.984,
+          "wavelength_mm": 10.824,
+          "width_mm": 8.118,
+          "peak_angle_deg": 15.9,
+          "measured_kd": 0.77,
+          "expected_analytical_kd": 0.663546,
+          "expected_analytical_modulus_kd": 0.813739,
+          "note": "A = 0.492 mm; measured tension (ultimate) knockdown 0.77."
+        }
+      ]
+    },
+    {
+      "name": "wang_2021_md_cfrp_compression",
+      "status": "active - Dataset D. Concave and convex dual wrinkles in a multidirectional T800/epoxy laminate under compression, two amplitudes each. Scored by validation/plot_all_validation.py since v1.0; in the ledger since issue #462 with the same recipe and prediction. See VALIDATION.md 'Included datasets'.",
+      "reference": "Wang (2021), concave/convex wrinkle compression; the full citation is not recorded in the repository (wrinklefe.core.process.VALIDATION_EVIDENCE 'D Wang (2021)')",
+      "material": "T800S_M21",
+      "material_note": "Wang's T800/epoxy is not in the material library; T800S_M21 is the closest built-in card. The concave/convex asymmetry, not the exact modulus, is what this dataset tests (plot_all_validation.dataset_D).",
+      "process": {
+        "route": null,
+        "source": "T800/epoxy (modelled with the T800S_M21 card); cure route not recorded in the repository"
+      },
+      "quality": {
+        "fibre_volume_fraction": null,
+        "porosity_pct": null,
+        "test_standard": null,
+        "baseline_meets_standard": null,
+        "pristine_failure_strain_pct": null,
+        "source": "not recorded in the repository"
+      },
+      "layup": "[45/0/-45/90/45/0/-45/0/45/0]s",
+      "ply_thickness_mm": 0.19,
+      "loading": "compression",
+      "morphology": "convex",
+      "analytical_only": true,
+      "amplitude_convention": "config amplitude = the wrinkle amplitude A as transcribed in validation/plot_all_validation.py; amplitude_p2p_mm = 2A only to fit the shared schema.",
+      "width_convention": "wavelength_mm = 24 mm for every case and width_mm = 0.75 x 24 = 18 mm, the A-D recipe (plot_all_validation.dataset_D and case_config).",
+      "width_mm": 18.0,
+      "geometry_note": "Dual-wrinkle morphologies (two phase-shifted wrinkles whose interface bulges outward, 'convex', or pinches inward, 'concave'), each case naming its own; both outer surfaces flat. 20 plies x 0.19 mm = 3.8 mm.",
+      "data_note": "Amplitudes and knockdowns as transcribed in validation/plot_all_validation.py; the figure or table they were read from is not recorded in the repository.",
+      "pristine_strength_MPa": null,
+      "baseline_note": "Knockdowns are wrinkled over pristine strength as transcribed; the absolute pristine strength is not recorded in the repository.",
+      "recipe_note": "Transcribed field for field from validation/plot_all_validation.py (dataset_D; strength_error_summary._md_cases builds the same configs), so expected_analytical_kd is the prediction the parity chart plots, bit for bit; tests/test_validation/test_ledger.py keeps the two in step. analytical_only=true because those configs set it. Added in issue #462, which needed these cases for the regime-conditional validation margins; the recipe and the prediction are unchanged.",
+      "cases": [
+        {
+          "case": "D-CONVEX-1",
+          "amplitude_p2p_mm": 0.76,
+          "wavelength_mm": 24.0,
+          "morphology": "convex",
+          "peak_angle_deg": 5.7,
+          "measured_kd": 0.729,
+          "expected_analytical_kd": 0.609705,
+          "expected_analytical_modulus_kd": 0.974308,
+          "note": "convex dual wrinkle, A = 0.38 mm; measured knockdown 0.729."
+        },
+        {
+          "case": "D-CONVEX-2",
+          "amplitude_p2p_mm": 1.52,
+          "wavelength_mm": 24.0,
+          "morphology": "convex",
+          "peak_angle_deg": 11.3,
+          "measured_kd": 0.677,
+          "expected_analytical_kd": 0.491553,
+          "expected_analytical_modulus_kd": 0.908205,
+          "note": "convex dual wrinkle, A = 0.76 mm; measured knockdown 0.677."
+        },
+        {
+          "case": "D-CONCAVE-1",
+          "amplitude_p2p_mm": 0.76,
+          "wavelength_mm": 24.0,
+          "morphology": "concave",
+          "peak_angle_deg": 5.7,
+          "measured_kd": 0.635,
+          "expected_analytical_kd": 0.508755,
+          "expected_analytical_modulus_kd": 0.925183,
+          "note": "concave dual wrinkle, A = 0.38 mm; measured knockdown 0.635."
+        },
+        {
+          "case": "D-CONCAVE-2",
+          "amplitude_p2p_mm": 1.52,
+          "wavelength_mm": 24.0,
+          "morphology": "concave",
+          "peak_angle_deg": 11.3,
+          "measured_kd": 0.419,
+          "expected_analytical_kd": 0.412093,
+          "expected_analytical_modulus_kd": 0.775224,
+          "note": "concave dual wrinkle, A = 0.76 mm; measured knockdown 0.419."
         }
       ]
     }

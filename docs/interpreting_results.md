@@ -403,10 +403,10 @@ non-quarantined ledger cases only):
 | Regime | n | Margin | Mixture 5% quantile | Normal 5% quantile (comparison) | Smallest ratio |
 |---|---|---|---|---|---|
 | kink-band · compression · UD-dominated · not bending-dominated | 14 | **1.00** | 1.188 | 0.961 | 1.200 |
-| three-mechanism · tension · multidirectional | 10 | **0.881** | 0.881 | 0.869 | 0.876 |
+| kink-band · compression · multidirectional · not bending-dominated | 17 | **1.00** | 1.001 | 0.917 | 1.017 |
+| three-mechanism · tension · multidirectional | 20 | **0.896** | 0.896 | 0.885 | 0.876 |
 | kink-band · compression · UD-dominated · bending-dominated | 3 | insufficient evidence | — | — | 1.111 |
-| kink-band · compression · multidirectional · not bending-dominated | 2 | insufficient evidence | — | — | 1.086 |
-| kink-band · compression · multidirectional · bending-dominated | 3 | insufficient evidence | — | — | 0.869 |
+| kink-band · compression · multidirectional · bending-dominated | 8 | insufficient evidence | — | — | 0.869 |
 | penetration gate · compression · UD-dominated | 6 | insufficient evidence | — | — | 0.866 |
 | three-mechanism · tension · UD-dominated | 4 | insufficient evidence | — | — | 0.850 |
 | progressive damage (crack band) · compression · UD-dominated | 3 | insufficient evidence | — | — | 0.765 |
@@ -414,10 +414,26 @@ non-quarantined ledger cases only):
 
 Reading it:
 
-- **Multidirectional compression has no margin yet**, in either bending
-  regime. That is the most common case in practice. The ledger holds
-  only five such cases (Shi, Thor). Datasets A, C and D are scored by
-  `validation/strength_error_summary.py` but are not in the ledger.
+- **Multidirectional compression that is not bending-dominated, the
+  most common case in practice, has a margin of 1.00** (issue #462
+  brought Datasets A, C and D into the ledger: 17 cases from five labs,
+  2 before). The kink-band was conservative on every one: measured /
+  predicted runs from 1.017 (Wang's deeper concave wrinkle) to 1.73
+  (Shi's 10% trough), and 13 of the 17 sit between 1.017 and 1.12. The
+  mixture's 5% quantile is 1.001, just above 1, so the cap binds. A
+  normal fit would put it at 0.917, because the few far-safe cases
+  (Wang's other three and Shi's trough, 1.20 to 1.73) widen one bell.
+  A margin of 1.00 says no case in this regime has been unsafe yet, not
+  that the prediction is exact; the cases sit close to parity, so one
+  unsafe case could pull it below 1. Most of them rest on assumed
+  wavelengths (Elhajjar's and Mukhopadhyay's amplitude-scaled rules,
+  Wang's fixed 24 mm).
+- **Bending-dominated multidirectional compression still has no
+  margin, and is unsafe on 7 of its 8 cases.** Elhajjar's five largest
+  whole-thickness waves joined Thor's wave 1 and Shi's two deeper
+  troughs. Measured / predicted is 0.869 to 0.990 on all but H-MD-20
+  (1.29). That is what the bending warning says: run FE on the measured
+  profile and carry a margin of your own.
 - **The kink-band UD margin is 1.00** because the kink-band stays
   conservative on the UD sets: measured / predicted is 1.2 to 1.3 on
   Thor and Pilato with the UD strain budget of issue #451 (1.9 to 4.7
@@ -427,9 +443,13 @@ Reading it:
   quantile below 1 (0.961), because the wide spread of ratios reads as
   one wide bell. The mixture puts it at 1.188, so the margin is capped
   at 1.
-- **The tension multidirectional margin, 0.881,** sits above the normal's
-  0.869 because the residuals form two clusters on either side of parity
-  (Dataset M's coupons since issue #454), not one wide bell.
+- **The tension multidirectional margin is 0.896** (0.881 before issue
+  #462 added Elhajjar's tension cases and Mukhopadhyay's ultimates: 20
+  cases from three labs, 10 before). Six of the 20 are unsafe (ratio
+  0.876 to 0.969), and M-MD-2 (0.876) is the one still below the margin.
+  It sits above the normal's 0.885 because the residuals form two
+  clusters, near parity and about 17% on the safe side, not one wide
+  bell.
 - **The gate's six cases are in-sample:** the preset was fitted to them.
   Even with more cases its margin would measure fit quality, not
   prediction error.

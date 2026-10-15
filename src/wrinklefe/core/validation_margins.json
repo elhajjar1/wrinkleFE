@@ -16,6 +16,31 @@
       "bending_dominated": true,
       "cases": [
         {
+          "case": "A-10",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 0.9371
+        },
+        {
+          "case": "A-11",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 0.8922
+        },
+        {
+          "case": "A-12",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 0.8842
+        },
+        {
+          "case": "A-13",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 0.9061
+        },
+        {
+          "case": "A-9",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 0.9904
+        },
+        {
           "case": "H-MD-20",
           "dataset": "shi_2025_md_cfrp_compression",
           "ratio": 1.2884
@@ -32,6 +57,7 @@
         }
       ],
       "datasets": [
+        "elhajjar_2025_md_cfrp_compression",
         "shi_2025_md_cfrp_compression",
         "thor_2021_qi_im7_compression"
       ],
@@ -40,7 +66,7 @@
       "margin_factor": null,
       "min_ratio": 0.8687,
       "mixture": null,
-      "n": 3,
+      "n": 8,
       "n_below_margin": null,
       "normal_ratio_quantile": null,
       "path": "kink_band",
@@ -51,6 +77,61 @@
       "bending_dominated": false,
       "cases": [
         {
+          "case": "A-1",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0818
+        },
+        {
+          "case": "A-2",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0995
+        },
+        {
+          "case": "A-3",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0968
+        },
+        {
+          "case": "A-4",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0714
+        },
+        {
+          "case": "A-5",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0824
+        },
+        {
+          "case": "A-6",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0751
+        },
+        {
+          "case": "A-7",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.068
+        },
+        {
+          "case": "A-8",
+          "dataset": "elhajjar_2025_md_cfrp_compression",
+          "ratio": 1.0283
+        },
+        {
+          "case": "C-COMP-1",
+          "dataset": "mukhopadhyay_2015_md_im7_compression",
+          "ratio": 1.1211
+        },
+        {
+          "case": "C-COMP-2",
+          "dataset": "mukhopadhyay_2015_md_im7_compression",
+          "ratio": 1.0553
+        },
+        {
+          "case": "C-COMP-3",
+          "dataset": "mukhopadhyay_2015_md_im7_compression",
+          "ratio": 1.0759
+        },
+        {
           "case": "H-MD-10",
           "dataset": "shi_2025_md_cfrp_compression",
           "ratio": 1.7285
@@ -59,23 +140,59 @@
           "case": "J-QI-2",
           "dataset": "thor_2021_qi_im7_compression",
           "ratio": 1.0856
+        },
+        {
+          "case": "D-CONCAVE-1",
+          "dataset": "wang_2021_md_cfrp_compression",
+          "ratio": 1.2481
+        },
+        {
+          "case": "D-CONCAVE-2",
+          "dataset": "wang_2021_md_cfrp_compression",
+          "ratio": 1.0168
+        },
+        {
+          "case": "D-CONVEX-1",
+          "dataset": "wang_2021_md_cfrp_compression",
+          "ratio": 1.1957
+        },
+        {
+          "case": "D-CONVEX-2",
+          "dataset": "wang_2021_md_cfrp_compression",
+          "ratio": 1.3773
         }
       ],
       "datasets": [
+        "elhajjar_2025_md_cfrp_compression",
+        "mukhopadhyay_2015_md_im7_compression",
         "shi_2025_md_cfrp_compression",
-        "thor_2021_qi_im7_compression"
+        "thor_2021_qi_im7_compression",
+        "wang_2021_md_cfrp_compression"
       ],
       "laminate": "md",
       "loading": "compression",
-      "margin_factor": null,
-      "min_ratio": 1.0856,
-      "mixture": null,
-      "n": 2,
-      "n_below_margin": null,
-      "normal_ratio_quantile": null,
+      "margin_factor": 1.0,
+      "min_ratio": 1.0168,
+      "mixture": {
+        "means": [
+          0.0791,
+          0.3345
+        ],
+        "sds": [
+          0.05,
+          0.1558
+        ],
+        "weights": [
+          0.8057,
+          0.1943
+        ]
+      },
+      "n": 17,
+      "n_below_margin": 0,
+      "normal_ratio_quantile": 0.9168,
       "path": "kink_band",
-      "ratio_quantile": null,
-      "status": "insufficient_evidence"
+      "ratio_quantile": 1.0005,
+      "status": "fitted"
     },
     "kink_band/compression/ud/bending": {
       "bending_dominated": true,
@@ -310,6 +427,41 @@
           "ratio": 1.0918
         },
         {
+          "case": "B-1",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 1.0011
+        },
+        {
+          "case": "B-2",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 0.953
+        },
+        {
+          "case": "B-3",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 0.9112
+        },
+        {
+          "case": "B-4",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 0.9548
+        },
+        {
+          "case": "B-5",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 1.0751
+        },
+        {
+          "case": "B-6",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 1.1865
+        },
+        {
+          "case": "B-7",
+          "dataset": "elhajjar_2025_md_cfrp_tension",
+          "ratio": 1.014
+        },
+        {
           "case": "M-MD-1",
           "dataset": "elhajjar_shams_2016_md_cfrp_tension",
           "ratio": 0.9157
@@ -353,35 +505,52 @@
           "case": "M-MD-9",
           "dataset": "elhajjar_shams_2016_md_cfrp_tension",
           "ratio": 0.9692
+        },
+        {
+          "case": "C-TENS-1",
+          "dataset": "mukhopadhyay_2015_md_im7_tension",
+          "ratio": 1.0762
+        },
+        {
+          "case": "C-TENS-2",
+          "dataset": "mukhopadhyay_2015_md_im7_tension",
+          "ratio": 1.1871
+        },
+        {
+          "case": "C-TENS-3",
+          "dataset": "mukhopadhyay_2015_md_im7_tension",
+          "ratio": 1.1604
         }
       ],
       "datasets": [
         "calvo_2023_md_cfrp_tension",
-        "elhajjar_shams_2016_md_cfrp_tension"
+        "elhajjar_2025_md_cfrp_tension",
+        "elhajjar_shams_2016_md_cfrp_tension",
+        "mukhopadhyay_2015_md_im7_tension"
       ],
       "laminate": "md",
       "loading": "tension",
-      "margin_factor": 0.8815,
+      "margin_factor": 0.8956,
       "min_ratio": 0.8758,
       "mixture": {
         "means": [
-          -0.0559,
-          0.1404
+          -0.0208,
+          0.1527
         ],
         "sds": [
-          0.0606,
-          0.0667
+          0.066,
+          0.05
         ],
         "weights": [
-          0.4056,
-          0.5944
+          0.5711,
+          0.4289
         ]
       },
-      "n": 10,
+      "n": 20,
       "n_below_margin": 1,
-      "normal_ratio_quantile": 0.8693,
+      "normal_ratio_quantile": 0.8845,
       "path": "three_mechanism",
-      "ratio_quantile": 0.8815,
+      "ratio_quantile": 0.8956,
       "status": "fitted"
     },
     "three_mechanism/tension/ud/non-bending": {

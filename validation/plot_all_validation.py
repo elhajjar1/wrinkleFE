@@ -461,8 +461,17 @@ DATASETS = {
 }
 
 
-#: Parity series backed by a ledger dataset, by ledger name prefix.
+#: Parity series backed by a ledger dataset, by ledger name prefix. A-D
+#: joined the ledger in issue #462 with the recipes above (their series
+#: still run those recipes; tests/test_validation/test_ledger.py keeps the
+#: two in step), so a ledger quarantine reaches them too. Mukhopadhyay's
+#: onset points are not in the ledger (issue #463).
 _LEDGER_SERIES = {
+    "A Elhajjar comp": "elhajjar_2025_md_cfrp_compression",
+    "B Elhajjar tens": "elhajjar_2025_md_cfrp_tension",
+    "C Mukhopadhyay comp": "mukhopadhyay_2015_md_im7_compression",
+    "C Mukhopadhyay tens": "mukhopadhyay_2015_md_im7_tension",
+    "D Wang conc/conv": "wang_2021_md_cfrp_compression",
     "H Shi2025 UD comp": "shi_2025_ud",
     "H Shi2025 MD comp": "shi_2025_md",
     "H Shi2025 UD comp (FE)": "shi_2025_ud",

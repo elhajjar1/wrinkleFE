@@ -133,6 +133,7 @@ def test_each_validated_route_has_its_evidence():
 
 # The ledger's dataset prefix -> the evidence table's dataset letter.
 _LEDGER_LETTER = {
+    "elhajjar_2025": "A/B", "mukhopadhyay_2015": "C", "wang_2021": "D",
     "li_2025": "F", "hsiao_daniel_1996": "G", "shi_2025_ud": "H",
     "shi_2025_md": "H", "calvo_2023": "I", "thor_2021_qi": "J",
     "thor_2021_ud": "J", "pilato_2022": "K", "krishnappa_2024": "L",
@@ -149,6 +150,11 @@ def test_ledger_process_entries_match_the_evidence_table():
         expected = [p.value for p in evidence.processes]
         assert route == (expected[0] if len(expected) == 1 else None), (
             ds["name"])
+        # A null route is either "not stated" or "more than one" (A/B,
+        # issue #462); for the second, the source names every route.
+        if len(expected) > 1:
+            for value in expected:
+                assert value in ds["process"]["source"], (ds["name"], value)
         assert ("quarantine" in ds) == evidence.quarantined, ds["name"]
 
 

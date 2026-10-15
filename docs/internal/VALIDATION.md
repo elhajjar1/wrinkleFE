@@ -36,12 +36,16 @@ python scripts/validate.py --update   # re-pin after a deliberate model change
 The pinned values are regression baselines, not claims of experimental
 agreement — the measured-vs-predicted error per dataset is printed
 alongside. This is the harness whose absence forced the revert of the
-graded-decay fix (issue #254, commit `00584b4`). The ledger currently
-holds the Li (2025) single-wrinkle compression cases, Hsiao & Daniel
-(1996) and the Shi (2025) Dataset H pair (the first in-repo
-multidirectional measured strengths); the remaining multidirectional
-case data (Elhajjar 2025, Mukhopadhyay 2015, Li 2026) are not yet in
-the repository and should be added to the ledger as their points land.
+graded-decay fix (issue #254, commit `00584b4`). The ledger holds
+Datasets A–D and F–M: 16 ledger datasets, 85 cases (55 before issue
+#462). Datasets A–D (Elhajjar 2025 compression and tension, Mukhopadhyay
+2015 compression and tension ultimate, Wang 2021) joined in issue #462,
+on the recipes `validation/plot_all_validation.py` scores them with, so
+each pin is the value the parity chart plots;
+`tests/test_validation/test_ledger.py` keeps the two in step. Mukhopadhyay's onset points stay out, because the
+analytical onset estimate is unvalidated (issue #463). Dataset E (Li
+2024) is a (θ, D/T) grid scored by the gate scripts and is not in the
+ledger. Li (2026) case data are not in the repository.
 
 ### Regime-conditional validation margins (issue #455)
 
@@ -67,6 +71,27 @@ command. `python scripts/validate.py` fails while the table is stale,
 as does `tests/test_validation/test_margins_ledger.py`. Commit the regenerated
 table with the re-pinned ledger.
 
+Issue #462 added Datasets A–D to the ledger so that multidirectional
+compression, the commonest case in practice, could have a margin. No
+prediction moved; only the table changed:
+
+- Multidirectional compression, not bending-dominated: 2 → 17 cases
+  (Elhajjar 8, Mukhopadhyay 3, Wang 4, with Shi and Thor). It now has a
+  margin, 1.00. The kink-band is conservative on all 17 (measured /
+  predicted 1.017 to 1.73), and the mixture's 5% quantile is 1.001, so
+  the cap at 1 binds; a normal fit would give 0.917.
+- Multidirectional compression, bending-dominated: 3 → 8 cases
+  (Elhajjar's five largest whole-thickness waves). Still insufficient
+  evidence; 7 of the 8 are unsafe (ratio 0.869 to 0.990).
+- Multidirectional tension: 10 → 20 cases (Elhajjar 7, Mukhopadhyay's
+  ultimate 3). The margin moves from 0.881 to 0.896; M-MD-2 (0.876) is
+  still the one case below it.
+
+Most of the new cases rest on assumed wavelengths (Elhajjar's and
+Mukhopadhyay's amplitude-scaled rules, Wang's fixed 24 mm), and
+Elhajjar's knockdowns are read from a scatter plot; the ledger entries
+record this.
+
 The bending regime of a validation case is measured on the specimen's
 own wrinkle geometry, which is the case's knockdown recipe. Dataset H's
 one-sided trough used to need an `eccentricity_recipe` of config
@@ -83,8 +108,9 @@ them) and 0.012 to 0.030 on the multidirectional half. `tool_flat`
 gives 0.05 to 0.18 and flags the 20% and 30% troughs. No detector was
 added, because nothing in a `graded` trough's inputs separates it from
 an embedded wrinkle. Among the 25 embedded `graded` compression cases
-(the ledger plus Datasets C and E), Krishnappa's L-WM-4-3 has a higher
-amplitude-to-thickness ratio (0.207) than Shi's 20% troughs (0.200). Li's
+(the ledger, including Dataset C, plus Dataset E), Krishnappa's L-WM-4-3
+has a higher amplitude-to-thickness ratio (0.207) than Shi's 20% troughs
+(0.200). Li's
 embedded S-M-3 has a higher amplitude-to-wavelength ratio (0.093 against
 0.069) and peak angle (30° against 23.5°). Every single-metric threshold
 that warns on Shi's 20% troughs therefore also warns on an embedded
@@ -103,16 +129,29 @@ no embedded case is flagged.
 
 See the table in [README.md](../../README.md). Current sources:
 
-- Elhajjar (2025), *Scientific Reports* 15:25977 — compression + tension.
-  Not in the ledger (scored by `validation/strength_error_summary.py`).
+- **Datasets A/B — Elhajjar (2025)**, *Scientific Reports* 15:25977 —
+  compression (13 cases) + tension (7). In the ledger since issue #462
+  (`elhajjar_2025_md_cfrp_compression` / `_tension`), on the recipe
+  `validation/plot_all_validation.py` uses: knockdowns read from the
+  paper's Fig. 5b scatter plot, A = (D/T) × 2.43 mm, and an assumed
+  wavelength max(19.9 A, 8.2 mm).
   Its `uniform` recipe makes the five largest compression wrinkles
   bending-dominated whole-thickness waves (e/t 0.10–0.31), so the
   eccentric-column bending bound (issue #452) applies to them. It
   governs on the two most severe, moving A = 0.61 mm from +18.5% to
   +13.1% and A = 0.73 mm from +29.6% to +10.4%; the kink-band stays
   lower on the other three.
-- Mukhopadhyay, Jones & Hallett (2015), *Compos. A* 73:132–142
-  (compression) and 77:219–228 (tension).
+- **Dataset C — Mukhopadhyay, Jones & Hallett (2015)**, *Compos. A*
+  73:132–142 (compression) and 77:219–228 (tension). In the ledger since
+  issue #462: compression (3 cases) and tension ultimate (3), on the
+  `graded` recipe of `validation/plot_all_validation.py` with an assumed
+  wavelength max(22 A, 10 mm). The three delamination-onset points are
+  not in the ledger: the analytical onset estimate is unvalidated (issue
+  #463).
+- **Dataset D — Wang (2021)**, concave and convex dual wrinkles in
+  compression, two amplitudes each (4 cases), λ = 24 mm, on the
+  `T800S_M21` card (the closest to Wang's T800/epoxy). In the ledger since
+  issue #462. The full citation is not recorded in the repository.
 - Li, Y. et al. (2026), *Composites Part A* 205:109719 — S-glass/epoxy,
   compression (material `AC318_S6C10`).
 - **Dataset E — Li, X. et al. (2024)**, *Composites Science and
@@ -833,7 +872,7 @@ it, so the gaps are recorded as well. Few sources report quality:
 | K Pilato (2022) | — | — | ASTM D3410 | — | — |
 | L Krishnappa & Gururaja (2024) | 0.46 | 4.2% | ASTM D6641 | **no** (15% bending, limit 10%) | 0.44% |
 | M Elhajjar & Shams (2016) | — | — | ASTM D3039 (wrinkled coupons untabbed) | — | — |
-| G, J | — | — | — | — | — |
+| A/B, C, D, G, J | — | — | — | — | — |
 
 Only the quarantined dataset reports porosity or a failed validity check.
 The others are not known to be better, only less documented: quarantine
@@ -997,7 +1036,9 @@ prediction the package reports by default against each case's ultimate
 strength, one point per single-wrinkle case (Datasets A–F plus H to M).
 Each dataset is predicted by the model that physically applies to it:
 multidirectional A–D via the analytical Budiansky–Fleck /
-three-mechanism models run through `WrinkleAnalysis`, UD E/F via the
+three-mechanism models run through `WrinkleAnalysis` (on the script's
+own recipes, which the ledger has carried since issue #462 and
+`tests/test_validation/test_ledger.py` keeps in step), UD E/F via the
 penetration gate, and H to M via the ledger recipes. The **second
 figure**, `validation/fig_fe_onset_parity.png`, holds the first-ply FE
 LaRC05 retention of Datasets H to L, Dataset M's first-ply FE onset

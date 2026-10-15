@@ -318,6 +318,22 @@ def test_results_json_reports_insufficient_evidence_with_its_n():
     assert block["margined_knockdown"] is None
 
 
+def test_results_json_reports_a_multidirectional_compression_margin():
+    """Issue #462: Thor (2021) wave 2, quasi-isotropic and not
+    bending-dominated, the commonest regime in practice, now has enough
+    validation cases (Datasets A, C, D in the ledger) for a margin."""
+    res = WrinkleAnalysis(_config(
+        amplitude=0.29, wavelength=14.5, width=14.5, morphology="uniform",
+        angles=_QI, ply_thickness=0.131,
+    )).run(analytical_only=True)
+    assert not res.bending_dominated
+    block = results_to_dict(res)["validation_margin"]
+    assert block["regime"]["key"] == "kink_band/compression/md/non-bending"
+    assert block["status"] == "fitted"
+    assert block["n"] >= MIN_CASES
+    assert 0.0 < block["margin_factor"] <= 1.0
+
+
 def test_results_json_follows_the_gate_path():
     res = WrinkleAnalysis(_config(
         amplitude=0.75, wavelength=12.9, width=12.9, angles=[0] * 14,

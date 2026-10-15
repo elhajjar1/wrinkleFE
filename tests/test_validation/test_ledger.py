@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -81,6 +82,40 @@ def test_modulus_matches_pinned_baseline(dataset, case):
 def test_validate_script_passes():
     """The one-command harness exits 0 from a clean checkout."""
     assert validate.main([]) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Issue #462 — Datasets A-D: the ledger and the parity chart agree
+# --------------------------------------------------------------------------- #
+
+#: Ledger dataset -> the validation/plot_all_validation.py series scoring it.
+_PARITY_SERIES = {
+    "elhajjar_2025_md_cfrp_compression": "dataset_A",
+    "elhajjar_2025_md_cfrp_tension": "dataset_B",
+    "mukhopadhyay_2015_md_im7_compression": "dataset_C_comp",
+    "mukhopadhyay_2015_md_im7_tension": "dataset_C_tens",
+    "wang_2021_md_cfrp_compression": "dataset_D",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_PARITY_SERIES))
+def test_md_datasets_match_the_parity_script(name):
+    """Datasets A-D are in two places since issue #462: the ledger, which
+    pins them and feeds the validation margins, and the parity chart's own
+    recipes, which the head-to-head and bending-mode studies reuse. Both
+    must score the same cases, with the same measured value and the same
+    prediction (bit for bit when they were added)."""
+    sys.path.insert(0, str(_HERE.parents[1] / "validation"))
+    import plot_all_validation as pav
+
+    dataset = next(d for d in _LEDGER["datasets"] if d["name"] == name)
+    pairs = getattr(pav, _PARITY_SERIES[name])()
+    assert len(pairs) == len(dataset["cases"])
+    for case, (measured, predicted) in zip(dataset["cases"], pairs,
+                                           strict=True):
+        assert case["measured_kd"] == measured, case["case"]
+        assert validate.run_case(dataset, case) == pytest.approx(
+            predicted, rel=1e-12), case["case"]
 
 
 # --------------------------------------------------------------------------- #

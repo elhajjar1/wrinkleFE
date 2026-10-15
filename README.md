@@ -43,7 +43,7 @@ Public link, no account needed.
   - glass and aramid: AC318/S6C10 S-glass/epoxy (moulded, plus `AC318_S6C10_vacbag`, the Li 2025 vacuum-bag realization with measured Xc = 335.5 MPa and E1 = 50.8 GPa), S-2 glass/epoxy and Kevlar-49/epoxy;
   - plus an isotropic neat-epoxy card (`EPOXY_S6C10`) for the resin-pocket zone.
 - **Applicability warnings:** every analysis reports how far the wrinkle moves the laminate's load path (e/t) and flags a bending-dominated wrinkle. On a bending-dominated whole-thickness wave in compression the analytical knockdown is also capped by an eccentric-column bending bound, and the result says which bound governed (issue #452). `manufacturing_process` flags a laminate made outside the validated processes (wet lay-up, infusion, RTM), and a penetration-gate preset used outside its fitted material or process is flagged too. The warnings reach the summary, the exports and the app; apart from the bending bound, they change no number.
-- **Validation ledger:** 13 published datasets (A–M) from 10 research groups, with every prediction pinned so a model change shows up as test drift; see [Validation](docs/validation.md)
+- **Validation ledger:** 13 published datasets (A–M) from 10 research groups; every one but Dataset E is in the ledger with each prediction pinned, so a model change shows up as test drift; see [Validation](docs/validation.md)
 - **Inverse goal-seek (acceptance limits):** `wrinklefe.goalseek.find_critical_value` / `wrinklefe critical` answer the disposition question directly — the largest wrinkle amplitude (or any float config field) that still meets a target knockdown or allowable strength. The answer is backed off to the safe side and verified by a real forward run, and the search refuses with an actionable message when the curve admits no unique root
 - **Process-parallel sweeps:** `n_workers=N` on both sweep APIs and `wrinklefe sweep --parallel N` fan the independent per-point solves across CPU cores (results identical to and ordered like the sequential run)
 - **Comprehensive test suite** covering all modules (run `pytest` to see the current count)
@@ -1145,18 +1145,18 @@ strengths:
   tension knockdown is no more severe than compression for the same
   defect.
 
-These act as regression guards on the analytical model. For the
-multidirectional datasets of the accompanying paper (Elhajjar 2025,
-Mukhopadhyay 2015, Li et al. 2026) the repository does not ship the
-experimental data points, so case-level error statistics for them are
-not reproducible in-repo (tracking issue: #22). The exception is
-**Dataset H — Shi et al. (2025)**, whose measured knockdowns (a UD and
-a multidirectional CFRP laminate, three wrinkle severities each) are
-transcribed into the ledger from the paper's text (CC BY), making it
-the first in-repo multidirectional measured-strength set.
+These act as regression guards on the analytical model. The
+multidirectional datasets of the accompanying paper, Elhajjar (2025)
+and Mukhopadhyay (2015), are in the validation ledger as Datasets A–C
+(with Wang 2021 as D) since issue #462, on the recipes the parity chart
+uses, so their case-level errors are reproducible in-repo; Li et al.
+(2026)'s data points are not in the repository (tracking issue: #22).
+**Dataset H — Shi et al. (2025)** was the first multidirectional
+measured-strength set transcribed into the ledger from the paper's text
+(CC BY): a UD and a multidirectional CFRP laminate, three wrinkle
+severities each.
 
-For the **unidirectional** datasets the situation is different: the
-committed validation ledger
+For the **unidirectional** datasets, the committed validation ledger
 ([`tests/test_validation/ledger.json`](tests/test_validation/ledger.json))
 carries the digitized measured knockdowns for **Li et al. (2025)**
 (Dataset F, 6 single-wrinkle S-glass compression cases) and **Hsiao &
@@ -1192,9 +1192,9 @@ data is documented in the accompanying paper:
 
 Additional datasets referenced by the model calibration (Mukhopadhyay
 et al., 2015; Li et al., 2026) are cited in [References](#references)
-below. Reproducing case-level pass/fail tables for those
-multidirectional datasets from this repository alone is not currently
-possible — their raw data are not included.
+below. Mukhopadhyay's case data are in the validation ledger (Dataset C,
+issue #462); Li et al. (2026)'s raw data are not included, so its
+case-level pass/fail table cannot be reproduced from this repository.
 
 For a consolidated predicted-vs-experimental view, the script
 [`validation/plot_all_validation.py`](validation/plot_all_validation.py)
