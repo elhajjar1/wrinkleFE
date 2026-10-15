@@ -967,7 +967,7 @@ class MaterialLibrary:
         #     (no separate vacuum-bag measurements) and are approximate.
         #     The two realizations cannot share a normalization — F's
         #     335.5 plate gives KD > 1 for every E specimen (see
-        #     VALIDATION_DATA section 3).
+        #     docs/internal/VALIDATION.md, Dataset E).
         self.add(OrthotropicMaterial(
             name="AC318_S6C10_vacbag",
             E1=50_800.0, E2=12_000.0, E3=12_000.0,

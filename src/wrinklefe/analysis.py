@@ -813,8 +813,7 @@ def estimate_wavelength_from_amplitude(
 
     * ``"linear"`` (legacy):
         ``lambda = K_lambda * A``.  Reproduces the original convention
-        documented in §1.4 of ``VALIDATION_DATA.md`` and used by older
-        validation harnesses.  Because ``theta_max`` reduces to
+        of the early validation harnesses.  Because ``theta_max`` reduces to
         ``arctan(2*pi/K_lambda)``, the predicted peak fibre angle is
         *constant* in ``A`` under this rule.  That is unphysical for
         severe wrinkles, where larger amplitudes produce steeper local

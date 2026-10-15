@@ -4,7 +4,7 @@
 The angle-only Budiansky-Fleck kink-band knockdown is scale-invariant:
 at a fixed peak misalignment angle it cannot reproduce the strong
 dependence of knockdown on the through-thickness penetration D/T that the
-Li (2024/2025) controlled grids show (VALIDATION_DATA section 2.7). This
+Li (2024/2025) controlled grids show (Datasets E and F). This
 implements and calibrates the Bazant-type size-effect form proposed
 there:
 
@@ -36,7 +36,7 @@ from scipy.optimize import least_squares
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
-# (case, theta_deg, D/T, KD_exp) from VALIDATION_DATA section 2.7.
+# (case, theta_deg, D/T, KD_exp) for Datasets E and F.
 E_GRID = [
     ("6.3-s-1", 4.9, 0.025, 0.907), ("6.3-s-2", 10.6, 0.026, 0.823),
     ("6.3-s-3", 16.0, 0.026, 0.758), ("6.3-s-4", 16.7, 0.056, 0.612),
@@ -68,7 +68,8 @@ def angle_only(theta_deg, gamma_Y):
 
 
 def kd_gate(theta_deg, dt, gamma_Y, dt0, p):
-    """Penetration-gate form (VALIDATION_DATA 2.7 candidate 1):
+    """Penetration-gate form (as ``penetration_gate`` ships it, without
+    its position factor):
 
         KD = 1 - (1 - KD_angle(theta)) * S(D/T),
         S(D/T) = min(1, (D/T / dt0) ** p).
@@ -152,10 +153,9 @@ if __name__ == "__main__":
            lambda th, dt: kd_gate(th, dt, gY_g, dt0_g, p_g))
 
     # Same gate FORM, calibrated on E's own grid (E is a different
-    # material realization with its own gamma_Y / dt0 -- VALIDATION_DATA
-    # 2.7).  If E fits well with its own constants, the (theta, D/T)
-    # penetration-gate law is universal in form, material-specific in
-    # parameters.
+    # material realization with its own gamma_Y / dt0).  If E fits well
+    # with its own constants, the (theta, D/T) penetration-gate law is
+    # universal in form, material-specific in parameters.
     gYe, dt0e, pe = fit_gate(E_GRID)
     print(f"\nPenetration-gate fit on E (own params): gamma_Y={gYe:.4f}, "
           f"(D/T)0={dt0e:.4f}, p={pe:.2f}")

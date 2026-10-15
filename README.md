@@ -1241,7 +1241,7 @@ embedded (mid-plane) wrinkles by up to +100%.
 > matters most: FE LaRC05 over-predicted retained strength
 > on the two most severe wrinkles, by up to +39% (while under-predicting
 > the four milder ones), and the progressive-damage model over-predicted
-> the most severe wrinkle by +24% (+42% on a refined mesh). On
+> the most severe wrinkle by +31% (+40% on a refined mesh). On
 > multidirectional laminates in compression FE LaRC05 has erred both
 > ways: conservative (−9% to −1%) on Shi et al. 2025 and Thor et al.
 > 2021 (Datasets H and J), but unsafe on Datasets A, C and D, by up to
@@ -1261,14 +1261,17 @@ embedded (mid-plane) wrinkles by up to +100%.
 
 Besides strength, WrinkleFE reports a **stiffness** knockdown of the axial
 Young's modulus two ways: the FE `modulus_retention` (wrinkled vs pristine
-from the linear static solve, any layup) and — for unidirectional layups —
-a closed-form `analytical_modulus_knockdown` (a CLT series-average of the
-off-axis lamina modulus over the wrinkle profile, no FE solve). The script
-[`validation/validate_modulus.py`](validation/validate_modulus.py) scores
-both against the UD datasets that report a *measured modulus* — **F**
-(Li 2025, S-glass), **G** (Hsiao & Daniel 1996, carbon — the
-`IM6G_3501_6` card), and the indicative **E** (Li 2024). The analytical estimate lands at
-3.9 % MAE (F) / 1.2 % (G) and the FE at 6.9 % (F) / 5.1 % (G). The data
+from the linear static solve, any layup) and the closed-form
+`analytical_modulus_knockdown` (a CLT series-average of the off-axis
+lamina modulus over the wrinkle profile, any layup, no FE solve). The
+script [`validation/validate_modulus.py`](validation/validate_modulus.py)
+scores the FE value and the script's own CLT estimate against the UD
+datasets that report a *measured modulus* — **F** (Li 2025, S-glass),
+**G** (Hsiao & Daniel 1996, carbon — the `IM6G_3501_6` card), and the
+indicative **E** (Li 2024): the script's estimate lands at 3.9 % MAE (F)
+/ 1.2 % (G) and the FE at 7.2 % (F) / 5.7 % (G). The shipped
+`analytical_modulus_knockdown`, pinned for every ledger case, is at
+7.5 % MAE on F (see `docs/internal/VALIDATION.md`). The data
 and both models agree that stiffness is far more wrinkle-tolerant than
 strength: the modulus knockdown stays ≈0.81–0.98 for the S-glass cases
 and only reaches ≈0.52–0.57 for a carbon uniform wrinkle at θ = 15°. The

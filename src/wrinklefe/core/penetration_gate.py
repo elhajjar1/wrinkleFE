@@ -4,7 +4,7 @@ The angle-only Budiansky-Fleck kink-band knockdown is *scale-invariant*:
 it reduces a wrinkle to its peak misalignment angle ``theta_max`` and so
 cannot reproduce the strong dependence of compressive strength on the
 through-thickness penetration ``D/T = A/T`` that the Li (2024/2025)
-controlled grids expose (VALIDATION_DATA section 2.7): at *fixed* angle,
+controlled grids expose (Datasets E and F in the validation record): at *fixed* angle,
 knockdown still varies from ~1.0 to ~0.6 as the wrinkle penetrates deeper.
 
 This implements the **penetration-gate** form (section 2.7 candidate 1):
@@ -35,7 +35,7 @@ delamination-driven rather than penetration-gated.
 
 References
 ----------
-- VALIDATION_DATA section 2.7 (two-parameter (theta, D/T) model inputs).
+- ``docs/internal/VALIDATION.md``, Datasets E and F (the (theta, D/T) model inputs).
 - Budiansky, B. & Fleck, N.A. (1993). J. Mech. Phys. Solids 41(1), 183.
 - Li, X. et al. (2024) CST 256:110762; Li, Y. et al. (2025) Polym.
   Compos. 46:15176.
@@ -109,8 +109,8 @@ class GateParameters:
             )
 
 
-# Calibrated presets (least-squares fit to the VALIDATION_DATA section 2.7
-# single-wrinkle grids; S-A-2 excluded — near-surface position axis).
+# Calibrated presets (least-squares fit to the Li (2024/2025)
+# single-wrinkle grids, Datasets E and F; S-A-2 excluded — near-surface position axis).
 #   Li 2024 moulded (Dataset E): MAE 2.8 %, 9/9 within +/-20 %.
 #   Li 2025 vacuum-bag (Dataset F): MAE 6.0 %, 5/5 within +/-20 %.
 #: The material cards of the one material system both presets were fitted
@@ -219,7 +219,7 @@ def predict_from_geometry(
     """Penetration-gate knockdown from wrinkle geometry.
 
     Derives the two model inputs from the geometry on the conventions the
-    gate was calibrated with (VALIDATION_DATA section 2.7): the peak
+    gate was calibrated with (Datasets E and F): the peak
     misalignment ``theta_max = arctan(2*pi*A/lambda)`` and the penetration
     ``D/T = A / (n_plies * ply_thickness)``, with ``A`` the wrinkle
     half-amplitude.

@@ -12,7 +12,7 @@ Knockdown basis: ``KD_pred = sigma_peak(wrinkled) / sigma_peak(pristine)``
 where both come from the same progressive-damage solver, so the (UD,
 fibre-free-pristine) normalisation issue that defeats the linear FI ratio
 does not arise.  Compared against ``KD_exp`` as tabulated in
-VALIDATION_DATA section 2.7 (Li 2024 ÷830 indicative; Li 2025 ÷335.5
+Datasets E and F (Li 2024 ÷830 indicative; Li 2025 ÷335.5
 measured).
 
 Usage::
@@ -251,7 +251,7 @@ def run(dataset, *, dataset_label, csv_path, done, nx, ny, nz, pocket,
         records.append(rec)
         _append_row(csv_path, rec)   # checkpoint immediately
         print(f"  {case:9s} exp={kd_exp:.3f} pred={kd_pred:.3f} "
-              f"(sw={sigma_w:.0f} s0={sigma0:.0f}) err={100*err:+5.1f}% "
+              f"(sw={sigma_w:.0f} s0={sigma0:.0f}) abs err={100*err:5.1f}% "
               f"[{time.time()-t0:.0f}s]", flush=True)
     return records
 

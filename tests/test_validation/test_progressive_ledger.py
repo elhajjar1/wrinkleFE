@@ -1,6 +1,6 @@
 """Regression harness for the crack-band progressive-damage predictions.
 
-These used to live only in untracked `validation/li_progressive_*.csv`
+These used to live only in `validation/li_progressive_*.csv` (since removed)
 artefacts. Between 2026-07-04 and 2026-09-29 they moved by up to 0.034
 per case with nothing to catch it, and the mesh-sensitivity figures in
 VALIDATION.md went stale by more than a factor of two — including a
