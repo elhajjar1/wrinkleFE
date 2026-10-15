@@ -142,16 +142,19 @@ See the table in [README.md](../../README.md). Current sources:
   +13.1% and A = 0.73 mm from +29.6% to +10.4%; the kink-band stays
   lower on the other three.
 - **Dataset C — Mukhopadhyay, Jones & Hallett (2015)**, *Compos. A*
-  73:132–142 (compression) and 77:219–228 (tension). In the ledger since
+  73:132–142 (compression) and 77:219–228 (tension, DOI
+  10.1016/j.compositesa.2015.07.007). In the ledger since
   issue #462: compression (3 cases) and tension ultimate (3), on the
   `graded` recipe of `validation/plot_all_validation.py` with an assumed
   wavelength max(22 A, 10 mm). The three delamination-onset points are
   not in the ledger: the analytical onset estimate is unvalidated (issue
   #463).
-- **Dataset D — Wang (2021)**, concave and convex dual wrinkles in
-  compression, two amplitudes each (4 cases), λ = 24 mm, on the
-  `T800S_M21` card (the closest to Wang's T800/epoxy). In the ledger since
-  issue #462. The full citation is not recorded in the repository.
+- **Dataset D — Wang, Zhu, Li, Zhou & Yi (2021)**, *Polymers*
+  13(19):3204, DOI 10.3390/polym13193204 — concave and convex dual
+  wrinkles in compression, two amplitudes each (4 cases), λ = 24 mm, on
+  the `T800S_M21` card (the closest to Wang's T800/epoxy, fibre volume
+  ratio 56.6%, autoclave cure, ASTM D6641). In the ledger since issue
+  #462.
 - Li, Y. et al. (2026), *Composites Part A* 205:109719 — S-glass/epoxy,
   compression (material `AC318_S6C10`).
 - **Dataset E — Li, X. et al. (2024)**, *Composites Science and
@@ -850,13 +853,15 @@ entries must agree with it (`tests/test_process.py`).
 | E Li (2024) | prepreg, press / closed mould | moulded at 2.9 MPa |
 | M Elhajjar & Shams (2016) | prepreg, press ("press-claved") | El-Hajjar & Petersen (2011), Sec. 3.1 |
 | F Li (2025) | prepreg, vacuum-bag oven cure | same prepreg, ~1 bar vacuum bag |
+| D Wang et al. (2021) | prepreg, autoclave | "cured together in an autoclave" |
 | J Thor (2021) | prepreg, autoclave | "fabricated in an autoclave" |
 | L Krishnappa & Gururaja (2024) | wet lay-up (quarantined) | room-temperature cure under a vacuum bag |
-| C, D, G, H, I, K | not recorded | prepreg systems (C, D, G, I) or not stated; they add nothing to the scope |
+| C, G, H, I, K | not recorded | prepreg systems (C, G, I) or not stated; they add nothing to the scope |
 
-So the scope is the three prepreg routes: autoclave (A/B, J), press (A/B,
-E, M) and vacuum bag (F). RTM, infusion, wet lay-up and "other" get the
-warning. Recording the route of C, D, G, H, I and K would sharpen it.
+So the scope is the three prepreg routes: autoclave (A/B, D, J), press
+(A/B, E, M) and vacuum bag (F). RTM, infusion, wet lay-up and "other"
+get the warning. Recording the route of C, G, H, I and K would sharpen
+it.
 
 **Laminate quality.** Each ledger dataset also carries a `quality` entry:
 fibre volume fraction, porosity, test standard, whether the pristine
@@ -868,11 +873,12 @@ it, so the gaps are recorded as well. Few sources report quality:
 |---|---|---|---|---|---|
 | F Li (2025) | — | — | — | — | 0.66% (measured Xc and E1) |
 | H Shi (2025) | 0.52 (nominal model input) | — | ASTM D6641 | — | — |
+| D Wang et al. (2021) | 0.566 | — | ASTM D6641 | — | — |
 | I Calvo (2023) | — | — | ASTM D3039 | — | — |
 | K Pilato (2022) | — | — | ASTM D3410 | — | — |
 | L Krishnappa & Gururaja (2024) | 0.46 | 4.2% | ASTM D6641 | **no** (15% bending, limit 10%) | 0.44% |
 | M Elhajjar & Shams (2016) | — | — | ASTM D3039 (wrinkled coupons untabbed) | — | — |
-| A/B, C, D, G, J | — | — | — | — | — |
+| A/B, C, G, J | — | — | — | — | — |
 
 Only the quarantined dataset reports porosity or a failed validity check.
 The others are not known to be better, only less documented: quarantine

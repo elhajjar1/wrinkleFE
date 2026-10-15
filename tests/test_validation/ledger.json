@@ -1446,7 +1446,7 @@
     {
       "name": "mukhopadhyay_2015_md_im7_tension",
       "status": "active - Dataset C (tension, ultimate). The same laminate and wrinkle in tension, 3 severities, scored against the ultimate. The paper's delamination-onset points are NOT in the ledger: the analytical onset estimate is unvalidated (issue #463); validation/plot_all_validation.py plots them in the second figure. In the ledger since issue #462 with the scripts' recipe and prediction. See VALIDATION.md 'Included datasets'.",
-      "reference": "Mukhopadhyay, Jones & Hallett (2015), Composites Part A 77:219-228 (tension); compression companion Composites Part A 73:132-142, DOI 10.1016/j.compositesa.2015.03.012",
+      "reference": "Mukhopadhyay, Jones & Hallett (2015), Composites Part A 77:219-228, DOI 10.1016/j.compositesa.2015.07.007 (tension); compression companion Composites Part A 73:132-142, DOI 10.1016/j.compositesa.2015.03.012",
       "material": "IM7_8552",
       "process": {
         "route": null,
@@ -1511,20 +1511,20 @@
     {
       "name": "wang_2021_md_cfrp_compression",
       "status": "active - Dataset D. Concave and convex dual wrinkles in a multidirectional T800/epoxy laminate under compression, two amplitudes each. Scored by validation/plot_all_validation.py since v1.0; in the ledger since issue #462 with the same recipe and prediction. See VALIDATION.md 'Included datasets'.",
-      "reference": "Wang (2021), concave/convex wrinkle compression; the full citation is not recorded in the repository (wrinklefe.core.process.VALIDATION_EVIDENCE 'D Wang (2021)')",
+      "reference": "Wang, Zhu, Li, Zhou & Yi (2021), Polymers 13(19):3204, DOI 10.3390/polym13193204",
       "material": "T800S_M21",
       "material_note": "Wang's T800/epoxy is not in the material library; T800S_M21 is the closest built-in card. The concave/convex asymmetry, not the exact modulus, is what this dataset tests (plot_all_validation.dataset_D).",
       "process": {
-        "route": null,
-        "source": "T800/epoxy (modelled with the T800S_M21 card); cure route not recorded in the repository"
+        "route": "prepreg_autoclave",
+        "source": "T800/epoxy unidirectional prepreg (modelled with the T800S_M21 card), 'cured together in an autoclave following the material supplier's instructions' (Wang et al. 2021, Sec. 2)"
       },
       "quality": {
-        "fibre_volume_fraction": null,
+        "fibre_volume_fraction": 0.566,
         "porosity_pct": null,
-        "test_standard": null,
+        "test_standard": "ASTM D6641",
         "baseline_meets_standard": null,
         "pristine_failure_strain_pct": null,
-        "source": "not recorded in the repository"
+        "source": "Wang et al. (2021), Sec. 2: fibre volume ratio 56.6%, combined loading compression to ASTM D6641; porosity and baseline failure mode not reported"
       },
       "layup": "[45/0/-45/90/45/0/-45/0/45/0]s",
       "ply_thickness_mm": 0.19,
@@ -1535,9 +1535,9 @@
       "width_convention": "wavelength_mm = 24 mm for every case and width_mm = 0.75 x 24 = 18 mm, the A-D recipe (plot_all_validation.dataset_D and case_config).",
       "width_mm": 18.0,
       "geometry_note": "Dual-wrinkle morphologies (two phase-shifted wrinkles whose interface bulges outward, 'convex', or pinches inward, 'concave'), each case naming its own; both outer surfaces flat. 20 plies x 0.19 mm = 3.8 mm.",
-      "data_note": "Amplitudes and knockdowns as transcribed in validation/plot_all_validation.py; the figure or table they were read from is not recorded in the repository.",
+      "data_note": "Wang et al. (2021), Table 1: wrinkle severity A/H of +10% and +20% (convex) and -10% and -20% (concave) of the 3.8 mm nominal thickness, so A = 0.38 and 0.76 mm; each knockdown is the mean failure load over the pristine mean (26.55, 24.73, 23.21 and 15.27 kN over 36.53 kN). Checked against the paper in October 2026.",
       "pristine_strength_MPa": null,
-      "baseline_note": "Knockdowns are wrinkled over pristine strength as transcribed; the absolute pristine strength is not recorded in the repository.",
+      "baseline_note": "Knockdowns are mean failure loads over the pristine mean of 36.53 kN (Wang et al. 2021, Table 1); load ratios equal strength ratios on the common 12 mm x 3.8 mm section.",
       "recipe_note": "Transcribed field for field from validation/plot_all_validation.py (dataset_D; strength_error_summary._md_cases builds the same configs), so expected_analytical_kd is the prediction the parity chart plots, bit for bit; tests/test_validation/test_ledger.py keeps the two in step. analytical_only=true because those configs set it. Added in issue #462, which needed these cases for the regime-conditional validation margins; the recipe and the prediction are unchanged.",
       "cases": [
         {

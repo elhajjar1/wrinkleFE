@@ -1445,8 +1445,11 @@ embedded wrinkle that fades to flat at the surfaces, `1` collapses to
 
 - Elhajjar, R. (2025). Scientific Reports, 15:25977.
 - Li, Y. et al. (2026). Composites Part A, 205:109719.
-- Li, X. et al. (2024). Composites Science and Technology, 256:110762.
-- Li, Y. et al. (2025). Polymer Composites, 46:15176-15187.
+- Mukhopadhyay, S., Jones, M.I. & Hallett, S.R. (2015). Composites Part A, 73:132-142. https://doi.org/10.1016/j.compositesa.2015.03.012 (Dataset C, compression)
+- Mukhopadhyay, S., Jones, M.I. & Hallett, S.R. (2015). Composites Part A, 77:219-228. https://doi.org/10.1016/j.compositesa.2015.07.007 (Dataset C, tension)
+- Wang, Y., Zhu, S., Li, H., Zhou, L. & Yi, W. (2021). Polymers, 13(19):3204. https://doi.org/10.3390/polym13193204 (Dataset D)
+- Li, X., Ge, J., Chen, G., Zhang, B. & Liang, J. (2024). Composites Science and Technology, 256:110762. https://doi.org/10.1016/j.compscitech.2024.110762 (Dataset E)
+- Li, Y., Li, X., Ge, J. & Liang, J. (2025). Polymer Composites, 46(16):15176-15187. https://doi.org/10.1002/pc.30121 (Dataset F)
 - Hsiao, H.M. & Daniel, I.M. (1996). Composites Science and Technology, 56(5), 581-593.
 - Shi, J., Yang, G., Sun, N., Zheng, J., Qian, J., Wang, W. & Song, K. (2025). Materials, 18:4503. https://doi.org/10.3390/ma18194503 (Dataset H)
 - Luong, H.M., Trevarthen, J., Butler, R., Srisuriyachot, J. & Lunt, A.J.G. (2025). Composites Part B, 307:112818. https://doi.org/10.1016/j.compositesb.2025.112818 (review; knockdown context)

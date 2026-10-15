@@ -120,13 +120,13 @@ def test_a_quarantined_dataset_does_not_widen_the_scope():
 
 
 def test_each_validated_route_has_its_evidence():
-    """Autoclave rests on Elhajjar A/B and Thor; press on Elhajjar A/B,
+    """Autoclave rests on Elhajjar A/B, Wang and Thor; press on Elhajjar A/B,
     Li 2024 and Elhajjar & Shams (M); vacuum bag on Li 2025 alone."""
     def datasets(p):
         return sorted(e.dataset.split()[0] for e in VALIDATION_EVIDENCE
                       if p in e.processes and not e.quarantined)
 
-    assert datasets(MP.PREPREG_AUTOCLAVE) == ["A/B", "J"]
+    assert datasets(MP.PREPREG_AUTOCLAVE) == ["A/B", "D", "J"]
     assert datasets(MP.PREPREG_PRESS) == ["A/B", "E", "M"]
     assert datasets(MP.PREPREG_VACUUM_BAG) == ["F"]
 

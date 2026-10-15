@@ -22,6 +22,11 @@ version produced a given file.
   compression (3) and tension ultimate (3), and Wang (2021) concave and
   convex compression (4). Mukhopadhyay's onset points stay out (the
   analytical onset estimate is unvalidated, issue #463).
+  - Wang et al. (2021), *Polymers* 13:3204, is now cited for Dataset D
+    (its reference was missing); its stated autoclave cure joins the
+    process-scope evidence, which leaves the validated routes unchanged.
+    The README reference list gains Wang, both Mukhopadhyay papers and
+    the DOIs of Li (2024) and Li (2025).
   - Each recipe is the one `validation/plot_all_validation.py` already
     scored the case on, so every pinned `expected_analytical_kd` is the
     parity chart's value bit for bit, and the closed-form modulus

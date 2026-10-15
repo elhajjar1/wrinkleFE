@@ -122,8 +122,9 @@ VALIDATION_EVIDENCE: tuple[ProcessEvidence, ...] = (
         "IM7/8552 prepreg; cure route not recorded in the repository",
     ),
     ProcessEvidence(
-        "D Wang (2021)", (),
-        "T800S/M21 prepreg; cure route not recorded in the repository",
+        "D Wang et al. (2021)", (ManufacturingProcess.PREPREG_AUTOCLAVE,),
+        "T800/epoxy prepreg (modelled with the T800S_M21 card), cured in "
+        "an autoclave",
     ),
     ProcessEvidence(
         "E Li et al. (2024)", (ManufacturingProcess.PREPREG_PRESS,),
