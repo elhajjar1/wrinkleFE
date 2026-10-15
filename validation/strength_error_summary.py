@@ -116,21 +116,28 @@ def analytical_section() -> None:
           f"{'min%':>7s} {'max%':>7s} {'non-cons.':>9s}")
     held_out = pav.quarantined()
     total = outside = q_total = q_outside = 0
+    s_total = s_outside = 0
     for label, (fn, _c, _m, method) in pav.DATASETS.items():
         errs = [_err(p, m) for m, p in fn()]
         n_out = sum(abs(e) > 20.0 for e in errs)
         if label in held_out:
             q_total += len(errs)
             q_outside += n_out
-        else:
+        elif pav.is_headline(label):
             total += len(errs)
             outside += n_out
+        else:
+            s_total += len(errs)
+            s_outside += n_out
         nonc = sum(e > _NON_CONSERVATIVE_PCT for e in errs)
         tag = " [Q]" if label in held_out else ""
         print(f"   {label + tag:24s} {method:24s} {len(errs):3d} "
               f"{statistics.mean(abs(e) for e in errs):6.1f} "
               f"{min(errs):+7.1f} {max(errs):+7.1f} {nonc:5d}/{len(errs)}")
-    print(f"   -> {total - outside} of {total} cases within +/-20 %")
+    print(f"   -> headline (analytical vs ultimate strength): "
+          f"{total - outside} of {total} cases within +/-20 %")
+    print(f"   -> second figure (first-ply FE and onset estimates): "
+          f"{s_total - s_outside} of {s_total} within +/-20 %")
     if q_total:
         print(f"   -> quarantined [Q], not counted (issue #445): "
               f"{q_total - q_outside} of {q_total} within +/-20 %")
@@ -182,13 +189,13 @@ def fe_larc05_errors_shi() -> dict[str, tuple[float, float, float]]:
     multidirectional laminate; ``tests/test_fe_strength_caveat.py`` keeps
     the caveat's claim about it true.
 
-    FE recipe: the ledger's analytical recipe is a plain graded profile
-    (the analytical path reads only the peak angle); the FE mesh instead
-    uses the one-sided geometry the specimens actually have —
-    ``morphology='tool_flat'`` with the flat tool face on the bottom and
-    a 10-ply ramp (see the ledger's ``geometry_note``; for these
-    symmetric layups the flat-bottom crest is the z-mirror of the
-    paper's flat-bottom dip, which is a symmetry of the specimen).
+    FE recipe: the ledger's recipe, the one-sided geometry the specimens
+    actually have (``morphology='tool_flat'`` with the flat tool face on
+    the bottom and a 10-ply ramp; see the ledger's ``geometry_note``: for
+    these symmetric layups the flat-bottom crest is the z-mirror of the
+    paper's flat-bottom dip, which is a symmetry of the specimen), with
+    its FE-only surface pockets switched on. The analytical recipe is the
+    same geometry since issue #461 (a plain ``graded`` profile before).
     nx = 48 is mesh-checked: at nx = 64 every error moves by < 2.5
     percentage points (H-MD: -5.8/-5.0/-3.0 %).
     """
@@ -202,8 +209,6 @@ def fe_larc05_errors_shi() -> dict[str, tuple[float, float, float]]:
         for case in ds["cases"]:
             kd = _fe_retention_kd(
                 case_config(ds, case), nx=48, ny=4, nz_per_ply=1,
-                morphology="tool_flat", surface_pocket_side="bottom",
-                surface_transition_plies=10,
                 enable_surface_resin_pockets=True,
             )
             meas = float(case["measured_kd"])

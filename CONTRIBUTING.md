@@ -6,7 +6,7 @@ Thank you for your interest in contributing to WrinkleFE! This document provides
 
 Open a new issue and pick the form that fits — the
 [**New issue**](https://github.com/elhajjar1/wrinkleFE/issues/new/choose)
-chooser offers four:
+chooser offers five:
 
 - **Bug report** — for incorrect behavior or crashes (asks for version
   and a reproduction).
@@ -17,6 +17,8 @@ chooser offers four:
   wrinkle geometry, measured vs. predicted, data source).
 - **Contribute a validation dataset** — to share published measured
   strengths of wrinkled laminates; see the next section.
+- **Usage question** — for "how do I…" questions about the science,
+  the models or the API; it is labelled `question` automatically.
 
 Blank issues stay enabled for anything that doesn't fit a form. A
 results JSON's `provenance` block carries the version and environment
@@ -417,4 +419,6 @@ rehearse with a `.devN` suffix rather than burning the real version.
 
 ## Questions
 
-For questions about the science or implementation, open a GitHub issue with the "question" label.
+For questions about the science or implementation, open a
+[**Usage question**](https://github.com/elhajjar1/wrinkleFE/issues/new?template=question.yml)
+issue; the form applies the `question` label for you.

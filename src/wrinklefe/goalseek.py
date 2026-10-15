@@ -52,6 +52,7 @@ import numpy as np
 from scipy.optimize import brentq
 
 from wrinklefe.analysis import (
+    ONSET_ESTIMATE_CAVEAT,
     AnalysisConfig,
     AnalysisResults,
     WrinkleAnalysis,
@@ -276,6 +277,10 @@ class CriticalValueResult:
     """The **resolved** value actually used, not the argument."""
     runtime_s: float
     results: list[AnalysisResults] | None = field(default=None, repr=False)
+    caveat: str | None = None
+    """Set when the objective's own model is unvalidated: the
+    ``onset_knockdown`` objective carries
+    :data:`~wrinklefe.analysis.ONSET_ESTIMATE_CAVEAT` (issue #463)."""
     """Full per-evaluation results, only when ``keep_results=True`` (they
     carry mesh and field arrays on the FE path)."""
 
@@ -314,6 +319,9 @@ class CriticalValueResult:
                 f"{ev.strength_MPa:>16.1f}"
             )
         lines.append("")
+        if self.caveat:
+            lines.append(f"Caveat: {self.caveat}")
+            lines.append("")
         if self.status == "converged":
             assert self.critical_value is not None
             assert self.achieved_objective is not None
@@ -948,6 +956,8 @@ def _check_objective_available(
             f"objective='modulus_knockdown' for the analytical "
             f"stiffness knockdown."
         )
+    if objective_name == "onset_knockdown":
+        logger.warning(ONSET_ESTIMATE_CAVEAT)
     if objective_name == "onset_knockdown" and cfg.loading != "tension":
         raise ValueError(
             f"objective='onset_knockdown' is computed on the tension "
@@ -1246,6 +1256,11 @@ def find_critical_value(
             analytical_only=resolved_analytical,
             runtime_s=time.perf_counter() - t_start,
             results=kept if keep_results else None,
+            caveat=(
+                ONSET_ESTIMATE_CAVEAT
+                if objective_name == "onset_knockdown"
+                else None
+            ),
         )
         logger.info(
             "critical-value search finished: status=%s, %s=%s",

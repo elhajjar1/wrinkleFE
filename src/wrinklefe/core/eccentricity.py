@@ -14,8 +14,11 @@ The validation study behind issue #439
 compression cases against this offset, as a fraction ``e / t`` of the
 laminate thickness. Below :data:`ECCENTRICITY_REGIME_THRESHOLD` the
 angle-based analytical knockdown was never more than 15 % unsafe. Above
-it the analytical model missed on the unsafe side by up to +115 %, while
-first-ply FE on the specimen's own geometry did not. The ratio is
+it the analytical model missed on the unsafe side by up to +115 % (Shi's
+one-sided troughs, scored then on an embedded ``graded`` recipe; +52 %,
+on Thor's whole-thickness wave, once issue #461 scored them as
+``tool_flat``), while first-ply FE on the specimen's own geometry did
+not. The ratio is
 therefore reported with every analysis, and compression analyses above
 the threshold are flagged as bending-dominated.
 
@@ -28,6 +31,19 @@ compression knockdown becomes the lower of the kink-band value and that
 bound. A one-sided trough (one surface pinned flat by the tool) is not
 covered: the bound did not explain its measured knockdown, so it keeps
 the warning and the advice to run FE.
+
+The measurement reads the geometry the user modelled, not the specimen
+(issue #461). ``graded`` with ``decay_floor=0`` keeps both outer surfaces
+flat, which is what an embedded wrinkle is. On a UD laminate the centroid
+of such a section is exactly midway between its flat surfaces, so ``e``
+is zero at any amplitude. On a multidirectional one only the stiffness
+redistribution moves it (``e / t`` at most 0.03 on Shi's troughs). A
+one-sided surface trough modelled as ``graded`` therefore gets no
+warning. Its inputs are those of an embedded wrinkle: measured embedded
+wrinkles reach the same amplitude-to-thickness ratio, peak angle and
+amplitude-to-wavelength ratio as Shi's troughs. So nothing detects it,
+and :data:`ONE_SIDED_TROUGH_ADVICE` steers users to ``tool_flat``
+instead.
 """
 
 from __future__ import annotations
@@ -46,7 +62,8 @@ if TYPE_CHECKING:
 #: bending-dominated: outside the regime where the angle-based kink-band
 #: knockdown was validated (issue #439). Below 0.10 the deployed model was
 #: never more than 15 % unsafe on 39 measured cases; between 0.10 and 0.15
-#: the evidence is mixed (3 cases), and above 0.15 it was unsafe on 7 of 8.
+#: the evidence is mixed (3 cases), and above 0.15 it was unsafe on 7 of 8
+#: (6 of 8 once issue #461 scored Shi's troughs on their one-sided geometry).
 ECCENTRICITY_REGIME_THRESHOLD = 0.10
 
 #: Fraction of the load-path offset ``e`` that EACH outer surface must
@@ -65,11 +82,17 @@ BENDING_REGIME_CAVEAT = (
     f"e/t at or above {ECCENTRICITY_REGIME_THRESHOLD:.2f}), so the section "
     "bends as well as kinks, but it is not a whole-thickness wave (one "
     "outer surface does not follow the load path, as over a flat tool "
-    "face), so the eccentric-column bending bound is not applied. The "
-    "kink-band knockdown does not represent the bending: on measured "
-    "compression cases of this kind it over-predicted retained strength "
-    "by up to about 115%. Prefer FE on the measured wrinkle profile "
-    "(issues #439, #452)."
+    "face), so the eccentric-column bending bound is not applied. On the "
+    "measured one-sided troughs of this kind the kink-band knockdown "
+    "ranged from about 70% conservative to 5% unsafe, so it is usually "
+    "excessively conservative here, for two reasons. It applies the "
+    "trough's peak misalignment angle to the whole cross-section, although "
+    "the misalignment fades to nothing toward the flat face. And it does "
+    "not credit the straighter plies near that face with the load the "
+    "wavy plies shed. It is not always conservative: on the deepest "
+    "multidirectional trough it was 5% unsafe. First-ply FE on the measured "
+    "geometry resolves both effects and was conservative by 1% to 40%. "
+    "Prefer FE on the measured wrinkle profile (issues #439, #452, #461)."
 )
 
 #: Warning for a bending-dominated whole-thickness wave, where the
@@ -85,6 +108,24 @@ BENDING_BOUND_CAVEAT = (
     "this regime the bound brought the worst unsafe miss from +52% to "
     "+15%, so it is a screening bound, not a validated allowable: check "
     "it against FE on the measured wrinkle profile (issue #452)."
+)
+
+
+#: Which morphology to pick for a one-sided surface trough (issue #461).
+#: The load-path eccentricity measures the modelled geometry, and
+#: ``graded`` (decay floor 0) models flat outer surfaces, so it cannot
+#: see a trough. Shown where the morphology is chosen (the app's
+#: morphology selector and the CLI's ``--morphology`` help), so they
+#: cannot disagree. Plain text with no ``%``, because argparse
+#: %-formats help strings.
+ONE_SIDED_TROUGH_ADVICE = (
+    "Model a one-sided surface trough (one outer surface follows the "
+    "wrinkle, the other is flat on the tool) as 'tool_flat', pinning only "
+    "the tool face (surface_pocket_side 'top' or 'bottom', not 'both'). "
+    "Do not model it as 'graded'. 'graded' with decay floor 0 keeps both "
+    "outer surfaces flat, which is an embedded wrinkle. The load-path "
+    "eccentricity check then sees no offset, so a trough deep enough to "
+    "bend the section gets no bending-dominated warning (issue #461)."
 )
 
 

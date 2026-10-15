@@ -52,14 +52,23 @@ def test_quarantined_krishnappa_stays_conservative():
     assert max(whole) == pytest.approx(-23.4, abs=0.05)
 
 
-def test_graded_ud_sets_keep_their_errors():
-    """Shi (H) is UD-dominated but takes the graded path, which keeps the
-    layup budget: its errors are the ones quoted before the change.
-    Dataset M's UD half is tension, which no longer reads the kink-band
-    at all (issue #454 removed the compression floor): its errors are
-    those of #454, and the UD budget cannot reach them."""
+def test_shi_ud_takes_the_card_budget_on_its_tool_flat_recipe():
+    """Shi (H) is UD-dominated. Its recipe was ``graded`` when the budget
+    changed, which keeps the layup budget (+0.2 / +11.8 / +25.9 %). Issue
+    #461 moved it to the one-sided ``tool_flat`` trough the specimens
+    have, which is on the peak-angle path, so it now takes the card
+    budget S12/Xc and is strongly conservative."""
     shi = _errors("shi_2025_ud")
-    assert [round(e, 1) for e in shi] == [0.2, 11.8, 25.9]
+    assert [round(e, 1) for e in shi] == [-58.9, -68.4, -71.0]
+    ds = next(d for d in _LEDGER["datasets"]
+              if d["name"].startswith("shi_2025_ud"))
+    assert ds["morphology"] == "tool_flat"
+
+
+def test_ud_tension_keeps_its_errors():
+    """Dataset M's UD half is tension, which no longer reads the
+    kink-band at all (issue #454 removed the compression floor): its
+    errors are those of #454, and the UD budget cannot reach them."""
     m_ud = _errors("elhajjar_shams_2016_ud")
     assert statistics.mean(m_ud) == pytest.approx(-2.8, abs=0.05)
     assert sum(e > 0.5 for e in m_ud) == 2
@@ -67,24 +76,41 @@ def test_graded_ud_sets_keep_their_errors():
 
 
 def test_analytical_parity_count():
-    """64 of the 77 analytical cases (quarantined L excluded) are within
-    +/-20 %, as docs/interpreting_results.md says (55 before #451, 58
-    after it, 60 with the bending bound of #452, 64 with the tension
-    corrections of #454)."""
+    """61 of the 74 analytical strength cases (quarantined L excluded)
+    are within +/-20 %: the headline parity figure, which leaves out the
+    first-ply FE and onset series. docs/interpreting_results.md quotes
+    it."""
     sys.path.insert(0, str(_ROOT / "validation"))
     import plot_all_validation as pav
 
     held_out = pav.quarantined()
     total = inside = 0
     for label, (fn, _c, _m, _method) in pav.DATASETS.items():
-        if "(FE)" in label or label in held_out:
+        if not pav.is_headline(label) or label in held_out:
             continue
         errs = [abs(p - m) / m for m, p in fn()]
         total += len(errs)
         inside += sum(e <= 0.20 for e in errs)
-    assert (inside, total) == (64, 77)
+    assert (inside, total) == (61, 74)
     text = (_ROOT / "docs" / "interpreting_results.md").read_text()
-    assert "64 of the 77 analytical cases fall within ±20%" in text
+    assert "61 of the 74 analytical strength cases fall within ±20%" in text
+
+
+def test_headline_figure_holds_only_analytical_strength_series():
+    """Every series lands in exactly one figure: first-ply FE and onset
+    series in the second, everything else in the headline."""
+    sys.path.insert(0, str(_ROOT / "validation"))
+    import plot_all_validation as pav
+
+    headline = [lab for lab in pav.DATASETS if pav.is_headline(lab)]
+    second = [lab for lab in pav.DATASETS if not pav.is_headline(lab)]
+    assert len(headline) + len(second) == len(pav.DATASETS)
+    assert all("(FE)" not in lab and "onset" not in lab.lower()
+               for lab in headline)
+    assert "M ElhajjarShams2016 onset (FE)" in second
+    assert "C Mukhopadhyay onset" in second
+    for method in ("FE LaRC05 retention", "FE LaRC05 first-ply onset"):
+        assert all(pav.DATASETS[lab][3] != method for lab in headline)
 
 
 def test_docs_quote_the_moves():

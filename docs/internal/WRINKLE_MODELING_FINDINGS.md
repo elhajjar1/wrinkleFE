@@ -146,7 +146,9 @@ predicted-vs-experimental parity plot with a ±20 % corridor, each dataset
 predicted by the model that physically applies to it (multidirectional
 A–D via the analytical BF / three-mechanism path; UD E/F via this gate).
 Running it prints the per-dataset scorecard — E 2.8 % (9/9), F 5.0 %
-(6/6) — and writes `validation/fig_all_validation_parity.png`.
+(6/6) — and writes `validation/fig_all_validation_parity.png` (the
+analytical prediction against ultimate strength) and
+`validation/fig_fe_onset_parity.png` (first-ply FE and onset estimates).
 
 ## Open items
 

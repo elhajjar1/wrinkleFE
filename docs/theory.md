@@ -153,11 +153,16 @@ validation layup has at most 40% 0° plies, so its result is unchanged.
 
 The `graded` path (§2.4) keeps $\gamma_{Y,\text{eff}}$ even for UD. Its
 budget was calibrated together with the profile average, which already
-raises the knockdown: it is not biased conservative on UD carbon (Shi
-+0.2% to +26%, Hsiao & Daniel −22%), and $g$ there would push Shi's UD
-cases up to +53% unsafe (and, until issue #454 removed the compression
-floor from tension, Dataset M's UD tension floor up to +78%). The
-reported `gamma_Y_eff` is the budget the path actually used.
+raises the knockdown. When this was decided it was not biased
+conservative on UD carbon (Shi +0.2% to +26%, Hsiao & Daniel −22%), and
+$g$ there would have pushed Shi's UD cases up to +53% unsafe (and, until
+issue #454 removed the compression floor from tension, Dataset M's UD
+tension floor up to +78%). Shi's specimens are one-sided surface
+troughs, and since issue #461 they are scored as `tool_flat`, on the
+peak-angle path with $g$ (−59% to −71%). The `graded` UD carbon cases
+left are Hsiao & Daniel (−22%) and the quarantined Krishnappa mid-plane
+strips (−7% to −34%). The reported `gamma_Y_eff` is the budget the path
+actually used.
 
 ### 2.3 Morphology factor $M_f$
 

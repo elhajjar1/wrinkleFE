@@ -18,12 +18,12 @@
         {
           "case": "H-MD-20",
           "dataset": "shi_2025_md_cfrp_compression",
-          "ratio": 0.6428
+          "ratio": 1.2884
         },
         {
           "case": "H-MD-30",
           "dataset": "shi_2025_md_cfrp_compression",
-          "ratio": 0.4647
+          "ratio": 0.9525
         },
         {
           "case": "J-QI-1",
@@ -38,7 +38,7 @@
       "laminate": "md",
       "loading": "compression",
       "margin_factor": null,
-      "min_ratio": 0.4647,
+      "min_ratio": 0.8687,
       "mixture": null,
       "n": 3,
       "n_below_margin": null,
@@ -53,7 +53,7 @@
         {
           "case": "H-MD-10",
           "dataset": "shi_2025_md_cfrp_compression",
-          "ratio": 0.9454
+          "ratio": 1.7285
         },
         {
           "case": "J-QI-2",
@@ -68,7 +68,7 @@
       "laminate": "md",
       "loading": "compression",
       "margin_factor": null,
-      "min_ratio": 0.9454,
+      "min_ratio": 1.0856,
       "mixture": null,
       "n": 2,
       "n_below_margin": null,
@@ -83,12 +83,12 @@
         {
           "case": "H-UD-20",
           "dataset": "shi_2025_ud_cfrp_compression",
-          "ratio": 0.8947
+          "ratio": 3.161
         },
         {
           "case": "H-UD-30",
           "dataset": "shi_2025_ud_cfrp_compression",
-          "ratio": 0.7945
+          "ratio": 3.4434
         },
         {
           "case": "J-UD-1",
@@ -103,7 +103,7 @@
       "laminate": "ud",
       "loading": "compression",
       "margin_factor": null,
-      "min_ratio": 0.7945,
+      "min_ratio": 1.1107,
       "mixture": null,
       "n": 3,
       "n_below_margin": null,
@@ -178,7 +178,7 @@
         {
           "case": "H-UD-10",
           "dataset": "shi_2025_ud_cfrp_compression",
-          "ratio": 0.9977
+          "ratio": 2.4356
         },
         {
           "case": "J-UD-2",
@@ -196,26 +196,26 @@
       "laminate": "ud",
       "loading": "compression",
       "margin_factor": 1.0,
-      "min_ratio": 0.9977,
+      "min_ratio": 1.2,
       "mixture": {
         "means": [
-          0.2366,
-          0.7281
+          0.2364,
+          0.8909
         ],
         "sds": [
           0.05,
-          0.376
+          0.1874
         ],
         "weights": [
-          0.4637,
-          0.5363
+          0.4996,
+          0.5004
         ]
       },
       "n": 14,
-      "n_below_margin": 1,
-      "normal_ratio_quantile": 0.878,
+      "n_below_margin": 0,
+      "normal_ratio_quantile": 0.961,
       "path": "kink_band",
-      "ratio_quantile": 1.1587,
+      "ratio_quantile": 1.1881,
       "status": "fitted"
     },
     "penetration_gate/compression/ud/non-bending": {

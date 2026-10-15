@@ -88,6 +88,19 @@ from wrinklefe.solver.static import StaticSolver
 
 logger = logging.getLogger(__name__)
 
+#: Why ``analytical_onset_knockdown`` must not be relied on (issue #463).
+#: Reported with the value in the results JSON, on the critical-value
+#: search when it targets ``onset_knockdown``, and in the CLI.
+ONSET_ESTIMATE_CAVEAT = (
+    "The analytical delamination-onset estimate is unvalidated. Against "
+    "the measured damage onset of one study's tension coupons it was "
+    "above the measurement on all nine multidirectional coupons, by up "
+    "to about 240%, and 95% to 99% below it on the unidirectional ones: "
+    "its notional interface flaw spans the whole block of adjacent 0-deg "
+    "plies, which on a unidirectional laminate is the full thickness. Do "
+    "not use it to set an acceptance limit (issue #463)."
+)
+
 # Analytical damage model constants (Section 6 of CLAUDE.md)
 _D0 = 0.15       # Base damage coefficient
 _BETA_ANGLE = 3.0  # Angle sensitivity
@@ -1061,8 +1074,8 @@ class AnalysisConfig:
         extent of the wrinkle in the 3-D dual-wrinkle / graded mesh
         deformation.  Default 12.0.  Must be > 0.
     morphology : str
-        Morphology name. Five values are accepted; the first three are
-        *dual-wrinkle* modes distinguished by phase, the last two are
+        Morphology name. Six values are accepted; the first three are
+        *dual-wrinkle* modes distinguished by phase, the last three are
         *single-wrinkle* modes distinguished by their through-thickness
         amplitude profile:
 
@@ -1083,6 +1096,20 @@ class AnalysisConfig:
         - ``'graded'`` — one wrinkle, linear decay from mid-ply to the
           surfaces with the ``decay_floor`` knob (0 = full decay to
           zero, 1 = same as ``'uniform'``).
+        - ``'tool_flat'`` — one wrinkle, full amplitude in the core and
+          a linear ramp over ``surface_transition_plies`` plies to an
+          exactly flat face on ``surface_pocket_side`` (cured against
+          the tool).
+
+        Pick by what the outer surfaces do. Use ``'graded'`` (or a
+        dual-wrinkle mode) when both stay flat, as over an embedded
+        wrinkle, and ``'uniform'`` when both are wavy. Use
+        ``'tool_flat'``, with ``surface_pocket_side`` set to the tool
+        face, when one is flat on the tool and the other follows the
+        wrinkle (a one-sided surface trough). A trough modelled as
+        ``'graded'`` gets no bending-dominated warning: ``'graded'``
+        keeps both surfaces flat, and the load-path eccentricity
+        measures the modelled geometry (issue #461).
     phase : float or None
         Explicit dual-wrinkle phase offset phi [radians] between the two
         wrinkle centrelines.  When ``None`` (default), the phase is
@@ -2828,7 +2855,11 @@ class AnalysisResults:
         ``material.GIc`` and ``material.GIIc``.  ``None`` when the
         material does not provide both fracture toughnesses or when the
         loading is compression.  Always strictly below
-        ``analytical_knockdown``.
+        ``analytical_knockdown``.  **Unvalidated** (issue #463): see
+        ``analytical_onset_caveat``.
+    analytical_onset_caveat : str or None
+        :data:`ONSET_ESTIMATE_CAVEAT` whenever
+        ``analytical_onset_knockdown`` is set, else ``None``.
     analytical_strength_MPa : float
         Analytical predicted failure stress (MPa).
     load_path_eccentricity_mm, load_path_eccentricity_ratio : float
@@ -2908,6 +2939,8 @@ class AnalysisResults:
     wrinkle. Loading-independent; the closed-form companion to the FE
     :attr:`modulus_retention`."""
     analytical_onset_knockdown: float | None = None
+    # Issue #463: the onset estimate is unvalidated; this travels with it.
+    analytical_onset_caveat: str | None = None
     analytical_strength_MPa: float = 0.0
     # Kink-band strain budget the analytical path used: the layup
     # confinement model, ``S12 / Xc`` for a UD-dominated laminate on the
@@ -5047,12 +5080,14 @@ class WrinkleAnalysis:
             # the default c_AF = 0 this is KD_BF = g / (g + theta_eff);
             # a user-set c_AF still applies on top. The graded
             # profile-proportional branch above keeps gamma_Y_eff: its
-            # budget is calibrated jointly with the profile average, and
-            # it is not biased conservative on UD carbon (Hsiao-Daniel
-            # -22 %, Krishnappa WM -7 % to -34 %, Shi +0.2 % to +26 %),
-            # so g there would push Shi further unsafe (and, until issue
-            # #454 removed the compression floor from tension, Dataset M's
-            # UD tension floor too).
+            # budget is calibrated jointly with the profile average. When
+            # this was decided it was not biased conservative on UD carbon
+            # (Hsiao-Daniel -22 %, Krishnappa WM -7 % to -34 %, and Shi
+            # +0.2 % to +26 % while its one-sided troughs were scored as
+            # graded), so g there would have pushed Shi further unsafe
+            # (and, until issue #454 removed the compression floor from
+            # tension, Dataset M's UD tension floor too). Since issue
+            # #461 Shi is scored as tool_flat, on this branch.
             if _is_ud_dominated(angles):
                 gamma_Y_eff = _ud_kink_strain_budget(mat)
             r_bf = theta_eff / gamma_Y_eff
@@ -5089,6 +5124,11 @@ class WrinkleAnalysis:
             )
         else:
             results.analytical_onset_knockdown = None
+        results.analytical_onset_caveat = (
+            ONSET_ESTIMATE_CAVEAT
+            if results.analytical_onset_knockdown is not None
+            else None
+        )
 
         results.analytical_strength_MPa = ref_strength * kd
 

@@ -15,6 +15,11 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- Community — **a "Usage question" issue form**
+  (`.github/ISSUE_TEMPLATE/question.yml`) that applies the `question`
+  label. It replaces the new-issue chooser's "Usage question" link, which
+  pointed to GitHub Discussions; Discussions are not enabled, so the link
+  led nowhere. CONTRIBUTING.md points questions to the form.
 - Community — **a "Contribute a validation dataset" issue form**
   (`.github/ISSUE_TEMPLATE/validation_dataset.yml`). It asks for what a
   validation-ledger entry needs: a published source and its DOI, a
@@ -24,6 +29,31 @@ version produced a given file.
   strengths. CONTRIBUTING.md gains a section on how a dataset enters the
   ledger, when it is quarantined and when a new manufacturing route
   comes into scope; the README points to the form.
+- Docs and app — **one-sided surface troughs are steered to `tool_flat`**
+  (issue #461, part 1). The bending-dominated flag (issue #439) is
+  measured on the modelled geometry, and `graded` with decay floor 0
+  keeps both outer surfaces flat. A trough modelled that way therefore
+  read as an embedded wrinkle and got no warning: e/t 0 on Shi's UD
+  troughs and at most 0.03 on the multidirectional ones, where the
+  analytical knockdown is up to 115% unsafe. As `tool_flat` with the
+  tool face pinned, the 20% and 30% troughs are flagged (e/t 0.10 to
+  0.18).
+  - No detector was added on `graded`. Its inputs overlap the measured
+    embedded wrinkles' (amplitude/thickness up to 0.207, peak angle up to
+    30°, against 0.200 and 23.5° for Shi's 20% trough), so any threshold
+    would also warn on embedded wrinkles.
+  - New `wrinklefe.core.eccentricity.ONE_SIDED_TROUGH_ADVICE`, shown in
+    the app's **Morphology** help and the CLI's `--morphology` help. The
+    app also adds a caption under the `graded` decay floor. The
+    `AnalysisConfig.morphology` docstring now lists `tool_flat` and says
+    which morphology fits which wrinkle.
+  - `docs/interpreting_results.md` gains "One-sided surface troughs:
+    model them as `tool_flat`", with what each morphology reports for
+    Shi's troughs. The guidance table and `VALIDATION.md` carry the
+    evidence. `tests/test_trough_morphology.py` pins it, including that
+    no embedded case (ledger, Datasets C, D and E) is flagged.
+  - Reporting and guidance only: no knockdown, flag or margin changes,
+    and `scripts/validate.py` shows zero drift.
 - CZM — **a per-load-increment damage record** (issue #453).
   `AnalysisResults.czm_damage_history`
   (`wrinklefe.solver.czm_history.CzmDamageHistory`) holds, after every
@@ -79,7 +109,9 @@ version produced a given file.
     half's, with buckling participation at t/T = 30%); on the UD half
     it is +0.2/+11.8/+25.9%, the angle-saturation pattern the
     penetration gate addresses (no gate preset calibrated for this
-    material yet). Docs carry both tables.
+    material yet). Docs carry both tables. *(Those figures are on the
+    `graded` recipe this entry shipped with; issue #461 corrected it to
+    the one-sided `tool_flat` trough: see Numerical results.)*
   - Context reference: Luong et al. (2025), Composites Part B
     307:112818 (CC BY review; knockdown ranges, no case data).
 - Validation — **Dataset I: Calvo et al. (2023), the first distributed
@@ -346,7 +378,8 @@ version produced a given file.
     `tests/test_validation/test_margins_ledger.py` fail while it is stale.
   - The ledger's Dataset H entries gain an `eccentricity_recipe`, so
     their bending regime is measured on the one-sided trough the
-    specimens have.
+    specimens have. *(Removed again by issue #461, which made that
+    trough the knockdown recipe itself.)*
   - The results JSON schema goes to **1.6**, an additive change (new
     `validation_margin` block). The NCR builder accepts an optional
     `analytical_path`, and the app passes it.
@@ -374,6 +407,45 @@ version produced a given file.
   that no script regenerates; the parity chart supersedes them.
 
 ### Changed
+- Validation — **the parity chart is split in two.**
+  `validation/fig_all_validation_parity.png` now plots only the
+  analytical prediction the package reports by default against each
+  case's ultimate strength, one point per case: 61 of 74 inside ±20%,
+  none more than 20% unsafe. The first-ply FE retention, Dataset M's
+  first-ply FE onset and Mukhopadhyay's analytical onset move to a new
+  `validation/fig_fe_onset_parity.png` (16 of 31 inside; the 8 more than
+  20% unsafe are Dataset M's FE onset estimates). The combined chart
+  counted Datasets H to L twice and mixed onset with ultimate strength
+  (77 of 105). `plot_all_validation.is_headline` decides which figure a
+  series belongs to; `strength_error_summary.py` prints both counts.
+- Warnings — **the one-sided-trough warning explains why the kink-band
+  errs conservative there** (`BENDING_REGIME_CAVEAT`, issue #461). On
+  Shi's measured troughs it ranged from about 70% conservative to 5%
+  unsafe, because it applies the peak misalignment angle to the whole
+  section, although the misalignment fades toward the flat tool face,
+  and it does not credit the straighter plies near that face with the
+  load the wavy plies shed. The warning still says it is not always
+  conservative and still advises FE on the measured profile;
+  `docs/interpreting_results.md` gives the same two reasons.
+- Analysis — **the analytical delamination-onset estimate is flagged as
+  unvalidated** (issue #463). Against Dataset M's measured onset it is
+  above the measurement on all nine multidirectional coupons, by up to
+  244%, and 95–99% below it on the UD ones, whose notional interface
+  flaw spans the full 16-ply thickness.
+  - New `wrinklefe.analysis.ONSET_ESTIMATE_CAVEAT` and
+    `AnalysisResults.analytical_onset_caveat`, set whenever
+    `analytical_onset_knockdown` is.
+  - The results JSON gains `analytical_onset_validated` (`false` when an
+    onset is reported) and `analytical_onset_caveat` in its `analytical`
+    block; schema **1.7**, additive.
+  - The critical-value search logs the caveat and returns it
+    (`CriticalValueResult.caveat`) when the objective is
+    `onset_knockdown`; the `critical` CLI prints it, writes it to
+    `--output-json`, and its `--objective` help says the objective is
+    unvalidated.
+  - The guidance no longer says the onset number governs a requirement
+    written against onset. The value itself is unchanged; a real onset
+    model is issue #465.
 - Analysis — **the UD kink-band strain budget now comes from the
   material card (issue #451).** On the peak-angle compression path
   (every morphology except `graded`), a UD-dominated laminate (at least
@@ -514,6 +586,46 @@ version produced a given file.
   a non-zero `decay_floor`, and `convex`). Thick UD blocks that had
   collapsed onto the floor come out higher. Analytical cases within
   ±20%: 60 → 64 of 77 (parity chart 75 → 79 of 105).
+- **Dataset H (Shi 2025) is scored on its one-sided trough, `tool_flat`
+  (issue #461, part 2).** The specimens are surface troughs over a flat
+  tool face, and part 1 made `tool_flat` with only the tool face pinned
+  the documented morphology for that. The ledger's analytical recipe was
+  `graded`, an embedded wrinkle with both surfaces flat; it is now the
+  geometry the FE recipe already used (flat bottom, 10-ply ramp). The
+  recipe was corrected after its errors against the measurements were
+  known. No model changes, and only the six Shi baselines move. The
+  ledger recipe sets `analytical_only` (a new optional recipe field of
+  `scripts/validate.py`), because `tool_flat` otherwise switches on its
+  FE-only surface pockets, which the analytical path refuses.
+  - Analytical knockdown, signed error against the measurement: UD
+    0.639/0.552/0.503 → 0.262/0.156/0.116 (+0.2/+11.8/+25.9% →
+    −58.9/−68.4/−71.0%); multidirectional 0.804/0.739/0.702 →
+    0.440/0.369/0.342 (+5.8/+55.6/+115.2% → −42.1/−22.4/+5.0%). The
+    peak-angle kink-band applies the full peak angle where `graded`
+    averaged it over the profile; on UD it also takes the card budget
+    S12/Xc of issue #451.
+  - The 20% and 30% troughs are flagged bending-dominated (e/t 0.10 to
+    0.18); they are not whole-thickness waves, so the bending bound
+    does not apply. `BENDING_REGIME_CAVEAT`, the warning such a result
+    carries, quoted the +115% of the `graded` recipe; it now gives the
+    flagged troughs' range on `tool_flat` (about 70% conservative to 5%
+    unsafe, first-ply FE 1% to 40% conservative) and still advises FE.
+  - Bending-mode study (issue #439), re-run: with the kink-band alone,
+    3 of 50 cases are more than 15% unsafe (6 before), all
+    whole-thickness waves; with the bending bound, 1 (Thor's wave 1,
+    +15.1%). Above e/t = 0.15 the kink-band is unsafe on 6 of 8 (7
+    before), FE on none.
+  - The six modulus baselines fall by 0.3% to 1.8% (no measured
+    modulus). The FE scoring is unchanged (same mesh recipe).
+  - Analytical cases within ±20%: 64 → 62 of 77 (parity chart 79 → 77
+    of 105). No analytical case is now outside the band on the unsafe
+    side; the 8 unsafe parity points left are Dataset M's FE onset
+    estimates.
+  - Validation margins refitted: the kink-band UD margin stays 1.00
+    (smallest ratio 0.998 → 1.200); the other regimes Shi feeds still
+    have fewer than 10 cases. The ledger's `eccentricity_recipe` is
+    removed, and `scripts/fit_margins.py` measures every regime on the
+    knockdown recipe (Shi's classification is unchanged).
 - **Tension configs that left `applied_strain` unset now run the FE in
   tension instead of compression.** This changes the FE failure
   indices, retention factors, modulus, and the CZM and progressive

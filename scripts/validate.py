@@ -79,6 +79,11 @@ def case_config(dataset: dict, case: dict, *, with_gate: bool = False):
     optional("surface_pocket_side", cast=str)
     optional("surface_transition_plies", cast=int)
     optional("enable_surface_resin_pockets", cast=bool)
+    # A 'tool_flat' recipe auto-enables its FE-only surface pockets
+    # unless the config is analytical-only, and the analytical path then
+    # refuses them, so Dataset H's one-sided trough recipe says it is
+    # analytical (issue #461). FE scoring re-enables the pockets.
+    optional("analytical_only", cast=bool)
     optional("decay_floor")
     # Optional: AnalysisConfig's unset strain is 1 % in the ``loading``
     # direction, and an explicit value must agree with it in sign.

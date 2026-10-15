@@ -8,6 +8,3 @@ contact_links:
   - name: Documentation
     url: https://wrinklefe.readthedocs.io
     about: API reference, user guide, and the validation ledger.
-  - name: Usage question
-    url: https://github.com/elhajjar1/wrinkleFE/discussions
-    about: For "how do I…" questions about the science or the API, start a discussion.
