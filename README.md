@@ -2,6 +2,7 @@
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
 [![PyPI](https://img.shields.io/pypi/v/wrinklefe.svg)](https://pypi.org/project/wrinklefe/)
+[![Documentation](https://readthedocs.org/projects/wrinklefe/badge/?version=latest)](https://wrinklefe.readthedocs.io/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Software DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23105908.svg)](https://doi.org/10.5281/zenodo.23105908)
 [![Article DOI](https://img.shields.io/badge/article%20DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)

@@ -30,7 +30,7 @@ version produced a given file.
   figures and the PyVista import error now give `pip install wrinklefe`
   (and `wrinklefe[extra]`) instead of a GitHub URL; the GitHub install
   stays documented for the unreleased development version. The README
-  gains a PyPI badge.
+  gains a PyPI badge and a Read the Docs badge linking the documentation.
 
 ## [1.4.0] - 2026-10-15
 
