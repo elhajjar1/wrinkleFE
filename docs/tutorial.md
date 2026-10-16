@@ -81,7 +81,7 @@ wrinklefe analyze --config wrinkle_NCR.json --amplitude 0.30 # one override
 ### Streamlit app
 
 ```bash
-pip install "wrinklefe[streamlit] @ git+https://github.com/elhajjar1/wrinkleFE.git"
+pip install "wrinklefe[streamlit]"
 streamlit run app.py   # from a clone of the repository
 ```
 

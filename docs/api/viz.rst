@@ -16,9 +16,7 @@ happens on first attribute access.
 
 .. code-block:: bash
 
-   pip install "wrinklefe[plotly] @ git+https://github.com/elhajjar1/wrinkleFE.git"
-
-(``pip install 'wrinklefe[plotly]'`` once the package is on PyPI.)
+   pip install "wrinklefe[plotly]"
 
 .. code-block:: python
 
