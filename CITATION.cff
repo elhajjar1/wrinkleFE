@@ -15,7 +15,7 @@
 # authors, keywords) and ignores `doi` / `identifiers`, so they cannot
 # disturb future archiving.
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite it using the concept DOI 10.5281/zenodo.23105908, which covers all versions."
 type: software
 title: "WrinkleFE"
 version: 1.4.0

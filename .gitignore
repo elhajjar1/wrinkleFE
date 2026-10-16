@@ -3,6 +3,9 @@ _parked/
 # Unpublished paper drafts (JOSS, preprints): never commit before
 # submission. Back them up outside this repository.
 drafts/
+# The JOSS paper's source is tracked under paper/; its rendered PDF is a
+# build output of .github/workflows/draft-pdf.yml.
+paper/paper.pdf
 
 # Python
 __pycache__/

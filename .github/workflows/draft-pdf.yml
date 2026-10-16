@@ -1,0 +1,41 @@
+name: JOSS draft PDF
+
+# Builds paper/paper.md + paper/paper.bib into the PDF the Journal of Open
+# Source Software will publish, with Open Journals' own toolchain, so the
+# rendered paper (citations, reference list, figure) can be checked before
+# and during review. Download it from the run's "paper" artifact.
+on:
+  push:
+    branches: [main]
+    paths: ["paper/**", ".github/workflows/draft-pdf.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["paper/**", ".github/workflows/draft-pdf.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paper:
+    name: Build the paper PDF
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: paper/paper.md
+
+      - name: Upload the PDF
+        uses: actions/upload-artifact@v7
+        with:
+          name: paper
+          # The action writes the PDF next to paper.md.
+          path: paper/paper.pdf

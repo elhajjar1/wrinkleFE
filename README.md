@@ -2,6 +2,7 @@
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
 [![PyPI](https://img.shields.io/pypi/v/wrinklefe.svg)](https://pypi.org/project/wrinklefe/)
+[![Documentation](https://readthedocs.org/projects/wrinklefe/badge/?version=latest)](https://wrinklefe.readthedocs.io/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Software DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23105908.svg)](https://doi.org/10.5281/zenodo.23105908)
 [![Article DOI](https://img.shields.io/badge/article%20DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)
@@ -9,6 +10,10 @@
 [![GitHub stars](https://img.shields.io/github/stars/elhajjar1/wrinkleFE?style=social)](https://github.com/elhajjar1/wrinkleFE)
 
 An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fibre waviness defects.
+
+**📖 Documentation: [wrinklefe.readthedocs.io](https://wrinklefe.readthedocs.io)** — getting started, tutorial, theory, how to interpret results, the validation record and the API reference.
+
+**Install:** `pip install wrinklefe` · **Web app:** [wrinklefe.streamlit.app](https://wrinklefe.streamlit.app/) · **Cite:** [DOI 10.5281/zenodo.23105908](https://doi.org/10.5281/zenodo.23105908)
 
 > ⭐ **Found WrinkleFE useful?** Please [star the repository](https://github.com/elhajjar1/wrinkleFE) and [cite it](#citation) — it's a free academic project, and stars and citations are what keep it supported.
 

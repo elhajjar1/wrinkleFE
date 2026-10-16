@@ -14,13 +14,25 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Added
+- **The JOSS paper's source** is in `paper/` (`paper.md`, `paper.bib`,
+  and the headline parity figure), and `.github/workflows/draft-pdf.yml`
+  builds it into the Journal of Open Source Software's PDF with Open
+  Journals' toolchain on every change to `paper/` (download the `paper`
+  artifact).
+
 ### Changed
+- `CITATION.cff`'s `message` now names the concept DOI. Zenodo copies the
+  message into each archived version's Notes, where the old wording,
+  "please cite it as below", had nothing below it.
 - Documentation — **install from PyPI.** WrinkleFE 1.4.0 is on PyPI, so
   the README, Getting started, the tutorial, the API page for the Plotly
   figures and the PyVista import error now give `pip install wrinklefe`
   (and `wrinklefe[extra]`) instead of a GitHub URL; the GitHub install
   stays documented for the unreleased development version. The README
-  gains a PyPI badge.
+  gains a PyPI badge, a Read the Docs badge, and a line under its
+  opening sentence linking the documentation, the install command, the
+  web app and the citation DOI.
 
 ## [1.4.0] - 2026-10-15
 
