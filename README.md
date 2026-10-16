@@ -11,6 +11,10 @@
 
 An open-source Python finite element package for predicting strength and stiffness knockdown in composite laminates containing fibre waviness defects.
 
+**📖 Documentation: [wrinklefe.readthedocs.io](https://wrinklefe.readthedocs.io)** — getting started, tutorial, theory, how to interpret results, the validation record and the API reference.
+
+**Install:** `pip install wrinklefe` · **Web app:** [wrinklefe.streamlit.app](https://wrinklefe.streamlit.app/) · **Cite:** [DOI 10.5281/zenodo.23105908](https://doi.org/10.5281/zenodo.23105908)
+
 > ⭐ **Found WrinkleFE useful?** Please [star the repository](https://github.com/elhajjar1/wrinkleFE) and [cite it](#citation) — it's a free academic project, and stars and citations are what keep it supported.
 
 ## Try it in your browser
