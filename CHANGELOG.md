@@ -14,6 +14,13 @@ version produced a given file.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-15
+
+Version 1.3.0 was prepared on 2026-10-07 but never tagged or
+published, so this release also carries its changes: in each category
+below, the entries from 1.3.0 follow this release's own. Results files
+that report version 1.3.0 came from development builds of `main`.
+
 Several entries below quote validation counts as they stood when that
 change landed. Later changes in this release superseded some of them,
 and each such figure is marked. The final figures (section 1 of
@@ -469,6 +476,49 @@ The results JSON schema moves from 1.2 to 1.7 in five additive steps:
   - Reporting only: no knockdown changes, `scripts/validate.py` shows
     zero drift, and the severity banding still reads the unmargined
     knockdown.
+- CI — **the lint job pins its tool versions** (`requirements-lint.txt`:
+  ruff, mypy, scipy-stubs), installed as a pip constraints file so the
+  pins never reach the published package's extras (`wrinklefe[all]`
+  includes `dev`). Unpinned, a new tool release changes the verdict with
+  no change to the code: mypy 2.4.0 turned lint red on `main` and on an
+  unrelated release PR at the same moment. Pinned, Dependabot (which
+  updates any pip `.txt` file) proposes each upgrade as a PR whose own CI
+  shows whether the tree still passes. The pre-commit ruff hook now runs
+  `python -m ruff`, so a ruff earlier on `PATH` cannot stand in for the
+  pinned one, and `CONTRIBUTING.md` installs with the same constraints.
+  `tests/test_requirements_consistency.py` holds the new file to
+  `pyproject.toml`'s ranges like the other two.
+- Safety — **the FE strength outputs now carry a caveat wherever a user
+  sees them.** Validation had shown the FE strength paths err on the unsafe
+  side, but that was recorded only in `docs/internal/VALIDATION.md` while
+  the app and the NCR summary showed FE strength numbers unqualified, in a
+  tool pitched for scrap/repair/accept decisions. On the default app case
+  the analytical knockdown is 0.606 and the FE "strength retention" 0.781.
+  Re-measured against measured strength on current code: FE LaRC05
+  over-predicted retained strength on all five non-reference Li (2025) UD
+  cases, by up to +58%; the crack-band progressive-damage model
+  over-predicted the most severe wrinkle (+24%, +42% on a refined mesh)
+  while under-predicting milder ones. Neither has any measured-strength
+  check for multidirectional laminates.
+  - `wrinklefe.io.export.FE_STRENGTH_CAVEAT` and
+    `PROGRESSIVE_DAMAGE_CAVEAT` hold the wording once. The NCR summary
+    carries them in its data (`caveat` in the `finite_element` and
+    `progressive_damage` blocks) and renders them directly under those
+    blocks in the Markdown and PDF. A summary saved before this change
+    still renders the warning. The disposition itself is unchanged: it
+    was, and stays, driven by the analytical knockdown.
+  - The app shows the caveat above the FE strength metric, and the
+    metric's help text says it has over-predicted, never under-predicted.
+  - `docs/interpreting_results.md` gains "How far to trust each number":
+    signed errors for every validation dataset and each prediction path.
+    It no longer recommends `progressive_knockdown` as "the FE answer"
+    for UD compression, and adds "never let an FE strength number raise a
+    knockdown".
+  - `validation/strength_error_summary.py` regenerates every figure
+    quoted. `tests/test_fe_strength_caveat.py` checks the caveat is
+    delivered (app and NCR, and absent without FE results) and that its
+    numbers stay true: the progressive figures against the ledger, the
+    FE LaRC05 claims by re-running the six cases (slow lane).
 
 ### Changed
 - Documentation — **pre-release cleanup.** README, CONTRIBUTING, the issue
@@ -593,6 +643,23 @@ The results JSON schema moves from 1.2 to 1.7 in five additive steps:
   over-predicted retained strength by up to about 100% (Dataset L,
   middle-ply wrinkles). A slow test pins it.
 
+### Deprecated
+- Export — **the legacy JSON layout is deprecated and will be removed in
+  2.0.** `wrinklefe.io.export.export_results_json` (also re-exported as
+  `wrinklefe.io.export_results_json`) and
+  `wrinklefe.io.export.analysis_results_to_dict` raise a
+  `DeprecationWarning`; use `wrinklefe.io.results.export_results_json` /
+  `results_to_dict`, the structured, schema-versioned document. The two
+  layouts share no result paths, so merging them was never an option
+  that kept consumers working; one goes, with a release of warning.
+  - The CLI's `--output-json` on `analyze`, `sweep`, `compare` and
+    `critical` gains `--json-schema {legacy,structured}`. `legacy` stays
+    the default for this release, byte-identical to before, and each
+    write prints a one-line note to stderr; `structured` writes the
+    schema-versioned document per run. In 2.0 `structured` becomes the
+    only layout.
+  - Example 05 and the README use the structured export.
+
 ### Removed
 - Repository cleanup: eleven stale files, about 700 KB. A scratch
   calibration probe at the top level (`_calibrate_mmb25.py`; the MMB-25
@@ -611,6 +678,9 @@ The results JSON schema moves from 1.2 to 1.7 in five additive steps:
   that cited it point there instead. Also the two archival knockdown
   figures (`figures/validation_compression.png`, `validation_tension.png`)
   that no script regenerates; the parity chart supersedes them.
+- Export — the legacy layout's `buckling`, `monte_carlo` and
+  `jensen_gap` blocks are removed. They read attributes
+  `AnalysisResults` has never had, so no export ever contained them.
 
 ### Fixed
 - CI — **the lint job pins Streamlit for the type checker**
@@ -691,133 +761,6 @@ The results JSON schema moves from 1.2 to 1.7 in five additive steps:
     is removed. A kink band is a compressive micro-buckling mode with no
     tension counterpart. The floor tied tension results to the kink-band
     strain budget (issue #451), and the tension model no longer needs it.
-
-### Numerical results
-- **Validation margins reported for multidirectional laminates change**
-  (issue #462; the results JSON's and the NCR summary's
-  `validation_margin` block, reporting only). Not-bending-dominated
-  multidirectional compression now reports a margin of 1.00 (n = 17)
-  instead of insufficient evidence; multidirectional tension reports
-  0.896 (n = 20) instead of 0.881 (n = 10). No knockdown moves.
-- **UD-dominated analytical compression knockdowns rise on the
-  peak-angle path (issue #451).** Signed mean error: Thor (2021) UD
-  −57.9% → −16.6%, Pilato (2022) −77.5% → −20.3%, Krishnappa &
-  Gururaja (2024, quarantined) −55.8% → −31.7% over all 18 cases
-  (−73.6% → −37.5% on the 12 WL/WR cases that move; the embedded WM
-  cases are `graded` and unchanged). No case becomes
-  unsafe. 20 ledger baselines are re-pinned (J-UD, K, L-WL/WR and the
-  Hsiao & Daniel uniform coupon, which has no measured strength); every
-  other ledger, A–D and E prediction is bit-for-bit unchanged. No
-  tension result moves: issue #454 (below) removed the compression
-  floor from tension, so the budget reaches compression only. The wet lay-up
-  out-of-scope caveat now says the kink-band was about 32% conservative
-  on Dataset L (it said 56%). Analytical cases within ±20%: 55 → 58 of
-  77 (the combined parity chart of the time: 70 → 73 of 105).
-- **Bending-dominated whole-thickness waves in compression get a lower
-  analytical knockdown where the bending bound governs** (issue #452).
-  Nothing changes below e/t = 0.10, in tension, or on a one-sided
-  trough. One ledger case moved: Thor's quasi-isotropic wave 1 (J-QI-1),
-  0.5271 → 0.3990 (+52.1% → +15.1% against the measurement). In the
-  head-to-head, Elhajjar compression A = 0.61 mm goes 0.415 → 0.396
-  (+18.5% → +13.1%) and A = 0.73 mm 0.415 → 0.353 (+29.6% → +10.4%).
-  Thor's UD wave 1 and ten Krishnappa (quarantined) cases also get the
-  bound, but their kink-band value, even with the UD strain budget of
-  issue #451, is lower and stays. Analytical cases within ±20%, on top
-  of issue #451: 58 → 60 of 77 (combined parity chart 73 → 75 of 105).
-- **Analytical tension knockdowns move (issue #454); compression is
-  bit-for-bit unchanged.** Dataset M, multidirectional: signed mean
-  +11.7% → −4.9%, 8 → 3 of 9 unsafe, worst +29.6% → +14.2%. Dataset M,
-  UD: +18.8% → −2.8%, 2 → 2 of 4 unsafe, worst +39.2% → +17.6%.
-  Mukhopadhyay (C) tension: −19.9% → −12.2%. Elhajjar (B), Calvo (I) and
-  the Mukhopadhyay onset are unchanged. The 13 Dataset M ledger
-  baselines are re-pinned. Outside the validated set, tension results
-  that the floor was holding up now come out lower (mostly `graded` with
-  a non-zero `decay_floor`, and `convex`). Thick UD blocks that had
-  collapsed onto the floor come out higher. Analytical cases within
-  ±20%: 60 → 64 of 77 (combined parity chart 75 → 79 of 105); issue
-  #461 then took it to the final 62 (see the Dataset H entry under
-  Changed).
-- **Tension configs that left `applied_strain` unset now run the FE in
-  tension instead of compression.** This changes the FE failure
-  indices, retention factors, modulus, and the CZM and progressive
-  outputs. Analytical knockdowns are unchanged. Every
-  in-repo validation dataset already set its strain explicitly, so no
-  ledger value moves.
-- **Saved configs with `loading="tension"` and a negative
-  `applied_strain` (or compression with a positive one) no longer
-  load.** They described a contradictory analysis; flip the strain's
-  sign, or delete it to take the loading's default.
-
-## [1.3.0] - 2026-10-07
-
-### Added
-- CI — **the lint job pins its tool versions** (`requirements-lint.txt`:
-  ruff, mypy, scipy-stubs), installed as a pip constraints file so the
-  pins never reach the published package's extras (`wrinklefe[all]`
-  includes `dev`). Unpinned, a new tool release changes the verdict with
-  no change to the code: mypy 2.4.0 turned lint red on `main` and on an
-  unrelated release PR at the same moment. Pinned, Dependabot (which
-  updates any pip `.txt` file) proposes each upgrade as a PR whose own CI
-  shows whether the tree still passes. The pre-commit ruff hook now runs
-  `python -m ruff`, so a ruff earlier on `PATH` cannot stand in for the
-  pinned one, and `CONTRIBUTING.md` installs with the same constraints.
-  `tests/test_requirements_consistency.py` holds the new file to
-  `pyproject.toml`'s ranges like the other two.
-- Safety — **the FE strength outputs now carry a caveat wherever a user
-  sees them.** Validation had shown the FE strength paths err on the unsafe
-  side, but that was recorded only in `docs/internal/VALIDATION.md` while
-  the app and the NCR summary showed FE strength numbers unqualified, in a
-  tool pitched for scrap/repair/accept decisions. On the default app case
-  the analytical knockdown is 0.606 and the FE "strength retention" 0.781.
-  Re-measured against measured strength on current code: FE LaRC05
-  over-predicted retained strength on all five non-reference Li (2025) UD
-  cases, by up to +58%; the crack-band progressive-damage model
-  over-predicted the most severe wrinkle (+24%, +42% on a refined mesh)
-  while under-predicting milder ones. Neither has any measured-strength
-  check for multidirectional laminates.
-  - `wrinklefe.io.export.FE_STRENGTH_CAVEAT` and
-    `PROGRESSIVE_DAMAGE_CAVEAT` hold the wording once. The NCR summary
-    carries them in its data (`caveat` in the `finite_element` and
-    `progressive_damage` blocks) and renders them directly under those
-    blocks in the Markdown and PDF. A summary saved before this change
-    still renders the warning. The disposition itself is unchanged: it
-    was, and stays, driven by the analytical knockdown.
-  - The app shows the caveat above the FE strength metric, and the
-    metric's help text says it has over-predicted, never under-predicted.
-  - `docs/interpreting_results.md` gains "How far to trust each number":
-    signed errors for every validation dataset and each prediction path.
-    It no longer recommends `progressive_knockdown` as "the FE answer"
-    for UD compression, and adds "never let an FE strength number raise a
-    knockdown".
-  - `validation/strength_error_summary.py` regenerates every figure
-    quoted. `tests/test_fe_strength_caveat.py` checks the caveat is
-    delivered (app and NCR, and absent without FE results) and that its
-    numbers stay true: the progressive figures against the ledger, the
-    FE LaRC05 claims by re-running the six cases (slow lane).
-
-### Deprecated
-- Export — **the legacy JSON layout is deprecated and will be removed in
-  2.0.** `wrinklefe.io.export.export_results_json` (also re-exported as
-  `wrinklefe.io.export_results_json`) and
-  `wrinklefe.io.export.analysis_results_to_dict` raise a
-  `DeprecationWarning`; use `wrinklefe.io.results.export_results_json` /
-  `results_to_dict`, the structured, schema-versioned document. The two
-  layouts share no result paths, so merging them was never an option
-  that kept consumers working; one goes, with a release of warning.
-  - The CLI's `--output-json` on `analyze`, `sweep`, `compare` and
-    `critical` gains `--json-schema {legacy,structured}`. `legacy` stays
-    the default for this release, byte-identical to before, and each
-    write prints a one-line note to stderr; `structured` writes the
-    schema-versioned document per run. In 2.0 `structured` becomes the
-    only layout.
-  - Example 05 and the README use the structured export.
-
-### Removed
-- Export — the legacy layout's `buckling`, `monte_carlo` and
-  `jensen_gap` blocks are removed. They read attributes
-  `AnalysisResults` has never had, so no export ever contained them.
-
-### Fixed
 - Docs — **two validation claims were wrong.**
   - `docs/internal/VALIDATION.md` said every crack-band error was positive
     and quoted the refined mesh as "+15 % to +42 %". The signs are mixed:
@@ -898,6 +841,60 @@ The results JSON schema moves from 1.2 to 1.7 in five additive steps:
   criteria flagged `retention_degenerate`, as its docstring said it did.
 
 ### Numerical results
+- **Validation margins reported for multidirectional laminates change**
+  (issue #462; the results JSON's and the NCR summary's
+  `validation_margin` block, reporting only). Not-bending-dominated
+  multidirectional compression now reports a margin of 1.00 (n = 17)
+  instead of insufficient evidence; multidirectional tension reports
+  0.896 (n = 20) instead of 0.881 (n = 10). No knockdown moves.
+- **UD-dominated analytical compression knockdowns rise on the
+  peak-angle path (issue #451).** Signed mean error: Thor (2021) UD
+  −57.9% → −16.6%, Pilato (2022) −77.5% → −20.3%, Krishnappa &
+  Gururaja (2024, quarantined) −55.8% → −31.7% over all 18 cases
+  (−73.6% → −37.5% on the 12 WL/WR cases that move; the embedded WM
+  cases are `graded` and unchanged). No case becomes
+  unsafe. 20 ledger baselines are re-pinned (J-UD, K, L-WL/WR and the
+  Hsiao & Daniel uniform coupon, which has no measured strength); every
+  other ledger, A–D and E prediction is bit-for-bit unchanged. No
+  tension result moves: issue #454 (below) removed the compression
+  floor from tension, so the budget reaches compression only. The wet lay-up
+  out-of-scope caveat now says the kink-band was about 32% conservative
+  on Dataset L (it said 56%). Analytical cases within ±20%: 55 → 58 of
+  77 (the combined parity chart of the time: 70 → 73 of 105).
+- **Bending-dominated whole-thickness waves in compression get a lower
+  analytical knockdown where the bending bound governs** (issue #452).
+  Nothing changes below e/t = 0.10, in tension, or on a one-sided
+  trough. One ledger case moved: Thor's quasi-isotropic wave 1 (J-QI-1),
+  0.5271 → 0.3990 (+52.1% → +15.1% against the measurement). In the
+  head-to-head, Elhajjar compression A = 0.61 mm goes 0.415 → 0.396
+  (+18.5% → +13.1%) and A = 0.73 mm 0.415 → 0.353 (+29.6% → +10.4%).
+  Thor's UD wave 1 and ten Krishnappa (quarantined) cases also get the
+  bound, but their kink-band value, even with the UD strain budget of
+  issue #451, is lower and stays. Analytical cases within ±20%, on top
+  of issue #451: 58 → 60 of 77 (combined parity chart 73 → 75 of 105).
+- **Analytical tension knockdowns move (issue #454); compression is
+  bit-for-bit unchanged.** Dataset M, multidirectional: signed mean
+  +11.7% → −4.9%, 8 → 3 of 9 unsafe, worst +29.6% → +14.2%. Dataset M,
+  UD: +18.8% → −2.8%, 2 → 2 of 4 unsafe, worst +39.2% → +17.6%.
+  Mukhopadhyay (C) tension: −19.9% → −12.2%. Elhajjar (B), Calvo (I) and
+  the Mukhopadhyay onset are unchanged. The 13 Dataset M ledger
+  baselines are re-pinned. Outside the validated set, tension results
+  that the floor was holding up now come out lower (mostly `graded` with
+  a non-zero `decay_floor`, and `convex`). Thick UD blocks that had
+  collapsed onto the floor come out higher. Analytical cases within
+  ±20%: 60 → 64 of 77 (combined parity chart 75 → 79 of 105); issue
+  #461 then took it to the final 62 (see the Dataset H entry under
+  Changed).
+- **Tension configs that left `applied_strain` unset now run the FE in
+  tension instead of compression.** This changes the FE failure
+  indices, retention factors, modulus, and the CZM and progressive
+  outputs. Analytical knockdowns are unchanged. Every
+  in-repo validation dataset already set its strain explicitly, so no
+  ledger value moves.
+- **Saved configs with `loading="tension"` and a negative
+  `applied_strain` (or compression with a positive one) no longer
+  load.** They described a contradictory analysis; flip the strain's
+  sign, or delete it to take the loading's default.
 - **Every FE strength output changes**: `failure_indices`,
   `retention_factors`, `baseline_fi` and the per-element reserve factors
   from LaRC05 (MaxStress is unchanged). On the Li (2025) UD specimens,
@@ -2978,7 +2975,7 @@ cohesive-zone delamination; five wrinkle morphologies; the material
 library; JSON/CSV/Abaqus/VTK export; a command-line interface; and the
 Streamlit web application.
 
-[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.3.0...HEAD
-[1.3.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.3.0
+[Unreleased]: https://github.com/elhajjar1/wrinkleFE/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.4.0
 [1.2.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.2.0
 [1.0.0]: https://github.com/elhajjar1/wrinkleFE/releases/tag/v1.0.0

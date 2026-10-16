@@ -1486,7 +1486,7 @@ If you use WrinkleFE in your research, please cite it. The quickest way is the
 [`CITATION.cff`](CITATION.cff) and exports APA or BibTeX. The full software
 citation:
 
-> Elhajjar, R. (2026). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.3.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23105908
+> Elhajjar, R. (2026). WrinkleFE: An open-source finite element package for strength prediction of wrinkled composite laminates (Version 1.4.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23105908
 
 ```bibtex
 @software{elhajjar2025wrinklefe,
@@ -1494,7 +1494,7 @@ citation:
   title = {{WrinkleFE}: An Open-Source Finite Element Package for Strength
            Prediction of Wrinkled Composite Laminates},
   year = {2026},
-  version = {1.3.0},
+  version = {1.4.0},
   publisher = {Zenodo},
   doi = {10.5281/zenodo.23105908},
   url = {https://github.com/elhajjar1/wrinkleFE},
