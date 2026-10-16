@@ -14,6 +14,14 @@ version produced a given file.
 
 ## [Unreleased]
 
+### Changed
+- Documentation — **install from PyPI.** WrinkleFE 1.4.0 is on PyPI, so
+  the README, Getting started, the tutorial, the API page for the Plotly
+  figures and the PyVista import error now give `pip install wrinklefe`
+  (and `wrinklefe[extra]`) instead of a GitHub URL; the GitHub install
+  stays documented for the unreleased development version. The README
+  gains a PyPI badge.
+
 ## [1.4.0] - 2026-10-15
 
 Version 1.3.0 was prepared on 2026-10-07 but never tagged or

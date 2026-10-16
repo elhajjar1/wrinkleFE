@@ -2,20 +2,20 @@
 
 ## Install
 
-WrinkleFE is not on PyPI yet; install it from GitHub:
+Install WrinkleFE from PyPI:
 
 ```bash
-pip install "git+https://github.com/elhajjar1/wrinkleFE.git"                        # core: analytical + FE pipeline
-pip install "wrinklefe[streamlit] @ git+https://github.com/elhajjar1/wrinkleFE.git"  # + the Streamlit web app
-pip install "wrinklefe[vtk] @ git+https://github.com/elhajjar1/wrinkleFE.git"        # + 3D cohesive-zone PyVista plots (pulls in VTK)
+pip install wrinklefe                # core: analytical + FE pipeline
+pip install "wrinklefe[streamlit]"   # + the Streamlit web app
+pip install "wrinklefe[vtk]"         # + 3D cohesive-zone PyVista plots (pulls in VTK)
 ```
 
 The `vtk` extra is optional — the plain install stays lean and
 headless-safe (no VTK); add it only for the 3D cohesive-zone renders.
 
 From a clone, `pip install -e ".[all]"` installs everything including
-the dev tooling (and the `vtk` extra). Once the first release is
-published to PyPI, `pip install wrinklefe` will work as well.
+the dev tooling (and the `vtk` extra). For the unreleased development
+version, `pip install "git+https://github.com/elhajjar1/wrinkleFE.git"`.
 
 ## A five-minute analysis
 

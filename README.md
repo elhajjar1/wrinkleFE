@@ -1,6 +1,7 @@
 # WrinkleFE
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://wrinklefe.streamlit.app/)
+[![PyPI](https://img.shields.io/pypi/v/wrinklefe.svg)](https://pypi.org/project/wrinklefe/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Software DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23105908.svg)](https://doi.org/10.5281/zenodo.23105908)
 [![Article DOI](https://img.shields.io/badge/article%20DOI-10.1038%2Fs41598--025--06693--4-blue.svg)](https://doi.org/10.1038/s41598-025-06693-4)
@@ -50,15 +51,14 @@ Public link, no account needed.
 
 ## Installation
 
-WrinkleFE needs Python 3.10 or newer. It is not on PyPI yet, so install
-it from GitHub:
+WrinkleFE needs Python 3.10 or newer. Install it from PyPI:
 
 ```bash
-pip install "git+https://github.com/elhajjar1/wrinkleFE.git"
+pip install wrinklefe
 ```
 
-Once a release is published on PyPI, `pip install wrinklefe` will work
-too.
+For the unreleased development version, install from GitHub instead:
+`pip install "git+https://github.com/elhajjar1/wrinkleFE.git"`.
 
 To contribute, or to run the Streamlit app locally, clone the source:
 
@@ -72,8 +72,7 @@ The 3D cohesive-zone renders (`plot_interface_damage_3d` /
 `plot_crack_front_3d`) use PyVista, which pulls in VTK (~150 MB). It is an
 optional dependency, so the plain install stays lean and headless-safe;
 add the `vtk` extra when you need those plots
-(`pip install "wrinklefe[vtk] @ git+https://github.com/elhajjar1/wrinkleFE.git"`; it is already included in
-`[all]`).
+(`pip install "wrinklefe[vtk]"`; it is already included in `[all]`).
 
 Verify the install:
 
@@ -146,7 +145,7 @@ draw the same figures in a notebook — the mesh surface, the σ contour, the
 deformed shape, the failure-index surface and the y-slice scatters:
 
 ```bash
-pip install "wrinklefe[plotly] @ git+https://github.com/elhajjar1/wrinkleFE.git"
+pip install "wrinklefe[plotly]"
 ```
 
 ```python

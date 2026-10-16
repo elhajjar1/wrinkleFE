@@ -776,8 +776,7 @@ def _require_pyvista():
         raise ImportError(
             "PyVista is required for 3D cohesive-zone visualizations. "
             "Install the `vtk` extra: "
-            '`pip install "wrinklefe[vtk] @ '
-            'git+https://github.com/elhajjar1/wrinkleFE.git"`, '
+            '`pip install "wrinklefe[vtk]"`, '
             "or `pip install pyvista`."
         ) from exc
     return pv
