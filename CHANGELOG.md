@@ -15,6 +15,11 @@ version produced a given file.
 ## [Unreleased]
 
 ### Added
+- CLI — **`wrinklefe compare --morphologies`** (issue #471): a
+  comma-separated list of any of the six morphologies (stack, convex,
+  concave, uniform, graded, tool_flat; case-insensitive, duplicates
+  dropped). The default is still stack, convex and concave. An unknown
+  name exits with status 2 and lists the choices.
 - **The JOSS paper's source** is in `paper/` (`paper.md`, `paper.bib`,
   and the headline parity figure), and `.github/workflows/draft-pdf.yml`
   builds it into the Journal of Open Source Software's PDF with Open
@@ -33,6 +38,18 @@ version produced a given file.
   gains a PyPI badge, a Read the Docs badge, and a line under its
   opening sentence linking the documentation, the install command, the
   web app and the citation DOI.
+
+### Fixed
+- CZM — **the Newton iteration-cap hint names settings users can change**
+  (issue #470). It told users to raise `max_newton_iter`, an internal
+  solver argument that is not an `AnalysisConfig` field, CLI flag or app
+  control; it now says to increase `czm_n_load_increments` (smaller load
+  steps need fewer Newton iterations) or loosen `czm_newton_tol`, and a
+  test checks that no hint names `max_newton_iter`.
+- `WrinkleAnalysis.compare_morphologies(..., analytical_only=True)` no
+  longer fails on `tool_flat`: each configuration is now built on the
+  analytical path, so tool_flat's FE-only surface resin pockets are not
+  switched on and then refused (found while adding issue #471).
 
 ## [1.4.0] - 2026-10-15
 

@@ -71,8 +71,12 @@ def test_hint_differs_between_iteration_cap_and_diverged():
 
     assert cap_hint != div_hint
 
-    # Iteration-cap: point the user at the iteration cap / tolerance.
-    assert "max_newton_iter" in cap_hint
+    # Iteration-cap: point the user at knobs they can actually set
+    # (issue #470). The solver's max_newton_iter is not an
+    # AnalysisConfig field or CLI flag, so the hint must not name it.
+    assert "max_newton_iter" not in cap_hint
+    assert "czm_n_load_increments" in cap_hint
+    assert "czm_newton_tol" in cap_hint
     assert "still decreasing" in cap_hint
     # It should NOT tell them to reduce the applied strain (that is the
     # divergence remedy, not the cap remedy).
@@ -104,6 +108,20 @@ def test_hint_stagnated_points_at_load_increments_and_tol():
     assert "stagnated" in hint.lower()
     assert "czm_n_load_increments" in hint
     assert "czm_newton_tol" in hint
+
+
+@pytest.mark.parametrize(
+    "reason", ["tangent_singular", "diverged", "stagnated", "iteration_cap"]
+)
+def test_hint_names_only_user_settable_knobs(reason):
+    """Issue #470: every hint names settings a user can change
+    (``AnalysisConfig`` fields / CLI flags), never the solver-internal
+    ``max_newton_iter``."""
+    hint = NewtonRaphsonSolver._failure_hint(
+        dict(_ITERATION_CAP_DIAG, failure_reason=reason)
+    )
+    assert "max_newton_iter" not in hint
+    assert "czm_n_load_increments" in hint
 
 
 def test_hint_none_diag_is_generic_but_actionable():
