@@ -712,8 +712,22 @@ def _build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------ #
     p_compare = subparsers.add_parser(
         "compare",
-        help="Compare all three morphologies",
-        description="Run analysis for stack, convex, and concave morphologies and compare.",
+        help="Compare wrinkle morphologies",
+        description=(
+            "Run the analysis for several morphologies (default: stack, "
+            "convex and concave) and compare."
+        ),
+    )
+    p_compare.add_argument(
+        "--morphologies", type=str, default="stack,convex,concave",
+        dest="morphologies",
+        help=(
+            "Comma-separated morphologies to compare, any of "
+            + ", ".join(MORPHOLOGY_CHOICES)
+            + " (default: stack,convex,concave). tool_flat is the "
+            "morphology for one-sided surface troughs; its FE mesh limits "
+            "the amplitude (see 'wrinklefe analyze --help')."
+        ),
     )
     p_compare.add_argument(
         "--amplitude", type=float, default=0.366,
@@ -770,7 +784,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Run analytical predictions only and skip the FE solve "
             "(default). Use --no-analytical-only to run the full FE "
-            "comparison for all three morphologies."
+            "comparison for every morphology compared."
         ),
     )
     p_compare.add_argument(
@@ -1721,11 +1735,16 @@ def _cmd_compare(args: argparse.Namespace) -> None:
         print(f"error: could not build configuration: {exc}", file=sys.stderr)
         sys.exit(2)
 
-    all_results = WrinkleAnalysis.compare_morphologies(
-        config,
-        morphologies=("stack", "convex", "concave"),
-        analytical_only=args.analytical_only,
-    )
+    try:
+        morphologies = _parse_morphologies(args.morphologies)
+        all_results = WrinkleAnalysis.compare_morphologies(
+            config,
+            morphologies=morphologies,
+            analytical_only=args.analytical_only,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     # Print comparison table
     print("=" * 72)
@@ -1741,7 +1760,7 @@ def _cmd_compare(args: argparse.Namespace) -> None:
           f"{'D':>8} {'':>10} {'(MPa)':>10}")
     print("-" * 72)
 
-    for morph in ("stack", "convex", "concave"):
+    for morph in morphologies:
         r = all_results[morph]
         print(
             f"  {morph:<12} {r.morphology_factor:>8.4f} "
@@ -1764,12 +1783,32 @@ def _cmd_compare(args: argparse.Namespace) -> None:
     _write_batch_outputs(
         [
             ("morphology", morph, morph, all_results[morph])
-            for morph in ("stack", "convex", "concave")
+            for morph in morphologies
         ],
         args.output_json,
         args.output_csv,
         args.json_schema,
     )
+
+
+def _parse_morphologies(text: str) -> tuple[str, ...]:
+    """Parse ``compare --morphologies`` (issue #471): comma-separated
+    names, case-insensitive, duplicates dropped in first-seen order."""
+    names: list[str] = []
+    for raw in text.split(","):
+        name = raw.strip().lower()
+        if not name:
+            continue
+        if name not in MORPHOLOGY_CHOICES:
+            raise ValueError(
+                f"unknown morphology {raw.strip()!r} in --morphologies; "
+                f"choose from {', '.join(MORPHOLOGY_CHOICES)}"
+            )
+        if name not in names:
+            names.append(name)
+    if not names:
+        raise ValueError("--morphologies needs at least one morphology")
+    return tuple(names)
 
 
 def _write_batch_outputs(

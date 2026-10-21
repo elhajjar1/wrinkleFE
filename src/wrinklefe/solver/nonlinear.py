@@ -551,10 +551,11 @@ class NewtonRaphsonSolver:
         """Map a failure-diagnostics record to one actionable hint string.
 
         The hint names the specific tunable knob to reach for
-        (``czm_n_load_increments``, ``czm_newton_tol``, the applied
-        strain, or ``max_newton_iter``) and folds in the numbers that
-        drove the classification so the user can judge how far off the
-        solve was.
+        (``czm_n_load_increments``, ``czm_newton_tol`` or the applied
+        strain; all three are settable from ``AnalysisConfig``, the CLI
+        and the app, unlike the solver's internal iteration cap) and
+        folds in the numbers that drove the classification so the user
+        can judge how far off the solve was.
         """
         if diag is None:
             return (
@@ -592,7 +593,8 @@ class NewtonRaphsonSolver:
             return (
                 f"Hit the Newton iteration cap ({iters}) while the residual "
                 f"was still decreasing at {where} (||R||={rphys:.2e}) — "
-                "raise max_newton_iter or loosen czm_newton_tol."
+                "increase czm_n_load_increments (smaller load steps need "
+                "fewer Newton iterations) or loosen czm_newton_tol."
             )
         return (
             f"Newton failed to converge at {where} (||R||={rphys:.2e}). "

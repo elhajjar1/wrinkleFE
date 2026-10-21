@@ -4037,7 +4037,14 @@ class WrinkleAnalysis:
         all_results: dict[str, AnalysisResults] = {}
 
         for morph in morphologies:
-            cfg = replace(base_config, morphology=morph)
+            changes: dict[str, Any] = {"morphology": morph}
+            if analytical_only:
+                # Build each config on the analytical path too, so an
+                # FE-only extra a morphology switches on by itself
+                # (tool_flat's surface resin pockets) is not then refused
+                # by run(analytical_only=True) (issue #471).
+                changes["analytical_only"] = True
+            cfg = replace(base_config, **changes)
             all_results[morph] = WrinkleAnalysis(cfg).run(
                 analytical_only=analytical_only
             )

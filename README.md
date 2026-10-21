@@ -32,7 +32,7 @@ Public link, no account needed.
 - **Compression model:** CLT-weighted Budiansky-Fleck kink-band with layup-dependent confinement
 - **Tension model:** Three-mechanism (fibre cos^2 theta, Hashin matrix, curved-beam sigma_33 delamination) with thick-ply in-situ correction
 - **3D finite element:** Structured hexahedral mesh with LaRC04/05 failure criteria
-- **Six morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) and tool_flat (one surface flat on the tool, for one-sided surface troughs) — compared side by side in one click from the app (**Compare morphologies**, any of the six) or the CLI (`wrinklefe compare`: stack, convex and concave)
+- **Six morphologies:** Stack, convex, concave, uniform, graded (with configurable decay floor) and tool_flat (one surface flat on the tool, for one-sided surface troughs) — compared side by side in one click from the app (**Compare morphologies**, any of the six) or the CLI (`wrinklefe compare --morphologies ...`, any of the six; stack, convex and concave by default)
 - **Graded averaging:** Through-thickness ply-averaged knockdown for graded wrinkles
 - **Movable wrinkle position:** Configurable through-thickness placement (`wrinkle_z_position`, 0.5 = mid-plane)
 - **Multi-wrinkle configurations:** Arbitrary N-wrinkle layouts via `AnalysisConfig.wrinkles` — a list of `WrinkleSpec(amplitude, wavelength, width, ply_interface, phase_offset)` — through the analytical, FE, penetration-gate (per-spec, weakest-link) and CZM paths
@@ -607,8 +607,9 @@ and `czm_failure_hint`; the CLI prints the hint to stderr and the
 Streamlit CZM section shows it as an error. The hint names the knob to
 turn:
 
-- **still decreasing at the iteration cap** → raise `max_newton_iter` or
-  loosen `czm_newton_tol`;
+- **still decreasing at the iteration cap** → increase
+  `czm_n_load_increments` (smaller load steps need fewer Newton
+  iterations) or loosen `czm_newton_tol`;
 - **stagnated / diverged** → increase `czm_n_load_increments` or reduce
   the applied strain;
 - **tangent singular (post-peak snap-back)** → more load increments or a
@@ -721,6 +722,9 @@ wrinklefe sweep --parameter amplitude --min 0.1 --max 0.5 --steps 8 \
 # --max/--steps drive the variation over it. `compare` takes --config too.
 wrinklefe sweep --config ud_gate.json --parameter amplitude \
     --min 0.2 --max 0.9 --steps 6
+
+# Compare morphologies side by side (default: stack, convex, concave)
+wrinklefe compare --morphologies uniform,graded,tool_flat --amplitude 0.25
 
 # Inverse: the largest amplitude that still meets a 0.85 knockdown
 wrinklefe critical --parameter amplitude --target-knockdown 0.85
