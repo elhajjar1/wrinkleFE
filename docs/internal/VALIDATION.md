@@ -527,8 +527,13 @@ Current sources:
     AGATE allowables (Tomblin et al. 2002) as both papers tabulate them;
     the generic `T700_2510` card, which Datasets A/B use, is unchanged.
   - **Wrinkles.** Close-tolerance steel rods under a Teflon sheet, removed
-    after cure: a one-sided dip, sharpest under the first ply where resin
-    pools and fading to the flat back face. Heights A = 0.3–0.8 mm
+    after cure. The fibre waviness is sharpest in the plies next to the
+    rod and gets gentler through the thickness. The rod-side face is
+    flat, with resin filling where the rod sat. The rod locally thickens
+    the laminate, so the opposite face carries a gentle bump that slopes
+    down on each side of the wrinkle centreline, and the DIC viewed that
+    bumped face (the author, October 2026; until then this record said
+    both faces were flat). Heights A = 0.3–0.8 mm
     (multidirectional, four sizes) and 0.28–0.35 mm (UD, two sizes),
     lengths L = 1.3–4.6 mm.
   - **Recipe.**
@@ -536,16 +541,20 @@ Current sources:
       matched. For the rest, wavelength = 2L (Dataset H's convention),
       which gives 22–36°, in line with the 34° slope of El-Hajjar &
       Petersen's Gaussian fit for the same rod method.
-    - Analytical: graded at the mid interfaces (it reads only the
-      profile). FE: `tool_flat` with the flat face at the bottom and a
-      ramp over 15 of the 16 plies, as the dip fades through the whole
-      thickness.
-    - Open question: issue #461 rejected the "reads only the profile"
-      reasoning for Shi's one-sided troughs, and it does not hold here
-      either. On the FE's `tool_flat` geometry the analytical knockdown
-      is much lower, conservative on all 13 coupons, so the `graded`
-      recipe is a modelling choice rather than an equivalent geometry.
-      It has not been changed.
+    - Analytical: `graded` at the mid interfaces. Its waviness decays
+      through the thickness, as the coupons' does, although theirs is
+      sharpest at the rod face rather than mid-thickness. Analytical
+      `tool_flat` is not the better choice: on the analytical path it
+      puts every ply at the peak angle (it equals `uniform` there),
+      which these coupons do not have, and it is 32% to 78% conservative
+      on them, against −23% to +18% for `graded`.
+    - FE: `tool_flat` with the bottom face pinned flat and a ramp over 15
+      of the 16 plies. This puts the waviness at zero next to the flat
+      face and at full height at the other face, the reverse of the
+      coupons, whose waviness is sharpest next to the flat, rod-side face
+      and leaves only a gentle bump on the other. The FE onset and
+      retention figures below are on this recipe; a geometry-faithful FE
+      recipe is open as issue #469.
   - **Baselines.** Control ultimates 765 MPa (multidirectional) and
     1785 MPa (UD): the values the 2016 paper normalised by. Its ratio
     column (limit point / control ultimate, two decimals) bounds them to

@@ -40,6 +40,18 @@ version produced a given file.
   web app and the citation DOI.
 
 ### Fixed
+- Validation record — **Dataset M's coupon geometry is described
+  correctly** (issue #469). It said both faces of the rod-made wrinkles
+  were flat. Per the dataset's author, only the rod-side face is flat
+  (resin fills where the rod sat); the waviness is sharpest next to the
+  rod and gentler through the thickness, the rod locally thickens the
+  laminate so the opposite face carries a gentle bump, and the DIC
+  viewed that bumped face. The record now also says that the FE recipe
+  (`tool_flat` pinned at the bottom with a 15-ply ramp) has the waviness
+  the wrong way round, zero next to the flat face, and that analytical
+  `tool_flat` is no alternative to `graded` (it equals `uniform` on that
+  path). Text only: no prediction, pin or margin changes; a
+  geometry-faithful FE recipe stays open in #469.
 - CZM — **the Newton iteration-cap hint names settings users can change**
   (issue #470). It told users to raise `max_newton_iter`, an internal
   solver argument that is not an `AnalysisConfig` field, CLI flag or app
