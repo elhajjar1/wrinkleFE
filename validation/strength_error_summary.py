@@ -296,9 +296,11 @@ def fe_larc05_calvo_section() -> None:
           "(conservative by construction)\n")
 
 
-#: Dataset M's FE recipe (issue #436): the rods' one-sided dip, sharpest
-#: under the first ply and gone at the back face, as ``tool_flat`` with
-#: the flat face at the bottom and a ramp over 15 of the 16 plies.
+#: Dataset M's FE recipe (issue #436): ``tool_flat`` pinned flat at the
+#: bottom with a ramp over 15 of the 16 plies. It puts the waviness at zero
+#: next to the flat face and at full height at the other, the reverse of the
+#: coupons (sharpest next to the flat, rod-side face; a gentle bump on the
+#: other face); a geometry-faithful recipe is issue #469.
 _M_FE_RECIPE = dict(nx=48, ny=4, nz_per_ply=1, morphology="tool_flat",
                     surface_pocket_side="bottom", surface_transition_plies=15,
                     enable_surface_resin_pockets=True)
