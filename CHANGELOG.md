@@ -45,8 +45,10 @@ version produced a given file.
   were flat. Per the dataset's author, only the rod-side face is flat
   (resin fills where the rod sat); the waviness is sharpest next to the
   rod and gentler through the thickness, the rod locally thickens the
-  laminate so the opposite face carries a gentle bump, and the DIC
-  viewed that bumped face. The record now also says that the FE recipe
+  laminate so the opposite face carries a gentle bump. The DIC filmed
+  that bumped back face on seven coupons and the flat front face on six,
+  as the 2016 paper's per-specimen notes (and the ledger's case notes)
+  record. The record now also says that the FE recipe
   (`tool_flat` pinned at the bottom with a 15-ply ramp) has the waviness
   the wrong way round, zero next to the flat face, and that analytical
   `tool_flat` is no alternative to `graded` (it equals `uniform` on that

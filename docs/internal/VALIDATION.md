@@ -531,9 +531,12 @@ Current sources:
     rod and gets gentler through the thickness. The rod-side face is
     flat, with resin filling where the rod sat. The rod locally thickens
     the laminate, so the opposite face carries a gentle bump that slopes
-    down on each side of the wrinkle centreline, and the DIC viewed that
-    bumped face (the author, October 2026; until then this record said
-    both faces were flat). Heights A = 0.3–0.8 mm
+    down on each side of the wrinkle centreline (the author, October
+    2026; until then this record said both faces were flat). The DIC
+    filmed the bumped back face on seven coupons and the flat,
+    resin-pocket front face on six (MD-3, MD-4, MD-7, MD-9, UD-10,
+    UD-13), as the 2016 paper's per-specimen notes record; each case
+    note in the ledger names its face. Heights A = 0.3–0.8 mm
     (multidirectional, four sizes) and 0.28–0.35 mm (UD, two sizes),
     lengths L = 1.3–4.6 mm.
   - **Recipe.**
