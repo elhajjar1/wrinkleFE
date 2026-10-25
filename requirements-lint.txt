@@ -16,7 +16,7 @@
 #
 # Each pin must satisfy pyproject.toml's `dev` extra
 # (tests/test_requirements_consistency.py).
-ruff==0.17.0
+ruff==0.17.1
 mypy==2.4.0
 scipy-stubs==1.17.1.5
 # streamlit is pinned for the type checker, not for the app: mypy checks
